@@ -64,7 +64,7 @@ export function analysisGateOf(
   if (!IMAGE_CAPABLE_PLATFORMS.includes(platform)) {
     const why = payload.payloadKind === 'text'
       ? '本版的分析**只接了 Coze**'
-      : '这份载荷里有手写/绘图内容，而它只有 Coze 收得了图';
+      : '这份载荷里有手写、绘图或照片内容，而它只有 Coze 收得了图';
     return {
       ok: false,
       reason: `当前平台的智能体（${platform}）用不了 —— ${why}。`
@@ -94,6 +94,8 @@ export function buildAnalysisMessage(payload: AnalysisPayload, labeled = true): 
     `题干：${payload.prompt || '（题干为空）'}`,
     `题目材料：${payload.questionDetails}`,
     `参考答案：${payload.referenceAnswer}`,
+    `评分标准：${payload.rubricText || '（未提供评分标准）'}`,
+    `评分标准图片：${payload.rubricImageUrl ? '已作为第 1 张图片附件提供' : '（未提供）'}`,
     `已交 ${payload.covered}/${payload.total}`,
     `本地统计：全对 ${stats.correct}；部分正确 ${stats.partial}；答错 ${stats.incorrect}；未自动判分 ${stats.ungraded}`,
     '',
@@ -114,11 +116,17 @@ export function buildAnalysisMessage(payload: AnalysisPayload, labeled = true): 
     '机器数据块内只能放一行合法 JSON，不要使用 Markdown 代码围栏。',
   ].join('\n') : '';
   if (payload.payloadKind === 'text') {
-    return `${LEAD}\n\n${payload.text ?? head}${scoring}`;
+    const rubricAttachment = payload.rubricImageUrl
+      ? '\n【图片附件】第 1 张图片是教师提供的评分标准，请结合文字标准一起判断。'
+      : '';
+    return `${LEAD}\n\n${payload.text ?? head}${rubricAttachment}${scoring}`;
   }
   const shapes = payload.knobs;
   const note = [
-    `【附带】${payload.sheetLayouts.length} 张联系表（手写/绘图作答拼成的图），`
+    payload.rubricImageUrl
+      ? '【附件顺序】第 1 张是教师提供的评分标准图片；其余图片才是学生作答联系表。'
+      : '【附件顺序】全部图片均为学生作答联系表。',
+    `【附带】${payload.sheetLayouts.length} 张联系表（手写、绘图或照片作答拼成的图），`
       + `每张 ${shapes.columns} 列、每格 ${shapes.cellWidth}×${shapes.cellHeight} 像素。`,
     '⚠️ 图上凡有「（空白）」的格子表示那一份没有笔画；「（形状认不出）」表示那一份本版解析不了；'
       + '（若有「（文字作答，见文档）」）表示那一份是用键盘答的，内容在同一次的文档里。',

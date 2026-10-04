@@ -4,6 +4,7 @@ import {
   analysisAnswerText,
   analysisQuestionDetails,
   analysisReferenceAnswer,
+  analysisRubric,
 } from '../services/analysis-question.js';
 import type { QuestionNode, QuestionType } from '../services/worksheet-questions.js';
 
@@ -88,4 +89,15 @@ test('坏形状不抛：无法识别返回 null，已提交空答案保留为空
   assert.equal(analysisAnswerText(node('single-choice', {}), null), null);
   assert.equal(analysisAnswerText(node('fill-blank', {}), { format: 'fill-multi/v1', texts: ['', ''] }), '');
   assert.equal(analysisAnswerText(node('categorize', {}), { assignment: [] }), null);
+});
+
+test('主观题评分标准进入分析；客观题与外部图片地址不会进入', () => {
+  const imageUrl = '/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.png';
+  assert.deepEqual(analysisRubric(node('short-answer', { rubricText: '理由完整 4 分', rubricImageUrl: imageUrl })), {
+    text: '理由完整 4 分', imageUrl,
+  });
+  assert.deepEqual(analysisRubric(node('drawing', { rubricText: '构图完整', rubricImageUrl: 'https://example.com/x.png' })), {
+    text: '构图完整', imageUrl: null,
+  });
+  assert.deepEqual(analysisRubric(node('single-choice', { rubricText: '不应发送' })), { text: '', imageUrl: null });
 });

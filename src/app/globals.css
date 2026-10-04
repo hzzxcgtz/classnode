@@ -6346,6 +6346,54 @@ tr:hover td {
   font-size: 0.72rem;
 }
 
+.worksheet-editor-optional {
+  margin-left: 6px;
+  color: #7890aa;
+  font-size: .72rem;
+  font-weight: 500;
+}
+
+.worksheet-editor-rubric > textarea {
+  width: 100%;
+  min-height: 92px;
+  padding: 10px 12px;
+  border: 1px solid #cbd9e8;
+  border-radius: 10px;
+  resize: vertical;
+  line-height: 1.6;
+  color: #20354d;
+  background: #fff;
+}
+
+.worksheet-editor-rubric > textarea:focus {
+  outline: none;
+  border-color: #6f94b9;
+  box-shadow: 0 0 0 3px rgb(73 116 158 / 10%);
+}
+
+.worksheet-editor-rubric-upload { align-self: flex-start; }
+
+.worksheet-editor-rubric-image {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.worksheet-editor-rubric-image img {
+  width: min(280px, 55%);
+  max-height: 180px;
+  object-fit: contain;
+  border: 1px solid #d7e2ed;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.worksheet-editor-rubric-image > div {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 720px) {
   .worksheet-editor-ai-scoring-fields { grid-template-columns: 1fr; }
   .worksheet-editor-ai-scoring-note { grid-column: auto; }

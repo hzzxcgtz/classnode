@@ -267,6 +267,14 @@ test('★ 绘图：走 ink 那一支，值原样交给界面画（判据只认 f
   assert.equal(view.kind, 'ink', '🔴 按 format 判，不按 node.type —— 教师把题改成键盘之后那幅画仍要画得出来');
 });
 
+test('★ 照片作答：教师端拿到可直接显示的本机图片地址', () => {
+  const url = '/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.webp';
+  assert.deepEqual(
+    answerView(node('short-answer', {}, { inputMode: 'photo' }), { format: 'photo/v1', url }),
+    { kind: 'photo', url },
+  );
+});
+
 /* ── 连线的几何（★ 教师：「左框和右框中的顺序不能变，要按照原题中的顺序」）── */
 
 /**

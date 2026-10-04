@@ -205,7 +205,7 @@ export interface QuestionNode {
   id: string;
   type: QuestionType;
   prompt: string;
-  inputMode: 'keyboard' | 'handwriting';
+  inputMode: 'keyboard' | 'handwriting' | 'photo';
   /**
    * ★ M4a：逐题分值。**留空 = 继承学习单级**（规格 §12 裁定 4）——
    * 所以 `undefined` 是一个**有意义的取值**，不是「还没填」。
@@ -341,7 +341,11 @@ export function flattenQuestions(content: WorksheetContent): QuestionNode[] {
  * ⚠️ 与之相对，`items` / `left` / `right` / `zones` / `options` **不能**进来：
  * 它们是学生必须看到的题面，剥掉它们会让题目残缺到无法作答。
  */
-export const ANSWER_KEYS = ['correctKeys', 'answers', 'explanation', 'correctOrder', 'pairs', 'placement'] as const;
+export const ANSWER_KEYS = [
+  'correctKeys', 'answers', 'explanation', 'correctOrder', 'pairs', 'placement',
+  // 评分标准只供教师与 AI 分析使用，不能随学生版学习单下发。
+  'rubricText', 'rubricImageUrl',
+] as const;
 
 /**
  * 剥离答案 —— 学生端 `student-view` 的唯一过滤点（规格 §5.4）。

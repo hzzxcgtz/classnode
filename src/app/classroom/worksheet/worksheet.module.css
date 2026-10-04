@@ -1947,28 +1947,19 @@
 .resultCell[data-tone='partial'] { background: #faf4eb; color: #b45309; }
 .resultCell[data-tone='incorrect'] { background: #f8eeee; color: #b91c1c; }
 .resultCell[data-tone='ai-reference'] {
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 1px;
   background: #edf4fb;
   color: #315f90;
-  line-height: 1.2;
 }
 
 .aiReferenceCell small {
+  margin-left: 2px;
   color: #70849a;
-  font-size: .625rem;
+  font-size: .7rem;
   font-weight: 500;
 }
 
-.aiScoreValue {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.aiScoreValue b { font: inherit; font-weight: 750; }
-.aiScoreValue em { font-style: normal; }
+.aiReferenceCell b { font: inherit; font-weight: 750; }
+.aiReferenceCell em { font-style: normal; }
 
 .aiScoreComment {
   display: flex;
@@ -2068,3 +2059,78 @@
   color: #475569;
   white-space: nowrap;
 }
+.photoAnswer {
+  display: grid;
+  gap: 8px;
+}
+
+.photoAnswerInput {
+  display: none;
+}
+
+.photoAnswerPlaceholder {
+  width: 100%;
+  min-height: 132px;
+  border: 1.5px dashed #a9bed4;
+  border-radius: 14px;
+  background: #f8fbff;
+  color: #45698e;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.photoAnswerPlaceholder span {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #e7f0fa;
+  display: grid;
+  place-items: center;
+  font-size: 1.35rem;
+}
+
+.photoAnswerPlaceholder strong { font-size: 0.938rem; }
+.photoAnswerPlaceholder small { color: #7890aa; }
+.photoAnswerPlaceholder:disabled { cursor: default; opacity: .68; }
+
+.photoAnswerPreview {
+  border: 1px solid #cbd9e8;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.photoAnswerPreview img {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  background: white;
+}
+
+.photoAnswerActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 9px 10px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.photoAnswerActions button {
+  border: 1px solid #cbd9e8;
+  border-radius: 8px;
+  background: white;
+  color: #45698e;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.photoAnswerAction {
+  min-height: 44px;
+}
+
+.photoAnswerError { margin: 0; color: #a34848; font-size: 0.813rem; }

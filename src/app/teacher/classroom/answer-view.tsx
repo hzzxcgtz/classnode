@@ -10,6 +10,7 @@ import { WorksheetTableView } from '@/lib/worksheet-table-view';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { InkPreview } from './ink-preview';
 
 /**
@@ -76,6 +77,15 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
       return view.ink
         ? <InkPreview value={view.ink} />
         : <span style={{ fontSize: '0.813rem', color: FAINT }}>读不出这幅画</span>;
+
+    case 'photo':
+      return (
+        <img
+          src={worksheetAssetUrl(view.url)}
+          alt="学生上传的作答照片"
+          style={{ display: 'block', width: '100%', maxHeight: 360, objectFit: 'contain', borderRadius: 8, border: '1px solid #dbe5ef', background: '#f8fafc' }}
+        />
+      );
 
     case 'choice':
       return (

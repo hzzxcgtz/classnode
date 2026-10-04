@@ -262,7 +262,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
               <strong>AI 评分</strong>
               <span>满额 {payload.perStudent.maxScore} {payload.perStudent.unit}</span>
             </div>
-            <span className={styles.aiScoreNotice}>由 AI 生成，仅供参考</span>
+            <span className={styles.aiScoreNotice}>AI 评分，供教学参考</span>
           </div>
           {payload.perStudent.criteria && (
             <div className={styles.scoreCriteria}>评分要求：{payload.perStudent.criteria}</div>

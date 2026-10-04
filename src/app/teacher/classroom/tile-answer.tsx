@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { answerView, type AnswerView } from '@/lib/worksheet-answer-view';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 // ★ 2026-09-30：题面文本里的数学公式（选项 / 左右项 / 框名 / 条目）。
 // 🔴 **只包「教师写的原文」**：本文件里 `view.text`（问答）/ `blank.text`（填空）/
 //    排序那个 `{text}` 都是**学生填的答案**，一律**不**包（裁定 ④）。
@@ -111,6 +112,18 @@ function renderCompact(view: AnswerView): React.ReactNode {
           <InkPreview value={view.ink} />
         </div>
       ) : <Line color={FAINT}>读不出这幅画</Line>;
+
+    case 'photo':
+      return (
+        <img
+          src={worksheetAssetUrl(view.url)}
+          alt="学生上传的作答照片"
+          style={{
+            display: 'block', width: '100%', maxHeight: 112, objectFit: 'contain',
+            borderRadius: 4, border: '1px solid #e2e8f0', background: '#f8fafc',
+          }}
+        />
+      );
 
     case 'choice': {
       // 只画**他勾的**那几个：整张表在这一格里放不下，而他没勾的选项对教师没有信息量。

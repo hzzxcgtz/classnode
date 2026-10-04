@@ -78,6 +78,19 @@ test('问答题永远不判分', () => {
   assert.equal(grade(short, { format: 'text/v1', text: '随便' }, P), null);
 });
 
+test('🔴 学生版学习单会剥掉评分标准文字与图片', () => {
+  const content: WorksheetContent = {
+    schemaVersion: 1,
+    nodes: [{
+      id: 'q-rubric', type: 'short-answer', prompt: '说明理由', inputMode: 'photo', children: [],
+      data: { rubricText: '关键判断 5 分', rubricImageUrl: '/uploads/chat/chat-secret.png', answers: [['参考答案']] },
+    }],
+  };
+  const stripped = stripAnswers(content);
+  assert.deepEqual(stripped.nodes[0].data, {});
+  assert.equal((content.nodes[0].data as Record<string, unknown>).rubricText, '关键判断 5 分', '原对象不能被改动');
+});
+
 test('🔴 填空题：answers 里的非字符串元素不得让判分抛错', () => {
   // data 是 `Record<string, unknown>`、内容来自库里的 JSON，任何手工改过的行都可能混进
   // 非字符串元素。触发条件是「某个非字符串元素**之前没有元素命中**」—— 所以

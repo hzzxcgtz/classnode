@@ -498,13 +498,15 @@ export function WorksheetQuestionList({
                 </span>
               )}
               {aiReferenceScore && (
-                <span className={`${styles.resultCell} ${styles.aiReferenceCell}`} data-tone="ai-reference">
-                  <span className={styles.aiScoreValue} aria-label={`AI 评分 ${aiReferenceScore.score}/${aiReferenceScore.maxScore} ${aiReferenceScore.unit}`}>
-                    <b>{aiReferenceScore.score}/{aiReferenceScore.maxScore}</b>
-                    {reward && <RewardIcon kind={reward.style} state="earned" size={20} />}
-                    {(!reward || reward.style === 'points') && <em>{aiReferenceScore.unit}</em>}
-                  </span>
-                  <small>由 AI 生成，仅供参考</small>
+                <span
+                  className={`${styles.resultCell} ${styles.aiReferenceCell}`}
+                  data-tone="ai-reference"
+                  aria-label={`AI 评分 ${aiReferenceScore.score}/${aiReferenceScore.maxScore} ${aiReferenceScore.unit}。这是 AI 给你的小建议`}
+                >
+                  {reward && <RewardIcon kind={reward.style} state="earned" size={20} />}
+                  <b>{aiReferenceScore.score}/{aiReferenceScore.maxScore}</b>
+                  {(!reward || reward.style === 'points') && <em>{aiReferenceScore.unit}</em>}
+                  <small>这是 AI 给你的小建议</small>
                 </span>
               )}
             </div>
@@ -625,7 +627,7 @@ export function WorksheetQuestionList({
                 <span className={styles.aiScoreCommentBody}>
                   <span className={styles.aiScoreCommentHeading}>
                     <strong>AI 评分反馈</strong>
-                    <small>由 AI 生成，仅供参考</small>
+                    <small>这是 AI 给你的小建议</small>
                   </span>
                   <span className={styles.aiScoreCommentText}>{aiReferenceScore.comment}</span>
                 </span>

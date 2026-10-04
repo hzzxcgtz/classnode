@@ -6,6 +6,7 @@ import { INK_STROKE_COLOR, strokePath, strokeWidthPx, textBoxOf, type InkValue }
 //    `escapeXml` 是 XML 转义（`<` `&` 才是它管的事），与「不可信数据进字符串拼接」同一件事。
 import { escapeXml } from './ink-render.js';
 import type { AnalyzeEntry, SheetKnobs, SheetLayout } from './analysis-payload.js';
+import { resolveLocalPath } from './ai-proxy.js';
 
 /**
  * ★ M7a：载荷 → PNG。**本文件是本批唯一碰 sharp 的** —— 与 `ink-path.ts` / `ink-render.ts`
@@ -192,7 +193,21 @@ export async function renderSheets(
   try {
     const sheets: Buffer[] = [];
     for (const layout of layouts) {
-      sheets.push(await sharp(Buffer.from(buildSheetSvg(entries, layout, labeled))).png().toBuffer());
+      const overlays: Array<{ input: Buffer; left: number; top: number }> = [];
+      for (const cell of layout.cells) {
+        const entry = entries[cell.index];
+        if (entry?.kind !== 'photo' || !entry.photoUrl) continue;
+        const filePath = resolveLocalPath(entry.photoUrl);
+        if (!filePath) throw new Error(`invalid worksheet photo path: ${entry.photoUrl}`);
+        const photo = await sharp(filePath)
+          .rotate()
+          .resize(cell.w, cell.h, { fit: 'contain', background: '#f8fafc' })
+          .png()
+          .toBuffer();
+        overlays.push({ input: photo, left: cell.x, top: cell.y });
+      }
+      const base = sharp(Buffer.from(buildSheetSvg(entries, layout, labeled))).png();
+      sheets.push(await (overlays.length > 0 ? base.composite(overlays) : base).toBuffer());
     }
     return { sheets, labeled };
   } catch (e) {

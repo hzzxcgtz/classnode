@@ -343,7 +343,7 @@ export interface WorksheetQuestionNode {
    */
   type: string;
   prompt: string;
-  inputMode: 'keyboard' | 'handwriting';
+  inputMode: 'keyboard' | 'handwriting' | 'photo';
   /**
    * ★ M4a：**逐题分值**。与服务端的 `QuestionNode.points` 对应（规格 §12 裁定 5：落在
    * 题目节点上，**不进 `data`** —— 它是题型无关的）。

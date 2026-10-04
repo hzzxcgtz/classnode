@@ -299,7 +299,7 @@ export function isInkFormat(raw: unknown): raw is InkFormat {
  * 天然决定，规格 §7.5：真正需要教师决策的只有填空题和问答题）。
  */
 export function isInkNode(node: { type: string; inputMode?: unknown }): boolean {
-  if (node.type === 'drawing') return true;
+  if (node.type === 'drawing') return node.inputMode !== 'photo';
   return node.inputMode === 'handwriting';
 }
 

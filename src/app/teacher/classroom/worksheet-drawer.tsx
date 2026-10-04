@@ -5,6 +5,8 @@ import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 // ★ 2026-09-30：题干里可能有数学公式（`$x^2$`）。
 import { PromptText } from '@/lib/worksheet-prompt-text';
+import { answerView } from '@/lib/worksheet-answer-view';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { activeWorksheetAnalysisTask, hasCompletedWorksheetAnalysis } from '@/lib/worksheet-analysis-background';
 // ★ M4b/E1：笔迹的换算**只有一份**（`src/lib/worksheet-ink.ts`）—— 学生端 canvas（C1）与
@@ -473,6 +475,7 @@ export function QuestionAnswers({
       {worksheet.participants.map((participant) => {
         const row = participant.answerRows.filter((item) => item.questionId === questionId)[0];
         const outcome = node ? questionOutcome(node, row) : null;
+        const compactView = node ? answerView(node, row?.value) : null;
         return (
           <button key={participant.participantId} type="button" onClick={() => onOpenParticipant(participant.participantId)}
             style={{
@@ -486,7 +489,13 @@ export function QuestionAnswers({
                     🔴 但「没有 `answerText`」**不等于**未作答 —— 笔迹作答的 `answerText` 恒为
                     `null`（笔迹不是文字，见 `formatAnswer`）⇒ 必须先看 `outcome.ink`，
                     否则一个画了一整幅画的学生在这一屏上显示成「未作答」，而教师会去催他。 */}
-                {outcome?.ink ? (
+                {compactView?.kind === 'photo' ? (
+                  <img
+                    src={worksheetAssetUrl(compactView.url)}
+                    alt={`${participant.name}上传的作答照片`}
+                    style={{ display: 'block', width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8 }}
+                  />
+                ) : outcome?.ink ? (
                   <InkPreview value={outcome.ink} />
                 ) : (
                   outcome?.answerText ?? <span style={{ color: '#94a3b8' }}>未作答</span>

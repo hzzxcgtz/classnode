@@ -160,7 +160,7 @@ export type ContentAction =
   // 没有它，`inputMode: 'handwriting'` 永远只活在手工改过的库行里。
   // 取值域是 `WorksheetQuestionNode.inputMode` 那两个字面量，**不是**学习单级的
   // `settings.defaultInputMode`（那一个今天仍然是死的，见 `DEFAULT_SETTINGS`）。
-  | { kind: 'updateInputMode'; id: string; inputMode: 'keyboard' | 'handwriting' }
+  | { kind: 'updateInputMode'; id: string; inputMode: 'keyboard' | 'handwriting' | 'photo' }
   /** ★ 2026-09-25：逐题的「允许自动评分」开关。 */
   | { kind: 'updateAutoGrade'; id: string; autoGrade: boolean }
   /** ★ 2026-09-25：部分给分的容错档。`null` = 缺省（旧规则）。 */

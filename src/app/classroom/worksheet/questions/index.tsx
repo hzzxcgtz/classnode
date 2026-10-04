@@ -1,9 +1,12 @@
 'use client';
 
+import { useRef, useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
-import { emptyDraftFor } from '@/lib/worksheet-answer-value';
+import { emptyDraftFor, isPhotoNode } from '@/lib/worksheet-answer-value';
 import { isInkNode } from '@/lib/worksheet-ink';
+import { api } from '@/lib/api';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { CategorizeBody } from './categorize-body';
 import { ChoiceBody } from './choice-body';
 import { InkBody } from './ink-body';
@@ -97,6 +100,16 @@ export function QuestionInput({ node, draft, onChange, disabled, correctKeys, co
     if (start.kind === kind) return start as Extract<AnswerDraft, { kind: K }>;
     return null;
   };
+
+  if (isPhotoNode(node)) {
+    return (
+      <PhotoBody
+        draft={pick('photo') ?? { kind: 'photo', url: '' }}
+        onChange={(next) => onChange?.(node, next)}
+        disabled={disabled}
+      />
+    );
+  }
 
   /**
    * ★ M4b：画布支（`InkBody`）。**两条判据都要**：题型是画布题（`isInkNode(node)`）
@@ -193,6 +206,72 @@ export function QuestionInput({ node, draft, onChange, disabled, correctKeys, co
     );
   }
   return <p className={styles.cardNote}>（这道题的题型暂时没法在这里作答）</p>;
+}
+
+function PhotoBody({ draft, onChange, disabled }: {
+  draft: Extract<AnswerDraft, { kind: 'photo' }>;
+  onChange: (next: AnswerDraft) => void;
+  disabled: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+
+  const upload = async (file: File) => {
+    setUploading(true);
+    setError('');
+    try {
+      const result = await api.uploadWorksheetImage(file);
+      onChange({ kind: 'photo', url: result.url });
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : '照片上传失败，请重试');
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className={styles.photoAnswer}>
+      <input
+        ref={inputRef}
+        className={styles.photoAnswerInput}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        capture="environment"
+        disabled={disabled || uploading}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void upload(file);
+        }}
+      />
+      {draft.url ? (
+        <div className={styles.photoAnswerPreview}>
+          <img src={worksheetAssetUrl(draft.url)} alt="已上传的照片作答" />
+          {!disabled && (
+            <div className={styles.photoAnswerActions}>
+              <button type="button" className={styles.photoAnswerAction} disabled={uploading} onClick={() => inputRef.current?.click()}>
+                {uploading ? '正在上传…' : '重新拍照或选择照片'}
+              </button>
+              <button type="button" className={styles.photoAnswerAction} onClick={() => onChange({ kind: 'photo', url: '' })}>移除</button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <button
+          type="button"
+          className={styles.photoAnswerPlaceholder}
+          disabled={disabled || uploading}
+          onClick={() => inputRef.current?.click()}
+        >
+          <span aria-hidden="true">＋</span>
+          <strong>{uploading ? '正在上传照片…' : '在这里拍照或上传作答照片'}</strong>
+          <small>支持 JPG、PNG、WebP</small>
+        </button>
+      )}
+      {error && <p className={styles.photoAnswerError}>{error}</p>}
+    </div>
+  );
 }
 
 /**

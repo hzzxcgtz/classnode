@@ -89,6 +89,14 @@ test('文本值为空串仍然算 text（空白是学生的作答，不是「认
   assert.equal(entry.text, '');
 });
 
+test('★ 照片作答进入图片载荷，并能在 aggregate 中持久化往返', () => {
+  const url = '/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.jpg';
+  const [entry] = selectAnalyzeEntries([row('p1', 'submitted', { format: 'photo/v1', url })], people, 'q1');
+  assert.deepEqual(entry, { studentId: 'p1', kind: 'photo', photoUrl: url, gradeState: null });
+  assert.equal(payloadKindOf([entry]), 'image');
+  assert.deepEqual(entriesFromAggregate(entriesToAggregate([entry])), [entry]);
+});
+
 test('只收这一道题的作答行（同一份学习单里别的题不进载荷）', () => {
   const entries = selectAnalyzeEntries([
     { participantId: 'p1', questionId: 'q2', status: 'submitted', value: { format: 'text/v1', text: '别题' } },

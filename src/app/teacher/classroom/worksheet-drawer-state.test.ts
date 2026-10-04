@@ -223,6 +223,11 @@ test('形态 A：原答案的读法 —— 单选给选项文字，读不出来�
   assert.equal(formatAnswer(choice, { format: 'choice/v1', selected: ['Z'] }), 'Z');
   assert.equal(formatAnswer(fill, { format: 'fill/v1', text: 'H2O' }), 'H2O');
   assert.equal(formatAnswer(short, { format: 'text/v1', text: '  叶片上有气泡  ' }), '叶片上有气泡');
+  assert.equal(
+    formatAnswer(short, { format: 'photo/v1', url: '/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.jpg' }),
+    '照片作答',
+    '只支持文字摘要的教师界面也不能把照片作答误报为未作答',
+  );
   // 读不出来的形状一律 null，不抛（渲染路径上一次 TypeError 会让整个抽屉白屏）。
   assert.equal(formatAnswer(fill, null), null);
   assert.equal(formatAnswer(fill, { format: 'ink/v1', strokes: [] }), null);

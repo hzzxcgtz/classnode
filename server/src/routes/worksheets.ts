@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { readFile } from 'node:fs/promises';
 import { Router } from 'express';
 import type { Request, RequestHandler, Response } from 'express';
 import type { Server } from 'socket.io';
@@ -49,7 +50,7 @@ import { findInkValueError } from '../services/worksheet-ink.js';
 // 那个文件被前端的跨工程对拍用例加载，所以它不能 import 任何东西（M6a 的教训）。
 import { isAnalyzableType } from '../services/analysis-gate.js';
 import { questionTypeLabel } from '../services/question-type-labels.js';
-import { analysisQuestionDetails, analysisReferenceAnswer } from '../services/analysis-question.js';
+import { analysisQuestionDetails, analysisReferenceAnswer, analysisRubric } from '../services/analysis-question.js';
 import {
   KNOBS_SETTING_KEY, buildAnalysisPayload, entriesFromAggregate, entriesToAggregate,
   isAnalysisStale, lastSubmittedAt, layoutSheets, normalizeAnalysisKnobs, payloadLabels, selectAnalyzeEntries,
@@ -62,9 +63,22 @@ import {
   aiScoringConfigOf, parseAiAnalysisResult, readStoredAiScoring, readStudentAiReferenceScore,
 } from '../services/analysis-scoring.js';
 // ★ M7b：**全仓唯一一处 fetch 到第三方**
-import { proxyAnalysisRequest } from '../services/ai-proxy.js';
+import { proxyAnalysisRequest, resolveLocalPath } from '../services/ai-proxy.js';
 // ★ 2026-09-30：课堂级「逐题开放」的清单（存 `Classroom.worksheetOpen`，判据在那个文件里）。
 import { openQuestionsFor } from '../services/worksheet-open.js';
+
+const WORKSHEET_PHOTO_URL = /^\/uploads\/chat\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
+
+/** 只在识别到 photo/v1 时校验；未知格式仍遵循既有的向前兼容策略。 */
+function findPhotoValueError(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (raw.format !== 'photo/v1') return null;
+  if (typeof raw.url !== 'string' || !WORKSHEET_PHOTO_URL.test(raw.url)) {
+    return '照片作答地址无效，请重新拍照或上传';
+  }
+  return null;
+}
 
 /**
  * 学习单路由。
@@ -398,7 +412,9 @@ function normalizeNode(
     id,
     type: type as QuestionType,
     prompt: typeof node.prompt === 'string' ? node.prompt : '',
-    inputMode: node.inputMode === 'handwriting' ? 'handwriting' : 'keyboard',
+    inputMode: (type === 'short-answer' || type === 'drawing') && node.inputMode === 'photo'
+      ? 'photo'
+      : node.inputMode === 'handwriting' ? 'handwriting' : 'keyboard',
     // ⚠️ 只在**有值**时写这个键：`points: undefined` 落到 JSON 里是**整个键消失**
     // （`JSON.stringify` 会丢掉 undefined 的属性），所以两种写法在库里长得一样 ——
     // 但显式展开一个 `undefined` 会让「这个键到底存不存在」在读的一侧多一种形状。
@@ -1346,6 +1362,7 @@ function payloadFromStoredRow(
 
 /** 一道题发给智能体前的完整题面投影。三条端点共用，避免重算/重发时漏掉参考答案。 */
 function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: string) {
+  const rubric = analysisRubric(node);
   return {
     questionId: node.id,
     typeLabel: questionTypeLabel(node.type),
@@ -1353,6 +1370,8 @@ function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: 
     heading,
     details: analysisQuestionDetails(node),
     referenceAnswer: analysisReferenceAnswer(node),
+    rubricText: rubric.text,
+    rubricImageUrl: rubric.imageUrl,
     aiScoring: aiScoringConfigOf(node, scoringUnit),
   };
 }
@@ -1603,6 +1622,16 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     // 联系表按需渲染（M7a 决定 1）—— 只有需要图时才渲
     let labeled = true;
     const images: Buffer[] = [];
+    if (payload.rubricImageUrl) {
+      const rubricPath = resolveLocalPath(payload.rubricImageUrl);
+      if (!rubricPath) return res.status(502).json({ error: '评分标准图片路径无效，请重新上传后再分析' });
+      try {
+        // 评分标准图固定放在首张，消息中会把附件顺序明确告诉智能体。
+        images.push(await readFile(rubricPath));
+      } catch {
+        return res.status(502).json({ error: '评分标准图片已不存在，请重新上传后再分析' });
+      }
+    }
     if (payload.payloadKind !== 'text') {
       const rendered = await renderSheets(entries, payload.sheetLayouts, knobs);
       if (!rendered || rendered.sheets.length === 0) {
@@ -2311,6 +2340,8 @@ router.put('/:id/answers', async (req, res) => {
     // `worksheet-answer-value.ts:48-76`（那段「`format` 在服务端只被读两处」）那条纪律 —— 见 `services/worksheet-ink.ts` 的 🔴。
     const inkError = findInkValueError(body.value);
     if (inkError) return res.status(400).json({ error: inkError });
+    const photoError = findPhotoValueError(body.value);
+    if (photoError) return res.status(400).json({ error: photoError });
 
     // ★ M5a：课堂级「锁定作答」—— 保存被拒，**交卷仍然放行**（规格 §3.2 / 裁定 ③）。
     //

@@ -57,6 +57,10 @@ function handwritingNode(type: string, data: Record<string, unknown> = {}): Work
   return { ...node(type, data), inputMode: 'handwriting' };
 }
 
+function photoNode(type: 'short-answer' | 'drawing'): WorksheetQuestionNode {
+  return { ...node(type), inputMode: 'photo' };
+}
+
 /** 绘图题（★ M4b 新题型）。它的 `inputMode` 是什么都不影响结论 —— 判据看 `node.type`。 */
 const drawingNode = () => node('drawing', {});
 
@@ -195,6 +199,17 @@ test('isDraftEmpty：逐题型判「这一份输入态里有东西吗」', () =>
   // 排序：只有「一个条目都没有」（一道坏题）才算空 —— 起点本身是一份合法作答。
   assert.equal(isDraftEmpty({ kind: 'order', order: [] }), true);
   assert.equal(isDraftEmpty({ kind: 'order', order: ['i1'] }), false);
+});
+
+test('★ 照片作答：问答与绘图都能生成、保存并读回 photo/v1', () => {
+  const url = '/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.jpg';
+  for (const question of [photoNode('short-answer'), photoNode('drawing')]) {
+    assert.deepEqual(emptyDraftFor(question), { kind: 'photo', url: '' });
+    assert.deepEqual(buildAnswerValue(question, { kind: 'photo', url }), { format: 'photo/v1', url });
+    assert.deepEqual(draftFromValue(question, { format: 'photo/v1', url }), { kind: 'photo', url });
+  }
+  assert.equal(buildAnswerValue(photoNode('short-answer'), { kind: 'photo', url: 'https://example.com/a.jpg' }), null,
+    '外部地址不能伪装成本机照片作答');
 });
 
 // ── 4. buildAnswerValue：字段名就是协议 ─────────────────────────────────

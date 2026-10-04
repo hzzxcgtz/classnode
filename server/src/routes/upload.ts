@@ -143,18 +143,21 @@ async function removeExpiredUnreferencedFiles(directory: string, referenced: Set
 
 /** 清理未被课堂消息、学习单或头像记录引用，且已超过宽限期的上传文件。 */
 export async function cleanupOrphanedUploads(
-  prisma: Pick<import('@prisma/client').PrismaClient, 'message' | 'avatar' | 'worksheet'>,
+  prisma: Pick<import('@prisma/client').PrismaClient, 'message' | 'avatar' | 'worksheet' | 'worksheetAnswer'>,
   options: { now?: number; chatDirectory?: string; avatarDirectory?: string } = {},
 ): Promise<{ chat: number; avatars: number }> {
   const now = options.now ?? Date.now();
-  const [messages, avatars, worksheets] = await Promise.all([
+  const [messages, avatars, worksheets, worksheetAnswers] = await Promise.all([
     prisma.message.findMany({ select: { fileUrls: true } }),
     prisma.avatar.findMany({ select: { svgContent: true } }),
     prisma.worksheet.findMany({ select: { content: true, settings: true } }),
+    prisma.worksheetAnswer.findMany({ select: { value: true } }),
   ]);
   const chatReferences = collectReferencedChatFiles(messages.map(message => message.fileUrls));
   collectWorksheetImageFiles(worksheets.map(worksheet => worksheet.content)).forEach(name => chatReferences.add(name));
   collectWorksheetImageFiles(worksheets.map(worksheet => worksheet.settings)).forEach(name => chatReferences.add(name));
+  // 照片作答存在答案行里，不在学习单题面中；漏掉会在 24 小时后被误当作孤儿删除。
+  collectWorksheetImageFiles(worksheetAnswers.map(answer => answer.value)).forEach(name => chatReferences.add(name));
   const chat = await removeExpiredUnreferencedFiles(
     options.chatDirectory ?? chatDir,
     chatReferences,

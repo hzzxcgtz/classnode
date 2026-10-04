@@ -126,7 +126,7 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   // 而是规格 §12 裁定 3 本身 + `worksheet-answer-value.ts` 里那段「`format` 在服务端只被读两处、
   // 两处都不拿它当判据」（现在在 `:48-71`）—— B1 之前它写的是「`format` 服务端一个字节都不读」。
   // 这一格是 false ⇒ 看板抽屉里只统计作答进度、不画 ✓/½/✗（`GRADED_QUESTION_TYPES` 从这一格派生）。
-  { value: 'drawing', label: '绘图题', nickname: '创意画板', hint: '学生在画布上画图，不自动判分', graded: false },
+  { value: 'drawing', label: '绘图题', nickname: '创意画板', hint: '学生可用画板绘制或拍照上传，不自动判分', graded: false },
 ];
 
 /**

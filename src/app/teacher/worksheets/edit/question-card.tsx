@@ -65,6 +65,7 @@ import { CategorizeBody } from './bodies/categorize-body';
 // 不一致，且屏幕上看不出来。
 import { isInkNode } from '@/lib/worksheet-ink';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
+import { api } from '@/lib/api';
 
 const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string }> = {
   'single-choice': {
@@ -105,11 +106,11 @@ const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string 
   },
   'short-answer': {
     title: '学生作答方式',
-    description: '问答题由学生输入文字或手写内容，提交后由教师查看，也可开启 AI 评分。',
+    description: '问答题支持键盘、手写或拍照作答，提交后由教师查看，也可开启 AI 评分。',
   },
   drawing: {
     title: '学生作答方式',
-    description: '绘图题固定使用手写画布，适合演算、标注和自由绘制。',
+    description: '绘图题可使用画板，也可以拍照上传纸面作品。',
   },
 };
 
@@ -218,7 +219,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
   onPointsInputChange: (input: RejectedPointInput | null) => void;
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
   /** ★ M4b/D1：逐题的作答方式（键盘 / 手写）。走 reducer，所以进撤销栈。 */
-  onInputModeChange: (inputMode: 'keyboard' | 'handwriting') => void;
+  onInputModeChange: (inputMode: 'keyboard' | 'handwriting' | 'photo') => void;
   /** ★ 2026-09-26：「允许自动评分」那个开关。 */
   onAutoGradeChange: (autoGrade: boolean) => void;
   /** ★ 2026-09-26：部分给分的容错档。`null` = 缺省（旧规则「只要有一部分对就给分」）。 */
@@ -250,6 +251,24 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
    */
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const rubricImageInputRef = useRef<HTMLInputElement>(null);
+  const [rubricUploading, setRubricUploading] = useState(false);
+  const rubricText = typeof node.data.rubricText === 'string' ? node.data.rubricText : '';
+  const rubricImageUrl = typeof node.data.rubricImageUrl === 'string' ? node.data.rubricImageUrl : '';
+
+  const uploadRubricImage = async (file: File) => {
+    setRubricUploading(true);
+    try {
+      const result = await api.uploadWorksheetImage(file);
+      onDataChange({ rubricImageUrl: result.url });
+      onNotice('评分标准图片已上传', 'success');
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : '评分标准图片上传失败', 'error');
+    } finally {
+      setRubricUploading(false);
+      if (rubricImageInputRef.current) rubricImageInputRef.current.value = '';
+    }
+  };
 
   /**
    * 点「粘贴题目」：**只开窗**，不碰剪贴板。
@@ -301,7 +320,6 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
    *    决定，与这一格无关 —— `inkFormatOf` 是**题型优先**的，所以就算这一格被改成 `keyboard`，
    *    作答值仍然是 `drawing/v1`，学生拿到的仍然是画布。
    */
-  const isDrawing = node.type === 'drawing';
   /**
    * ★ 2026-09-26（教师）：「这个任务一有点多余」—— 那道题**就在**标题写着「任务一」的
    * 容器里，徽章上再拼一遍前缀是同一句话说两次（一屏 20 行就是 20 遍）。
@@ -315,7 +333,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
   const badgeLabel = inTask ? String(index + 1) : heading;
   /** ★ 2026-09-26：这道题**会不会判分**（开关关掉 ⇒ 答案与分值一起隐藏）。 */
   const gradedOn = gradesOnSubmit(node);
-  const showInputModeRow = !isDrawing && (typeOption?.graded === false || isInkNode(node));
+  const showInputModeRow = typeOption?.graded === false || isInkNode(node) || node.inputMode === 'photo';
   const editorCopy = QUESTION_EDITOR_COPY[node.type] ?? {
     title: '作答设置',
     description: '设置学生作答时需要看到和填写的内容。',
@@ -616,6 +634,48 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
               </div>
             )}
             {(node.type === 'short-answer' || node.type === 'drawing') && (
+              <div className="worksheet-editor-block worksheet-editor-rubric">
+                <div className="worksheet-editor-block-head">
+                  <div>
+                    <h4>评分标准 <span className="worksheet-editor-optional">选填</span></h4>
+                    <p>填写评价维度、得分要点或作品要求；文字和图片都会随本题作答一起发送给 AI 分析。</p>
+                  </div>
+                </div>
+                <textarea
+                  value={rubricText}
+                  maxLength={2400}
+                  rows={4}
+                  placeholder="例如：观点明确；至少写出两个依据；能结合题目材料说明。也可以只上传评分量表图片。"
+                  onChange={(event) => onDataChange({ rubricText: event.target.value })}
+                />
+                <input
+                  ref={rubricImageInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void uploadRubricImage(file);
+                  }}
+                />
+                {rubricImageUrl ? (
+                  <div className="worksheet-editor-rubric-image">
+                    <img src={worksheetAssetUrl(rubricImageUrl)} alt="评分标准" />
+                    <div>
+                      <button type="button" className="btn btn-secondary" disabled={rubricUploading} onClick={() => rubricImageInputRef.current?.click()}>
+                        {rubricUploading ? '正在上传…' : '更换图片'}
+                      </button>
+                      <button type="button" className="btn btn-secondary" onClick={() => onDataChange({ rubricImageUrl: undefined })}>移除图片</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" className="btn btn-secondary worksheet-editor-rubric-upload" disabled={rubricUploading} onClick={() => rubricImageInputRef.current?.click()}>
+                    {rubricUploading ? '正在上传图片…' : '上传评分标准图片'}
+                  </button>
+                )}
+              </div>
+            )}
+            {(node.type === 'short-answer' || node.type === 'drawing') && (
               <div className="worksheet-editor-block worksheet-editor-ai-scoring">
                 <div className="worksheet-editor-block-head">
                   <div>
@@ -666,9 +726,6 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                   </div>
                 )}
               </div>
-            )}
-            {node.type === 'drawing' && (
-              <p className="worksheet-editor-manual-note"><strong>固定为手写画布</strong>学生可自由书写和绘制，提交后由教师查看。</p>
             )}
           </div>
         )}
@@ -1183,7 +1240,7 @@ function ToleranceRow({ node, onToleranceChange }: {
  */
 function InputModeRow({ node, onInputModeChange }: {
   node: WorksheetQuestionNode;
-  onInputModeChange: (inputMode: 'keyboard' | 'handwriting') => void;
+  onInputModeChange: (inputMode: 'keyboard' | 'handwriting' | 'photo') => void;
 }) {
   // ⚠️ 「键盘」那一档的判据写成 `!== 'handwriting'`（不是 `=== 'keyboard'`）：
   // 库里的值域虽然就是这两个字面量（服务端 `normalizeNode` 保证），但草稿是**外部输入**
@@ -1191,19 +1248,23 @@ function InputModeRow({ node, onInputModeChange }: {
   // 按钮都没有选中态 —— 而运行时的实际行为（`isInkNode` 回 false ⇒ 学生拿到文本框）是键盘。
   // 屏幕上显示的档与运行时的档必须一致。
   const handwriting = node.inputMode === 'handwriting';
+  const photo = node.inputMode === 'photo';
+  const drawing = node.type === 'drawing';
   return (
     <>
       <div className="worksheet-editor-inline-actions">
         <span className="worksheet-editor-block-label">作答方式</span>
-        <label className="worksheet-editor-option-correct">
-          <input
-            type="radio"
-            name={`worksheet-inputmode-${node.id}`}
-            checked={!handwriting}
-            onChange={() => onInputModeChange('keyboard')}
-          />
-          <span>键盘</span>
-        </label>
+        {!drawing && (
+          <label className="worksheet-editor-option-correct">
+            <input
+              type="radio"
+              name={`worksheet-inputmode-${node.id}`}
+              checked={!handwriting && !photo}
+              onChange={() => onInputModeChange('keyboard')}
+            />
+            <span>键盘输入</span>
+          </label>
+        )}
         <label className="worksheet-editor-option-correct">
           <input
             type="radio"
@@ -1211,13 +1272,24 @@ function InputModeRow({ node, onInputModeChange }: {
             checked={handwriting}
             onChange={() => onInputModeChange('handwriting')}
           />
-          <span>手写</span>
+          <span>{drawing ? '画板绘制' : '手写输入'}</span>
+        </label>
+        <label className="worksheet-editor-option-correct">
+          <input
+            type="radio"
+            name={`worksheet-inputmode-${node.id}`}
+            checked={photo}
+            onChange={() => onInputModeChange('photo')}
+          />
+          <span>照片上传</span>
         </label>
       </div>
       {/* 🔴 后果提示，写在开关旁边（不是藏在悬停里、也不是只在选中「手写」之后才出现）：
           它说的是一件**已经发生**的事，教师要在点下去**之前**就看得见。 */}
       <p className="worksheet-editor-hint">
-        手写作答的题不自动判分 —— 看板上只统计作答进度，答案要靠人眼看。
+        {photo
+          ? '学生会在原作答框中看到“拍照或上传照片”的提示，照片提交后可供教师查看和 AI 分析。'
+          : '主观题不做本地自动判分 —— 看板上统计作答进度，可由教师查看或交给 AI 分析。'}
       </p>
     </>
   );

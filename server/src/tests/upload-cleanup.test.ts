@@ -11,6 +11,7 @@ const recentChat = 'chat-550e8400-e29b-41d4-a716-446655440002.png';
 const referencedWorksheetImage = 'chat-550e8400-e29b-41d4-a716-446655440005.webp';
 const referencedWorksheetBackground = 'chat-550e8400-e29b-41d4-a716-446655440006.webp';
 const referencedWorksheetPortraitBackground = 'chat-550e8400-e29b-41d4-a716-446655440007.webp';
+const referencedWorksheetAnswer = 'chat-550e8400-e29b-41d4-a716-446655440008.jpg';
 const referencedAvatar = 'avatar-550e8400-e29b-41d4-a716-446655440003.png';
 const orphanAvatar = 'avatar-550e8400-e29b-41d4-a716-446655440004.png';
 
@@ -23,10 +24,10 @@ test('orphan upload cleanup preserves referenced and recent files', async (t) =>
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
   const now = Date.now();
-  for (const name of [referencedChat, orphanChat, recentChat, referencedWorksheetImage, referencedWorksheetBackground, referencedWorksheetPortraitBackground]) fs.writeFileSync(path.join(chatDirectory, name), 'file');
+  for (const name of [referencedChat, orphanChat, recentChat, referencedWorksheetImage, referencedWorksheetBackground, referencedWorksheetPortraitBackground, referencedWorksheetAnswer]) fs.writeFileSync(path.join(chatDirectory, name), 'file');
   for (const name of [referencedAvatar, orphanAvatar]) fs.writeFileSync(path.join(avatarDirectory, name), 'file');
   const old = new Date(now - 25 * 60 * 60 * 1000);
-  for (const name of [referencedChat, orphanChat, referencedWorksheetImage, referencedWorksheetBackground, referencedWorksheetPortraitBackground]) fs.utimesSync(path.join(chatDirectory, name), old, old);
+  for (const name of [referencedChat, orphanChat, referencedWorksheetImage, referencedWorksheetBackground, referencedWorksheetPortraitBackground, referencedWorksheetAnswer]) fs.utimesSync(path.join(chatDirectory, name), old, old);
   for (const name of [referencedAvatar, orphanAvatar]) fs.utimesSync(path.join(avatarDirectory, name), old, old);
 
   const prisma = {
@@ -41,6 +42,9 @@ test('orphan upload cleanup preserves referenced and recent files', async (t) =>
         },
       }],
     },
+    worksheetAnswer: {
+      findMany: async () => [{ value: { format: 'photo/v1', url: `/uploads/chat/${referencedWorksheetAnswer}` } }],
+    },
   };
   const result = await cleanupOrphanedUploads(prisma as never, { now, chatDirectory, avatarDirectory });
 
@@ -51,6 +55,7 @@ test('orphan upload cleanup preserves referenced and recent files', async (t) =>
   assert.equal(fs.existsSync(path.join(chatDirectory, referencedWorksheetImage)), true);
   assert.equal(fs.existsSync(path.join(chatDirectory, referencedWorksheetBackground)), true);
   assert.equal(fs.existsSync(path.join(chatDirectory, referencedWorksheetPortraitBackground)), true);
+  assert.equal(fs.existsSync(path.join(chatDirectory, referencedWorksheetAnswer)), true);
   assert.equal(fs.existsSync(path.join(avatarDirectory, referencedAvatar)), true);
   assert.equal(fs.existsSync(path.join(avatarDirectory, orphanAvatar)), false);
 });

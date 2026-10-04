@@ -27,6 +27,18 @@ function textOf(raw: unknown): string | null {
   return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null;
 }
 
+const WORKSHEET_IMAGE_URL = /^\/uploads\/chat\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
+
+/** 教师为主观题提供的评分依据。图片路径只接受本站学习单上传端点生成的资源。 */
+export function analysisRubric(node: QuestionNode): { text: string; imageUrl: string | null } {
+  if (node.type !== 'short-answer' && node.type !== 'drawing') return { text: '', imageUrl: null };
+  const imageUrl = textOf(node.data.rubricImageUrl);
+  return {
+    text: textOf(node.data.rubricText) ?? '',
+    imageUrl: imageUrl && WORKSHEET_IMAGE_URL.test(imageUrl) ? imageUrl : null,
+  };
+}
+
 function entriesOf(raw: unknown, labelKey = 'text'): Array<{ id: string; text: string }> {
   if (!Array.isArray(raw)) return [];
   const out: Array<{ id: string; text: string }> = [];

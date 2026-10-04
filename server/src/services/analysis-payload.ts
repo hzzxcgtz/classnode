@@ -46,9 +46,10 @@ export interface Participant {
  */
 export interface AnalyzeEntry {
   studentId: string;
-  kind: 'text' | 'ink' | 'unknown';
+  kind: 'text' | 'ink' | 'photo' | 'unknown';
   text?: string;
   ink?: InkValue;
+  photoUrl?: string;
   gradeState?: 'correct' | 'partial' | 'incorrect' | null;
   // 🔴 **这里刻意没有 `displayName`。**
   // 原先有，而它**只写不读**：文档与联系表上的标签都走伪名（`payloadLabels` 按 `studentId` 的
@@ -63,6 +64,16 @@ function readText(value: unknown): string | null {
   const raw = value as Record<string, unknown>;
   if (raw.format !== 'text/v1') return null;
   return typeof raw.text === 'string' ? raw.text : '';
+}
+
+const PHOTO_URL = /^\/uploads\/chat\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
+
+/** 从作答值中识别本站上传的照片，拒绝把任意本地路径带进后续文件读取。 */
+function readPhoto(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  if (raw.format !== 'photo/v1') return null;
+  return typeof raw.url === 'string' && PHOTO_URL.test(raw.url) ? raw.url : null;
 }
 
 /**
@@ -205,6 +216,11 @@ export function selectAnalyzeEntries(
       out.push({ studentId: answer.participantId, kind: 'ink', ink, gradeState: answer.gradeState ?? null });
       continue;
     }
+    const photoUrl = readPhoto(answer.value);
+    if (photoUrl) {
+      out.push({ studentId: answer.participantId, kind: 'photo', photoUrl, gradeState: answer.gradeState ?? null });
+      continue;
+    }
     // 客观题的值不是 text/v1：在这里按题型把 key/id 转成选项文字、条目文字与关系。
     const described = question ? analysisAnswerText(question, answer.value) : null;
     if (described !== null) {
@@ -229,7 +245,7 @@ export function payloadKindOf(entries: AnalyzeEntry[]): 'text' | 'image' | 'mixe
   let hasInk = false;
   for (const entry of entries) {
     if (entry.kind === 'text') hasText = true;
-    else if (entry.kind === 'ink') hasInk = true;
+    else if (entry.kind === 'ink' || entry.kind === 'photo') hasInk = true;
   }
   if (hasText && hasInk) return 'mixed';
   return hasInk ? 'image' : 'text';
@@ -266,6 +282,9 @@ export interface QuestionMeta {
   details?: string;
   /** 已按题型翻译成人类可读文字的参考答案/评价要求。 */
   referenceAnswer?: string;
+  /** 教师补充的主观题评分标准与示例图片。 */
+  rubricText?: string;
+  rubricImageUrl?: string | null;
   /** 主观题可选的 AI 评分设置；未开启时仍把配置明确带到载荷中。 */
   aiScoring?: { enabled: boolean; maxScore: number; unit: string; criteria: string };
 }
@@ -326,6 +345,8 @@ export function buildTextDocument(
     `题干：${question.prompt || '（题干为空）'}`,
     `题目材料：${question.details || '（没有额外题面材料）'}`,
     `参考答案：${question.referenceAnswer || '（未提供参考答案）'}`,
+    `评分标准：${question.rubricText || '（未提供评分标准）'}`,
+    `评分标准图片：${question.rubricImageUrl ? '已作为图片附件提供' : '（未提供）'}`,
     `已交 ${covered}/${total}`,
     localStatsLine(entries),
   ].join('\n');
@@ -335,6 +356,7 @@ export function buildTextDocument(
     const verdict = gradeLabel(entry.gradeState);
     const label = verdict ? `${who}｜${verdict}` : who;
     if (entry.kind === 'unknown') return `【${label}】（这一份的形状本版认不出，未纳入）`;
+    if (entry.kind === 'photo') return `【${label}】（照片作答，见联系表）`;
     const raw = entry.text ?? '';
     if (raw.trim() === '') return `【${label}】（空白）`;
     return `【${label}】\n${truncate(raw)}`;
@@ -482,7 +504,8 @@ export function layoutSheets(entries: AnalyzeEntry[], labels: Map<string, string
         anonLabel: labels.get(entry.studentId) ?? entry.studentId,
         x, y, w: knobs.cellWidth, h: knobs.cellHeight,
         labelX: x, labelY,
-        hasInk: entry.kind === 'ink' && Array.isArray(entry.ink?.strokes) && entry.ink.strokes.length > 0,
+        hasInk: entry.kind === 'photo'
+          || (entry.kind === 'ink' && Array.isArray(entry.ink?.strokes) && entry.ink.strokes.length > 0),
       };
     });
     sheets.push({
@@ -505,6 +528,8 @@ export interface AnalysisPayload {
   prompt: string;
   questionDetails: string;
   referenceAnswer: string;
+  rubricText: string;
+  rubricImageUrl: string | null;
   localStats: { correct: number; partial: number; incorrect: number; ungraded: number };
   payloadKind: 'text' | 'image' | 'mixed';
   covered: number;
@@ -551,6 +576,8 @@ export function buildAnalysisPayload(input: {
     prompt: question.prompt,
     questionDetails: question.details || '（没有额外题面材料）',
     referenceAnswer: question.referenceAnswer || '（未提供参考答案）',
+    rubricText: question.rubricText || '',
+    rubricImageUrl: question.rubricImageUrl ?? null,
     localStats: localStatsOf(entries),
     payloadKind,
     covered: entries.length,
@@ -580,6 +607,7 @@ export function entriesToAggregate(entries: AnalyzeEntry[]): Array<Record<string
     kind: entry.kind,
     text: entry.text ?? null,
     ink: entry.ink ?? null,
+    photoUrl: entry.photoUrl ?? null,
     gradeState: entry.gradeState ?? null,
   }));
 }
@@ -612,6 +640,13 @@ export function entriesFromAggregate(raw: unknown): AnalyzeEntry[] {
       const ink = readInk(row.ink);
       out.push(ink
         ? { studentId: row.studentId, kind: 'ink', ink, gradeState }
+        : { studentId: row.studentId, kind: 'unknown', gradeState });
+      continue;
+    }
+    if (row.kind === 'photo') {
+      const photoUrl = typeof row.photoUrl === 'string' && PHOTO_URL.test(row.photoUrl) ? row.photoUrl : null;
+      out.push(photoUrl
+        ? { studentId: row.studentId, kind: 'photo', photoUrl, gradeState }
         : { studentId: row.studentId, kind: 'unknown', gradeState });
       continue;
     }

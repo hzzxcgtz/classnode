@@ -117,6 +117,20 @@ test('开启 AI 评分时消息带满分、要求和机器块协议；关闭时�
   assert.ok(!buildAnalysisMessage(payloadOf('text')).includes('<classnode-scores>'));
 });
 
+test('评分标准文字与图片附件顺序会明确告诉智能体', () => {
+  const payload = buildAnalysisPayload({
+    question: {
+      questionId: 'q1', typeLabel: '问答题', prompt: '说明理由', heading: '8',
+      rubricText: '结论正确 2 分，理由完整 3 分',
+      rubricImageUrl: '/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.png',
+    },
+    entries: textEntries, total: 2, knobs: DEFAULT_ANALYSIS_KNOBS,
+  });
+  const message = buildAnalysisMessage(payload);
+  assert.match(message, /评分标准：结论正确 2 分，理由完整 3 分/);
+  assert.match(message, /第 1 张图片是教师提供的评分标准/);
+});
+
 test('🔴 normalizeNarrative：空白 ⇒ 空串（⇒ 不写库）；超长 ⇒ 截断且标注；正常 ⇒ 去首尾空白', () => {
   assert.equal(normalizeNarrative('   \n  '), '');
   assert.equal(normalizeNarrative(null), '');

@@ -97,6 +97,7 @@ export type AnswerView =
   | { kind: 'none' }
   | { kind: 'text'; text: string }
   | { kind: 'ink'; ink: InkValue | null }
+  | { kind: 'photo'; url: string }
   | { kind: 'choice'; options: ChoiceOptionView[] }
   | {
       kind: 'fill';
@@ -246,6 +247,10 @@ export function answerView(node: WorksheetQuestionNode, value: unknown): AnswerV
 
   if (draft.kind === 'ink') {
     return { kind: 'ink', ink: readInkValue(value) };
+  }
+
+  if (draft.kind === 'photo') {
+    return draft.url ? { kind: 'photo', url: draft.url } : { kind: 'none' };
   }
 
   if (draft.kind === 'text') {

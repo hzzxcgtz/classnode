@@ -677,7 +677,7 @@ export function useWorksheetEditor({ id, onNotice }: {
    * `dirty` 快照都自动成立）。这里散一个 `setState` 就是 undo 开始漏的**第一处**，
    * 而它唯一的表现是「撤销时那一档不跟着回退」，没有任何报错。
    */
-  const updateInputMode = useCallback((questionId: string, inputMode: 'keyboard' | 'handwriting') => {
+  const updateInputMode = useCallback((questionId: string, inputMode: 'keyboard' | 'handwriting' | 'photo') => {
     dispatch({ kind: 'updateInputMode', id: questionId, inputMode });
   }, []);
 

@@ -13,6 +13,10 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import sharp from 'sharp';
 import { buildSheetSvg, labelsRenderOk, renderSheets } from '../services/analysis-render.js';
 import { DEFAULT_ANALYSIS_KNOBS, layoutSheets, type AnalyzeEntry } from '../services/analysis-payload.js';
 
@@ -44,6 +48,40 @@ test('★ 渲染出的是真 PNG（magic number 对得上）', async () => {
   assert.ok(png.length > 0, '不该是空 buffer');
   assert.ok(png.subarray(0, 4).equals(PNG_MAGIC), '必须是真 PNG');
   assert.equal(typeof result!.labeled, 'boolean');
+});
+
+test('★ 照片作答会真正合成进联系表，而不是只占一个空格子', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'classnode-analysis-photo-'));
+  const chat = path.join(root, 'uploads', 'chat');
+  fs.mkdirSync(chat, { recursive: true });
+  const name = 'chat-123e4567-e89b-42d3-a456-426614174000.png';
+  await sharp({ create: { width: 80, height: 60, channels: 3, background: '#111111' } })
+    .png().toFile(path.join(chat, name));
+  const previous = process.env.CLASSNODE_DATA_DIR;
+  process.env.CLASSNODE_DATA_DIR = root;
+  t.after(() => {
+    if (previous === undefined) delete process.env.CLASSNODE_DATA_DIR;
+    else process.env.CLASSNODE_DATA_DIR = previous;
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const entries: AnalyzeEntry[] = [{
+    studentId: 'p1', kind: 'photo', photoUrl: `/uploads/chat/${name}`,
+  }];
+  const layouts = layoutSheets(entries, labels(['p1']), DEFAULT_ANALYSIS_KNOBS);
+  const result = await renderSheets(entries, layouts, DEFAULT_ANALYSIS_KNOBS);
+  assert.notEqual(result, null);
+  assert.ok(result!.sheets[0].subarray(0, 4).equals(PNG_MAGIC));
+  const blankEntries: AnalyzeEntry[] = [{ studentId: 'p1', kind: 'unknown' }];
+  const blankLayouts = layoutSheets(blankEntries, labels(['p1']), DEFAULT_ANALYSIS_KNOBS);
+  const blank = await renderSheets(blankEntries, blankLayouts, DEFAULT_ANALYSIS_KNOBS);
+  assert.notEqual(blank, null);
+  const [photoStats, blankStats] = await Promise.all([
+    sharp(result!.sheets[0]).greyscale().stats(),
+    sharp(blank!.sheets[0]).greyscale().stats(),
+  ]);
+  assert.ok(photoStats.channels[0].mean < blankStats.channels[0].mean - 20,
+    '深色照片应明显改变格子像素，不能渲染成空白底板');
 });
 
 test('多张：40 份 ⇒ 4 张图，每张都是真 PNG', async () => {

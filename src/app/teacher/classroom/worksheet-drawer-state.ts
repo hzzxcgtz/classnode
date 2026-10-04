@@ -295,6 +295,9 @@ export function formatAnswer(node: WorksheetQuestionNode, value: unknown): strin
   // 而它与「学生什么都没写」长得一模一样。
   if (readInkValue(value)) return null;
   const draft = draftFromValue(node, value);
+  // 照片作答不是文字，但在仅支持文本摘要的调用点至少要明确说明其存在，不能误报“未作答”。
+  // 能显示图片的教师界面会进一步读取原值并渲染缩略图。
+  if (draft.kind === 'photo') return draft.url ? '照片作答' : null;
   // ★ 2026-09-25：**条目型（排序 / 连线 / 归类）**。这三支过去**根本不存在** ——
   // 值里存的是 **id**（`i1` / `z2`），而下面那条三元链只认 `text` / `fill` ⇒ 落进最后的 `''`
   // ⇒ `null` ⇒ 抽屉把**答过**的学生显示成「未作答」。与 M4b 的笔迹同一个形状的缺陷。

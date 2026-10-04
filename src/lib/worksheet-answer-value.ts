@@ -120,6 +120,7 @@ export type WorksheetAnswerValue =
   | { format: 'order/v1'; order: string[] }
   | { format: 'match/v1'; links: Array<{ leftId: string; rightId: string }> }
   | { format: 'categorize/v1'; assignment: Record<string, string> }
+  | { format: 'photo/v1'; url: string }
   | InkValue;
 
 /**
@@ -148,7 +149,13 @@ export type AnswerDraft =
   | { kind: 'order'; order: string[] }
   | { kind: 'match'; links: Array<{ leftId: string; rightId: string }> }
   | { kind: 'categorize'; assignment: Record<string, string> }
+  | { kind: 'photo'; url: string }
   | { kind: 'ink'; box: InkCanvas; strokes: InkStroke[]; /** ★ 第二轮：文字（可选）。 */ texts?: InkText[] };
+
+/** 问答题与绘图题的拍照作答档。 */
+export function isPhotoNode(node: { type: string; inputMode?: unknown }): boolean {
+  return (node.type === 'short-answer' || node.type === 'drawing') && node.inputMode === 'photo';
+}
 
 /**
  * 条目文本的键名：`items` / `left` / `right` 用 `text`，`zones` 用 `label`。
@@ -357,6 +364,7 @@ function readLinks(raw: unknown): Array<{ leftId: string; rightId: string }> {
  * 要的是 `inputMode` 那一条赢（它决定屏幕上给不给画布，见 `isInkNode` 自己的注释）。
  */
 function draftKindOf(node: WorksheetQuestionNode): AnswerDraft['kind'] | null {
+  if (isPhotoNode(node)) return 'photo';
   if (isInkNode(node)) return 'ink';
   const type = node.type;
   if (type === 'single-choice' || type === 'true-false' || type === 'multi-choice') return 'choice';
@@ -403,6 +411,7 @@ function draftKindOf(node: WorksheetQuestionNode): AnswerDraft['kind'] | null {
  */
 export function emptyDraftFor(node: WorksheetQuestionNode): AnswerDraft {
   const kind = draftKindOf(node);
+  if (kind === 'photo') return { kind: 'photo', url: '' };
   if (kind === 'ink') return { kind: 'ink', box: defaultInkBox(node), strokes: [] };
   if (kind === 'choice') return { kind: 'choice', selected: [] };
   if (kind === 'fill') {
@@ -438,12 +447,17 @@ export function isDraftEmpty(draft: AnswerDraft): boolean {
   if (draft.kind === 'order') return draft.order.length === 0;
   if (draft.kind === 'match') return draft.links.length === 0;
   if (draft.kind === 'categorize') return Object.keys(draft.assignment).length === 0;
+  if (draft.kind === 'photo') return draft.url.trim() === '';
   return !draft.text.trim();
 }
 
 /** 输入态 → 作答值。`null` = 「这一题没有内容可提交」（面板据此把按钮按死）。 */
 function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): WorksheetAnswerValue | null {
   const type = node.type;
+  if (isPhotoNode(node)) {
+    if (draft.kind !== 'photo' || !/^\/uploads\/chat\/chat-[0-9a-f-]+\.(png|jpg|webp)$/i.test(draft.url)) return null;
+    return { format: 'photo/v1', url: draft.url };
+  }
   // ★ M4b：手写 / 绘图**不参与判分**（规格 §12 裁定 3），但**照样要交** ——
   // 它是学生的作答，教师要人眼看。`null` 只表示「一笔都没画」。
   //
@@ -683,7 +697,14 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
     : format === 'order/v1' ? 'order'
     : format === 'match/v1' ? 'match'
     : format === 'categorize/v1' ? 'categorize'
+    : format === 'photo/v1' ? 'photo'
     : draftKindOf(node);
+
+  if (kind === 'photo') {
+    return typeof row.url === 'string' && /^\/uploads\/chat\/chat-[0-9a-f-]+\.(png|jpg|webp)$/i.test(row.url)
+      ? { kind: 'photo', url: row.url }
+      : empty;
+  }
 
   if (kind === 'choice') return { kind: 'choice', selected: readStringList(row.selected) };
   if (kind === 'fill') {

@@ -660,18 +660,27 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                 </div>
                 {aiScoringEnabled && (
                   <div className="worksheet-editor-ai-scoring-fields">
-                    <label>
-                      <span>{pointsUnit === '分' ? '满分' : '奖励总量'}（{pointsUnit}）</span>
-                      {/*
-                        ★ 2026-10-05（教师）：「加减按钮也太小了吧」—— 原来那两个箭头根本不是
-                        我们的按钮，是**浏览器原生的数字微调器**：约 14px 宽，而且在 iPad Safari 上
-                        **压根不显示**（那边只会弹数字键盘）⇒ 它既小又靠不住。
-                        🔴 换成自己的两个按钮，命中区 44px（本仓对触屏的既定下限，
-                          见 `worksheet-tap-targets.test.ts` 里对 44 的那段说明）；
-                          原生微调器由 CSS 关掉，免得同一格里出现两套加减。
-                        ⚠️ 输入框仍是 `type="number"`：教师可以直接敲数字，这里只是补上按钮。
-                        ⚠️ 边界与输入框同一条（1–100）：到边就**禁用**，不是点了没反应。
-                      */}
+                    {/*
+                      ★ 2026-10-05（教师）：「加减按钮也太小了吧」—— 原来那两个箭头根本不是
+                      我们的按钮，是**浏览器原生的数字微调器**：约 14px 宽，而且在 iPad Safari 上
+                      **压根不显示**（那边只会弹数字键盘）⇒ 它既小又靠不住。
+                      🔴 换成自己的两个按钮；原生微调器由 CSS 关掉，免得同一格里有两套加减。
+                      ⚠️ 输入框仍是 `type="number"`：教师可以直接敲数字，这里只是补上按钮。
+                      ⚠️ 边界与输入框同一条（1–100）：到边就**禁用**，不是点了没反应。
+
+                      🔴🔴 这一格**不许**用 `<label>` 把三个控件包起来 —— 那是我第一版踩的坑：
+                      `<label>` 的隐式关联对象是它内部**第一个可标注元素**，而 `<button>` 正是
+                      可标注元素（HTML 规范里的 labelable elements 含 button）⇒ 点标签文字、
+                      或标签内任何一处空白，浏览器都把这次点击**转发给那个按钮**。
+                      教师报的原话是「点了下面空白地方也会减」—— 减的正是第一个按钮 `−`。
+                      改之前这里只有 input 一个控件（点空白只是聚焦），所以这个坑看不出来。
+                      ⇒ 现在：外层是 `<div>`（网格项），`<label htmlFor>` 只圈住**文字**，
+                        `−` / 输入框 / `+` 是它的兄弟。
+                    */}
+                    <div className="worksheet-editor-ai-scoring-field">
+                      <label htmlFor={`ai-scoring-max-${node.id}`}>
+                        {pointsUnit === '分' ? '满分' : '奖励总量'}（{pointsUnit}）
+                      </label>
                       <div className="worksheet-editor-ai-scoring-stepper">
                         <button
                           type="button"
@@ -680,6 +689,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                           aria-label={`减少 1 ${pointsUnit}`}
                         >−</button>
                         <input
+                          id={`ai-scoring-max-${node.id}`}
                           type="number"
                           min={1}
                           max={100}
@@ -700,7 +710,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                           aria-label={`增加 1 ${pointsUnit}`}
                         >+</button>
                       </div>
-                    </label>
+                    </div>
                     {/*
                       🔴 显示的是**合并后**的值：`rubricText` 为准，旧字段 `aiScoringCriteria`
                       作回退 —— 老学习单只填过「评分要求」的，教师在这里照旧看得见原文。

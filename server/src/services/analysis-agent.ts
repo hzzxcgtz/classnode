@@ -100,6 +100,14 @@ export function buildAnalysisMessage(payload: AnalysisPayload, labeled = true): 
     `本地统计：全对 ${stats.correct}；部分正确 ${stats.partial}；答错 ${stats.incorrect}；未自动判分 ${stats.ungraded}`,
     '',
   ].join('\n');
+  // ★ 2026-10-05（教师裁定）：`评分要求` 那一行**删掉** —— 编辑器里「评分标准」与
+  // 「评分要求」已经合并成同一个输入框（见 `rubricTextOf`），而上面 `评分标准：…`
+  // 那一行已经把这份文字**逐字**给过模型了，再说一遍就是同一份东西在提示词里也重复。
+  // ⚠️ 但「教师没写标准」时那句兜底**必须留着**：没有它，模型会自己编一套给分口径 ——
+  // 那不是教师写的标准，而教师看不出区别。
+  const scoringFallback = payload.rubricText
+    ? []
+    : ['评分依据：教师未提供评分标准，请依据参考答案、题意与学生实际表达综合评分'];
   const scoring = payload.aiScoring.enabled ? [
     '',
     '【AI 评分】已开启（结果仅供参考）',
@@ -107,7 +115,7 @@ export function buildAnalysisMessage(payload: AnalysisPayload, labeled = true): 
     payload.aiScoring.unit === '分'
       ? '评分步长：可以保留一位小数。'
       : `评分步长：只能返回整数（0、1、2…${payload.aiScoring.maxScore}），${payload.aiScoring.unit}不能拆分成小数。`,
-    `评分要求：${payload.aiScoring.criteria || '依据参考答案、题意与学生实际表达综合评分'}`,
+    ...scoringFallback,
     '请给每一位已提交作答的学生评分。无法可靠判断时 score 填 null，不要猜分。',
     '在正常 Markdown 解读之后，必须追加下面的机器数据块；学生代号必须与输入完全一致，不能遗漏：',
     AI_SCORE_BLOCK_START,

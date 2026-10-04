@@ -29,12 +29,29 @@ function textOf(raw: unknown): string | null {
 
 const WORKSHEET_IMAGE_URL = /^\/uploads\/chat\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
 
+/**
+ * 主观题的评分标准文字 —— **唯一读取点**。
+ *
+ * ★ 2026-10-05（教师裁定）：「评分标准与下面的评分要求重复了，你把『评分标准』替换
+ * 下面的『评分要求』，带图片上传。」⇒ 编辑器里原本并排的两个输入框（上面的「评分标准」、
+ * 下面的「评分要求」）合并成**一个**，数据以 `rubricText` 为准；旧字段
+ * `aiScoringCriteria` **降级为回退读取** —— 老学习单只填过「评分要求」的，
+ * 这里照旧读得出来（一编辑就写回 `rubricText`，见 `question-card.tsx` 那一块）。
+ *
+ * 🔴 这条回退**只许写在这一处**：分析载荷与判据层（`analysis-scoring.ts`）都从这里取。
+ * 在第二个地方再抄一遍 `rubricText || aiScoringCriteria` 就是本仓最防的那种分叉 ——
+ * 两份口径会慢慢不一样，而两边都不报错。
+ */
+export function rubricTextOf(node: QuestionNode): string {
+  return textOf(node.data.rubricText) ?? textOf(node.data.aiScoringCriteria) ?? '';
+}
+
 /** 教师为主观题提供的评分依据。图片路径只接受本站学习单上传端点生成的资源。 */
 export function analysisRubric(node: QuestionNode): { text: string; imageUrl: string | null } {
   if (node.type !== 'short-answer' && node.type !== 'drawing') return { text: '', imageUrl: null };
   const imageUrl = textOf(node.data.rubricImageUrl);
   return {
-    text: textOf(node.data.rubricText) ?? '',
+    text: rubricTextOf(node),
     imageUrl: imageUrl && WORKSHEET_IMAGE_URL.test(imageUrl) ? imageUrl : null,
   };
 }

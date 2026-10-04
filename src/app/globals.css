@@ -6346,30 +6346,10 @@ tr:hover td {
   font-size: 0.72rem;
 }
 
-.worksheet-editor-optional {
-  margin-left: 6px;
-  color: #7890aa;
-  font-size: .72rem;
-  font-weight: 500;
-}
-
-.worksheet-editor-rubric > textarea {
-  width: 100%;
-  min-height: 92px;
-  padding: 10px 12px;
-  border: 1px solid #cbd9e8;
-  border-radius: 10px;
-  resize: vertical;
-  line-height: 1.6;
-  color: #20354d;
-  background: #fff;
-}
-
-.worksheet-editor-rubric > textarea:focus {
-  outline: none;
-  border-color: #6f94b9;
-  box-shadow: 0 0 0 3px rgb(73 116 158 / 10%);
-}
+/* ★ 2026-10-05：评分标准的图片与上传按钮搬进了 AI 评分那块两列网格
+   （`110px | 1fr`）—— 不铺满整行的话它们会缩在左列里。 */
+.worksheet-editor-ai-scoring-fields .worksheet-editor-rubric-image,
+.worksheet-editor-ai-scoring-fields .worksheet-editor-rubric-upload { grid-column: 1 / -1; }
 
 .worksheet-editor-rubric-upload { align-self: flex-start; }
 
@@ -7521,42 +7501,6 @@ tr:hover td {
   max-width: 250px;
   padding: 6px 8px;
   font-size: 0.75rem;
-}
-
-.worksheet-editor-manual-grade {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid var(--primary-light);
-  border-radius: 9px;
-  background: #fff;
-}
-
-.worksheet-editor-manual-grade > span {
-  flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: #f2f5f8;
-  color: var(--primary);
-  font-size: 0.75rem;
-  font-weight: 800;
-}
-
-.worksheet-editor-manual-grade strong {
-  color: #1e293b;
-  font-size: 0.813rem;
-}
-
-.worksheet-editor-manual-grade p {
-  margin: 2px 0 0;
-  color: #64748b;
-  font-size: 0.75rem;
-  line-height: 1.55;
 }
 
 .worksheet-editor-canvas .worksheet-editor-question .worksheet-editor-drag-handle,

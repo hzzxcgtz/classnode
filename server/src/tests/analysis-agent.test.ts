@@ -104,17 +104,45 @@ test('消息文本：mixed 时文档与图的说明**都在**（文字那几条�
   assert.match(msg, /我认为是甲/, '文字作答那一条要跟着走');
 });
 
-test('开启 AI 评分时消息带满分、要求和机器块协议；关闭时不带', () => {
-  const enabled = {
-    ...payloadOf('text'),
-    aiScoring: { enabled: true, maxScore: 5, unit: '分', criteria: '概念 3 分，表达 2 分' },
-  };
-  const message = buildAnalysisMessage(enabled);
+test('开启 AI 评分时消息带满分、评分标准与机器块协议；关闭时不带', () => {
+  // ★ 2026-10-05：教师把「评分标准」与「评分要求」合并成同一个输入框 ⇒ 这里不再有
+  // 独立的一行 `评分要求：…`；教师写的那份标准由载荷里的 `评分标准：…` 逐字带出。
+  // ⚠️ 载荷**必须**用带 `rubricText` 的题面来构建：纯文字载荷走的是 `payload.text`
+  // （`buildTextDocument` 里已经印了那一行），事后改 `payload.rubricText` 是改不动的。
+  const scored = buildAnalysisPayload({
+    question: { questionId: 'q1', typeLabel: '问答题', prompt: '说说你的看法', heading: '任务一 · 3', rubricText: '概念 3 分，表达 2 分' },
+    entries: textEntries, total: 40, knobs: DEFAULT_ANALYSIS_KNOBS,
+  });
+  const message = buildAnalysisMessage({ ...scored, aiScoring: { enabled: true, maxScore: 5, unit: '分', criteria: '概念 3 分，表达 2 分' } });
   assert.match(message, /满额：5 分/);
-  assert.match(message, /概念 3 分，表达 2 分/);
+  assert.match(message, /评分标准：概念 3 分，表达 2 分/);
+  assert.equal(
+    message.split('概念 3 分，表达 2 分').length - 1, 1,
+    '同一份标准只许出现一次 —— 从前它由「评分标准」与「评分要求」两行各说一遍',
+  );
+  assert.ok(!message.includes('评分要求：'), '「评分要求」那一行已随合并删除');
   assert.match(message, /<classnode-scores>/);
   assert.match(message, /"student":"User_001"/);
   assert.ok(!buildAnalysisMessage(payloadOf('text')).includes('<classnode-scores>'));
+});
+
+test('🔴 开了 AI 评分但教师没写评分标准 ⇒ 兜底那句必须在（否则模型会自己编一套给分口径）', () => {
+  const noRubric = {
+    ...payloadOf('text'),
+    aiScoring: { enabled: true, maxScore: 5, unit: '座奖杯', criteria: '' },
+  };
+  const message = buildAnalysisMessage(noRubric);
+  assert.match(message, /评分标准：（未提供评分标准）/);
+  assert.match(message, /评分依据：教师未提供评分标准/);
+  // 写了标准时**不许**再出现兜底那句：那是「教师没写」专用的话，
+  // 混进提示词会让模型以为有两套依据（而它只会照着其中一套走）。
+  const withRubric = buildAnalysisPayload({
+    question: { questionId: 'q1', typeLabel: '问答题', prompt: '说说你的看法', heading: '任务一 · 3', rubricText: '结论正确 2 座奖杯' },
+    entries: textEntries, total: 40, knobs: DEFAULT_ANALYSIS_KNOBS,
+  });
+  const withRubricMessage = buildAnalysisMessage({ ...withRubric, aiScoring: { enabled: true, maxScore: 5, unit: '座奖杯', criteria: '结论正确 2 座奖杯' } });
+  assert.match(withRubricMessage, /评分标准：结论正确 2 座奖杯/);
+  assert.ok(!withRubricMessage.includes('教师未提供评分标准'));
 });
 
 test('评分标准文字与图片附件顺序会明确告诉智能体', () => {

@@ -20,6 +20,24 @@ test('AI 评分设置只对问答题和绘图题生效，并归一化满分', ()
   assert.equal(aiScoringConfigOf(node({ aiScoringEnabled: true, aiScoringMaxScore: 0 })).maxScore, 10);
 });
 
+test('🔴 评分依据取「评分标准」（`rubricText`），旧字段只作回退', () => {
+  // ★ 2026-10-05：教师把「评分标准」与「评分要求」合并成一个输入框 ⇒ 判据层跟着改读
+  // `rubricText`（唯一读取点 `rubricTextOf`）。回退保的是老学习单：只填过「评分要求」的
+  // 课堂，升级后发给模型的依据不能变成空。
+  const merged = aiScoringConfigOf(node({ aiScoringEnabled: true, rubricText: ' 结论 2 分，理由 3 分 ' }));
+  assert.equal(merged.criteria, '结论 2 分，理由 3 分', '去掉首尾空白');
+
+  const both = aiScoringConfigOf(node({ aiScoringEnabled: true, rubricText: '新标准', aiScoringCriteria: '旧要求' }));
+  assert.equal(both.criteria, '新标准', '两个都在时以评分标准为准');
+
+  const legacyOnly = aiScoringConfigOf(node({ aiScoringEnabled: true, aiScoringCriteria: '旧要求' }));
+  assert.equal(legacyOnly.criteria, '旧要求');
+
+  assert.equal(aiScoringConfigOf(node({ aiScoringEnabled: true })).criteria, '', '都没写 ⇒ 空（消息里由兜底那句承担）');
+  // 存下来的这一份是给人看的，超长截断；发给模型的那一份是载荷里的原文（不截断）。
+  assert.equal(aiScoringConfigOf(node({ aiScoringEnabled: true, rubricText: '甲'.repeat(1300) })).criteria.length, 1200);
+});
+
 test('开启评分时拆出机器块、映射匿名代号并保留 Markdown 解读', () => {
   const result = parseAiAnalysisResult(
     '### 解读\n有两类思路。\n<classnode-scores>\n{"scores":[{"student":"User_001","score":4.5,"reason":"要点完整"},{"student":"User_002","score":null,"reason":"作品无法辨认"}]}\n</classnode-scores>',

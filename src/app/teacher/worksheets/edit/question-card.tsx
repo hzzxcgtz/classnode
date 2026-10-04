@@ -633,48 +633,17 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                 />
               </div>
             )}
-            {(node.type === 'short-answer' || node.type === 'drawing') && (
-              <div className="worksheet-editor-block worksheet-editor-rubric">
-                <div className="worksheet-editor-block-head">
-                  <div>
-                    <h4>评分标准 <span className="worksheet-editor-optional">选填</span></h4>
-                    <p>填写评价维度、得分要点或作品要求；文字和图片都会随本题作答一起发送给 AI 分析。</p>
-                  </div>
-                </div>
-                <textarea
-                  value={rubricText}
-                  maxLength={2400}
-                  rows={4}
-                  placeholder="例如：观点明确；至少写出两个依据；能结合题目材料说明。也可以只上传评分量表图片。"
-                  onChange={(event) => onDataChange({ rubricText: event.target.value })}
-                />
-                <input
-                  ref={rubricImageInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  hidden
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void uploadRubricImage(file);
-                  }}
-                />
-                {rubricImageUrl ? (
-                  <div className="worksheet-editor-rubric-image">
-                    <img src={worksheetAssetUrl(rubricImageUrl)} alt="评分标准" />
-                    <div>
-                      <button type="button" className="btn btn-secondary" disabled={rubricUploading} onClick={() => rubricImageInputRef.current?.click()}>
-                        {rubricUploading ? '正在上传…' : '更换图片'}
-                      </button>
-                      <button type="button" className="btn btn-secondary" onClick={() => onDataChange({ rubricImageUrl: undefined })}>移除图片</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button type="button" className="btn btn-secondary worksheet-editor-rubric-upload" disabled={rubricUploading} onClick={() => rubricImageInputRef.current?.click()}>
-                    {rubricUploading ? '正在上传图片…' : '上传评分标准图片'}
-                  </button>
-                )}
-              </div>
-            )}
+            {/*
+              ★ 2026-10-05（教师）：「评分标准与下面的评分要求重复了，你把『评分标准』替换
+              下面的『评分要求』，带图片上传。」
+              ⇒ 这里原本是**两块**：这块独立的「评分标准」（文字 + 图片）与下面 AI 评分块里
+                那个「评分要求」。两处的文字都会进同一份分析载荷，而 `buildAnalysisMessage`
+                也确实印了两行（`评分标准：…` / `评分要求：…`）—— 同一份东西在提示词里也说两遍。
+              🔴 现在**只有下面那一个输入框**（`rubricText`，带图片上传），
+                `aiScoringCriteria` 降级为**旧数据回退**（唯一读取点：`rubricTextOf`）。
+              ⚠️ 教师 2026-10-05 明确选了「只在 AI 评分打开时显示」——
+                代价是关掉 AI 评分后这里没有编辑入口，而「发给 AI 分析」仍会读这份标准。
+            */}
             {(node.type === 'short-answer' || node.type === 'drawing') && (
               <div className="worksheet-editor-block worksheet-editor-ai-scoring">
                 <div className="worksheet-editor-block-head">
@@ -708,20 +677,53 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                         aria-label={`AI 评分满额（${pointsUnit}）`}
                       />
                     </label>
+                    {/*
+                      🔴 显示的是**合并后**的值：`rubricText` 为准，旧字段 `aiScoringCriteria`
+                      作回退 —— 老学习单只填过「评分要求」的，教师在这里照旧看得见原文。
+                      ⚠️ `onChange` 必须把旧字段**一并清掉**：只写 `rubricText` 的话，
+                      教师把输入框删空之后，回退值会重新出现（「删不掉」）。
+                    */}
                     <label className="is-wide">
-                      <span>评分要求</span>
+                      <span>评分标准</span>
                       <textarea
-                        value={aiScoringCriteria}
-                        maxLength={1200}
-                        rows={3}
-                        placeholder={pointsUnit === '分'
-                          ? '例如：概念准确 4 分，理由完整 4 分，表达清楚 2 分；合理异解酌情给分。'
-                          : `例如：核心结论正确得 2 ${pointsUnit}，理由清楚再得 1 ${pointsUnit}。`}
-                        onChange={(event) => onDataChange({ aiScoringCriteria: event.target.value })}
+                        value={rubricText || aiScoringCriteria}
+                        maxLength={2400}
+                        rows={4}
+                        placeholder="例如：观点明确；至少写出两个依据；能结合题目材料说明。也可以只上传评分量表图片。"
+                        onChange={(event) => onDataChange({
+                          rubricText: event.target.value,
+                          aiScoringCriteria: undefined,
+                        })}
                       />
                     </label>
+                    <input
+                      ref={rubricImageInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      hidden
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void uploadRubricImage(file);
+                      }}
+                    />
+                    {rubricImageUrl ? (
+                      <div className="worksheet-editor-rubric-image">
+                        <img src={worksheetAssetUrl(rubricImageUrl)} alt="评分标准" />
+                        <div>
+                          <button type="button" className="btn btn-secondary" disabled={rubricUploading} onClick={() => rubricImageInputRef.current?.click()}>
+                            {rubricUploading ? '正在上传…' : '更换图片'}
+                          </button>
+                          <button type="button" className="btn btn-secondary" onClick={() => onDataChange({ rubricImageUrl: undefined })}>移除图片</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="button" className="btn btn-secondary worksheet-editor-rubric-upload" disabled={rubricUploading} onClick={() => rubricImageInputRef.current?.click()}>
+                        {rubricUploading ? '正在上传图片…' : '上传评分标准图片'}
+                      </button>
+                    )}
                     <p className="worksheet-editor-ai-scoring-note">
-                      AI 评分仅供参考；{pointsUnit === '分' ? '分数最多保留一位小数。' : `${pointsUnit}按完整个数发放，不会出现小数。`}
+                      评分标准会随本题作答一起发送给 AI 分析；AI 评分仅供参考，不会覆盖教师评价。
+                      {pointsUnit === '分' ? '分数最多保留一位小数。' : `${pointsUnit}按完整个数发放，不会出现小数。`}
                     </p>
                   </div>
                 )}
@@ -859,29 +861,19 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
         </section>
       )}
 
-      {/* 不做本地自动判分的题型：可由 AI 给参考评分，最终仍保留教师查看入口。 */}
-      {!isGradedQuestionType(node.type) && (
-        <section className="worksheet-editor-question-section is-grading">
-          <div className="worksheet-editor-section-head">
-            <div>
-              <h3>{aiScoringEnabled ? '评分说明' : '查看方式'}</h3>
-              <p>{aiScoringEnabled
-                ? '这类题不做本地自动判分，分析后由 AI 给出参考评分，教师仍可查看原作答。'
-                : '这类题不自动判断答案，由教师查看学生提交的内容。'}</p>
-            </div>
-            <span>{aiScoringEnabled ? 'AI 评分' : '教师查看'}</span>
-          </div>
-          <div className="worksheet-editor-manual-grade">
-            <span aria-hidden="true">✓</span>
-            <div>
-              <strong>{aiScoringEnabled ? `满额 ${aiScoringMaxScore} ${pointsUnit}` : '不设置本地分值'}</strong>
-              <p>{aiScoringEnabled
-                ? `智能体会按上方评分要求给出 0–${aiScoringMaxScore} ${pointsUnit}的参考结果；该结果不会覆盖教师评价。`
-                : '学生提交后由教师查看，系统不会根据答案自动给分。'}</p>
-            </div>
-          </div>
-        </section>
-      )}
+      {/*
+        ⊘ ★ 2026-10-05（教师）：「这部分是不是多余了？」—— 是，已整块删除。
+        ⇒ 原来这里还有**第三张卡**：「评分说明 / 查看方式」，内容是复述上面两块 ——
+          评分打开时说「满额 N · 智能体会按上方评分要求给出 0–N …」，
+          关掉时说「教师查看 · 不设置本地分值」。
+        🔴 唯一别处没有的那句「**该结果不会覆盖教师评价**」没有丢 ——
+          它并进了 AI 评分块脚注（见那一段的 `.worksheet-editor-ai-scoring-note`）。
+        ⚠️ 关掉 AI 评分时失去的那句「由教师查看」，由上方「参考答案」块承担
+          （「**它不参与自动判分**，会作为智能体分析本题的参考依据」）——
+          两块说的是同一件事，留着就是同一页里说两遍。
+        ⚠️ 于是 `isGradedQuestionType` 这两支现在**各只有一张卡**：
+          客观题 = 「自动评分」，主观题 = 「AI 评分」。
+      */}
       </div>)}
 
       {/*

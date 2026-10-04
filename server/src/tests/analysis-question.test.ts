@@ -5,6 +5,7 @@ import {
   analysisQuestionDetails,
   analysisReferenceAnswer,
   analysisRubric,
+  rubricTextOf,
 } from '../services/analysis-question.js';
 import type { QuestionNode, QuestionType } from '../services/worksheet-questions.js';
 
@@ -100,4 +101,24 @@ test('主观题评分标准进入分析；客观题与外部图片地址不会�
     text: '构图完整', imageUrl: null,
   });
   assert.deepEqual(analysisRubric(node('single-choice', { rubricText: '不应发送' })), { text: '', imageUrl: null });
+});
+
+test('🔴 评分标准与评分要求合并：`rubricText` 为准，旧字段 `aiScoringCriteria` 只作回退', () => {
+  // ★ 2026-10-05（教师）：编辑器里两个输入框合并成一个，数据以 `rubricText` 为准。
+  // 这条网守的是**不许在迁移里丢掉教师已经写下的东西**：只填过「评分要求」的老学习单
+  // （`aiScoringCriteria`），读出来必须还是那一段文字 —— 否则它会在升级后静默消失。
+  const both = node('short-answer', { rubricText: '新的标准', aiScoringCriteria: '旧的要求' });
+  assert.equal(rubricTextOf(both), '新的标准', '两个都在时以评分标准为准');
+  assert.equal(analysisRubric(both).text, '新的标准');
+
+  const legacyOnly = node('short-answer', { aiScoringCriteria: '  旧的要求  ' });
+  assert.equal(rubricTextOf(legacyOnly), '旧的要求', '旧字段要去首尾空白后照样读出来');
+  assert.equal(analysisRubric(legacyOnly).text, '旧的要求');
+
+  // 空白串不算「写过」—— 与 `textOf` 同一条口径（教师把输入框清空 = 没写标准）。
+  assert.equal(rubricTextOf(node('short-answer', { rubricText: '   ', aiScoringCriteria: '旧的要求' })), '旧的要求');
+  assert.equal(rubricTextOf(node('short-answer', {})), '');
+  // 客观题没有评分标准这一说（`analysisRubric` 的第一道闸），但 `rubricTextOf` 是纯读值。
+  assert.equal(rubricTextOf(node('single-choice', { aiScoringCriteria: '不该用' })), '不该用');
+  assert.equal(analysisRubric(node('single-choice', { aiScoringCriteria: '不该用' })).text, '');
 });

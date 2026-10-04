@@ -1,4 +1,5 @@
 import type { QuestionNode } from './worksheet-questions.js';
+import { rubricTextOf } from './analysis-question.js';
 
 export const AI_SCORE_MAX = 100;
 export const AI_SCORE_CRITERIA_MAX = 1200;
@@ -38,8 +39,11 @@ export function aiScoringConfigOf(node: QuestionNode, unit = '分'): AiScoringCo
   const rawMax = node.data.aiScoringMaxScore;
   const maxScore = typeof rawMax === 'number' && Number.isInteger(rawMax) && rawMax >= 1 && rawMax <= AI_SCORE_MAX
     ? rawMax : 10;
-  const rawCriteria = typeof node.data.aiScoringCriteria === 'string' ? node.data.aiScoringCriteria.trim() : '';
-  return { enabled, maxScore, unit, criteria: rawCriteria.slice(0, AI_SCORE_CRITERIA_MAX) };
+  // ★ 2026-10-05：「评分要求」与「评分标准」被教师合并成同一份东西了（见 `rubricTextOf`）
+  // ⇒ 这里不再单独读 `aiScoringCriteria`。存下来的这一份是**给人看的**（结果面板那一行），
+  // 超长截断；发给模型的那一份是载荷里的 `rubricText` 原文，不截断。
+  const criteria = rubricTextOf(node).slice(0, AI_SCORE_CRITERIA_MAX);
+  return { enabled, maxScore, unit, criteria };
 }
 
 /**

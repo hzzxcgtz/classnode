@@ -265,7 +265,10 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
             <span className={styles.aiScoreNotice}>AI 评分，供教学参考</span>
           </div>
           {payload.perStudent.criteria && (
-            <div className={styles.scoreCriteria}>评分要求：{payload.perStudent.criteria}</div>
+            /* ★ 2026-10-05：「评分要求」与「评分标准」在编辑器里已合并成同一份东西
+               （唯一读取点 `rubricTextOf`）⇒ 这里跟着改名，同一个东西不叫两个名字。
+               存下来的这一份是**那次分析时**用的文字，旧分析里的仍是当年的「评分要求」原文。 */
+            <div className={styles.scoreCriteria}>评分标准：{payload.perStudent.criteria}</div>
           )}
           <div className={styles.scoreList}>
             {payload.perStudent.scores.map((item) => (

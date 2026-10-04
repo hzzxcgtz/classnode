@@ -37,9 +37,12 @@ test('🔴 评分标准与评分要求已合并：只剩一个输入框，编辑
   // 显示侧：老学习单只填过「评分要求」的，教师得看得见原文（回退不许丢）。
   assert.match(source, /value=\{rubricText \|\| aiScoringCriteria\}/, '显示侧要保留旧字段回退');
   // 写回侧：必须同时清掉旧字段，否则「删不掉」。
+  // ⚠️ 这里刻意**不用 `/s` 标志**：本仓 tsconfig 的 target 是 es2017，带 `s` 会让
+  //    `tsc`（以及 `next build` 的类型检查）报 TS1501 —— 而客户端测试走的是 node 的
+  //    类型擦除，看不见这个错。`[^}]` 与 `\s` 本来就能跨行，不需要那个标志。
   assert.match(
     source,
-    /onDataChange\(\{\s*rubricText:[^}]*aiScoringCriteria:\s*undefined/s,
+    /onDataChange\(\{\s*rubricText:[^}]*aiScoringCriteria:\s*undefined/,
     '🔴 写回评分标准时必须把旧字段 `aiScoringCriteria` 一并清掉 —— 只写 `rubricText` 的话，'
     + '教师把输入框删空后回退值会重新出现（看起来像「删不掉」），而两边都不会报错。',
   );

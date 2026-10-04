@@ -662,20 +662,44 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                   <div className="worksheet-editor-ai-scoring-fields">
                     <label>
                       <span>{pointsUnit === '分' ? '满分' : '奖励总量'}（{pointsUnit}）</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={100}
-                        step={1}
-                        value={aiScoringMaxScore}
-                        onChange={(event) => {
-                          const value = Number.parseInt(event.target.value, 10);
-                          if (Number.isInteger(value) && value >= 1 && value <= 100) {
-                            onDataChange({ aiScoringMaxScore: value });
-                          }
-                        }}
-                        aria-label={`AI 评分满额（${pointsUnit}）`}
-                      />
+                      {/*
+                        ★ 2026-10-05（教师）：「加减按钮也太小了吧」—— 原来那两个箭头根本不是
+                        我们的按钮，是**浏览器原生的数字微调器**：约 14px 宽，而且在 iPad Safari 上
+                        **压根不显示**（那边只会弹数字键盘）⇒ 它既小又靠不住。
+                        🔴 换成自己的两个按钮，命中区 44px（本仓对触屏的既定下限，
+                          见 `worksheet-tap-targets.test.ts` 里对 44 的那段说明）；
+                          原生微调器由 CSS 关掉，免得同一格里出现两套加减。
+                        ⚠️ 输入框仍是 `type="number"`：教师可以直接敲数字，这里只是补上按钮。
+                        ⚠️ 边界与输入框同一条（1–100）：到边就**禁用**，不是点了没反应。
+                      */}
+                      <div className="worksheet-editor-ai-scoring-stepper">
+                        <button
+                          type="button"
+                          disabled={aiScoringMaxScore <= 1}
+                          onClick={() => onDataChange({ aiScoringMaxScore: Math.max(1, aiScoringMaxScore - 1) })}
+                          aria-label={`减少 1 ${pointsUnit}`}
+                        >−</button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          step={1}
+                          value={aiScoringMaxScore}
+                          onChange={(event) => {
+                            const value = Number.parseInt(event.target.value, 10);
+                            if (Number.isInteger(value) && value >= 1 && value <= 100) {
+                              onDataChange({ aiScoringMaxScore: value });
+                            }
+                          }}
+                          aria-label={`AI 评分满额（${pointsUnit}）`}
+                        />
+                        <button
+                          type="button"
+                          disabled={aiScoringMaxScore >= 100}
+                          onClick={() => onDataChange({ aiScoringMaxScore: Math.min(100, aiScoringMaxScore + 1) })}
+                          aria-label={`增加 1 ${pointsUnit}`}
+                        >+</button>
+                      </div>
                     </label>
                     {/*
                       🔴 显示的是**合并后**的值：`rubricText` 为准，旧字段 `aiScoringCriteria`

@@ -6302,7 +6302,9 @@ tr:hover td {
 
 .worksheet-editor-ai-scoring-fields {
   display: grid;
-  grid-template-columns: 110px minmax(0, 1fr);
+  /* ★ 2026-10-05：第一列从 110px 加宽 —— 「奖励总量」那个数字框换成了
+     带 44px 加减按钮的步进器（`− [ 5 ] +` 约 164px），110px 装不下。 */
+  grid-template-columns: 168px minmax(0, 1fr);
   gap: 12px;
   padding: 14px;
   border: 1px solid #dbe7f2;
@@ -6344,6 +6346,49 @@ tr:hover td {
   margin: -2px 0 0;
   color: #6a7e93;
   font-size: 0.72rem;
+}
+
+/* ★ 2026-10-05（教师）：「加减按钮也太小了吧」。
+   原来那个加减是**浏览器原生**的数字微调器（约 14px 宽，iPad Safari 上还不显示）
+   ⇒ 换成自己的两个按钮：44px 命中区（本仓对触屏的既定下限），
+     原生微调器关掉，免得同一格里有两套加减。 */
+.worksheet-editor-ai-scoring-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.worksheet-editor-ai-scoring-stepper button {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cbd9e7;
+  border-radius: 8px;
+  background: #fff;
+  color: #2f4a66;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.worksheet-editor-ai-scoring-stepper button:hover:not(:disabled) { border-color: #6f94b9; background: #f2f7fc; }
+.worksheet-editor-ai-scoring-stepper button:disabled { color: #a9b8c7; cursor: not-allowed; }
+.worksheet-editor-ai-scoring-stepper input { width: 64px; height: 44px; text-align: center; font-weight: 700; }
+
+/* 原生微调器：藏掉（同一个格子里不该有两套加减）。 */
+.worksheet-editor-ai-scoring-stepper input::-webkit-outer-spin-button,
+.worksheet-editor-ai-scoring-stepper input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.worksheet-editor-ai-scoring-stepper input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 /* ★ 2026-10-05：评分标准的图片与上传按钮搬进了 AI 评分那块两列网格

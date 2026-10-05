@@ -4028,9 +4028,10 @@ tr:hover td {
   min-width: 0;
 }
 
-/* ⚠️ 关掉「允许自动评分」时那个圆点/勾选框整块不画，但**字母必须留下**
-   （教师：「自动加上 ABCD 的编号」）⇒ 复用同一个类 + 一个 `is-readonly` 修饰，
-   而不是另写一个类：几何完全一致，那个开关动的时候整行不会跳。
+/* 行首那个**字母盒**（A/B/C/D）。★ 2026-10-05 起它**一直在**（答案控件已搬到行尾），
+   而 `is-readonly` 是它当年的另一半用途：关掉「允许自动评分」时圆点整块不画、只留字母
+   （教师：「自动加上 ABCD 的编号」）—— 现在两种情况下画的都是这一份，几何完全一致，
+   所以那个开关动的时候整行不会跳。
    🔴 少了字母的后果是**四个选项长得一模一样**，教师在「正确答案是 B」这句话里找不到 B。 */
 .worksheet-editor-option-correct.is-readonly {
   cursor: default;
@@ -4049,6 +4050,44 @@ tr:hover td {
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* ★ 2026-10-05（教师）：「答案的设置统一移动到最右侧」。
+   字母留在行首当行标（还是上面那个 `.worksheet-editor-option-correct.is-readonly`，
+   几何一个字没改），圆点/勾选框单独成盒放到行尾 —— 于是同一页里「答案在右」这条
+   与归类、连线、排序一致了（见 `choice-options.tsx` 里那段注释）。
+   高度取 30px：与同行那个拖动把手（`.worksheet-editor-option-drag`）对齐。 */
+.worksheet-editor-option-answer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 30px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.worksheet-editor-option-answer:hover {
+  border-color: #cbd5e1;
+  background: #fff;
+}
+
+.worksheet-editor-option-answer input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  /* 渐进增强：Safari 15.4 以下不认 `accent-color`，退回系统默认色，功能不受影响。 */
+  accent-color: var(--primary);
+}
+
+/* 选中态：整块亮起来。⚠️ 由 React 算类名，**不用 `:has(input:checked)`** ——
+   `:has(` 是本仓对 Safari 15 的禁用标记（兼容闸门扫的正是 `globals.css` 这个文件）。 */
+.worksheet-editor-option-answer.is-on {
+  border-color: var(--primary-border);
+  background: var(--primary-light);
 }
 
 .worksheet-editor-inline-actions {

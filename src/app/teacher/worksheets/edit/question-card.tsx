@@ -357,7 +357,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
     node.type === 'true-false'
       ? null
       : isChoiceQuestion(node)
-        ? { title: '选项', hint: '一项一行；拖动最左侧的把手可以调整顺序。正确答案点选项左侧的圆点。' }
+        ? { title: '选项', hint: '一项一行；拖动最左侧的把手可以调整顺序。正确答案点选项右侧的圆点。' }
         : isBlankType
           ? { title: '填空与作答设置', hint: `填空域与表格域会自动同步；${CHOICE_SEPARATOR_HINT}` }
           : { title: editorCopy.title, hint: editorCopy.description };

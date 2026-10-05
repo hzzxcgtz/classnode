@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CARD = fs.readFileSync(path.join(HERE, 'question-card.tsx'), 'utf8');
 const ORDER = fs.readFileSync(path.join(HERE, 'bodies', 'order-body.tsx'), 'utf8');
+const CHOICE = fs.readFileSync(path.join(HERE, 'bodies', 'choice-options.tsx'), 'utf8');
 const GLOBALS = path.resolve(HERE, '../../../../app/globals.css');
 const QTYPES = path.resolve(HERE, '../../../../lib/worksheet-questions.ts');
 
@@ -59,8 +60,7 @@ test('★ 主观题的参考答案：有输入框、写回 data.answers，但**�
   );
 });
 
-test('★ 排序题：正确顺序与选项顺序**并排**，且右栏不再住在评分卡里', () => {
-  const order = body(ORDER);
+test('★ 排序题：正确顺序与选项顺序**并排**，且右栏不再住在评分卡里', () => {  const order = body(ORDER);
   assert.ok(order.includes('worksheet-editor-order-columns'), '没有两栏容器');
   assert.ok(order.includes('<OrderAnswerBody'), 'OrderBody 里没有渲染「正确顺序」那一栏');
   // 🔴 反面：评分卡里**不许**再有一份 —— 两处并存 = 教师看到两个「正确顺序」，
@@ -151,4 +151,32 @@ test('🔴 并排的两栏必须**按权重压过**「上下两块之间的分�
   // 🔴 **权重**：通用规则是「两个类」，这条必须**至少三个类**才压得过它。
   const classes = (SEL.match(/\.[a-zA-Z-]+/g) ?? []).length;
   assert.ok(classes >= 3, `这条重置只有 ${classes} 个类选择器，压不过通用规则的两个类`);
+});
+
+test('★ 选项行：答案设置（圆点/勾选框）在**行尾**，字母留在行首，文案跟着说「右侧」', () => {
+  // ★ 2026-10-05（教师）：「答案的设置统一移动到最右侧」。
+  // 这一条钉两件事，它们坏掉的方式**不一样**：
+  //   ① 控件位置 —— 坏的后果是「与其它题型又不一致了」（看得见，但不一定有人报）；
+  //   ② 提示文案 —— 🔴 **控件挪回左边而文案还说「右侧」，屏幕上就是一句谎话**，
+  //      且没有任何东西会红。所以位置与文案必须一起断言。
+  const choice = body(CHOICE);
+  const contentAt = choice.indexOf('worksheet-editor-option-content');
+  const answerAt = choice.indexOf('worksheet-editor-option-answer');
+  assert.ok(contentAt > 0, '选项行里找不到选项文字那一块');
+  assert.ok(answerAt > 0, '选项行里找不到答案控件');
+  assert.ok(answerAt > contentAt, '答案控件又跑回选项文字前面了 —— 教师要求「统一移动到最右侧」');
+
+  // 行首那个字母盒不能丢：关掉自动评分时它是唯一能区分四个选项的东西。
+  assert.ok(choice.includes('worksheet-editor-option-correct is-readonly'), '行首的字母盒（A/B/C/D）不见了');
+
+  assert.match(body(CARD), /正确答案点选项右侧的圆点/, '卡片上的提示仍写着「左侧」');
+  assert.match(choice, /请点击选项右侧的圆点/, '「尚未设置正确答案」那句仍写着「左侧」');
+  assert.match(choice, /请勾选选项右侧的方框/, '多选那句仍写着「左侧」');
+
+  // 选中态由 React 算类名 —— `:has(input:checked)` 在 globals.css 里被兼容闸门禁用。
+  assert.match(choice, /' is-on' : ''/, '选中态类名不见了');
+  assert.ok(
+    fs.readFileSync(GLOBALS, 'utf8').includes('.worksheet-editor-option-answer.is-on'),
+    'CSS 里没有选中态那一条（整块不会亮）',
+  );
 });

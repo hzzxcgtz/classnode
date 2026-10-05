@@ -136,34 +136,22 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
               aria-label={`拖动选项 ${option.key} 调整顺序`}
               title="拖动调整选项顺序"
             >⠿</button>
-            {showAnswer ? (
-              <label className="worksheet-editor-option-correct" title="选为正确答案">
-                <input
-                  // ⚠️ 多选是勾选框、单选是圆点。`name` 必须带 `node.id`：同卷多题如果共用名字，
-                  // 第 1 题的选择会把第 2 题的顶掉（学生端 `worksheet-panel.tsx` 上有一条同源的注释）。
-                  type={multiple ? 'checkbox' : 'radio'}
-                  name={`correct-${node.id}`}
-                  checked={correctKeys.includes(option.key)}
-                  onChange={() => {
-                    if (!multiple) {
-                      commit(options, [option.key]);
-                      return;
-                    }
-                    // 多选：勾上就加、取消就减（顺序按点击次序，服务端只把它当一个集合读）。
-                    const next = correctKeys.includes(option.key)
-                      ? correctKeys.filter((key) => key !== option.key)
-                      : [...correctKeys, option.key];
-                    commit(options, next);
-                  }}
-                />
-                <span>{option.key}</span>
-              </label>
-            ) : (
-              /* ★ 2026-09-27（教师）：「自动加上 ABCD 的编号。」—— 关掉自动评分时那个圆点
-                 整块不画了，但**字母必须留下**：四个选项长得一模一样时，教师在
-                 「正确答案是 B」这句话里找不到 B。复用同一个类是为了几何完全一致。 */
-              <span className="worksheet-editor-option-correct is-readonly">{option.key}</span>
-            )}
+            {/*
+              ★ 2026-10-05（教师）：「答案的设置统一移动到最右侧」。
+              ⇒ 这一行原来是 [把手][●A][选项文字][配图][删除]：**答案那个圆点在行首**，
+                而其它题型的答案设置都在右边（归类题 `[输入框][归属下拉][删除]`、
+                连线题右侧那一列、排序题右侧的「正确顺序」）⇒ 只有选项行是反的。
+              ⇒ 现在：[把手][A][选项文字][答案][配图][删除]。
+                · 字母**留在行首**：它是行标、不是答案设置；而且关掉自动评分时它必须还在
+                  （「四个选项长得一模一样，教师在『正确答案是 B』里找不到 B」）。
+                · 答案只留控件本身（原来那个盒子里还塞着字母），选中时整块亮起来（`.is-on`）——
+                  教师扫一行时不必去认那个小圆点里点没点。
+              ⚠️ 选中态用 **React 算出来的 `is-on`**，不是 `:has(input:checked)`：
+                `:has(` 在 `globals.css` 里被 Safari 15 兼容闸门列为**禁用标记**
+                （`check-classroom-browser-compat.mjs` 的 `HARD_TOKENS`），而那个门禁管的是
+                **文件**不是页面 —— 编辑页的样式同样写在 `globals.css` 里。
+            */}
+            <span className="worksheet-editor-option-correct is-readonly">{option.key}</span>
             <div className="worksheet-editor-option-content">
               <input
                 className="input"
@@ -178,6 +166,32 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
               />
               {option.imageUrl && <img src={worksheetAssetUrl(option.imageUrl)} alt={`选项 ${option.key} 配图预览`} />}
             </div>
+            {showAnswer && (
+              <label
+                className={`worksheet-editor-option-answer${correctKeys.includes(option.key) ? ' is-on' : ''}`}
+                title={multiple ? '勾选为正确答案（可以选多个）' : '选为正确答案'}
+              >
+                <input
+                  // ⚠️ 多选是勾选框、单选是圆点。`name` 必须带 `node.id`：同卷多题如果共用名字，
+                  // 第 1 题的选择会把第 2 题的顶掉（学生端 `worksheet-panel.tsx` 上有一条同源的注释）。
+                  type={multiple ? 'checkbox' : 'radio'}
+                  name={`correct-${node.id}`}
+                  checked={correctKeys.includes(option.key)}
+                  aria-label={`把选项 ${option.key} 设为正确答案`}
+                  onChange={() => {
+                    if (!multiple) {
+                      commit(options, [option.key]);
+                      return;
+                    }
+                    // 多选：勾上就加、取消就减（顺序按点击次序，服务端只把它当一个集合读）。
+                    const next = correctKeys.includes(option.key)
+                      ? correctKeys.filter((key) => key !== option.key)
+                      : [...correctKeys, option.key];
+                    commit(options, next);
+                  }}
+                />
+              </label>
+            )}
             <OptionImageButton
               optionKey={option.key}
               hasImage={Boolean(option.imageUrl)}
@@ -224,8 +238,8 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
           <span className="worksheet-editor-choice-warning" role="status">
             <strong>尚未设置正确答案</strong>
             {multiple
-              ? '请勾选选项左侧的方框，可以选择多个。'
-              : '请点击选项左侧的圆点，选择一个。'}
+              ? '请勾选选项右侧的方框，可以选择多个。'
+              : '请点击选项右侧的圆点，选择一个。'}
           </span>
         )}
       </div>

@@ -108,13 +108,14 @@ export function SymbolListInput({ values, split, placeholder, onChange }: {
  *
  * ★ 2026-10-05（教师）：「填空题的空的评分方式的三项，其中『自动评分』这个名字不好，
  * 自动评分我一般是指**整体的称呼**，包括根据答案的自动批和 AI 的分析评分。」
- * ⇒ 逐空那一档改叫「**按答案判分**」：它说的是**怎么判**（拿学生填的与学生答案逐一比对），
- *    与「AI 评分」正好是一对。整题那张卡仍叫「自动评分」—— 那才是教师嘴里的**整体称呼**。
+ * ⇒ 逐空那一档改叫「**本地评分**」（我提过几个备选，教师选了这个）：它同时点出两件事 ——
+ *    **怎么判**（拿学生填的与学生答案逐一比对）、**在哪儿判**（不联网，就在本机）。
+ *    与「AI 评分」正好成对。整题那张卡仍叫「自动评分」—— 那才是教师嘴里的**整体称呼**。
  * ⚠️ 数据值仍是 `'auto'`（`FillGradingMode`）—— 改的只是屏幕上那一行字，
  *    动数据值会让库里的 `fillBlankSettings` 全部读不出来。
  */
 const FILL_GRADING_LABELS: Record<FillGradingMode, string> = {
-  auto: '按答案判分',
+  auto: '本地评分',
   ai: 'AI 评分',
   none: '不评分',
 };
@@ -307,7 +308,7 @@ export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPo
           ))}
           {node.type === 'fill-blank' && hasExplicitFillGrading(settings) && (() => {
             const totals = fillGradingTotals(settings);
-            return <p className="worksheet-editor-fill-score-summary">本题满额 {totals.total}：按答案判分 {totals.auto}，AI 评分 {totals.ai}。</p>;
+            return <p className="worksheet-editor-fill-score-summary">本题满额 {totals.total}：本地评分 {totals.auto}，AI 评分 {totals.ai}。</p>;
           })()}
           {/*
             ★ 2026-10-05：下面两句是从删掉的「标准答案」块搬来的 —— 答案本身搬进了上面每张卡片，

@@ -24,6 +24,7 @@ export function hasExplicitFillGrading(settings: readonly FillBlankSetting[]): b
  * 这一空的作答方式**开放哪几种评分方式**。
  *
  * ★ 2026-10-05（教师）：「手工填写含三项评分方式，……右侧或下方选词则只有自动评分或不评分。」
+ * ⚠️ 这是教师当时的原话；那一档屏幕上的名字后来定为「**本地评分**」（`FILL_GRADING_LABELS`）。
  *   道理是选词那两种方式下答案是一份**词表**，判分只能靠本地比对词表 —— 没有语义可交给 AI 评。
  *
  * 🔴 **与校验逐字同源**：`server/src/services/worksheet-questions.ts` 那边是

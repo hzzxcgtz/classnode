@@ -254,9 +254,19 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
         </div>
       )}
 
+      {/* ★ 2026-10-05（教师，截图标注）：「"下方共用词池" 改为 "共用选词"，并移到右侧，
+          左右分栏显示。」
+          ⇒ ① 标题改名（就这一处；保存校验那句报错在 `worksheet-questions.ts` 跟着改了，
+             那句是同一件事的另一份拷贝）。
+             ② 挪到右列**只靠 CSS**（外层那个 grid 现在两列）——这两块在 DOM 里本来就是
+             兄弟，列表在前、词池在后，JSX 一行没动。
+          ⚠️ 改的只是**编辑页的控制面板**：三个单选里那个「下方选词」**没动** ——
+             它说的是学生从哪儿取词，而学生端那个词库仍然印在题干下方
+             （`classroom/.../choice-blank-answer.tsx` 的 `choicePoolArea` 排在题干之后，
+              提示语原话就是「待选词会显示在题干下方」）。位置对得上就不该改那句。 */}
       {settings.some(setting => setting.mode === 'pool') && (
         <label className="worksheet-editor-field worksheet-editor-choice-words">
-          <span>下方共用词池</span>
+          <span>共用选词</span>
           <SymbolListInput
             values={poolChoices}
             split={splitChoiceText}

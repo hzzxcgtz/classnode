@@ -1461,7 +1461,10 @@ function validateFillModes(node: QuestionNode, errors: string[]): void {
       errors.push(`填空题第 ${index + 1} 空的右侧选词至少需要两个词`);
     }
   });
-  if (needsPool && readStrings(node.data.fillChoicePool ?? node.data.choices).length === 0) errors.push('填空题的下方共用词池不能为空');
+  // ⚠️ 这句话必须与编辑页那个面板的标题**逐字同源**（★ 2026-10-05 教师把面板从
+  //    「下方共用词池」改名成「共用选词」）——报错里指着一块屏幕上已经不存在的东西，
+  //    教师只能自己去猜是哪一栏。改一处就要改这一处。
+  if (needsPool && readStrings(node.data.fillChoicePool ?? node.data.choices).length === 0) errors.push('填空题的共用选词不能为空');
 }
 
 

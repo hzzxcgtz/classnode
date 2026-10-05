@@ -4312,8 +4312,27 @@ tr:hover td {
 
 .worksheet-editor-blank-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
+/* ★ 2026-10-05（教师，截图标注）：「"下方共用词池" 改为 "共用选词"，并移到右侧，
+   左右分栏显示。」⇒ 这块从单列竖排改成两列：左 = 「第 N 空」那串卡，右 = 词池面板。
+   ⚠️ **JSX 一行没动**：两块本来就是兄弟（列表在前、词池在后），grid 的两列就是它俩。
+
+   🔴 **为什么用 `auto-fit` 而不是「两列 + 720px 断点」**（这一页同类形块
+   `.worksheet-editor-choice-layout` 用的是后者）：
+   「第 N 空」那张卡的头部需要一个**硬下限约 302px** ——
+   标签 52 + 间距 10 + 分段控件 212（`minmax(68px, auto)` × 3 格，**68px 是下限、
+   缩不下去**）+ 卡片内边距 28。两列 + 14 间距 ⇒ **容器低于约 620px 时，
+   分段控件会顶出卡片边框**（不报错，屏幕上就是右边缺一块）。
+   而按视口 720px 断点，那一档的容器只有约 460px、每列 223px —— 正好踩进去。
+   ⇒ 让**容器自己**决定：装得下两列就两列（≥320px/列），装不下就一列。
+      `min(100%, 320px)` 那层是给极窄容器的（不然 320px 的下限会横向溢出）。
+   ⚠️ 只有 `:only-child` 那种情况不用另写规则：一个空都没选「下方选词」时词池不渲染，
+      `auto-fit` 会把空轨道收掉、剩下的那一列自己占满整行。 */
 .worksheet-editor-choice-blank-setup {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  /* 右列那格只有一行输入框；不顶对齐的话它会被拉到与左列等高（label 拉长，
+     输入框仍停在顶上，看着像底下空了一块）。 */
+  align-items: start;
   gap: 14px;
 }
 
@@ -4653,14 +4672,11 @@ tr:hover td {
   font-weight: 700;
 }
 
-.worksheet-editor-choice-words textarea.input {
-  min-height: 88px;
-  padding: 10px 12px;
-  color: #1e293b;
-  font-size: 0.875rem;
-  font-weight: 500;
-  line-height: 1.65;
-}
+/* ⚠️ 这里原来还有一条 `.worksheet-editor-choice-words textarea.input`（`min-height: 88px` …），
+   ★ 2026-10-05 连同本次改版一起**删掉**：词池那个框自 2026-09-28 起就是
+   `SymbolListInput` 的单行 `<input className="input">`，而这条选择器要的是 `textarea`
+   ⇒ **从那天起它一次都没生效过**（不报错、也没留下可见痕迹，唯一的作用是让下一个人
+   以为这个框是 88px 高的多行）。真要调它的高度，改的是 `<input>` 那条。 */
 
 @media (max-width: 720px) {
   .worksheet-editor-choice-layout {

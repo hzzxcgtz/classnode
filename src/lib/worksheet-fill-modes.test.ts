@@ -307,7 +307,7 @@ test('🔴 写回去再读回来必须**逐项无损** —— 单行输入框敢
   const read = fillSettingsFor(node({ fillBlankSettings: written }), runs)[0].choices;
   assert.deepEqual(read, items, '选词往返丢了东西');
 
-  // ② 下方共用词池（直接存数组）
+  // ② 共用选词（编辑页那个面板 2026-10-05 从「下方共用词池」改的名；直接存数组）
   assert.deepEqual(sharedPoolChoices(node({ fillChoicePool: items })), items, '词池往返丢了东西');
 
   // ③ 标准答案：写入方是 `writeFillAnswers`（= `text.split('\n')`），读出方原样返回数组。

@@ -1,6 +1,7 @@
 'use client';
 
 import type { WorksheetQuestionNode } from '@/lib/types';
+import { TrashIcon } from '../editor-icons';
 import {
   categorizeAddItem,
   categorizeAddZone,
@@ -70,7 +71,7 @@ export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
                 aria-label={`删除${zoneLabel(zone.text, index)}`}
                 onClick={() => commit(categorizeRemoveZone(categorize, index))}
               >
-                ×
+                <TrashIcon />
               </button>
             </div>
           ))}

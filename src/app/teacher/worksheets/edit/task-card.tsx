@@ -2,6 +2,7 @@
 
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
+import { TrashIcon } from './editor-icons';
 import { scoreSummary } from './worksheet-editor-core';
 
 /**
@@ -130,7 +131,7 @@ export function TaskCard({
             title="删除整个任务"
             aria-label="删除整个任务"
           >
-            ✕
+            <TrashIcon />
           </button>
         </div>
       </header>

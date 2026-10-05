@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { api } from '@/lib/api';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { TrashIcon } from '../editor-icons';
 import {
   dropIndexAt,
   MAX_OPTIONS,
@@ -197,7 +198,7 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
               aria-label={`删除选项 ${option.key}`}
               onClick={() => commit(options.filter((_, itemIndex) => itemIndex !== optionIndex), correctKeys)}
             >
-              ×
+              <TrashIcon />
             </button>
           </div>
         ))}

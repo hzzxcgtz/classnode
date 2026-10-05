@@ -66,6 +66,7 @@ import { CategorizeBody } from './bodies/categorize-body';
 import { isInkNode } from '@/lib/worksheet-ink';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 import { api } from '@/lib/api';
+import { TrashIcon } from './editor-icons';
 
 const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string }> = {
   'single-choice': {
@@ -473,11 +474,9 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             title="删除这道题"
             aria-label="删除这道题"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18" />
-              <path d="M8 6V4h8v2" />
-              <path d="M6 6l1 14h10l1-14" />
-            </svg>
+            {/* ★ 2026-10-05：这个垃圾桶搬去了 `editor-icons.tsx` —— 教师要求
+                「删除统一用垃圾桶图标」，于是它成了全编辑页的那一个图标，不再是本文件私有的内联 SVG。 */}
+            <TrashIcon />
           </button>
         </div>
       </header>

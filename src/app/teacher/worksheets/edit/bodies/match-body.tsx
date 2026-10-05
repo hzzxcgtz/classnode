@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 // ★ 2026-09-30：已配对摘要里可能带教师的右项原文（含公式）。
 import { PromptText } from '@/lib/worksheet-prompt-text';
+import { TrashIcon } from '../editor-icons';
 import {
   matchAddLeft,
   matchAddRight,
@@ -100,7 +101,7 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
                       onChange={(event) => commit({ ...match, left: renameEntryAt(left, index, event.target.value) })} />
                     <button type="button" className="worksheet-editor-icon-button is-danger"
                       disabled={left.length <= 2} title={left.length <= 2 ? '左侧至少保留两个条目' : '删除这个左侧条目'}
-                      aria-label={`删除左项 ${index + 1}`} onClick={() => commit(matchRemoveLeft(match, index))}>×</button>
+                      aria-label={`删除左项 ${index + 1}`} onClick={() => commit(matchRemoveLeft(match, index))}><TrashIcon /></button>
                   </>
                 ) : <span />}
               </div>
@@ -112,7 +113,7 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
                       onChange={(event) => commit({ ...match, right: renameEntryAt(right, index, event.target.value) })} />
                     <button type="button" className="worksheet-editor-icon-button is-danger"
                       disabled={right.length <= 1} title={right.length <= 1 ? '右侧至少保留一个条目' : '删除这个右侧条目'}
-                      aria-label={`删除右项 ${index + 1}`} onClick={() => commit(matchRemoveRight(match, index))}>×</button>
+                      aria-label={`删除右项 ${index + 1}`} onClick={() => commit(matchRemoveRight(match, index))}><TrashIcon /></button>
                   </>
                 ) : <span />}
               </div>

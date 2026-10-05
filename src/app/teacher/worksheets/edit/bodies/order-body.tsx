@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 // ★ 2026-09-30：正确顺序 / 「学生看到的顺序」里是教师的条目原文（可能含公式）。
 import { PromptText } from '@/lib/worksheet-prompt-text';
+import { TrashIcon } from '../editor-icons';
 import {
   isOrderAmbiguous,
   isOrderAnswerUsable,
@@ -243,7 +244,7 @@ export function OrderBody({ node, onDataChange }: {
                 aria-label={`删除条目 ${entryLabel(entry.text)}`}
                 onClick={() => commit(orderRemoveItem(order, index))}
               >
-                ×
+                <TrashIcon />
               </button>
             </div>
           ))}

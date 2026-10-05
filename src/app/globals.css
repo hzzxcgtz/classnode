@@ -3756,8 +3756,9 @@ tr:hover td {
    **否则一题的范围无法区分**。」—— 折叠之后每题只差一层 1px 的浅边框，边界确实看不出来。
    ⇒ 两种态**各自一条**，而它们**不是同一种视觉**（否则「移上去」与「正在改」分不开）：
      · hover   = 深一档的边框 + 极淡的底色（「你的鼠标在这一题上」）
-     · 正在编辑 = **蓝竖条 + 蓝边框 + 纯白**（「这一张是当前生效的那一个」）
-   强调色只给后者 —— 与简报「强调色只留给可点的、当前生效的」是同一条。 */
+     · 正在编辑 = **蓝边框 + 纯白**（「这一张是当前生效的那一个」）
+   强调色只给后者 —— 与简报「强调色只留给可点的、当前生效的」是同一条。
+   ⊘ 2026-10-05：那句「蓝**竖条** + 蓝边框」里的竖条已按教师要求删掉（见上面 `.worksheet-editor-question` 的注释）。 */
 .worksheet-editor-question:hover {
   border-color: #cbd5e1;
   background: #f8fafc;
@@ -3769,18 +3770,12 @@ tr:hover td {
 .worksheet-editor-question[data-expanded='1'],
 .worksheet-editor-question[data-expanded='1']:focus-within {
   border-color: var(--primary-border);
-  border-left-color: var(--primary);
   background: #fff;
 }
 
 /* 折起来的那一行**矮**：整张卡的 16px 内边距在 20 行时会白占一屏。 */
 .worksheet-editor-question[data-expanded='0'] {
   padding: 8px 12px;
-}
-
-/* 折起来时**不亮**（蓝竖条只属于当前编辑的那一张 —— 简报第 2 步的裁定）。 */
-.worksheet-editor-question[data-expanded='0']:focus-within {
-  border-left-color: transparent;
 }
 
 /* ⚠️ 焦点环**不在这里写**：`globals.css` 顶部有一条全局的 `:focus-visible`
@@ -3832,18 +3827,16 @@ tr:hover td {
 .worksheet-editor-question {
   background: #fff;
   border: 1px solid #e2e8f0;
-  /* ★ 2026-09-25（教师裁定）：「4px 蓝竖条去掉，只给当前编辑的那一张亮」。
-     🔴 竖条**恒定占位**（透明），只在 `:focus-within` 时上色 ——
-     写成仅在焦点态加 `border-left: 4px` 会让**卡片内容横向跳 3px**，
-     而那种跳动在点进题目的一瞬间发生，看起来像「页面抖了一下」，极难归因。
-     `:focus-within` 零 JS：光标在卡片里任何一个输入框里，这一张就亮。 */
-  border-left: 4px solid transparent;
+  /* ⊘ ★ 2026-10-05（教师）：「这个左侧的线条就不要了」—— 指的就是这条 4px 蓝竖条。
+     它当年（2026-09-25）是「只给当前编辑的那一张亮」的信号；教师现在不要了：
+     展开态本来就有更亮的边框（`--primary-border`）与白底，竖条是**重复的**强调。
+     ⇒ 四处一起删：这里那条**恒占位的透明 4px**、`:focus-within` 的上色、
+       展开态的上色、以及折叠态用来把它按下去的那条 `:focus-within`
+       （后两条存在只为了抵消/点亮这条竖条）。
+     ⚠️ 连带效应：卡片内容**左移 4px**（少了那条透明占位边框）。这是有意的 ——
+        留着一条谁都不上色的 4px 边框，就是「散文声称了一个不存在的机制」。 */
   border-radius: 12px;
   padding: 16px;
-}
-
-.worksheet-editor-question:focus-within {
-  border-left-color: var(--primary);
 }
 
 .worksheet-editor-question-head {
@@ -6268,9 +6261,18 @@ tr:hover td {
   background: #fff;
 }
 
+/* ★ 2026-10-05（教师）：「上方的题目编辑区和下方的评分区，还要另外的不同区，使用不同的底色
+   加以区分，注意颜色要清爽、舒服，不要出跳。」
+   ⇒ 两块原来几乎是同一个色（`#fbfdff` 与 `#f8fbff`，差 2–3 个数），**等于没区分**。现在：
+     · 题目编辑区（`.is-prompt`）= **白**（内容表面，教师大部分时间在这里写字）
+     · 评分区（`.is-grading`）= **中性浅灰蓝**（设置性质的区域，退到后面）
+     · 灰底上那张「得分规则」卡还是白的（`.worksheet-editor-points`）⇒ 自然浮起来，
+       于是同一张卡里读得出三层：题目 → 评分 → 得分规则。
+   ⚠️ 两个色都取自设计令牌那一族（白 / `--primary` 系的极浅档），不引入新的色相 ——
+      「清爽、不出跳」的落点就是**明度差**，不是饱和度。 */
 .worksheet-editor-question-section.is-prompt {
-  border-color: var(--primary-light);
-  background: #fbfdff;
+  border-color: #e2e8f0;
+  background: #fff;
 }
 
 /* ⚠️ `.worksheet-editor-question-section.is-choice-blank` 已随 2026-09-27 的两层重排删除 ——
@@ -6281,9 +6283,10 @@ tr:hover td {
    ⇒ 开关与设置合成一张卡（用的是 `.is-grading` 那一套），`is-mode` 整个删掉。 */
 
 
+/* 评分区：与上面的题目区**明显不同档**的浅灰蓝（见 `.is-prompt` 上面那段）。 */
 .worksheet-editor-question-section.is-grading {
-  border-color: var(--primary-light);
-  background: #f8fbff;
+  border-color: #dbe3ec;
+  background: #f4f7fa;
 }
 
 /* ── 容器里的**块**（★ 2026-09-27）─────────────────────────────────────

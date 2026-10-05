@@ -127,6 +127,20 @@ test('开启 AI 评分时消息带满分、评分标准与机器块协议；关�
   assert.ok(!buildAnalysisMessage(payloadOf('text')).includes('<classnode-scores>'));
 });
 
+test('混合填空会明确限制 AI 只评分指定空，避免重复计算自动评分部分', () => {
+  const message = buildAnalysisMessage({ ...payloadOf('text'),
+    aiScoring: {
+      enabled: true,
+      maxScore: 5,
+      unit: '分',
+      criteria: '说明理由是否合理',
+      parts: [{ index: 2, maxScore: 5 }],
+    },
+  });
+  assert.match(message, /只评价第 3 空（满额 5 分）/);
+  assert.match(message, /其他空已由 ClassNode 本地自动评分/);
+});
+
 test('🔴 开了 AI 评分但教师没写评分标准 ⇒ 兜底那句必须在（否则模型会自己编一套给分口径）', () => {
   const noRubric = {
     ...payloadOf('text'),

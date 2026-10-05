@@ -15,6 +15,7 @@ import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksh
 import { correctKeysFromPayload, isMultipleChoice, questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { readBlankCount } from '@/lib/worksheet-answer-value';
+import { fillSettingsFor, hasExplicitFillGrading } from '@/lib/worksheet-fill-modes';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 import { questionTypeNickname } from '@/lib/worksheet-questions';
@@ -444,6 +445,9 @@ export function WorksheetQuestionList({
         const questionIcon = <span className={styles.questionIcon}>{questionTypeIcon(node.type)}</span>;
         const gradeState = interactive ? gradeStates?.[node.id] : undefined;
         const aiReferenceScore = interactive ? aiReferenceScores?.[node.id] : undefined;
+        const mixedFillScoring = node.type === 'fill-blank'
+          && hasExplicitFillGrading(fillSettingsFor(node, promptRuns))
+          && Boolean(aiReferenceScore);
         /**
          * ★ 2026-09-28（教师）：「按这种效果制作」—— 状态、判分与奖励合成**一条**，
          * 三段用细线分开（效果图：✓已完成 ｜ !部分答对 ｜ 🚀获得奖励 ×1）。
@@ -456,7 +460,9 @@ export function WorksheetQuestionList({
          * ⚠️ `role="status"` + `aria-live` 从原来那个反馈框搬到这里：判分结果是
          * 提交后才出现的一段反馈，读屏要念出来。
          */
-        const verdictLabel = gradeState === 'correct' ? '全部答对' : gradeState === 'partial' ? '部分答对' : '再想一想';
+        const verdictLabel = mixedFillScoring
+          ? (gradeState === 'correct' ? '自动评分部分全对' : gradeState === 'partial' ? '自动评分部分答对' : '自动评分部分再想想')
+          : gradeState === 'correct' ? '全部答对' : gradeState === 'partial' ? '部分答对' : '再想一想';
         const questionMeta = state !== 'empty' || gradeState || aiReferenceScore ? (
           // ★ 2026-09-29（教师 ⑤）：外面多了一层**锚点** —— 奖励角标要挂在判定那一格的
           // 右上角上，而 `.questionResult` 有 `overflow: hidden`（它要把两格的底色裁进圆角里）

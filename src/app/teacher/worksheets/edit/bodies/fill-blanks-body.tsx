@@ -6,7 +6,7 @@ import type { WorksheetQuestionNode } from '@/lib/types';
 import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
 import { readBlankCount } from '@/lib/worksheet-questions';
 import { BLANK_MARK_TEXT } from '@/lib/worksheet-prompt-marks';
-import { CHOICE_JOINER, blankSlots, fillSettingsFor, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode } from '@/lib/worksheet-fill-modes';
+import { CHOICE_JOINER, blankSlots, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode, type FillGradingMode } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
   readBlankAnswers,
@@ -179,9 +179,10 @@ export function FillBlanksBody({ node, onDataChange, showAnswer = true, fullPoin
  * 它属于学生看到的题目内容，不属于答案键，因此由题目卡固定放在题干编辑之后、
  * 评分方式之前。关闭自动评分时，这一段仍可编辑。
  */
-export function ChoiceBlankSetup({ node, onDataChange }: {
+export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
+  onAutoGradeChange?: (enabled: boolean) => void;
 }) {
   const runs = readPromptRunsFor(node);
   // ★ 2026-09-28（教师反馈）：清单走 `blankSlots` —— **题干里的空与表格里的空是同一批**。
@@ -190,9 +191,40 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
   const slots = blankSlots(node, runs);
   const settings = fillSettingsFor(node, runs);
   const poolChoices = sharedPoolChoices(node);
+  const updateSettings = (next: typeof settings) => {
+    const totals = fillGradingTotals(next);
+    onDataChange({
+      fillBlankSettings: writeFillSettings(node, runs, next),
+      ...(node.type === 'fill-blank' && hasExplicitFillGrading(next) ? {
+        aiScoringEnabled: totals.ai > 0,
+      } : {}),
+    });
+    if (node.type === 'fill-blank' && totals.auto > 0 && node.autoGrade === false) onAutoGradeChange?.(true);
+  };
+  const explicitSettings = () => settings.map(setting => ({
+    ...setting,
+    gradingMode: setting.gradingMode ?? (node.autoGrade === false && node.data.aiScoringEnabled === true ? 'ai' as const : 'auto' as const),
+    maxScore: setting.maxScore ?? 1,
+  }));
   const setMode = (index: number, mode: FillAnswerMode) => {
-    const next = settings.map((setting, settingIndex) => settingIndex === index ? { ...setting, mode } : setting);
-    onDataChange({ fillBlankSettings: writeFillSettings(node, runs, next) });
+    const next = settings.map((setting, settingIndex) => settingIndex === index
+      ? { ...setting, mode, ...(mode !== 'text' && setting.gradingMode === 'ai' ? { gradingMode: 'auto' as const } : {}) }
+      : setting);
+    updateSettings(next);
+  };
+  const setGradingMode = (index: number, gradingMode: FillGradingMode) => {
+    const next = explicitSettings().map((setting, settingIndex) => settingIndex === index
+      ? { ...setting, gradingMode, maxScore: setting.maxScore ?? 1, ...(gradingMode === 'ai' ? { mode: 'text' as const } : {}) }
+      : setting);
+    updateSettings(next);
+  };
+  const setMaxScore = (index: number, raw: string) => {
+    const maxScore = Number(raw);
+    if (!Number.isInteger(maxScore) || maxScore < 1 || maxScore > 99) return;
+    updateSettings(explicitSettings().map((setting, settingIndex) => settingIndex === index ? {
+      ...setting,
+      maxScore,
+    } : setting));
   };
   // ★ 2026-09-28：直接收词表 —— 原来收一个字符串再 `splitChoiceLines` 解析一遍，
   // 而单行输入那一侧已经解析过了（多一次往返就多一处会分叉的地方）。
@@ -200,7 +232,7 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
     const next = settings.map((setting, settingIndex) => settingIndex === index
       ? { ...setting, choices: words }
       : setting);
-    onDataChange({ fillBlankSettings: writeFillSettings(node, runs, next) });
+    updateSettings(next);
   };
 
   return (
@@ -249,8 +281,38 @@ export function ChoiceBlankSetup({ node, onDataChange }: {
                   />
                 </label>
               )}
+              {node.type === 'fill-blank' && (
+                <div className="worksheet-editor-fill-grading-row">
+                  <span>评分方式</span>
+                  <div className="worksheet-editor-mode-tabs" role="radiogroup" aria-label={`${slot.label}的评分方式`}>
+                    {([
+                      ['auto', '自动评分'],
+                      ['ai', 'AI 评分'],
+                      ['none', '不评分'],
+                    ] as const).map(([mode, label]) => {
+                      const selected = (settings[index].gradingMode ?? (node.autoGrade === false && node.data.aiScoringEnabled === true ? 'ai' : 'auto')) === mode;
+                      return (
+                        <label className={selected ? 'is-selected' : ''} key={mode}>
+                          <input type="radio" name={`fill-grading-${node.id}-${index}`} checked={selected} onChange={() => setGradingMode(index, mode)} />
+                          <span>{label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {(settings[index].gradingMode ?? (node.autoGrade === false && node.data.aiScoringEnabled === true ? 'ai' : 'auto')) !== 'none' && (
+                    <label className="worksheet-editor-fill-score-input">
+                      <span>满额</span>
+                      <input type="number" min={1} max={99} value={settings[index].maxScore ?? 1} onChange={event => setMaxScore(index, event.target.value)} />
+                    </label>
+                  )}
+                </div>
+              )}
             </section>
           ))}
+          {node.type === 'fill-blank' && hasExplicitFillGrading(settings) && (() => {
+            const totals = fillGradingTotals(settings);
+            return <p className="worksheet-editor-fill-score-summary">本题满额 {totals.total}：自动评分 {totals.auto}，AI 评分 {totals.ai}。</p>;
+          })()}
         </div>
       )}
 

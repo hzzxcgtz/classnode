@@ -434,6 +434,28 @@ export function grade(node: QuestionNode, value: unknown, points: QuestionPoints
   const data = node.data && typeof node.data === 'object' && !Array.isArray(node.data)
     ? node.data as Record<string, unknown>
     : {};
+  const mixedFill = node.type === 'fill-blank' ? explicitFillGrading(data) : [];
+  if (mixedFill.length > 0) {
+    const auto = mixedFill
+      .map((setting, index) => ({ ...setting, index }))
+      .filter(setting => setting.gradingMode === 'auto');
+    if (auto.length === 0) return null;
+    const rawTexts = readField(value, 'texts');
+    const texts = Array.isArray(rawTexts) ? rawTexts : [readField(value, 'text')];
+    let hit = 0;
+    let score = 0;
+    auto.forEach((setting) => {
+      const text = texts[setting.index];
+      const accepted = gradableAnswers(data, setting.index);
+      if (typeof text !== 'string' || accepted.length === 0) return;
+      const normalized = normalizeFillText(text);
+      if (accepted.some(answer => normalizeFillText(answer) === normalized)) {
+        hit += 1;
+        score += setting.maxScore;
+      }
+    });
+    return { state: hit === auto.length ? 'correct' : hit > 0 ? 'partial' : 'incorrect', score };
+  }
   if ((node.type === 'fill-blank' || node.type === 'choice-blank')
       && (data.fillScoring === 'per-blank' || data.fillScoring === 'whole')) {
     if (node.autoGrade === false) return null;
@@ -809,6 +831,30 @@ function fillHitStats(data: Record<string, unknown>, value: unknown): { hit: num
     if (acceptable.some(answer => normalizeFillText(answer) === normalized)) hit += 1;
   }
   return { hit, total };
+}
+
+interface ExplicitFillGrading { gradingMode: 'auto' | 'ai' | 'none'; maxScore: number }
+
+/**
+ * 新版逐空评分按 `fillBlankSettings` 的写入顺序与答案槽逐位对应。
+ * 客户端每次改空都会按题面顺序重写整张 keyed map，因此 JSON 的枚举顺序就是答案顺序；
+ * 只要有一项没有显式模式，就判为老题并整体回退到旧评分规则，避免半迁移数据改变成绩。
+ */
+export function explicitFillGrading(data: Record<string, unknown>): ExplicitFillGrading[] {
+  const raw = data.fillBlankSettings;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+  const values = Object.values(raw as Record<string, unknown>);
+  if (values.length === 0 || values.length !== answerSlotCount(data)) return [];
+  const out: ExplicitFillGrading[] = [];
+  for (const value of values) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+    const setting = value as Record<string, unknown>;
+    if (setting.gradingMode !== 'auto' && setting.gradingMode !== 'ai' && setting.gradingMode !== 'none') return [];
+    const maxScore = typeof setting.maxScore === 'number' && Number.isInteger(setting.maxScore)
+      && setting.maxScore >= 1 && setting.maxScore <= POINTS_MAX ? setting.maxScore : 1;
+    out.push({ gradingMode: setting.gradingMode, maxScore });
+  }
+  return out;
 }
 
 /**
@@ -1427,6 +1473,16 @@ function validateFillBlank(node: QuestionNode, errors: string[]): void {
       errors.push('填空题至少要有一个空');
       return;
     }
+    const explicit = explicitFillGrading(node.data);
+    if (explicit.length > 0) {
+      for (let index = 0; index < total; index += 1) {
+        if (explicit[index]?.gradingMode === 'auto'
+            && !acceptableAnswersFor(node.data, index).some(answer => answer.trim())) {
+          errors.push(`填空题第 ${index + 1} 空选择了自动评分，请填写标准答案`);
+        }
+      }
+      return;
+    }
     // ⚠️ 开关关掉时「答案」整块不查 —— 但**题面**照查（上面那条空数的检查仍在）。
     if (node.autoGrade === false) return;
     for (let index = 0; index < total; index += 1) {
@@ -1447,6 +1503,7 @@ function validateFillModes(node: QuestionNode, errors: string[]): void {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
   const settings = Object.values(raw as Record<string, unknown>);
   let needsPool = false;
+  let aiMaximum = 0;
   settings.forEach((entry, index) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
       errors.push(`填空题第 ${index + 1} 空的作答方式不合法`);
@@ -1460,7 +1517,23 @@ function validateFillModes(node: QuestionNode, errors: string[]): void {
     if (setting.mode === 'inline' && readStrings(setting.choices).length < 2) {
       errors.push(`填空题第 ${index + 1} 空的右侧选词至少需要两个词`);
     }
+    if (setting.gradingMode !== undefined
+        && setting.gradingMode !== 'auto' && setting.gradingMode !== 'ai' && setting.gradingMode !== 'none') {
+      errors.push(`填空题第 ${index + 1} 空的评分方式不合法`);
+    }
+    if (setting.gradingMode === 'ai' && setting.mode !== 'text') {
+      errors.push(`填空题第 ${index + 1} 空只有手工填写时才能使用 AI 评分`);
+    }
+    if (setting.gradingMode !== undefined && setting.gradingMode !== 'none'
+        && (typeof setting.maxScore !== 'number' || !Number.isInteger(setting.maxScore)
+          || setting.maxScore < 1 || setting.maxScore > POINTS_MAX)) {
+      errors.push(`填空题第 ${index + 1} 空的满额必须是 1–${POINTS_MAX} 的整数`);
+    }
+    if (setting.gradingMode === 'ai' && typeof setting.maxScore === 'number' && Number.isInteger(setting.maxScore)) {
+      aiMaximum += setting.maxScore;
+    }
   });
+  if (aiMaximum > 100) errors.push('一道题交给 AI 评分的各空满额合计不能超过 100');
   // ⚠️ 这句话必须与编辑页那个面板的标题**逐字同源**（★ 2026-10-05 教师把面板从
   //    「下方共用词池」改名成「共用选词」）——报错里指着一块屏幕上已经不存在的东西，
   //    教师只能自己去猜是哪一栏。改一处就要改这一处。

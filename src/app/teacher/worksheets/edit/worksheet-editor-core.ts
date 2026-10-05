@@ -45,7 +45,7 @@ import {
   TRUE_FALSE_OPTIONS,
 } from '../../../../lib/worksheet-questions.ts';
 // ★ 2026-09-30：待选词的分隔符集合**只有一份**（`CHOICE_SEPARATORS`）—— 理由见那个常量。
-import { CHOICE_SEPARATORS } from '../../../../lib/worksheet-fill-modes.ts';
+import { CHOICE_SEPARATORS, fillGradingTotals, hasExplicitFillGrading } from '../../../../lib/worksheet-fill-modes.ts';
 // 奖励形式的取值域、默认档与归一化函数也只有一份，在 `src/lib/worksheet-reward.ts`
 // （学生端的奖励徽章与这里读的是同一份）。⚠️ 同样必须是相对路径 + `.ts` 后缀。
 import {
@@ -251,6 +251,10 @@ export function newZoneId(): string {
  * 两个数从此一致（原来不一致，而屏幕上只是「最高 0 颗星星」这种没人会读的显示）。
  */
 export function maximumPointsFor(node: WorksheetQuestionNode, fullPoints: number): number {
+  if (node.type === 'fill-blank') {
+    const settings = fillSettingsFor(node, readPromptRuns(node.data.promptRuns, node.prompt));
+    if (hasExplicitFillGrading(settings)) return fillGradingTotals(settings).total;
+  }
   const perBlank = (node.type === 'fill-blank' || node.type === 'choice-blank')
     && node.data.fillScoring === 'per-blank';
   return perBlank ? fullPoints * readBlankCount(node) : fullPoints;

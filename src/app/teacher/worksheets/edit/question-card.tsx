@@ -51,7 +51,7 @@ import { TrueFalseBody } from './bodies/true-false-body';
 import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choice-body';
 import { ChoiceBlankSetup, FillBlanksBody, SymbolListInput } from './bodies/fill-blanks-body';
 // ★ 2026-09-30：主观题的**参考答案**（不判分）。输入框与填空题那份是**同一个组件**。
-import { CHOICE_SEPARATOR_HINT, splitChoiceText } from '@/lib/worksheet-fill-modes';
+import { CHOICE_SEPARATOR_HINT, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, splitChoiceText } from '@/lib/worksheet-fill-modes';
 import { TableBody } from './bodies/table-body';
 import { tableMarkIndex } from '@/lib/worksheet-table';
 // ⚠️ 只引 `OrderBody` —— `OrderAnswerBody`（正确顺序）现在住在它里面（两栏并排），
@@ -366,15 +366,18 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
   //    一道两个空的表格题显示「最高 1 分」，而服务端按逐空给分、学生实际能拿 2 分。
   //    教师看到的数字与实际给分对不上，而**没有任何报错**（本仓最防的那一类）。
   const maximumPoints = maximumPointsFor(node, shownPoints.full);
+  const fillSettings = node.type === 'fill-blank' ? fillSettingsFor(node, readPromptRunsFor(node)) : [];
+  const explicitFillScoring = node.type === 'fill-blank' && hasExplicitFillGrading(fillSettings);
+  const fillTotals = fillGradingTotals(fillSettings);
   const supportsAiScoring = node.type === 'short-answer' || node.type === 'drawing' || node.type === 'fill-blank';
-  // 普通填空的本地自动评分与 AI 评分互斥；选择填空仍按客观题处理。
-  const aiScoringEnabled = node.data.aiScoringEnabled === true
-    && (node.type !== 'fill-blank' || !gradedOn);
+  const aiScoringEnabled = explicitFillScoring ? fillTotals.ai > 0 : node.data.aiScoringEnabled === true;
   const aiScoringMaxScore = typeof node.data.aiScoringMaxScore === 'number'
     ? node.data.aiScoringMaxScore : 10;
   const aiScoringCriteria = typeof node.data.aiScoringCriteria === 'string'
     ? node.data.aiScoringCriteria : '';
-  const gradingStatus = aiScoringEnabled
+  const gradingStatus = explicitFillScoring
+    ? `混合评分 · 最高 ${fillTotals.total} ${pointsUnit}`
+    : aiScoringEnabled
     ? `AI 评分 · 满额 ${aiScoringMaxScore} ${pointsUnit}`
     : isGradedQuestionType(node.type)
       ? (gradedOn ? `自动评分 · 最高 ${maximumPoints} ${pointsUnit}` : '仅统计作答')
@@ -571,7 +574,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             {/* ★ 2026-09-28：这一块现在覆盖**这道题全部的空**（题干里的 + 表格里的），
                 所以它排在表格面板**之后**（表格在上、空的清单在下，读起来才是一条线）。 */}
             {(node.type === 'fill-blank' || node.type === 'choice-blank') && (
-              <ChoiceBlankSetup node={node} onDataChange={onDataChange} />
+              <ChoiceBlankSetup node={node} onDataChange={onDataChange} onAutoGradeChange={onAutoGradeChange} />
             )}
 
             {/* ★ 2026-09-28（表格填空，裁定③）：网格面板 —— 表格属于**题面**，
@@ -649,16 +652,16 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
               ⚠️ 教师 2026-10-05 明确选了「只在 AI 评分打开时显示」——
                 代价是关掉 AI 评分后这里没有编辑入口，而「发给 AI 分析」仍会读这份标准。
             */}
-            {supportsAiScoring && (
+            {supportsAiScoring && (!explicitFillScoring || aiScoringEnabled) && (
               <div className="worksheet-editor-block worksheet-editor-ai-scoring">
                 <div className="worksheet-editor-block-head">
                   <div>
                     <h4>AI 评分</h4>
                     <p>{node.type === 'fill-blank'
-                      ? '适合需要理解语义、无法只靠标准答案判断的手工填空；开启后将关闭本地自动评分。'
+                      ? (explicitFillScoring ? '只评价在“填空与作答设置”中标为 AI 评分的空；其他空仍可由本地自动评分。' : '适合整题都需要理解语义、无法只靠标准答案判断的手工填空。')
                       : '分析本题时同步给出逐生评分、简短评价和详细建议；结果自动保存。'}</p>
                   </div>
-                  <HeadSwitch
+                  {!explicitFillScoring && <HeadSwitch
                     checked={aiScoringEnabled}
                     onChange={(enabled) => {
                       if (enabled && node.type === 'fill-blank' && gradedOn) onAutoGradeChange(false);
@@ -666,7 +669,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                     }}
                     label="AI 评分"
                     title={aiScoringEnabled ? '已开启 AI 评分' : '已关闭 AI 评分'}
-                  />
+                  />}
                 </div>
                 {aiScoringEnabled && (
                   <div className="worksheet-editor-ai-scoring-fields">
@@ -687,7 +690,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                       ⇒ 现在：外层是 `<div>`（网格项），`<label htmlFor>` 只圈住**文字**，
                         `−` / 输入框 / `+` 是它的兄弟。
                     */}
-                    <div className="worksheet-editor-ai-scoring-field">
+                    {!explicitFillScoring && <div className="worksheet-editor-ai-scoring-field">
                       <label htmlFor={`ai-scoring-max-${node.id}`}>
                         {pointsUnit === '分' ? '满分' : '奖励总量'}（{pointsUnit}）
                       </label>
@@ -720,7 +723,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                           aria-label={`增加 1 ${pointsUnit}`}
                         >+</button>
                       </div>
-                    </div>
+                    </div>}
                     {/*
                       🔴 显示的是**合并后**的值：`rubricText` 为准，旧字段 `aiScoringCriteria`
                       作回退 —— 老学习单只填过「评分要求」的，教师在这里照旧看得见原文。
@@ -776,7 +779,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
           </div>
         )}
 
-        {!gradedOn && isGradedQuestionType(node.type) && (
+        {!gradedOn && isGradedQuestionType(node.type) && (!explicitFillScoring || fillTotals.auto > 0) && (
           <p className="worksheet-editor-answer-disabled">
             自动评分已关闭，正确答案暂时隐藏；题面与选项仍可继续编辑，原有设置都保留着。
           </p>
@@ -792,7 +795,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
         是说不通的。开关自己的位置就是状态，标题里不再写「已开启 / 已关闭」。
         ⚠️ 关掉时**下面整块不渲染**（教师：「如果不是其他选项全部隐藏，就不用显示了」）。
       */}
-      {isGradedQuestionType(node.type) && (
+      {isGradedQuestionType(node.type) && (!explicitFillScoring || fillTotals.auto > 0) && (
         <section className="worksheet-editor-question-section is-grading">
           <div className="worksheet-editor-section-head">
             <div>
@@ -803,11 +806,11 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
               {/* ⚠️ 徽章里**不写「自动评分」** —— 卡片标题就是它（原来那句
                   `gradingStatus`（「自动评分 · 最高 1 颗星星」）是给**折叠态那一行**用的，
                   那里没有标题，所以不能直接搬过来）。 */}
-              {gradedOn && <span className="worksheet-editor-points-badge">最高 {maximumPoints} {pointsUnit}</span>}
+              {gradedOn && <span className="worksheet-editor-points-badge">最高 {explicitFillScoring ? fillTotals.auto : maximumPoints} {pointsUnit}</span>}
               <HeadSwitch
                 checked={gradedOn}
                 onChange={(enabled) => {
-                  if (enabled && node.type === 'fill-blank' && node.data.aiScoringEnabled === true) {
+                  if (enabled && node.type === 'fill-blank' && node.data.aiScoringEnabled === true && !explicitFillScoring) {
                     onDataChange({ aiScoringEnabled: false });
                   }
                   onAutoGradeChange(enabled);
@@ -832,7 +835,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             </div>
           )}
 
-          {isBlankType && (
+          {isBlankType && !explicitFillScoring && (
             <div className="worksheet-editor-block">
               <div className="worksheet-editor-block-head">
                 <div>
@@ -853,14 +856,14 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                   : '全部答对与只答对一部分时，各自能得到多少。'}</p>
               </div>
             </div>
-            {isBlankType ? (
+            {isBlankType && !explicitFillScoring ? (
               <FillPointsRow
                 node={node}
                 inheritedPoints={inheritedPoints}
                 pointsUnit={pointsUnit}
                 onPointsChange={onPointsChange}
               />
-            ) : (
+            ) : !isBlankType ? (
               <PointsRow
                 heading={heading}
                 node={node}
@@ -870,6 +873,8 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                 onPointsInputChange={onPointsInputChange}
                 onPointsChange={onPointsChange}
               />
+            ) : (
+              <p className="worksheet-editor-fill-score-summary">逐空设置已启用：自动评分 {fillTotals.auto} {pointsUnit}，AI 评分 {fillTotals.ai} {pointsUnit}，合计 {fillTotals.total} {pointsUnit}。</p>
             )}
             {/*
               ★ 2026-09-26（教师裁定）：「如果部分给分框内设了非 0 值，则显示判分依据的设置」。

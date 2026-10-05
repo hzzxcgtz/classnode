@@ -1,4 +1,4 @@
-import type { QuestionNode } from './worksheet-questions.js';
+import { explicitFillGrading, type QuestionNode } from './worksheet-questions.js';
 import { rubricTextOf } from './analysis-question.js';
 
 export const AI_SCORE_MAX = 100;
@@ -12,12 +12,14 @@ export interface AiScoringConfig {
   maxScore: number;
   unit: string;
   criteria: string;
+  parts?: Array<{ index: number; maxScore: number }>;
 }
 
 export interface StoredAiScoring {
   maxScore: number;
   unit: string;
   criteria: string;
+  parts?: Array<{ index: number; maxScore: number }>;
   scores: Array<{ studentId: string; score: number | null; reason: string; advice: string }>;
 }
 
@@ -37,18 +39,24 @@ function normalizeAiScore(score: number, config: AiScoringConfig): number {
 }
 
 export function aiScoringConfigOf(node: QuestionNode, unit = '分'): AiScoringConfig {
-  // 普通填空只有在关闭本地自动判分后才按主观题交给 AI；选择填空仍是客观题。
+  const fillParts = node.type === 'fill-blank'
+    ? explicitFillGrading(node.data).map((part, index) => ({ ...part, index })).filter(part => part.gradingMode === 'ai')
+    : [];
+  // 新版填空可以只把指定空交给 AI；没有逐空配置的老题仍沿用关闭本地判分的整题模式。
   const subjective = node.type === 'short-answer' || node.type === 'drawing'
-    || (node.type === 'fill-blank' && node.autoGrade === false);
-  const enabled = subjective && node.data.aiScoringEnabled === true;
+    || (node.type === 'fill-blank' && (node.autoGrade === false || fillParts.length > 0));
+  const enabled = subjective && (node.data.aiScoringEnabled === true || fillParts.length > 0);
   const rawMax = node.data.aiScoringMaxScore;
-  const maxScore = typeof rawMax === 'number' && Number.isInteger(rawMax) && rawMax >= 1 && rawMax <= AI_SCORE_MAX
+  const configuredMax = typeof rawMax === 'number' && Number.isInteger(rawMax) && rawMax >= 1 && rawMax <= AI_SCORE_MAX
     ? rawMax : 10;
+  const maxScore = fillParts.length > 0 ? fillParts.reduce((sum, part) => sum + part.maxScore, 0) : configuredMax;
   // ★ 2026-10-05：「评分要求」与「评分标准」被教师合并成同一份东西了（见 `rubricTextOf`）
   // ⇒ 这里不再单独读 `aiScoringCriteria`。存下来的这一份是**给人看的**（结果面板那一行），
   // 超长截断；发给模型的那一份是载荷里的 `rubricText` 原文，不截断。
   const criteria = rubricTextOf(node).slice(0, AI_SCORE_CRITERIA_MAX);
-  return { enabled, maxScore, unit, criteria };
+  return { enabled, maxScore, unit, criteria, ...(fillParts.length > 0 ? {
+    parts: fillParts.map(part => ({ index: part.index, maxScore: part.maxScore })),
+  } : {}) };
 }
 
 /**
@@ -101,6 +109,7 @@ export function parseAiAnalysisResult(
       maxScore: config.maxScore,
       unit: config.unit,
       criteria: config.criteria,
+      ...(config.parts ? { parts: config.parts } : {}),
       scores: entries.map((entry) => found.get(entry.studentId)!),
     },
   };
@@ -115,6 +124,7 @@ export function readStoredAiScoring(
   if (!config.enabled || !raw || typeof raw !== 'object') return null;
   const source = raw as Record<string, unknown>;
   if (source.maxScore !== config.maxScore || !Array.isArray(source.scores)) return null;
+  if (config.parts && JSON.stringify(source.parts) !== JSON.stringify(config.parts)) return null;
   // 老版本没有存单位；按当前学习单奖励形式补齐。新版本若教师换了奖励形式，则隐藏旧结果，
   // 避免把原来的“9 分”误画成“9 座奖杯”。
   if (typeof source.unit === 'string' && source.unit !== config.unit) return null;
@@ -140,6 +150,7 @@ export function readStoredAiScoring(
     maxScore: config.maxScore,
     unit: config.unit,
     criteria: typeof source.criteria === 'string' ? source.criteria.slice(0, AI_SCORE_CRITERIA_MAX) : '',
+    ...(config.parts ? { parts: config.parts } : {}),
     scores,
   };
 }
@@ -157,6 +168,7 @@ export function readStudentAiReferenceScore(
   if (!config.enabled || !raw || typeof raw !== 'object') return null;
   const source = raw as Record<string, unknown>;
   if (source.maxScore !== config.maxScore || !Array.isArray(source.scores)) return null;
+  if (config.parts && JSON.stringify(source.parts) !== JSON.stringify(config.parts)) return null;
   if (typeof source.unit === 'string' && source.unit !== config.unit) return null;
   const item = source.scores.find((candidate) => candidate && typeof candidate === 'object'
     && (candidate as Record<string, unknown>).studentId === studentId);

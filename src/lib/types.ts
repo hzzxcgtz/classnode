@@ -561,7 +561,7 @@ export interface WorksheetAnalysisPayload {
   agentId: string | null;
   model: string | null;
   /** 主观题的 AI 评分设置。关闭时不会要求智能体返回逐生分数。 */
-  aiScoring: { enabled: boolean; maxScore: number; unit: string; criteria: string };
+  aiScoring: { enabled: boolean; maxScore: number; unit: string; criteria: string; parts?: Array<{ index: number; maxScore: number }> };
   /** AI 返回并由服务端校验过的逐生评分；与正式自动判分字段完全分开。 */
   perStudent: {
     maxScore: number;

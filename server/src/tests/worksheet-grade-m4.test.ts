@@ -57,6 +57,19 @@ import {
  */
 const P: QuestionPoints = { full: 2, half: 1 };
 
+test('混合填空只给自动评分空计分，AI 空不参与本地对错', () => {
+  const mixed = question('fill-blank', {
+    answers: [['甲'], ['乙'], []],
+    fillBlankSettings: {
+      a: { mode: 'inline', gradingMode: 'auto', maxScore: 2 },
+      b: { mode: 'pool', gradingMode: 'auto', maxScore: 1 },
+      c: { mode: 'text', gradingMode: 'ai', maxScore: 5 },
+    },
+  });
+  assert.deepEqual(grade(mixed, { format: 'fill-multi/v1', texts: ['甲', '错', '开放回答'] }, P), { state: 'partial', score: 2 });
+  assert.deepEqual(grade(mixed, { format: 'fill-multi/v1', texts: ['甲', '乙', '任何内容'] }, P), { state: 'correct', score: 3 });
+});
+
 function question(type: QuestionType, data: Record<string, unknown>): QuestionNode {
   return { id: `q_${type}`, type, prompt: '题干', inputMode: 'keyboard', data, children: [] };
 }

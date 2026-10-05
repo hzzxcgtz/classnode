@@ -286,7 +286,7 @@ export interface QuestionMeta {
   rubricText?: string;
   rubricImageUrl?: string | null;
   /** 主观题可选的 AI 评分设置；未开启时仍把配置明确带到载荷中。 */
-  aiScoring?: { enabled: boolean; maxScore: number; unit: string; criteria: string };
+  aiScoring?: { enabled: boolean; maxScore: number; unit: string; criteria: string; parts?: Array<{ index: number; maxScore: number }> };
 }
 
 /** 超长就截断并附一句说明。 */
@@ -538,7 +538,7 @@ export interface AnalysisPayload {
   text: string | null;
   sheetLayouts: SheetLayout[];
   knobs: SheetKnobs;
-  aiScoring: { enabled: boolean; maxScore: number; unit: string; criteria: string };
+  aiScoring: { enabled: boolean; maxScore: number; unit: string; criteria: string; parts?: Array<{ index: number; maxScore: number }> };
 }
 
 /**

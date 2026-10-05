@@ -112,6 +112,10 @@ export function buildAnalysisMessage(payload: AnalysisPayload, labeled = true): 
     '',
     '【AI 评分】已开启（结果仅供参考）',
     `满额：${payload.aiScoring.maxScore} ${payload.aiScoring.unit}`,
+    ...(payload.aiScoring.parts?.length ? [
+      `评分范围：只评价${payload.aiScoring.parts.map(part => `第 ${part.index + 1} 空（满额 ${part.maxScore} ${payload.aiScoring.unit}）`).join('、')}。`,
+      '其他空已由 ClassNode 本地自动评分，只作为理解整道题的上下文，不要把它们计入 AI 分数。',
+    ] : []),
     payload.aiScoring.unit === '分'
       ? '评分步长：可以保留一位小数。'
       : `评分步长：只能返回整数（0、1、2…${payload.aiScoring.maxScore}），${payload.aiScoring.unit}不能拆分成小数。`,

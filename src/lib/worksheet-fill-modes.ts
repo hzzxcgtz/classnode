@@ -5,10 +5,30 @@ import { blankLayout, cellAtSlot, cellLabel, tableBlankIds } from './worksheet-t
 import { mathText, splitMath } from './worksheet-math.ts';
 
 export type FillAnswerMode = 'text' | 'pool' | 'inline';
+export type FillGradingMode = 'auto' | 'ai' | 'none';
 
 export interface FillBlankSetting {
   mode: FillAnswerMode;
   choices: string[];
+  /** 逐空评分；缺失表示老题，继续走题目级评分规则。 */
+  gradingMode?: FillGradingMode;
+  /** 该空答对时的满额。图标奖励同样只能设置完整个数。 */
+  maxScore?: number;
+}
+
+export function hasExplicitFillGrading(settings: readonly FillBlankSetting[]): boolean {
+  return settings.some(setting => setting.gradingMode !== undefined);
+}
+
+export function fillGradingTotals(settings: readonly FillBlankSetting[]): { auto: number; ai: number; total: number } {
+  let auto = 0;
+  let ai = 0;
+  settings.forEach((setting) => {
+    const score = Number.isInteger(setting.maxScore) && (setting.maxScore ?? 0) > 0 ? setting.maxScore! : 1;
+    if (setting.gradingMode === 'auto') auto += score;
+    if (setting.gradingMode === 'ai') ai += score;
+  });
+  return { auto, ai, total: auto + ai };
 }
 
 /**
@@ -188,7 +208,11 @@ export function fillSettingsFor(node: WorksheetQuestionNode, runs: PromptRun[]):
     if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
       const item = raw as Record<string, unknown>;
       const mode: FillAnswerMode = item.mode === 'pool' || item.mode === 'inline' ? item.mode : 'text';
-      return { mode, choices: splitChoiceLines(item.choices) };
+      const gradingMode: FillGradingMode | undefined = item.gradingMode === 'auto' || item.gradingMode === 'ai' || item.gradingMode === 'none'
+        ? item.gradingMode : undefined;
+      const maxScore = typeof item.maxScore === 'number' && Number.isInteger(item.maxScore) && item.maxScore >= 1 && item.maxScore <= 99
+        ? item.maxScore : undefined;
+      return { mode, choices: splitChoiceLines(item.choices), gradingMode, maxScore };
     }
     // 表格里的空：缺省「手工填写」（v1 不给表格开选词 —— 存过的设置上面已经读到了）
     if (slot.kind === 'table') return { mode: 'text', choices: [] };
@@ -214,7 +238,12 @@ export function writeFillSettings(
   const result: Record<string, FillBlankSetting> = {};
   blankSlots(node, runs).forEach((slot, index) => {
     const setting = settings[index] ?? { mode: 'text' as const, choices: [] };
-    result[slot.id] = { mode: setting.mode, choices: splitChoiceLines(setting.choices) };
+    result[slot.id] = {
+      mode: setting.mode,
+      choices: splitChoiceLines(setting.choices),
+      ...(setting.gradingMode ? { gradingMode: setting.gradingMode } : {}),
+      ...(setting.maxScore ? { maxScore: setting.maxScore } : {}),
+    };
   });
   return result;
 }

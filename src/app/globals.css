@@ -4361,6 +4361,22 @@ tr:hover td {
   font-size: 0.813rem;
 }
 
+.worksheet-editor-fill-grading-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e7edf5;
+  color: #64748b;
+  font-size: .75rem;
+}
+
+.worksheet-editor-fill-score-input { display: inline-flex; align-items: center; gap: 6px; }
+.worksheet-editor-fill-score-input input { width: 58px; min-height: 32px; border: 1px solid #cbd8e8; border-radius: 7px; padding: 4px 7px; color: #233854; background: #fff; }
+.worksheet-editor-fill-score-summary { margin: 0; padding: 10px 12px; border-left: 3px solid #5a7da5; background: #f2f6fb; color: #526985; font-size: .813rem; }
+
 /* 编辑页**唯一的**分段控件（★ 2026-09-27）。
    原来它叫 `-fill-mode-tabs`，只服务填空题那个三格；教师当天指着选择题那个又大又笨的
    单选/多选切换说「参考一下填空题里边的样式」⇒ 把它提升成共用的这一条。

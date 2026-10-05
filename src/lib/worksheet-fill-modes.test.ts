@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { CHOICE_JOINER, CHOICE_SEPARATORS, blankSlots, fillSettingsFor, placedValue, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
+import { CHOICE_JOINER, CHOICE_SEPARATORS, blankSlots, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, placedValue, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 import { DEFAULT_PROMPT_STYLE, type PromptRun } from './worksheet-prompt-marks.ts';
 
@@ -34,6 +34,18 @@ test('设置写回仍以 blank id 为键，题干中插空不会让后面的设�
   ]);
   assert.equal(written['blank-a'].mode, 'pool');
   assert.equal(written['blank-c'].mode, 'inline');
+});
+
+test('逐空评分方式与满额按 blank id 往返，并分别汇总自动与 AI 部分', () => {
+  const written = writeFillSettings(node({}), runs, [
+    { mode: 'inline', choices: ['甲', '乙'], gradingMode: 'auto', maxScore: 2 },
+    { mode: 'pool', choices: [], gradingMode: 'auto', maxScore: 1 },
+    { mode: 'text', choices: [], gradingMode: 'ai', maxScore: 5 },
+  ]);
+  const settings = fillSettingsFor(node({ fillBlankSettings: written }), runs);
+  assert.equal(hasExplicitFillGrading(settings), true);
+  assert.deepEqual(settings.map(item => [item.gradingMode, item.maxScore]), [['auto', 2], ['auto', 1], ['ai', 5]]);
+  assert.deepEqual(fillGradingTotals(settings), { auto: 3, ai: 5, total: 8 });
 });
 
 test('旧选择填空继续读取原来的共用词池与右侧两词分组', () => {

@@ -25,6 +25,20 @@ test('AI 评分对问答、绘图和关闭本地判分的普通填空生效，�
   assert.equal(aiScoringConfigOf(node({ aiScoringEnabled: true, aiScoringMaxScore: 0 })).maxScore, 10);
 });
 
+test('混合填空只把标为 AI 的空计入 AI 满额，并保留空号', () => {
+  const config = aiScoringConfigOf(node({
+    fillBlankSettings: {
+      a: { mode: 'inline', gradingMode: 'auto', maxScore: 2 },
+      b: { mode: 'pool', gradingMode: 'auto', maxScore: 1 },
+      c: { mode: 'text', gradingMode: 'ai', maxScore: 5 },
+    },
+    answers: [['甲'], ['乙'], []],
+  }, 'fill-blank'));
+  assert.deepEqual(config, {
+    enabled: true, maxScore: 5, unit: '分', criteria: '', parts: [{ index: 2, maxScore: 5 }],
+  });
+});
+
 test('🔴 评分依据取「评分标准」（`rubricText`），旧字段只作回退', () => {
   // ★ 2026-10-05：教师把「评分标准」与「评分要求」合并成一个输入框 ⇒ 判据层跟着改读
   // `rubricText`（唯一读取点 `rubricTextOf`）。回退保的是老学习单：只填过「评分要求」的

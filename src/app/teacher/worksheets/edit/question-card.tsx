@@ -49,7 +49,7 @@ import { QuestionInput } from '@/app/classroom/worksheet/questions';
 // 组件这一层**没有回归网**（本仓没有 jsdom / testing-library）。
 import { TrueFalseBody } from './bodies/true-false-body';
 import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choice-body';
-import { ChoiceBlankSetup, FillBlanksBody, SymbolListInput } from './bodies/fill-blanks-body';
+import { ChoiceBlankSetup, SymbolListInput } from './bodies/fill-blanks-body';
 // ★ 2026-09-30：主观题的**参考答案**（不判分）。输入框与填空题那份是**同一个组件**。
 import { CHOICE_SEPARATOR_HINT, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, splitChoiceText } from '@/lib/worksheet-fill-modes';
 import { TableBody } from './bodies/table-body';
@@ -573,7 +573,14 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             {/* ★ 2026-09-28：这一块现在覆盖**这道题全部的空**（题干里的 + 表格里的），
                 所以它排在表格面板**之后**（表格在上、空的清单在下，读起来才是一条线）。 */}
             {(node.type === 'fill-blank' || node.type === 'choice-blank') && (
-              <ChoiceBlankSetup node={node} onDataChange={onDataChange} onAutoGradeChange={onAutoGradeChange} />
+              // ★ 2026-10-05（教师裁定 A）：每个空的**答案**也在这里（卡片作答方式行的右侧），
+              // 所以要把「全对值几分」传进去 —— 「逐空给分」那笔账是在这里算给教师看的。
+              <ChoiceBlankSetup
+                node={node}
+                onDataChange={onDataChange}
+                onAutoGradeChange={onAutoGradeChange}
+                fullPoints={shownPoints.full}
+              />
             )}
 
             {/* ★ 2026-09-28（表格填空，裁定③）：网格面板 —— 表格属于**题面**，
@@ -651,16 +658,28 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
               ⚠️ 教师 2026-10-05 明确选了「只在 AI 评分打开时显示」——
                 代价是关掉 AI 评分后这里没有编辑入口，而「发给 AI 分析」仍会读这份标准。
             */}
-            {supportsAiScoring && (!explicitFillScoring || aiScoringEnabled) && (
+            {/*
+              ★ 2026-10-05（教师裁定 A）：填空题这一块**只剩评分标准**。
+              教师问「这部分是不是多余了？」—— 拆开看：整题的开关与满额**确实重复**
+              （每个空的「评分方式」与「满额」各自就能表达），而「评分标准」（文字 + 图片）
+              **全站只有这一个入口**：删掉它，填空题的 AI 评分就没有标准可写
+              （那份标准会随本题作答一起发给智能体，「发给 AI 分析」也读它）。
+              ⇒ 填空题：标题改「AI 评分标准」，去掉开关与满额，并且**一直显示** ——
+                写标准与「评不评分」是两件事，不评分时它仍被「发给 AI 分析」读。
+              ⇒ 问答题 / 绘图题：原样保留（那两型没有逐题评分方式，开关与满额就该在这儿）。
+              ⚠️ 「满额」那一格仍然只属于**非填空题**，且仍不许用 `<label>` 把三个控件包起来
+                （`<label>` 的第一个可标注元素会被点空白误触发，10-05 那次「点空白也会减」）。
+            */}
+            {supportsAiScoring && (node.type === 'fill-blank' || !explicitFillScoring || aiScoringEnabled) && (
               <div className="worksheet-editor-block worksheet-editor-ai-scoring">
                 <div className="worksheet-editor-block-head">
                   <div>
-                    <h4>AI 评分</h4>
+                    <h4>{node.type === 'fill-blank' ? 'AI 评分标准' : 'AI 评分'}</h4>
                     <p>{node.type === 'fill-blank'
-                      ? (explicitFillScoring ? '只评价在“填空与作答设置”中标为 AI 评分的空；其他空仍可由本地自动评分。' : '适合整题都需要理解语义、无法只靠标准答案判断的手工填空。')
+                      ? '每个空评不评、按什么评，在上面的「填空与作答设置」里各自选择；这里写的是智能体评分（以及「发给 AI 分析」）依据的标准 —— 文字与图片都会随本题作答一起发出去。'
                       : '分析本题时同步给出逐生评分、简短评价和详细建议；结果自动保存。'}</p>
                   </div>
-                  {!explicitFillScoring && <HeadSwitch
+                  {node.type !== 'fill-blank' && !explicitFillScoring && <HeadSwitch
                     checked={aiScoringEnabled}
                     onChange={(enabled) => {
                       if (enabled && node.type === 'fill-blank' && gradedOn) onAutoGradeChange(false);
@@ -670,26 +689,9 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                     title={aiScoringEnabled ? '已开启 AI 评分' : '已关闭 AI 评分'}
                   />}
                 </div>
-                {aiScoringEnabled && (
+                {(node.type === 'fill-blank' || aiScoringEnabled) && (
                   <div className="worksheet-editor-ai-scoring-fields">
-                    {/*
-                      ★ 2026-10-05（教师）：「加减按钮也太小了吧」—— 原来那两个箭头根本不是
-                      我们的按钮，是**浏览器原生的数字微调器**：约 14px 宽，而且在 iPad Safari 上
-                      **压根不显示**（那边只会弹数字键盘）⇒ 它既小又靠不住。
-                      🔴 换成自己的两个按钮；原生微调器由 CSS 关掉，免得同一格里有两套加减。
-                      ⚠️ 输入框仍是 `type="number"`：教师可以直接敲数字，这里只是补上按钮。
-                      ⚠️ 边界与输入框同一条（1–100）：到边就**禁用**，不是点了没反应。
-
-                      🔴🔴 这一格**不许**用 `<label>` 把三个控件包起来 —— 那是我第一版踩的坑：
-                      `<label>` 的隐式关联对象是它内部**第一个可标注元素**，而 `<button>` 正是
-                      可标注元素（HTML 规范里的 labelable elements 含 button）⇒ 点标签文字、
-                      或标签内任何一处空白，浏览器都把这次点击**转发给那个按钮**。
-                      教师报的原话是「点了下面空白地方也会减」—— 减的正是第一个按钮 `−`。
-                      改之前这里只有 input 一个控件（点空白只是聚焦），所以这个坑看不出来。
-                      ⇒ 现在：外层是 `<div>`（网格项），`<label htmlFor>` 只圈住**文字**，
-                        `−` / 输入框 / `+` 是它的兄弟。
-                    */}
-                    {!explicitFillScoring && <div className="worksheet-editor-ai-scoring-field">
+                    {node.type !== 'fill-blank' && !explicitFillScoring && <div className="worksheet-editor-ai-scoring-field">
                       <label htmlFor={`ai-scoring-max-${node.id}`}>
                         {pointsUnit === '分' ? '满分' : '奖励总量'}（{pointsUnit}）
                       </label>
@@ -778,7 +780,10 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
           </div>
         )}
 
-        {!gradedOn && isGradedQuestionType(node.type) && (!explicitFillScoring || fillTotals.auto > 0) && (
+        {/* ⊘ 2026-10-05（教师裁定 A）：这句对填空题**不再成立** —— 每个空的答案搬进了
+            「填空与作答设置」，那里一直可编辑（关掉自动评分也不隐藏）。
+            判断题仍走这一句（它的标准答案确实住在 `gradedOn` 门里）。 */}
+        {!gradedOn && isGradedQuestionType(node.type) && !isBlankType && (
           <p className="worksheet-editor-answer-disabled">
             自动评分已关闭，正确答案暂时隐藏；题面与选项仍可继续编辑，原有设置都保留着。
           </p>
@@ -894,20 +899,20 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                  这一次他看到的是「调顺序时两个列表要并排着看」。两次都照做。
               ⚠️ 于是这张卡对排序题只剩下面那两块（开关 + 分值 + 容错档），不再是空壳。 */}
 
-          {/* 「标准答案」—— 填空题与判断题共用一个块标题（教师要求两型对齐）。 */}
-          {(isBlankType || node.type === 'true-false') && (
+          {/* 「标准答案」—— 判断题的那一块。
+              ⊘ ★ 2026-10-05（教师裁定 A）：填空题**不再有这一块** —— 每个空的答案搬进了
+              「填空与作答设置」的卡片（作答方式行右侧）。两个入口编辑同一份数据就是本仓最防的
+              那种分叉；而且那一块住在 `{gradedOn && …}` 里，**只有打开自动评分才看得见**，
+              关掉它答案就消失了 —— 而每个空都能选「AI 评分」，那种情况恰恰最需要改答案。 */}
+          {node.type === 'true-false' && (
             <div className="worksheet-editor-block">
               <div className="worksheet-editor-block-head">
                 <div>
                   <h4>标准答案</h4>
-                  <p>{isBlankType
-                    ? `每个空可以填多个可接受答案；学生答出其中一个就算对。${CHOICE_SEPARATOR_HINT}`
-                    : '这道题的标准答案是「正确」还是「错误」。'}</p>
+                  <p>这道题的标准答案是「正确」还是「错误」。</p>
                 </div>
               </div>
-              {isBlankType
-                ? <FillBlanksBody node={node} onDataChange={onDataChange} showAnswer fullPoints={shownPoints.full} />
-                : <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer />}
+              <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer />
             </div>
           )}
           </>)}

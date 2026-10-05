@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { WorksheetQuestionNode } from '@/lib/types';
-import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
 import { readBlankCount } from '@/lib/worksheet-questions';
 import { BLANK_MARK_TEXT } from '@/lib/worksheet-prompt-marks';
 import { CHOICE_JOINER, blankSlots, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode, type FillGradingMode } from '@/lib/worksheet-fill-modes';
@@ -88,107 +87,39 @@ export function SymbolListInput({ values, split, placeholder, onChange }: {
 }
 
 /**
- * 填空题与选择填空题的答案区。
+ * 「每个空的作答方式 + 它的答案」。
  *
- * 空的数量只有一个来源：题干 `promptRuns` 中带稳定 blank id 的占位符。这里不再提供
- * “增加/删除答案框”，避免题干有两个空、下方却有三个答案框的双真源。教师在题干中
- * 插入或整体删除 `{填空域}`，答案框随即按 blank id 联动；已有答案不会因前面插空而串位。
- * ★ 2026-09-28（教师）：输入框从多行 textarea 改成**单行**（多个答案用分号分隔，
- * 见 `SymbolListInput`），而**存储形状一个字没变** —— 仍然是「每空一份字符串数组」，
- * 由 `sanitizeContentForSave` 在出网前清掉空项。
- */
-export function FillBlanksBody({ node, onDataChange, showAnswer = true, fullPoints = 0 }: {
-  node: WorksheetQuestionNode;
-  onDataChange: (patch: Record<string, unknown>) => void;
-  /** 关掉「允许自动评分」时为 `false` ⇒ 答案控件不渲染（题面照常）。 */
-  showAnswer?: boolean;
-  /** ★ 2026-09-28（表格填空，裁定④甲）：这一题「全对」值几分（逐题或继承学习单级）。 */
-  fullPoints?: number;
-}) {
-  const answerSets = readBlankAnswers(node);
-  // 🔴 空数必须读 `readBlankCount`（题干里的空 + **表格里的空**）。
-  // 原来这里数的是 `blankCount(promptRuns)` —— 表格题会**一个答案框都不渲染**
-  // （教师填不了答案，而屏幕上只是「这道题没有空」）。
-  const slots = readBlankCount(node);
-  const { textCount } = blankLayout(node);
-
-  return (
-    <>
-      {showAnswer && slots > 0 && (
-        <div className="worksheet-editor-blank-answer-grid">
-          {Array.from({ length: slots }, (_, index) => (
-            <label className="worksheet-editor-blank-answer" key={index}>
-              <span>
-                {/* ★ 2026-09-28（表格填空）：位置**说实话**。
-                    题干里的空说「第 2 空」；表格里的空说「第 2 行第 2 格」——
-                    后者要是也说「第 N 空」，教师改答案时对着屏幕找不到那一格。
-                    ⚠️ 判据在 `blankLabelAt`（有用例），这里不自己算行列。 */}
-                <strong>{blankLabelAt(node, index) ?? `第 ${index + 1} 空`}</strong>
-                <em>{index < textCount ? `对应题干中第 ${index + 1} 个填空域` : '在表格里'}</em>
-              </span>
-              <SymbolListInput
-                values={answerSets[index] ?? []}
-                split={splitChoiceText}
-                placeholder="填写标准答案"
-                onChange={items => onDataChange({
-                  blanks: undefined,
-                  answers: Array.from(
-                    { length: slots },
-                    (_, answerIndex) => answerIndex === index
-                      ? writeFillAnswers(items.join('\n'))
-                      : (answerSets[answerIndex] ?? []),
-                  ),
-                })}
-              />
-
-            </label>
-          ))}
-        </div>
-      )}
-
-      {showAnswer && slots === 0 && (
-        <div className="worksheet-editor-blank-empty">
-          <strong>还没有填空位置</strong>
-          <span>把光标放到题干的目标位置，再点击工具栏中的“{BLANK_MARK_TEXT}”；或者在上面加一张表格、把某几格标成「填空」。</span>
-        </div>
-      )}
-
-      {showAnswer && slots > 0 && (
-        <p className="worksheet-editor-compact-note">
-          已根据题干与表格自动生成 {slots} 个答案框；调整填空域或表格时，这里会同步更新。
-          {/* ★ 2026-09-28（表格填空，裁定④甲）：逐空给分时**把这笔账算给教师看**。
-              服务端对 `fillScoring: 'per-blank'` 的给分是「命中空数 × 本题满分」
-              ⇒ 6 个空的题、每空 1 分，学生全对拿的是 6 分。
-              ⚠️ 这句话与「自动评分」卡里那个「最高 N」徽章是同一个数
-                 （两处都走 `maximumPointsFor` 那一条判据），只是这里把它拆开写，
-                 因为教师是在**这里**填答案的。 */}
-          {node.data.fillScoring === 'per-blank' && fullPoints > 0 && (
-            <> 逐空给分：每个空 {fullPoints} 分 × {slots} 空 ⇒ 全对最多 <strong>{fullPoints * slots}</strong> 分。</>
-          )}
-        </p>
-      )}
-    </>
-  );
-}
-
-/**
- * 「每个空的作答方式」——★ 2026-09-28（教师反馈）：它管的是**这道题全部的空**
- *（题干里的 + 表格里的），不再只认题干里那几个。表格里的空 v1 固定手工填写，
- * 所以那几张卡只报位置、不摆单选。
+ * ★ 2026-09-28（教师反馈）：它管的是**这道题全部的空**（题干里的 + 表格里的），
+ * 不再只认题干里那几个。
  *
- * 它属于学生看到的题目内容，不属于答案键，因此由题目卡固定放在题干编辑之后、
- * 评分方式之前。关闭自动评分时，这一段仍可编辑。
+ * ★ 2026-10-05（教师裁定 A）：「填空题的答案放到这里」——每个空的**答案**从「标准答案」
+ * 那一块（住在自动评分区里、**只有打开自动评分才看得见**）搬到了本卡片作答方式行的右侧。
+ * 三条连带，都是有意的：
+ *   · 空的数量仍然**只有一个来源**：题干 `promptRuns` 里带稳定 blank id 的占位符，
+ *     加上表格里标成「填空」的格子。这里不提供「增加/删除答案框」——
+ *     题干有两个空、下面却有三个答案框，那种双真源正是原来那个组件的存在理由。
+ *   · 答案从此**一直可编辑**（原来关掉「自动评分」它整块消失）：因为每个空都能选
+ *     「AI 评分」，那种情况下答案必须能改。题目卡上那句「自动评分已关闭，正确答案暂时隐藏」
+ *     因此对填空题不再成立（已按题型排除）。
+ *   · 原来那两句说明（「每个空可以填多个可接受答案…」与「逐空给分」的算术）跟着搬到列表下方。
  */
-export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange }: {
+export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPoints = 0 }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
   onAutoGradeChange?: (enabled: boolean) => void;
+  /** 「全对」值几分（逐题或继承学习单级）—— 只用来把「逐空给分」那笔账算给教师看。 */
+  fullPoints?: number;
 }) {
   const runs = readPromptRunsFor(node);
   // ★ 2026-09-28（教师反馈）：清单走 `blankSlots` —— **题干里的空与表格里的空是同一批**。
   // 原来只遍历 `promptRuns` ⇒ 一道表格题在这里显示「题干中还没有填空域」，
   // 而上面明明有一张表标着空（两块互相打脸 —— 教师：「一头雾水，东跳跳西跳跳」）。
   const slots = blankSlots(node, runs);
+  // ★ 2026-10-05：答案跟着清单走同一个下标空间 —— `blankSlots` 的顺序与
+  // `readBlankCount` 是同一套口径（题干标记前的空 → 表格里的空 → 标记后的空），
+  // 所以 `answerSets[index]` 就是这张卡那一个空的答案（原来那个网格也是这么对的）。
+  const answerSets = readBlankAnswers(node);
+  const answerSlots = readBlankCount(node);
   const settings = fillSettingsFor(node, runs);
   const poolChoices = sharedPoolChoices(node);
   const updateSettings = (next: typeof settings) => {
@@ -269,6 +200,36 @@ export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange }: {
                     </label>
                   ))}
                 </div>
+                {/*
+                  ★ 2026-10-05（教师裁定 A）：「填空题的答案放到这里」——
+                  这个空原来就在这一行右侧。答案**属于这个空**，与它的作答方式摆在一起，
+                  教师不必滚到自动评分区里去找（那一块还只有打开自动评分时才看得见）。
+                  ⚠️ 外层是 `<label>`，里面**只有一个** `<input>`（`SymbolListInput` 渲染的就是它）
+                     —— 标题文字与控件同属一个 label 是安全的；这里**绝不能**再塞按钮进去：
+                     `<label>` 的隐式关联对象是它内部第一个可标注元素，而 `<button>` 也是
+                     可标注元素 ⇒ 点标签空白会被转发给那个按钮（10-05 那次「点空白也会减」就是这个坑）。
+                  ⚠️ 写回形状与原来那一份**逐字一致**（`blanks: undefined` + nested `answers`）。
+                */}
+                <label
+                  className="worksheet-editor-fill-answer-field"
+                  title={`${slot.label}：每个空可以填多个可接受答案；学生答出其中一个就算对。`}
+                >
+                  <span>答案</span>
+                  <SymbolListInput
+                    values={answerSets[index] ?? []}
+                    split={splitChoiceText}
+                    placeholder="填写标准答案"
+                    onChange={items => onDataChange({
+                      blanks: undefined,
+                      answers: Array.from(
+                        { length: answerSlots },
+                        (_, answerIndex) => answerIndex === index
+                          ? writeFillAnswers(items.join('\n'))
+                          : (answerSets[answerIndex] ?? []),
+                      ),
+                    })}
+                  />
+                </label>
               </div>
               {settings[index].mode === 'inline' && (
                 <label className="worksheet-editor-field worksheet-editor-inline-word-field">
@@ -313,6 +274,20 @@ export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange }: {
             const totals = fillGradingTotals(settings);
             return <p className="worksheet-editor-fill-score-summary">本题满额 {totals.total}：自动评分 {totals.auto}，AI 评分 {totals.ai}。</p>;
           })()}
+          {/*
+            ★ 2026-10-05：下面两句是从删掉的「标准答案」块搬来的 —— 答案本身搬进了上面每张卡片，
+            但这两句说的是**整道题**，留在清单下方更合适。
+            第二句（逐空给分那笔账）与「自动评分」卡里那个「最高 N」徽章是同一个数
+            （两处都走 `maximumPointsFor` 那条判据），只是把它拆开算给教师看。
+          */}
+          <p className="worksheet-editor-compact-note">
+            每个空可以填多个可接受答案；学生答出其中一个就算对。
+          </p>
+          {node.data.fillScoring === 'per-blank' && fullPoints > 0 && (
+            <p className="worksheet-editor-compact-note">
+              逐空给分：每个空 {fullPoints} 分 × {slots.length} 空 ⇒ 全对最多 <strong>{fullPoints * slots.length}</strong> 分。
+            </p>
+          )}
         </div>
       )}
 

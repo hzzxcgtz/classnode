@@ -4426,6 +4426,31 @@ tr:hover td {
   font-size: 0.813rem;
 }
 
+/* ★ 2026-10-05（教师裁定 A）：「填空题的答案放到这里」——每个空的答案就摆在它自己那张
+   卡片的**作答方式行右侧**（原来住在自动评分区里的「标准答案」网格，只有打开自动评分才可见）。
+   `margin-left: auto` 把它推到行尾；那一行本来就 `flex-wrap`，窄屏时它会整块折到下一行。 */
+.worksheet-editor-fill-answer-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: 1 1 220px;
+  max-width: 460px;
+  font-size: 0.75rem;
+  color: #40566f;
+}
+
+.worksheet-editor-fill-answer-field > span {
+  flex: 0 0 auto;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.worksheet-editor-fill-answer-field .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .worksheet-editor-fill-grading-row {
   display: flex;
   align-items: center;
@@ -7294,46 +7319,6 @@ tr:hover td {
   line-height: 1.6;
 }
 
-.worksheet-editor-blank-answer-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.worksheet-editor-blank-answer {
-  display: block;
-  padding: 12px;
-  border: 1px solid #dbe3ee;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.worksheet-editor-blank-answer > span {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 7px;
-}
-
-.worksheet-editor-blank-answer strong {
-  color: #1e293b;
-  font-size: 0.78rem;
-}
-
-.worksheet-editor-blank-answer em {
-  overflow: hidden;
-  color: #94a3b8;
-  font-size: 0.68rem;
-  font-style: normal;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.worksheet-editor-blank-answer textarea {
-  min-height: 66px;
-  resize: vertical;
-}
 
 .worksheet-editor-blank-empty {
   display: flex;
@@ -7362,12 +7347,6 @@ tr:hover td {
 .worksheet-editor-compact-note {
   margin: 8px 0 0;
   color: #64748b;
-}
-
-@media (max-width: 820px) {
-  .worksheet-editor-blank-answer-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 .worksheet-editor-manual-note {

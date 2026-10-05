@@ -68,6 +68,11 @@ test('混合填空只给自动评分空计分，AI 空不参与本地对错', ()
   });
   assert.deepEqual(grade(mixed, { format: 'fill-multi/v1', texts: ['甲', '错', '开放回答'] }, P), { state: 'partial', score: 2 });
   assert.deepEqual(grade(mixed, { format: 'fill-multi/v1', texts: ['甲', '乙', '任何内容'] }, P), { state: 'correct', score: 3 });
+  assert.equal(
+    grade({ ...mixed, autoGrade: false }, { format: 'fill-multi/v1', texts: ['甲', '乙', '任何内容'] }, P),
+    null,
+    '题目级总开关关闭后，逐空本地评分也必须停止',
+  );
 });
 
 function question(type: QuestionType, data: Record<string, unknown>): QuestionNode {

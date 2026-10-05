@@ -39,12 +39,12 @@ function normalizeAiScore(score: number, config: AiScoringConfig): number {
 }
 
 export function aiScoringConfigOf(node: QuestionNode, unit = '分'): AiScoringConfig {
-  const fillParts = node.type === 'fill-blank'
+  const fillParts = node.type === 'fill-blank' && node.autoGrade !== false
     ? explicitFillGrading(node.data).map((part, index) => ({ ...part, index })).filter(part => part.gradingMode === 'ai')
     : [];
-  // 新版填空可以只把指定空交给 AI；没有逐空配置的老题仍沿用关闭本地判分的整题模式。
+  // 新版填空可以只把指定空交给 AI；题目级自动评分开关同时控制本地与 AI 评分。
   const subjective = node.type === 'short-answer' || node.type === 'drawing'
-    || (node.type === 'fill-blank' && (node.autoGrade === false || fillParts.length > 0));
+    || (node.type === 'fill-blank' && fillParts.length > 0);
   const enabled = subjective && (node.data.aiScoringEnabled === true || fillParts.length > 0);
   const rawMax = node.data.aiScoringMaxScore;
   const configuredMax = typeof rawMax === 'number' && Number.isInteger(rawMax) && rawMax >= 1 && rawMax <= AI_SCORE_MAX

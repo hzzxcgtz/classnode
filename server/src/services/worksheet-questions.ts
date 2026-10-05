@@ -434,6 +434,8 @@ export function grade(node: QuestionNode, value: unknown, points: QuestionPoints
   const data = node.data && typeof node.data === 'object' && !Array.isArray(node.data)
     ? node.data as Record<string, unknown>
     : {};
+  // 题目级开关是所有本地 / 逐空评分的总闸。设置仍保留在 data 中，重新开启即可恢复。
+  if (node.autoGrade === false) return null;
   const mixedFill = node.type === 'fill-blank' ? explicitFillGrading(data) : [];
   if (mixedFill.length > 0) {
     const auto = mixedFill
@@ -458,7 +460,6 @@ export function grade(node: QuestionNode, value: unknown, points: QuestionPoints
   }
   if ((node.type === 'fill-blank' || node.type === 'choice-blank')
       && (data.fillScoring === 'per-blank' || data.fillScoring === 'whole')) {
-    if (node.autoGrade === false) return null;
     const stats = fillHitStats(data, value);
     if (stats.total === 0) return { state: 'incorrect', score: 0 };
     const state: GradeState = stats.hit === stats.total ? 'correct' : stats.hit > 0 ? 'partial' : 'incorrect';
@@ -1473,6 +1474,8 @@ function validateFillBlank(node: QuestionNode, errors: string[]): void {
       errors.push('填空题至少要有一个空');
       return;
     }
+    // 总开关关闭时保留答案与逐空设置，但不再要求它们完整，也不参与判分。
+    if (node.autoGrade === false) return;
     const explicit = explicitFillGrading(node.data);
     if (explicit.length > 0) {
       for (let index = 0; index < total; index += 1) {
@@ -1485,8 +1488,6 @@ function validateFillBlank(node: QuestionNode, errors: string[]): void {
       }
       return;
     }
-    // ⚠️ 开关关掉时「答案」整块不查 —— 但**题面**照查（上面那条空数的检查仍在）。
-    if (node.autoGrade === false) return;
     for (let index = 0; index < total; index += 1) {
       if (!acceptableAnswersFor(node.data, index).some((answer) => answer.trim())) {
         // 同一个毛病不按空数重复说 N 遍（一道 10 个空的题会甩出 10 条一样的错）。

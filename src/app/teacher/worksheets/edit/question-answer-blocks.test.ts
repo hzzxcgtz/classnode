@@ -178,22 +178,19 @@ test('★ 填空题的「得分方式 + 分值」是**一块两行**（不再卡
   assert.match(card, /\bworksheet-editor-flat-label\b/, '行首那个小标签不见了');
 });
 
-test('★ 填空题设过逐空评分方式后**不显示**逐题「自动评分」开关（裁定 A）', () => {
-  // 教师 2026-10-05 问「这个开关到底控制什么」→ 查实它对填空题**已经不通电**
-  //（服务端 `grade()` 见到逐空设置就走逐空那条分支，不看 `node.autoGrade`；
-  //  而看板/矩阵/抽屉仍然看它 ⇒ 会出现「库里有分、教师卡上写着教师查看」）。
-  // ⇒ 裁定 A：设过逐空评分方式之后不画这个开关；卡片保留为**逐空设置的合计**。
+test('★ 填空题的「自动评分」始终是逐空评分的总开关', () => {
   const card = body(CARD);
-  assert.match(card, /\{!explicitFillScoring && <HeadSwitch/, '开关没有挂在「未设逐空评分方式」这个条件上');
+  assert.doesNotMatch(card, /\{!explicitFillScoring && <HeadSwitch/, '逐空评分仍在隐藏总开关');
+  assert.match(card, /<HeadSwitch\s+checked=\{gradedOn\}/, '自动评分总开关没有直接绑定题目级状态');
   assert.match(
     card,
-    /\{\(gradedOn \|\| explicitFillScoring\) && \(<>/,
-    '卡片内容还挂在 gradedOn 上 —— 开关都没了，autoGrade 可能是旧值（新题默认 false），内容会整块消失',
+    /\{gradedOn && \(<>/,
+    '评分设置没有受总开关控制',
   );
   assert.match(
     card,
-    /\(gradedOn \|\| explicitFillScoring\) && <span className="worksheet-editor-points-badge"/,
-    '徽章条件没跟着改（无开关时那张卡会连「最高 N」都没有）',
+    /\{gradedOn && <span className="worksheet-editor-points-badge"/,
+    '满分徽章没有受总开关控制',
   );
 });
 

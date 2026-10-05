@@ -143,15 +143,21 @@ export function TaskCard({
         「任务 = 分组 + **一段说明**」，这个框就是那句话里的「说明」。
         ⚠️ 用 `textarea` 而不是 `input`：描述常常是完整的一两句，单行会把后半句藏起来。
       */}
-      <label className="worksheet-editor-task-desc-field">
-        <textarea
-          className="worksheet-editor-task-desc"
-          rows={2}
-          value={typeof node.data.description === 'string' ? node.data.description : ''}
-          onChange={event => onDescriptionChange(event.target.value)}
-          placeholder="给这个任务写一句说明（可留空）—— 学生会看到这段话"
-        />
-      </label>
+      <details className="worksheet-editor-task-desc-details">
+        <summary>
+          <span>任务说明</span>
+          <em>{typeof node.data.description === 'string' && node.data.description.trim() ? '已填写' : '选填'}</em>
+        </summary>
+        <label className="worksheet-editor-task-desc-field">
+          <textarea
+            className="worksheet-editor-task-desc"
+            rows={2}
+            value={typeof node.data.description === 'string' ? node.data.description : ''}
+            onChange={event => onDescriptionChange(event.target.value)}
+            placeholder="例如：阅读材料后，完成下面的问题。学生会看到这段话。"
+          />
+        </label>
+      </details>
 
       <div className="worksheet-editor-task-body">
         {/*

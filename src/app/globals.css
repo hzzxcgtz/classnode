@@ -3592,6 +3592,50 @@ tr:hover td {
   margin-bottom: 16px;
 }
 
+.worksheet-editor-task-desc-details {
+  margin: -4px 0 16px;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.worksheet-editor-task-desc-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 8px 2px;
+  color: #526579;
+  font-size: 0.75rem;
+  font-weight: 650;
+  cursor: pointer;
+  list-style: none;
+}
+
+.worksheet-editor-task-desc-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.worksheet-editor-task-desc-details > summary::before {
+  content: '＋';
+  color: #8a9aab;
+  font-size: 0.75rem;
+}
+
+.worksheet-editor-task-desc-details[open] > summary::before {
+  content: '−';
+}
+
+.worksheet-editor-task-desc-details > summary em {
+  color: #94a3b8;
+  font-size: 0.688rem;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.worksheet-editor-task-desc-details .worksheet-editor-task-desc-field {
+  margin: 0;
+  padding: 2px 0 12px;
+}
+
 .worksheet-editor-task-desc {
   width: 100%;
   box-sizing: border-box;
@@ -4431,7 +4475,7 @@ tr:hover td {
 /* 每个空的答案/评分标准独占卡片第三行；长内容不再挤压作答方式与评分方式。 */
 .worksheet-editor-fill-answer-field {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   margin-top: 10px;
@@ -4447,9 +4491,15 @@ tr:hover td {
   white-space: nowrap;
 }
 
-.worksheet-editor-fill-answer-field .input {
-  flex: 1 1 auto;
+.worksheet-editor-fill-answer-editor {
   min-width: 0;
+}
+
+.worksheet-editor-fill-answer-editor .input { width: 100%; }
+
+.worksheet-editor-fill-answer-score {
+  padding-left: 10px;
+  border-left: 1px solid #e2e8f0;
 }
 
 .worksheet-editor-fill-grading-row {
@@ -4581,38 +4631,42 @@ tr:hover td {
   outline-offset: 1px;
 }
 
-/* ★ 2026-10-05（教师）：「这两个能不能有点区分度？UI要优化一下」
-   填空题空卡片里的**两排**（作答方式 / 评分方式）原来共用上面那一套药丸样式 ——
-   从形状上完全分不出哪排是哪排。⇒ 评分方式改**页签**：
-   没有轨道、没有白药丸，选中 = 蓝字加粗 + 底部 2px 蓝线；作答方式仍留药丸。
-   ⚠️ 区分度由**形态**给，不靠颜色：本产品只有一个主操作色
-     （`design/teacher-ui-system-v2.md`「同一个产品只有一个主操作色」），
-     再上一个强调色会立刻出跳。
-   ⚠️ 选中态那条选择器**必须带 `label.is-selected`**（三个类）：
-     只写 `.is-underline label > span` 的话，它与上面药丸的选中态**权重相同**
-     （都是两个类两个元素），只靠"写在后面"决定胜负 —— 文件一重排就静默失效。 */
-.worksheet-editor-mode-tabs.is-underline {
+/* 评分方式用独立的细描边胶囊；上方作答方式仍是共用底槽的分段胶囊。 */
+.worksheet-editor-mode-tabs.is-scoring-pills {
   grid-auto-columns: auto;
-  gap: 16px;
+  gap: 6px;
   padding: 0;
   border-radius: 0;
   background: none;
 }
 
-.worksheet-editor-mode-tabs.is-underline label > span {
-  min-height: 0;
-  padding: 2px 0 7px;
-  border-radius: 0;
-  border-bottom: 2px solid transparent;
+.worksheet-editor-mode-tabs.is-scoring-pills label > span {
+  min-height: 28px;
+  padding: 3px 11px;
+  border: 1px solid #d3deea;
+  border-radius: 999px;
   background: transparent;
 }
 
-.worksheet-editor-mode-tabs.is-underline label.is-selected > span {
-  border-bottom-color: var(--primary);
-  background: transparent;
+.worksheet-editor-mode-tabs.is-scoring-pills label.is-selected > span {
+  border-color: var(--primary-border);
+  background: var(--primary-light);
   color: var(--primary-dark);
   font-weight: 700;
   box-shadow: none;
+}
+
+@media (max-width: 720px) {
+  .worksheet-editor-fill-answer-field {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .worksheet-editor-fill-answer-score {
+    grid-column: 2;
+    padding-left: 0;
+    border-left: 0;
+  }
 }
 
 .worksheet-editor-inline-word-field {
@@ -6358,22 +6412,32 @@ tr:hover td {
 }
 
 .worksheet-editor-canvas .worksheet-editor-task-head {
-  padding: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #f8fafc;
+  margin-bottom: 8px;
+  padding: 0 0 12px;
+  border: 0;
+  border-bottom: 1px solid #e2e8f0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .worksheet-editor-canvas .worksheet-editor-task-desc-field {
-  margin-bottom: 18px;
+  margin-bottom: 0;
 }
 
 /* ⊘ ★ 2026-10-05（教师）：「这根线去掉」—— 这是**第二处**蓝竖条（第一处在列表视图，
    已随 `[data-expanded='1']` 那次一并删掉）：聚焦模式（「编辑题目」那一屏）自己还有一份。
    去掉左侧那 4px，卡片仍靠 `--primary-border` + 投影与别的题区分开。 */
 .worksheet-editor-canvas .worksheet-editor-question.is-focused {
-  border: 1px solid var(--primary-border);
-  box-shadow: 0 10px 26px rgba(var(--primary-focus-rgb), 0.07);
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+.worksheet-editor-question.is-focused > .worksheet-editor-question-head {
+  margin-bottom: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f4f7fa;
 }
 
 .worksheet-editor-question.is-focused .worksheet-editor-question-summary {
@@ -6434,13 +6498,13 @@ tr:hover td {
 .worksheet-editor-question-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 0;
 }
 
 .worksheet-editor-question-section {
-  padding: 15px 16px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  padding: 20px 4px 4px;
+  border: 0;
+  border-radius: 0;
   background: #fff;
 }
 
@@ -6449,12 +6513,11 @@ tr:hover td {
    ⇒ 两块原来几乎是同一个色（`#fbfdff` 与 `#f8fbff`，差 2–3 个数），**等于没区分**。现在：
      · 题目编辑区（`.is-prompt`）= **白**（内容表面，教师大部分时间在这里写字）
      · 评分区（`.is-grading`）= **中性浅灰蓝**（设置性质的区域，退到后面）
-     · 灰底上那张「得分规则」卡还是白的（`.worksheet-editor-points`）⇒ 自然浮起来，
-       于是同一张卡里读得出三层：题目 → 评分 → 得分规则。
+     · 分值输入自身使用白色编辑表面，但不再包一层「得分规则」卡，避免卡片套卡片。
+       于是同一页只保留两层：题目与作答 → 自动评分。
    ⚠️ 两个色都取自设计令牌那一族（白 / `--primary` 系的极浅档），不引入新的色相 ——
       「清爽、不出跳」的落点就是**明度差**，不是饱和度。 */
 .worksheet-editor-question-section.is-prompt {
-  border-color: #e2e8f0;
   background: #fff;
 }
 
@@ -6466,9 +6529,13 @@ tr:hover td {
    ⇒ 开关与设置合成一张卡（用的是 `.is-grading` 那一套），`is-mode` 整个删掉。 */
 
 
-/* 评分区：与上面的题目区**明显不同档**的浅灰蓝（见 `.is-prompt` 上面那段）。 */
+/* 评分区连续接在题目区下方：只用底色与上边线分层，不再套成另一张大卡。 */
 .worksheet-editor-question-section.is-grading {
-  border-color: #dbe3ec;
+  margin-top: 16px;
+  padding: 18px 16px;
+  border: 0;
+  border-top: 1px solid #dbe3ec;
+  border-radius: 0;
   background: #f4f7fa;
 }
 
@@ -7619,48 +7686,14 @@ tr:hover td {
   box-shadow: 0 0 0 3px rgba(var(--primary-focus-rgb), 0.16);
 }
 
-/* 分值不再是两个孤立的小框，而是一张完整的得分规则卡。 */
+/* 分值区不再另套一张卡：外层靠标题和留白组织，两项分值自身是可编辑表面。 */
 .worksheet-editor-points {
   display: block;
   margin: 0;
-  padding: 14px;
-  border: 1px solid #dbe3ee;
-  border-radius: 9px;
-  background: #fff;
-}
-
-.worksheet-editor-points-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 10px;
-}
-
-.worksheet-editor-points-head strong,
-.worksheet-editor-points-head span {
-  display: block;
-}
-
-.worksheet-editor-points-head strong {
-  color: #1e293b;
-  font-size: 0.813rem;
-}
-
-.worksheet-editor-points-head div > span {
-  margin-top: 2px;
-  color: #64748b;
-  font-size: 0.75rem;
-}
-
-.worksheet-editor-points-head > span {
-  flex: 0 0 auto;
-  padding: 3px 7px;
-  border-radius: 6px;
-  background: #f2f5f8;
-  color: var(--primary-dark);
-  font-size: 0.688rem;
-  font-weight: 700;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .worksheet-editor-points-grid {

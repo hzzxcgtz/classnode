@@ -12,14 +12,15 @@ function node(data: Record<string, unknown>, type = 'short-answer'): QuestionNod
   return { id: 'q1', type, prompt: '说明理由', inputMode: 'keyboard', data, children: [] } as QuestionNode;
 }
 
-test('AI 评分对问答、绘图和关闭本地判分的普通填空生效，并归一化满分', () => {
+test('AI 评分对问答、绘图生效，填空题则受题目级自动评分总开关控制', () => {
   assert.deepEqual(aiScoringConfigOf(node({ aiScoringEnabled: true, aiScoringMaxScore: 5, aiScoringCriteria: ' 要点 ' })), {
     enabled: true, maxScore: 5, unit: '分', criteria: '要点',
   });
   assert.equal(aiScoringConfigOf(node({ aiScoringEnabled: true }, 'single-choice')).enabled, false);
   assert.equal(aiScoringConfigOf(node({ aiScoringEnabled: true }, 'fill-blank')).enabled, false,
     '普通填空仍开着本地自动判分时不能同时启用 AI 评分');
-  assert.equal(aiScoringConfigOf({ ...node({ aiScoringEnabled: true }, 'fill-blank'), autoGrade: false }).enabled, true);
+  assert.equal(aiScoringConfigOf({ ...node({ aiScoringEnabled: true }, 'fill-blank'), autoGrade: false }).enabled, false,
+    '填空题关闭总开关后，旧的 AI 设置也不能继续评分');
   assert.equal(aiScoringConfigOf({ ...node({ aiScoringEnabled: true }, 'choice-blank'), autoGrade: false }).enabled, false,
     '选择填空仍是客观题，不进入 AI 评分');
   assert.equal(aiScoringConfigOf(node({ aiScoringEnabled: true, aiScoringMaxScore: 0 })).maxScore, 10);

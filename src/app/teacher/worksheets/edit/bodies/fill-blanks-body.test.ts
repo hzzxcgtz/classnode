@@ -74,24 +74,25 @@ test('★ 那几处提示语是**同一句**（同一份事实不许有两份拷
   assert.ok(!card.includes('顿号、逗号'), '还有一处把分隔符**写死**在提示语里');
 });
 
-test('★ 填空题的答案住在**每张空卡片里**（教师 2026-10-05 裁定 A），且不许有第二个入口', () => {
-  // 教师最新裁定：答案仍属于这张空卡片，但要放到最下面的第三行独立编辑。
+test('★ 填空题的答案住在每张空卡片里，并受题目级自动评分总开关控制', () => {
   const bodySrc = body(BODY);
   const card = body(CARD);
 
   assert.match(bodySrc, /\bworksheet-editor-fill-answer-field\b/, '空卡片里没有答案格');
   assert.match(bodySrc, /writeFillAnswers\(/, '答案没有按原来那个 nested 形状写回（存储形状一个字都不该变）');
+  assert.match(bodySrc, /\{gradingEnabled && <div\s+className="worksheet-editor-fill-answer-field"/, '答案行没有受总开关控制');
+  assert.match(bodySrc, /node\.type === 'fill-blank' && gradingEnabled && \(/, '逐空评分方式没有受总开关控制');
 
   // 🔴 反面：题目卡里那个「标准答案」网格**不许回来** —— 同一份答案两个编辑入口就是分叉，
   //    而且那一块住在 `{gradedOn && …}` 里（只有打开自动评分才看得见），
   //    而每个空都能选「AI 评分」，那种情况恰恰最需要改答案。
   assert.ok(!card.includes('FillBlanksBody'), '「标准答案」那块又回来了 —— 答案会有两个编辑入口');
   assert.ok(!card.includes('每个空可以填多个可接受答案'), '那句说明被抄回题目卡了（应当在空卡片下方那一处）');
-  // 🔴 连带：那句「自动评分已关闭，正确答案暂时隐藏」对填空题不再成立（答案一直可编辑）。
+  // 题目卡上的统一说明仍由总开关区域承担，不再在各空下方重复。
   assert.match(
     card,
     /!gradedOn && isGradedQuestionType\(node\.type\) && !isBlankType/,
-    '填空题又被算进「正确答案暂时隐藏」那句里了 —— 而它的答案现在一直可编辑',
+    '填空题又被算进额外的答案隐藏提示，页面会重复说明总开关状态',
   );
 });
 
@@ -100,36 +101,32 @@ test('★ 逐空设置是三行：作答方式 → 评分方式 → 答案，分
   const modeAt = bodySrc.indexOf('worksheet-editor-fill-mode-head');
   const gradingAt = bodySrc.indexOf('worksheet-editor-fill-grading-row');
   const answerAt = bodySrc.indexOf('worksheet-editor-fill-answer-field');
+  const scoreAt = bodySrc.indexOf('worksheet-editor-fill-answer-score');
 
   assert.ok(modeAt >= 0 && gradingAt > modeAt && answerAt > gradingAt, '三行的渲染顺序不对');
+  assert.ok(scoreAt > answerAt, '分值输入必须移到答案行末尾，不能继续挤在评分方式一行');
   assert.match(bodySrc, /pointsUnit === '分' \? '分值' : '奖励数量'/, '分数档与图标奖励档没有使用合适的名称');
   assert.match(bodySrc, /<b>\{pointsUnit\}<\/b>/, '分值输入框后没有显示「分 / 座奖杯」等单位');
 });
 
-test('★ 两排互斥选择必须有**区分度**：作答方式 = 药丸，评分方式 = 页签', () => {
-  // ★ 2026-10-05（教师）：「这两个能不能有点区分度？UI要优化一下」
-  // —— 两排原来共用同一套药丸样式，形状上完全分不出哪排是哪排。
+test('★ 两排互斥选择必须有区分度：作答方式 = 分段胶囊，评分方式 = 描边胶囊', () => {
   const bodySrc = body(BODY);
 
-  // 🔴 有且只有**一排**带页签变体（评分方式）；作答方式必须仍是纯净的药丸那一支。
-  //    两边一旦都用（或都不用）同一个类，两排就又长得一模一样 —— 而屏幕上看不出"坏"，
-  //    只是教师又说一句「没区分度」。
   assert.equal(
-    (bodySrc.match(/worksheet-editor-mode-tabs is-underline/g) ?? []).length, 1,
-    '评分方式那一排的页签变体不见了（或不止一处）—— 两排又会长得一样',
+    (bodySrc.match(/worksheet-editor-mode-tabs is-scoring-pills/g) ?? []).length, 1,
+    '评分方式那一排必须且只能使用一次描边胶囊变体',
   );
   assert.equal(
     (bodySrc.match(/className="worksheet-editor-mode-tabs"/g) ?? []).length, 1,
     '作答方式那一排应当仍是**独占**药丸样式的那一个',
   );
 
-  // 样式必须在，且选中态那条要有**三个类**（否则压不过药丸的选中态，见 CSS 里的注释）。
   const css = fs.readFileSync(GLOBALS, 'utf8');
-  assert.match(css, /\.worksheet-editor-mode-tabs\.is-underline \{/, 'is-underline 没有定义样式');
+  assert.match(css, /\.worksheet-editor-mode-tabs\.is-scoring-pills \{/, '评分方式描边胶囊没有定义样式');
   assert.match(
     css,
-    /\.worksheet-editor-mode-tabs\.is-underline label\.is-selected > span/,
-    '选中态那条选择器少了 `label.is-selected` —— 它与药丸那条权重相同，会随文件重排静默失效',
+    /\.worksheet-editor-mode-tabs\.is-scoring-pills label\.is-selected > span/,
+    '描边胶囊缺少独立的选中态',
   );
 });
 

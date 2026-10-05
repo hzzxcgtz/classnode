@@ -446,6 +446,7 @@ export function WorksheetQuestionList({
         const gradeState = interactive ? gradeStates?.[node.id] : undefined;
         const aiReferenceScore = interactive ? aiReferenceScores?.[node.id] : undefined;
         const mixedFillScoring = node.type === 'fill-blank'
+          && node.autoGrade !== false
           && hasExplicitFillGrading(fillSettingsFor(node, promptRuns))
           && Boolean(aiReferenceScore);
         /**

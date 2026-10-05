@@ -389,7 +389,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
   const aiScoringCriteria = typeof node.data.aiScoringCriteria === 'string'
     ? node.data.aiScoringCriteria : '';
   const gradingStatus = explicitFillScoring
-    ? `混合评分 · 最高 ${fillTotals.total} ${pointsUnit}`
+    ? (gradedOn ? `混合评分 · 最高 ${fillTotals.total} ${pointsUnit}` : '仅统计作答')
     : aiScoringEnabled
     ? `AI 评分 · 满额 ${aiScoringMaxScore} ${pointsUnit}`
     : isGradedQuestionType(node.type)
@@ -496,7 +496,8 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
       {/* ⚠️ `(<>` 后面**不能**多一个 `)`：多了会被 JSX 当成**文本节点**渲染出一个孤零零的
           `)`，而 tsc / eslint / 用例**全都不会红**（语法合法）。教师 2026-09-26 在真机上
           就是这么发现的 —— 见那一天的提交。 */}
-      {expanded && (<div className="worksheet-editor-question-form">
+      {expanded && (<>
+      <div className="worksheet-editor-question-form">
       {/*
         ★ 2026-09-27（教师裁定）：编辑页从「五张平级卡片」改成**两层** ——
 
@@ -526,8 +527,8 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
       <section className="worksheet-editor-question-section is-prompt">
         <div className="worksheet-editor-section-head">
           <div>
-            <h3>题目内容</h3>
-            <p>写清学生需要完成什么，题干会直接显示在学生端。</p>
+            <h3>题目与作答</h3>
+            <p>编辑题目内容，并设置学生需要完成的作答项。</p>
           </div>
           <span>必填</span>
         </div>
@@ -590,7 +591,6 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
               <ChoiceBlankSetup
                 node={node}
                 onDataChange={onDataChange}
-                onAutoGradeChange={onAutoGradeChange}
                 fullPoints={shownPoints.full}
                 pointsUnit={pointsUnit}
               />
@@ -786,9 +786,8 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
           </div>
         )}
 
-        {/* ⊘ 2026-10-05（教师裁定 A）：这句对填空题**不再成立** —— 每个空的答案搬进了
-            「填空与作答设置」，那里一直可编辑（关掉自动评分也不隐藏）。
-            判断题仍走这一句（它的标准答案确实住在 `gradedOn` 门里）。 */}
+        {/* 填空题的答案由下方总开关统一显隐，关闭状态已在「自动评分」区说明；
+            这里的额外提示只服务答案控件仍位于本区的其它客观题，避免同一句出现两次。 */}
         {!gradedOn && isGradedQuestionType(node.type) && !isBlankType && (
           <p className="worksheet-editor-answer-disabled">
             自动评分已关闭，正确答案暂时隐藏；题面与选项仍可继续编辑，原有设置都保留着。
@@ -805,50 +804,36 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
         是说不通的。开关自己的位置就是状态，标题里不再写「已开启 / 已关闭」。
         ⚠️ 关掉时**下面整块不渲染**（教师：「如果不是其他选项全部隐藏，就不用显示了」）。
 
-        ★ 2026-10-05（教师裁定 A）：教师问「这个自动评分的开关到底控制什么？我的理解是，
-        关掉以后上面的答案也不用设置、自动评分的方式也不用选择，是这样的吗」。
-        查实之后：**对填空题，这个开关已经不通电了** ——
-          · 服务端 `grade()` 见到逐空设置（`explicitFillGrading` 非空）就走**逐空那条分支**，
-            根本不看 `node.autoGrade` ⇒ 关掉它，选了「本地评分」的空照样判分给分；
-          · 校验也一样走逐空那条（「选了本地评分的空必须填答案」），不看开关；
-          · 🔴 而**看板 / 矩阵 / 抽屉仍然看它**（`matrix-overlay` / `worksheet-drawer`）⇒
-            会出现最坏的一种：库里有分、学生那边看到对错与星星，教师那张卡上却写着「教师查看」。
-        ⇒ 裁定 A：**填空题设过逐空评分方式之后不显示这个开关**（`explicitFillScoring`）。
-          卡片本身**保留** —— 它是逐空设置的**合计**（最高 N + 每一档的账）。
-        ⚠️ 于是卡片内容不再挂在 `gradedOn` 上：开关都没了，`autoGrade` 可能是旧值
-          （新题默认就是 `false`，见 `worksheet-editor-core.ts` 的 `createQuestion`）。
+        ★ 2026-10-05（教师最终裁定）：填空题的「自动评分」是**整题总开关**。
+        开启时显示上方每个空的评分方式、答案 / 评分标准与分值；关闭时隐藏并停止
+        本地和 AI 评分，但已有设置保留，重新开启即可恢复。
+        🔴 这不是纯显隐：服务端 `grade()` 与 AI 评分入口也必须先读 `node.autoGrade`，
+        否则教师看到关闭，学生提交后仍会得到分数。
       */}
-      {isGradedQuestionType(node.type) && (!explicitFillScoring || fillTotals.auto > 0) && (
+      {isGradedQuestionType(node.type) && (
         <section className="worksheet-editor-question-section is-grading">
           <div className="worksheet-editor-section-head">
             <div>
               <h3>自动评分</h3>
               <p>{explicitFillScoring
-                ? '每个空评不评、怎么评，在上面的「填空与作答设置」里各自选择；这里是它的合计。'
-                : '开启后系统按标准答案判对错并计分；关掉只统计作答进度，不计分。'}</p>
+                ? '这是填空题的总开关。开启后显示每个空的评分方式、答案和分值；关闭后只统计作答。'
+                : '系统会根据正确答案自动判分。关闭后仍记录作答，但不计分。'}</p>
             </div>
             <div className="worksheet-editor-head-actions">
               {/* ⚠️ 徽章里**不写「自动评分」** —— 卡片标题就是它（原来那句
                   `gradingStatus`（「自动评分 · 最高 1 颗星星」）是给**折叠态那一行**用的，
                   那里没有标题，所以不能直接搬过来）。 */}
-              {/* ⚠️ 逐空那一路没有开关可看，徽章就跟着 `explicitFillScoring` 亮（见上）。 */}
-              {(gradedOn || explicitFillScoring) && <span className="worksheet-editor-points-badge">最高 {explicitFillScoring ? fillTotals.auto : maximumPoints} {pointsUnit}</span>}
-              {/* ⊘ 裁定 A：设过逐空评分方式之后**不画**这个开关 —— 它已经不通电，留着只会骗人。 */}
-              {!explicitFillScoring && <HeadSwitch
+              {gradedOn && <span className="worksheet-editor-points-badge">本题满分 {explicitFillScoring ? fillTotals.total : maximumPoints} {pointsUnit}</span>}
+              <HeadSwitch
                 checked={gradedOn}
-                onChange={(enabled) => {
-                  if (enabled && node.type === 'fill-blank' && node.data.aiScoringEnabled === true && !explicitFillScoring) {
-                    onDataChange({ aiScoringEnabled: false });
-                  }
-                  onAutoGradeChange(enabled);
-                }}
+                onChange={onAutoGradeChange}
                 label="自动评分"
                 title={gradedOn ? '已开启：系统按标准答案判对错并计分' : '已关闭：只统计作答进度，不计分'}
-              />}
+              />
             </div>
           </div>
 
-          {(gradedOn || explicitFillScoring) && (<>
+          {gradedOn && (<>
 
           {isMultipleChoice(node) && (
             <div className="worksheet-editor-block">
@@ -888,10 +873,10 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
           <div className="worksheet-editor-block">
             <div className="worksheet-editor-block-head">
               <div>
-                <h4>得分规则</h4>
+                <h4>分值设置</h4>
                 <p>{isBlankType
                   ? '每个空的值在上面的「填空与作答设置」里各自设置，这里是它的合计。'
-                  : '全部答对与只答对一部分时，各自能得到多少。'}</p>
+                  : `设置完全正确和部分正确时获得的${pointsUnit}。`}</p>
               </div>
             </div>
             {!isBlankType ? (
@@ -960,7 +945,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
         ⚠️ 于是 `isGradedQuestionType` 这两支现在**各只有一张卡**：
           客观题 = 「自动评分」，主观题 = 「AI 评分」。
       */}
-      </div>)}
+      </div></>)}
 
       {/*
         ★ 2026-09-26（教师修正）：「折叠只是指折叠所有**设置项**，题干和选项还是要保留的，
@@ -1195,13 +1180,6 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, 
 
   return (
     <div className="worksheet-editor-points">
-      <div className="worksheet-editor-points-head">
-        <div>
-          <strong>得分规则</strong>
-          <span>留空时跟随学习单的默认分值，也可以为本题单独设置。</span>
-        </div>
-        <span>最高 {fullText || inheritedPoints.full} {pointsUnit}</span>
-      </div>
       <div className={`worksheet-editor-points-grid${showHalf ? '' : ' is-single'}`}>
         <label className="worksheet-editor-points-field">
           <span>
@@ -1299,7 +1277,7 @@ function ToleranceRow({ node, onToleranceChange }: {
     <label className="worksheet-editor-tolerance">
       <span>
         <strong>部分得分条件</strong>
-        <em>只有部分正确分值大于 0 时才会使用此条件。</em>
+        <em>学生达到该条件时获得“部分正确”的分值。</em>
       </span>
       <select
         className="input worksheet-editor-tolerance-select"

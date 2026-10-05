@@ -85,7 +85,16 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
   const alphas = surfaceAlphas(settings.surfaceOpacity);
   const stageStyle = {
     width: orientation === 'portrait' ? STUDENT_STAGE_WIDTH : STUDENT_LANDSCAPE_WIDTH,
-    height: orientation === 'portrait' ? STUDENT_LANDSCAPE_WIDTH : STUDENT_STAGE_WIDTH,
+    /*
+      ★ 2026-10-05（教师）：「垂直滚动条只需要保留一个。」
+      🔴 这里原来是写死的 `height`（竖屏 1024 / 横屏 768）+ 舞台自己 `overflow-y: auto`
+         ⇒ 弹窗里两条垂直滚动条（舞台一条、外面 `.worksheet-editor-preview-scroll` 一条）。
+      ⇒ 改成 `minHeight`：**设备视口高度是下限**（短卷仍画出一个完整的设备框），
+         内容更高时舞台跟着长高，滚动只由弹窗那一个容器负责。
+      ⚠️ 宽度仍然是写死的设备宽度 —— 那一条才是「教师看到的就是学生看到的宽度」所依赖的，
+         一个字都没动（见文件头那两条刻意的取舍）。
+    */
+    minHeight: orientation === 'portrait' ? STUDENT_LANDSCAPE_WIDTH : STUDENT_STAGE_WIDTH,
     '--ws-card-alpha': String(alphas.card),
     '--ws-card-active-alpha': String(alphas.cardActive),
     '--ws-surface-alpha': String(alphas.container),

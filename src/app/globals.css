@@ -5903,13 +5903,21 @@ tr:hover td {
      真实看到的窄几十像素 —— 而「教师看到的就是学生看到的那个宽度」正是这个弹窗的全部价值。 */
   padding: 24px 0 0;
   box-sizing: border-box;
-  overflow-y: auto;
+  /* ★ 2026-10-05（教师）：「垂直滚动条只需要保留一个。」
+     🔴 这里原来还有一条 `overflow-y: auto`，配合组件里写死的 `height`（768/1024）
+        ⇒ 弹窗里**两条垂直滚动条**：舞台自己一条、外面 `.worksheet-editor-preview-scroll`
+        一条。而两层都设了 `overscroll-behavior: contain`，外面那条几乎滚不动
+        （只有光标落在舞台外的内边距上才行）。
+     ⇒ 舞台不再自己滚：高度由组件给成 `minHeight`（设备视口高度是**下限**，内容更高就长高），
+        滚动交给弹窗那一个容器。宽仍然是写死的设备宽度（那才是「教师看到的就是学生看到的
+        那个宽度」所依赖的东西 —— 见 `preview-modal.tsx` 的文件头）。 */
   flex: 0 0 auto;
   border-radius: 14px;
   background: #fff;
   border: 1px solid #e2e8f0;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
-  overscroll-behavior: contain;
+  /* ⚠️ 那一行 `overscroll-behavior: contain` 跟着 `overflow-y: auto` 一起删掉了：
+     这个盒子已经不再滚动，留着它只会让人以为滚动还在这里。 */
 }
 
 .worksheet-editor-preview-stage[data-has-background='1'][data-preview-orientation='landscape'] {

@@ -1538,15 +1538,27 @@
 }
 
 .zoneGrid {
-  display: flex;
-  flex-wrap: wrap;
+  /*
+    ★ 2026-10-05（教师）：「三个容器框横向排列」。
+    🔴 原来这里是 `display: flex` + `.zone { flex: 1 1 44% }` ⇒ **无论多宽都只排两列**，
+       第三个框孤零零占满一整行（教师给的那张截图就是这个形状：透明/半透明并排，不透明另起一行）。
+    ⇒ 改成 `auto-fit` 网格：**这一行放得下几个就放几个** —— iPad 竖屏那个 768px 的舞台里
+       三个框正好并排；窄到放不下才换行（手机上仍是一列/两列，不会把框压成一条）。
+  */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
   margin-top: 10px;
 }
 
 .zone {
-  flex: 1 1 44%;         /* 窄屏两列，宽屏也是两列 —— 框里还要放条目，别太细 */
-  min-width: 140px;
+  /*
+    ⚠️ 这里**不能**再写 `flex: 1 1 44%`（父级已经不是 flex 了；留着会让人以为它还在生效）。
+    🔴 `min-width: 0` 是网格子项必须的：默认值 `auto` 让**内容**决定列宽 —— 一个长条目
+       会把那一列撑破、把别的列挤窄。原来 flex 那版写的 `min-width: 140px` 是「别太细」，
+       那个意图现在由上面 `minmax(150px, …)` 承担（列最小 150px）。
+  */
+  min-width: 0;
   padding: 10px;
   border: 1px dashed #cbd5e1;
   border-radius: 12px;

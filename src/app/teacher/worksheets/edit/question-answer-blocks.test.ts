@@ -153,6 +153,25 @@ test('🔴 并排的两栏必须**按权重压过**「上下两块之间的分�
   assert.ok(classes >= 3, `这条重置只有 ${classes} 个类选择器，压不过通用规则的两个类`);
 });
 
+test('★ 填空题设过逐空评分方式后**不显示**逐题「自动评分」开关（裁定 A）', () => {
+  // 教师 2026-10-05 问「这个开关到底控制什么」→ 查实它对填空题**已经不通电**
+  //（服务端 `grade()` 见到逐空设置就走逐空那条分支，不看 `node.autoGrade`；
+  //  而看板/矩阵/抽屉仍然看它 ⇒ 会出现「库里有分、教师卡上写着教师查看」）。
+  // ⇒ 裁定 A：设过逐空评分方式之后不画这个开关；卡片保留为**逐空设置的合计**。
+  const card = body(CARD);
+  assert.match(card, /\{!explicitFillScoring && <HeadSwitch/, '开关没有挂在「未设逐空评分方式」这个条件上');
+  assert.match(
+    card,
+    /\{\(gradedOn \|\| explicitFillScoring\) && \(<>/,
+    '卡片内容还挂在 gradedOn 上 —— 开关都没了，autoGrade 可能是旧值（新题默认 false），内容会整块消失',
+  );
+  assert.match(
+    card,
+    /\(gradedOn \|\| explicitFillScoring\) && <span className="worksheet-editor-points-badge"/,
+    '徽章条件没跟着改（无开关时那张卡会连「最高 N」都没有）',
+  );
+});
+
 test('★ 选项行：答案设置（圆点/勾选框）在**行尾**，字母留在行首，文案跟着说「右侧」', () => {
   // ★ 2026-10-05（教师）：「答案的设置统一移动到最右侧」。
   // 这一条钉两件事，它们坏掉的方式**不一样**：

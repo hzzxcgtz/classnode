@@ -20,6 +20,11 @@ const BODY = fs.readFileSync(path.join(HERE, 'fill-blanks-body.tsx'), 'utf8');
 const CARD = fs.readFileSync(path.join(HERE, '..', 'question-card.tsx'), 'utf8');
 // ⚠️ 本文件在 `bodies/` 里，比 `edit/` 深一级 ⇒ 少一个 `app/` 段（`../../../../globals.css` = src/app/globals.css）。
 const GLOBALS = path.resolve(HERE, '../../../../globals.css');
+// ⚠️ 跨工程读服务端那一份校验（本仓有先例：`analysis-gate-parity.test.ts` / `worksheet-heading-parity.test.ts`）。
+// ⚠️ 层级要数清（本文件在 `bodies/` 里，比 `edit/` 深一级）：
+//    bodies → edit → worksheets → teacher → app → src → 仓根，所以是**六个** `..`。
+//    （同一个坑我在这个文件里踩了两次：先是 GLOBALS 少一层，再是这一行少一层。）
+const SERVER_QUESTIONS = path.resolve(HERE, '../../../../../../server/src/services/worksheet-questions.ts');
 
 /** 块注释（含 JSX 的 `{/* … *\/}`）与整行 `//` 注释。 */
 function stripComments(source: string): string {
@@ -99,6 +104,15 @@ test('★ 逐空设置是三行：作答方式 → 评分方式 → 答案，分
   assert.ok(modeAt >= 0 && gradingAt > modeAt && answerAt > gradingAt, '三行的渲染顺序不对');
   assert.match(bodySrc, /pointsUnit === '分' \? '分值' : '奖励数量'/, '分数档与图标奖励档没有使用合适的名称');
   assert.match(bodySrc, /<b>\{pointsUnit\}<\/b>/, '分值输入框后没有显示「分 / 座奖杯」等单位');
+});
+
+test('★ 服务端那条校验文案点名的档，必须与界面上那一档**同一个词**', () => {
+  // 🔴 教师 2026-10-05 把逐空那一档从「自动评分」改名成「本地评分」，而服务端有一条
+  //    **会拒绝保存**的校验里也点着这一档的名字。两处不同名 = 报错指着一个屏幕上
+  //    不存在的选项，教师只能自己猜是哪一栏（本仓明令禁止的那类文案）。
+  const server = fs.readFileSync(SERVER_QUESTIONS, 'utf8');
+  assert.match(server, /选择了本地评分，请填写标准答案/, '服务端那条报错没跟上界面改名');
+  assert.ok(!server.includes('选择了自动评分'), '服务端仍在用旧名「自动评分」指那一档');
 });
 
 test('★ 填空题**没有**整题 AI 块（裁定 B）：标准只在每一空，整块只服务问答 / 绘图', () => {

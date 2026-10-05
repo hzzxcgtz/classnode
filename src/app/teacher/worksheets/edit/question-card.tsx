@@ -804,20 +804,37 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
         因为**开关关着时这张卡也还在**（开关得有人按），而一张只剩标题的卡叫「…设置」
         是说不通的。开关自己的位置就是状态，标题里不再写「已开启 / 已关闭」。
         ⚠️ 关掉时**下面整块不渲染**（教师：「如果不是其他选项全部隐藏，就不用显示了」）。
+
+        ★ 2026-10-05（教师裁定 A）：教师问「这个自动评分的开关到底控制什么？我的理解是，
+        关掉以后上面的答案也不用设置、自动评分的方式也不用选择，是这样的吗」。
+        查实之后：**对填空题，这个开关已经不通电了** ——
+          · 服务端 `grade()` 见到逐空设置（`explicitFillGrading` 非空）就走**逐空那条分支**，
+            根本不看 `node.autoGrade` ⇒ 关掉它，选了「本地评分」的空照样判分给分；
+          · 校验也一样走逐空那条（「选了本地评分的空必须填答案」），不看开关；
+          · 🔴 而**看板 / 矩阵 / 抽屉仍然看它**（`matrix-overlay` / `worksheet-drawer`）⇒
+            会出现最坏的一种：库里有分、学生那边看到对错与星星，教师那张卡上却写着「教师查看」。
+        ⇒ 裁定 A：**填空题设过逐空评分方式之后不显示这个开关**（`explicitFillScoring`）。
+          卡片本身**保留** —— 它是逐空设置的**合计**（最高 N + 每一档的账）。
+        ⚠️ 于是卡片内容不再挂在 `gradedOn` 上：开关都没了，`autoGrade` 可能是旧值
+          （新题默认就是 `false`，见 `worksheet-editor-core.ts` 的 `createQuestion`）。
       */}
       {isGradedQuestionType(node.type) && (!explicitFillScoring || fillTotals.auto > 0) && (
         <section className="worksheet-editor-question-section is-grading">
           <div className="worksheet-editor-section-head">
             <div>
               <h3>自动评分</h3>
-              <p>开启后系统按标准答案判对错并计分；关掉只统计作答进度，不计分。</p>
+              <p>{explicitFillScoring
+                ? '每个空评不评、怎么评，在上面的「填空与作答设置」里各自选择；这里是它的合计。'
+                : '开启后系统按标准答案判对错并计分；关掉只统计作答进度，不计分。'}</p>
             </div>
             <div className="worksheet-editor-head-actions">
               {/* ⚠️ 徽章里**不写「自动评分」** —— 卡片标题就是它（原来那句
                   `gradingStatus`（「自动评分 · 最高 1 颗星星」）是给**折叠态那一行**用的，
                   那里没有标题，所以不能直接搬过来）。 */}
-              {gradedOn && <span className="worksheet-editor-points-badge">最高 {explicitFillScoring ? fillTotals.auto : maximumPoints} {pointsUnit}</span>}
-              <HeadSwitch
+              {/* ⚠️ 逐空那一路没有开关可看，徽章就跟着 `explicitFillScoring` 亮（见上）。 */}
+              {(gradedOn || explicitFillScoring) && <span className="worksheet-editor-points-badge">最高 {explicitFillScoring ? fillTotals.auto : maximumPoints} {pointsUnit}</span>}
+              {/* ⊘ 裁定 A：设过逐空评分方式之后**不画**这个开关 —— 它已经不通电，留着只会骗人。 */}
+              {!explicitFillScoring && <HeadSwitch
                 checked={gradedOn}
                 onChange={(enabled) => {
                   if (enabled && node.type === 'fill-blank' && node.data.aiScoringEnabled === true && !explicitFillScoring) {
@@ -827,11 +844,11 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                 }}
                 label="自动评分"
                 title={gradedOn ? '已开启：系统按标准答案判对错并计分' : '已关闭：只统计作答进度，不计分'}
-              />
+              />}
             </div>
           </div>
 
-          {gradedOn && (<>
+          {(gradedOn || explicitFillScoring) && (<>
 
           {isMultipleChoice(node) && (
             <div className="worksheet-editor-block">

@@ -1478,7 +1478,9 @@ function validateFillBlank(node: QuestionNode, errors: string[]): void {
       for (let index = 0; index < total; index += 1) {
         if (explicit[index]?.gradingMode === 'auto'
             && !acceptableAnswersFor(node.data, index).some(answer => answer.trim())) {
-          errors.push(`填空题第 ${index + 1} 空选择了自动评分，请填写标准答案`);
+          // ⚠️ 这里必须叫「本地评分」：界面上那一档 2026-10-05 已按教师裁定改名
+          //    （`FILL_GRADING_LABELS`）。报错指着一个屏幕上不存在的选项名，教师只能自己猜。
+          errors.push(`填空题第 ${index + 1} 空选择了本地评分，请填写标准答案`);
         }
       }
       return;

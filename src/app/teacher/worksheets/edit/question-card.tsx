@@ -883,7 +883,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                 onPointsChange={onPointsChange}
               />
             ) : (
-              <p className="worksheet-editor-fill-score-summary">逐空设置已启用：自动评分 {fillTotals.auto} {pointsUnit}，AI 评分 {fillTotals.ai} {pointsUnit}，合计 {fillTotals.total} {pointsUnit}。</p>
+              <p className="worksheet-editor-fill-score-summary">逐空设置已启用：按答案判分 {fillTotals.auto} {pointsUnit}，AI 评分 {fillTotals.ai} {pointsUnit}，合计 {fillTotals.total} {pointsUnit}。</p>
             )}
             {/*
               ★ 2026-09-26（教师裁定）：「如果部分给分框内设了非 0 值，则显示判分依据的设置」。

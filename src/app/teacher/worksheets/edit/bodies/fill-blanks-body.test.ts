@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BODY = fs.readFileSync(path.join(HERE, 'fill-blanks-body.tsx'), 'utf8');
 const CARD = fs.readFileSync(path.join(HERE, '..', 'question-card.tsx'), 'utf8');
+// ⚠️ 本文件在 `bodies/` 里，比 `edit/` 深一级 ⇒ 少一个 `app/` 段（`../../../../globals.css` = src/app/globals.css）。
+const GLOBALS = path.resolve(HERE, '../../../../globals.css');
 
 /** 块注释（含 JSX 的 `{/* … *\/}`）与整行 `//` 注释。 */
 function stripComments(source: string): string {
@@ -122,10 +124,30 @@ test('★ 评分方式那一排由**作答方式**决定（手工填写三项 / 
   // 生效值（回退）也要看作答方式，否则选词那一空会渲染成「一个都没选中」。
   assert.match(bodySrc, /allowsAiGrading\(setting\.mode\)/, '生效评分方式的回退没看作答方式');
 
-  // 标签：手工填写时这份文字还要给 AI 当评分依据（叫「评分标准」）；选词时它就是答案。
+  // 标签跟**评分方式**走（教师第二条截图：「手工填写 + 自动评分：答案」「手工填写 + AI 评分：评分标准」）。
   assert.match(
     bodySrc,
-    /\{settings\[index\]\.mode === 'text' \? '评分标准' : '答案'\}/,
-    '答案格的标签没按作答方式分（手工填写该叫「评分标准」）',
+    /\{gradingModeOf\(settings\[index\]\) === 'ai' \? '评分标准' : '答案'\}/,
+    '答案格的标签没跟评分方式走（交给 AI 评的那一空才该叫「评分标准」）',
   );
+});
+
+test('★ 「共用选词」在所有空设置的**下面**（单列），且逐空那一档叫「按答案判分」', () => {
+  // ★ 2026-10-05（教师）：「共用选词还是移到所有空的设置的下面。」
+ //    它同一天早些时候被移到了**右列**（与填空清单左右分栏），教师看过之后改了主意：
+  //    词池是整道题共用的一份，摆右侧会让人以为它只属于最上面那一空。
+  const css = fs.readFileSync(GLOBALS, 'utf8');
+  const at = css.indexOf('.worksheet-editor-choice-blank-setup {');
+  assert.ok(at > 0, 'CSS 里找不到填空设置那个容器');
+  assert.match(
+    css.slice(at, at + 320),
+    /grid-template-columns:\s*minmax\(0, 1fr\)/,
+    '容器不是单列 —— 「共用选词」会回到右列（教师刚说不要那样）',
+  );
+
+  // ★ 同日命名（教师）：「自动评分」是**整体称呼**（按答案自动批 + AI 分析评分都算），
+  //    所以逐空那一档不能也叫「自动评分」——它叫「按答案判分」。
+  const bodySrc = body(BODY);
+  assert.match(bodySrc, /auto: '按答案判分'/, '逐空那一档又叫回「自动评分」了');
+  assert.ok(!/auto: '自动评分'/.test(bodySrc), '逐空那一档与整题那张卡重名了');
 });

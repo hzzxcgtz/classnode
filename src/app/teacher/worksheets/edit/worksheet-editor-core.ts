@@ -59,7 +59,6 @@ import {
 import type { ChoiceOption, QuestionType } from '../../../../lib/worksheet-questions.ts';
 import {
   BLANK_MARK_TEXT,
-  blankCount,
   blanksFromText,
   convertBlankMarks,
   isPlainRuns,
@@ -2095,11 +2094,16 @@ export function scoreSummary(
   let maxScore = 0;
   for (const { node } of items) {
     if (!gradesOnSubmit(node)) continue;
-    const full = displayPoints(node, fallback).full;
-    const slots = (node.type === 'fill-blank' || node.type === 'choice-blank') && node.data.fillScoring === 'per-blank'
-      ? blankCount(readPromptRuns(node.data.promptRuns, node.prompt))
-      : 1;
-    maxScore += full * slots;
+    /*
+      ★ 2026-10-05：**走 `maximumPointsFor`** —— 同一份算术只有一处。
+      原来自带一份 `full × 空数`，两处都会错，而屏幕上只是「页面头的满分比卡片上的小」：
+        · 设过**逐空分值**的填空题（`fillBlankSettings[*].maxScore`）那一份它压根没读
+          ⇒ 头部的满分数与卡片上「本题满分」对不上，而两处都不报错；
+        · 它数空数用的是 `blankCount(promptRuns)` —— **不含表格里的空**（那正是
+          `maximumPointsFor` 存在的理由，见它的注释）。
+      ⚠️ 非填空题型两边完全一致（`maximumPointsFor` 就是 `displayPoints(...).full`）。
+    */
+    maxScore += maximumPointsFor(node, displayPoints(node, fallback).full);
   }
   return { questions: items.length, maxScore };
 }

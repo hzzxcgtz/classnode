@@ -181,6 +181,82 @@ test('★ 评分方式那一排由**作答方式**决定（手工填写三项 / 
   );
 });
 
+test('★ 「分值」那一格只在**真的有人读它**的地方画（选择填空上那一格是死控件）', () => {
+  // ★ 2026-10-05（教师）：「在填空题里，这两个选项是不是就不需要了？」
+  // ⇒ 顺着这句话翻出两处**屏幕上与判分不是同一个数**的地方，这是第一处：
+  //   判分只有填空题走逐空那一支（服务端写死了 `node.type === 'fill-blank'`，
+  //   AI 评分同样只认填空题）⇒ 选择填空的空卡片上那一格填进去**没有任何人读**，
+  //   它的成绩仍按题目级「得分方式 + 分值」发。
+  const bodySrc = body(BODY);
+  assert.match(bodySrc, /const perBlankScoreShown = node\.type === 'fill-blank'/, '那一格又没有按题型收口');
+  assert.match(
+    bodySrc,
+    /\{perBlankScoreShown && gradingModeOf\(settings\[index\]\) !== 'none' && \(/,
+    '「分值」那一格没有受 perBlankScoreShown 控制',
+  );
+  // 🔴 收口的依据是**服务端那一行**：它一改，界面的这条判据就失效（两处必须同一个口径）。
+  const server = fs.readFileSync(SERVER_QUESTIONS, 'utf8');
+  assert.match(
+    server,
+    /const mixedFill = node\.type === 'fill-blank' \? explicitFillGrading\(data\) : \[\];/,
+    '服务端的逐空判分不再限定填空题 —— 界面的收口依据跟着失效',
+  );
+  const serverScoring = fs.readFileSync(path.resolve(HERE, '../../../../../../server/src/services/analysis-scoring.ts'), 'utf8');
+  assert.match(
+    serverScoring,
+    /const fillParts = node\.type === 'fill-blank' && node\.autoGrade !== false/,
+    'AI 评分不再限定填空题 —— 界面的收口依据跟着失效',
+  );
+});
+
+test('★ 旧口径下「分值」显示的是**生效的那个数**，不是写死的 1', () => {
+  // ★ 2026-10-05：第二处。旧口径（按空给分）下服务端算的是 `命中空数 × 题目级满分`
+  //    ⇒ 每一空的生效值就是**题目级分值**，而屏幕上一直写着 1（题级 3 分时屏幕在说谎）。
+  const bodySrc = body(BODY);
+  assert.ok(!bodySrc.includes('maxScore ?? 1'), '那一格又写死显示 1 了（实际按题目级分值发分）');
+  assert.match(bodySrc, /value=\{settings\[index\]\.maxScore \?\? ''\}/, '「留空 = 跟随」没有落到输入框上');
+  assert.match(bodySrc, /placeholder=\{String\(inheritScore\)\}/, '灰字提示的不是那个生效值');
+  assert.match(
+    bodySrc,
+    /const inheritScore = fullPoints > 0 \? fullPoints : 1;/,
+    '缺省值不是「题目级分值」（`worksheet-points-migration.ts` 纪律 1：写它当时实际用的那个数）',
+  );
+  // 🔴 接管逐空评分那一步也**不许**把分值静默改成 1（同一件事的写入侧）。
+  assert.match(bodySrc, /maxScore: setting\.maxScore \?\? inheritScore/, '接管时又会把分值静默改成 1');
+});
+
+test('★「每个空 X × N 空」那句只在**旧口径**下说（接管逐空之后由「本题合计」说）', () => {
+  // 接管之后每个空的分值可能各不相同，这句话还按题目级分值报一个合计数 ⇒
+  // 同一张卡里会出现两个互相打架的数。
+  const bodySrc = body(BODY);
+  assert.match(
+    bodySrc,
+    /\{!explicitGrading && node\.data\.fillScoring === 'per-blank' && fullPoints > 0 && \(/,
+    '「逐空给分…全对最多」没有随逐空设置一起收起',
+  );
+});
+
+test('🔴 旧口径「整题给分」的老题：照实说明 + 一个**明确的**转换按钮（不替教师猜一个数）', () => {
+  // ★ 2026-10-05（教师裁定）：「总开关只需要负责是否自动评分……已经不涉及按整题给的问题」。
+  // 那两个选项已从界面上删掉，但库里还躺着 `fillScoring: 'whole'` 的老题 —— 它们**仍然按
+  // 「全对才给一份分」在给学生发分**。这里钉的是处置方式：
+  //   · **不猜**（`worksheet-points-migration.ts` 纪律 1）：不替教师把整题那一份分摊到每个空上
+  //     —— 摊成几份就凭空改了整题的分，而屏幕上没有任何东西会红；
+  //   · 转化必须由教师按一下按钮**明确**触发，且按钮上写的是「改成逐空给分」。
+  const bodySrc = body(BODY);
+  assert.match(bodySrc, /\{node\.type === 'fill-blank' && !explicitGrading && node\.data\.fillScoring !== 'per-blank' && \(/, '旧口径「整题给分」那一句没有判据（且必须挡住选择填空 —— 它的整题给分是今天合法的口径）');
+  assert.match(bodySrc, /worksheet-editor-fill-legacy-note/, '那一句没有用上带按钮的那个类');
+  assert.match(bodySrc, /所有空都答对才得 \{inheritScore\}/, '那句话没有说清旧口径是什么');
+  assert.match(
+    bodySrc,
+    /onClick=\{\(\) => updateSettings\(explicitSettings\(\)\)\}/,
+    '转换按钮没有走 `explicitSettings()`（那才是把逐空分值一次写全的那一处）',
+  );
+  assert.match(bodySrc, />\s*改成逐空给分\s*</, '按钮文案变了 —— 它得说清按下去会发生什么');
+  // ⚠️ 转换写进去的必须是 `inheritScore`（题目级分值），不是 1 —— 与上面那条同一件事的写入侧。
+  assert.match(bodySrc, /maxScore: setting\.maxScore \?\? inheritScore/, '转换会把分值写成 1');
+});
+
 test('★ 「共用选词」在所有空设置的**下面**（单列），且逐空那一档叫「本地评分」', () => {
   // ★ 2026-10-05（教师）：「共用选词还是移到所有空的设置的下面。」
  //    它同一天早些时候被移到了**右列**（与填空清单左右分栏），教师看过之后改了主意：

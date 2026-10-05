@@ -848,16 +848,26 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
           )}
 
           {/*
-            ★ 2026-10-05（教师）：「这里一层套一层有点怪啊，更看不懂了。」
-            原来填空题这里是**三层**：卡片 →「得分方式」（标题 + 说明 + 两个大卡）→
-            「得分规则」（标题 + 说明 + **内层卡片**）。而且两处还在说同一件事
-            （两个大卡的小字 vs 上面那句说明；内层卡的「每空得分/答对几个空…」vs 块标题那句）。
-            ⇒ 裁定：**并成一块两行** —— 行首小标签 + 控件；
-              两个大卡换成与「作答方式 / 评分方式」**同款**的药丸（一屏里三处互斥选择长一样，
-              教师不用重新认）；内层卡片去掉，那一格直接叫**「分值」**（今天刚统一的叫法）。
-            ⚠️ 非填空题（`PointsRow` 那条两栏）与「设过逐空评分方式」的合计展示**都不动形状**。
+            ★ 2026-10-05（教师最终裁定）：「我觉得应该删掉，因为现在总开关只需要负责是否
+            自动评分（含 AI 评分），打开后每题单独设置单独给分，**已经不涉及按整题给的问题**。」
+            ⇒ **填空题**那一块（「得分方式 按空给分 / 整题给分」+「分值」两行）**整块删除**：
+              分值是逐空的事，它的入口在「填空与作答设置」每个空的卡片里（答案行末尾那一格），
+              合计也在那张卡里（就排在逐空那些格下面）。⇒ 这张卡对填空题只剩**开关**一个控件
+              （旁边那个「本题满分 N」是只读徽章）。
+
+            🔴 为什么**选择填空**还留着它：判分的逐空那一支在服务端写死了
+              `node.type === 'fill-blank'`（`worksheet-questions.ts` 的 `grade()`），
+              AI 评分（`analysis-scoring.ts`）同样只认填空题 ⇒ 选择填空的判分口径**仍是**
+              题目级的「得分方式 + 分值」。删掉它，那一型就一个分值入口都没有了
+              （它的空卡片上那一格是死控件，已按同一条纪律不画）。
+              ⚠️ 那一型要不要也收口成逐空，是一次**判分口径**的决定（它会失去「整题给分」），
+                 没有跟着这次裁定一起做。
+
+            📌 老数据的填空题（库里 `fillScoring: 'whole'`、还没设过逐空评分方式）**照旧按
+              旧口径判分**，界面上由 `bodies/fill-blanks-body.tsx` 底部那句「旧口径」说明 +
+              一个转换按钮交代 —— 不替教师把整题那一份分偷偷摊到每个空上。
           */}
-          {isBlankType && !explicitFillScoring && (
+          {node.type === 'choice-blank' && (
             <div className="worksheet-editor-block">
               <FillScoringMethodRow node={node} onDataChange={onDataChange} />
               <FillPointsRow
@@ -869,36 +879,40 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             </div>
           )}
 
-          {(!isBlankType || explicitFillScoring) && (
+          {/*
+            ★ 2026-10-05（教师裁定，与上面那次删除同一条）：「总开关只需要负责是否自动评分」。
+            ⇒ **填空题不再有这一块** —— 它原来只在「设过逐空评分方式」时显示一句逐空合计，
+              而那个数在「填空与作答设置」每个空的分值格下面已经有了（同一件事说两遍）。
+              填空题这张卡从此只剩：开关（+ 满额徽章）。
+            ⚠️ 选择填空**本来就不走这里**（`isBlankType` 时旧的判据是 `explicitFillScoring`，
+              而它恒为假）—— 它的分值在上面那块「得分方式 + 分值」里，一个字没动。
+          */}
+          {!isBlankType && (
           <div className="worksheet-editor-block">
             <div className="worksheet-editor-block-head">
               <div>
                 <h4>分值设置</h4>
-                <p>{isBlankType
-                  ? '每个空的值在上面的「填空与作答设置」里各自设置，这里是它的合计。'
-                  : `设置完全正确和部分正确时获得的${pointsUnit}。`}</p>
+                <p>{`设置完全正确和部分正确时获得的${pointsUnit}。`}</p>
               </div>
             </div>
-            {!isBlankType ? (
-              <PointsRow
-                heading={heading}
-                node={node}
-                inheritedPoints={inheritedPoints}
-                pointsUnit={pointsUnit}
-                rejectedInput={rejectedPointInput}
-                onPointsInputChange={onPointsInputChange}
-                onPointsChange={onPointsChange}
-              />
-            ) : (
-              <p className="worksheet-editor-fill-score-summary">逐空设置已启用：本地评分 {fillTotals.auto} {pointsUnit}，AI 评分 {fillTotals.ai} {pointsUnit}，合计 {fillTotals.total} {pointsUnit}。</p>
-            )}
+            <PointsRow
+              heading={heading}
+              node={node}
+              inheritedPoints={inheritedPoints}
+              pointsUnit={pointsUnit}
+              rejectedInput={rejectedPointInput}
+              onPointsInputChange={onPointsInputChange}
+              onPointsChange={onPointsChange}
+            />
             {/*
               ★ 2026-09-26（教师裁定）：「如果部分给分框内设了非 0 值，则显示判分依据的设置」。
               ⚠️ 判据用的是 `effectiveHalfStep`（内核里、有 6 条用例）—— 「这一题**实际会用到**的
               部分给分档」。半填（只填了一个框）时它回 `null`（说不准）⇒ 那时**不显示**这一行：
               教师还在打字的中间态，弹出一行要他选容错档是打断。
             */}
-            {!isBlankType && canGivePartial(node.type) && (effectiveHalfStep(node, inheritedPoints) ?? 0) > 0 && (
+            {/* ⚠️ 外层已经限定 `!isBlankType`（2026-10-05：这一块对填空题整块删掉了），
+                所以这里不再重复写那个判据 —— 一处就够了。 */}
+            {canGivePartial(node.type) && (effectiveHalfStep(node, inheritedPoints) ?? 0) > 0 && (
               <ToleranceRow node={node} onToleranceChange={onToleranceChange} />
             )}
           </div>
@@ -1001,11 +1015,15 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
 }
 
 /**
- * 填空题的**得分方式**（★ 2026-09-27：从原来的 `FillScoringRow` 里拆出来）。
+ * **选择填空**的**得分方式**（★ 2026-09-27 从原来的 `FillScoringRow` 里拆出来）。
  *
  * 🔴 拆开的理由与选择题对齐：教师裁定「两型统一成『得分方式 → 得分规则 → 标准答案』」——
  * 选择题那边「怎么算分」与「多少分」本来就是两块，填空题挤在一块会让两型的块数不一样，
  * 教师从一种题型换到另一种时位置感就断了。
+ *
+ * 🔴 ★ 2026-10-05（教师最终裁定）：这一行**只服务选择填空**了 —— 填空题的「得分方式」
+ *    与「分值」已被整块删除（分值下沉到每个空）。留下的理由写在调用点那段注释里：
+ *    判分的逐空那一支服务端只认 `node.type === 'fill-blank'`，选择填空的口径仍是题目级的。
  */
 function FillScoringMethodRow({ node, onDataChange }: {
   node: WorksheetQuestionNode;
@@ -1039,7 +1057,7 @@ function FillScoringMethodRow({ node, onDataChange }: {
   );
 }
 
-/** 填空题的**得分规则**：那一格分值（口径跟着「得分方式」走）。 */
+/** **选择填空**的**得分规则**：那一格分值（口径跟着「得分方式」走）。同上，只服务选择填空。 */
 function FillPointsRow({ node, inheritedPoints, pointsUnit, onPointsChange }: {
   node: WorksheetQuestionNode;
   inheritedPoints: { full: number; half: number };

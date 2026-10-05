@@ -160,10 +160,46 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
     allowsAiGrading(setting.mode) && node.data.aiScoringEnabled === true
       ? 'ai' : 'auto'
   );
+  /**
+   * 逐空那一份设置是不是**本题真正的判分口径**（与题目卡的 `explicitFillScoring` 同源）。
+   * ⚠️ 只有它为真时，下面那些「分值」才是判分读的东西。
+   */
+  const explicitGrading = hasExplicitFillGrading(settings);
+  /**
+   * 还没有逐空设置时，那一格「分值」**缺省是几** —— 必须等于**判分真正会用的那个数**。
+   *
+   * ★ 2026-10-05（教师裁定）：「总开关只需要负责是否自动评分（含 AI 评分），打开后逐空
+   *   设置、逐空给分，**已经不涉及按整题给的问题**。」⇒ 逐空那一份是**唯一**的分值来源，
+   *   它的缺省值就是**题目级分值**（逐题 `points.full`，没设就用学习单级那个）。
+   *
+   * 🔴 这一条同时修掉两处「屏幕上的数不是发出去的那个数」：
+   *   · 旧口径「按空给分」下服务端算的是 `命中空数 × 题目级满分`
+   *     （`worksheet-questions.ts` 的 `grade()`）⇒ 每一空的生效值正是题目级分值，
+   *     而这一格原来**写死显示 1**（题级 3 分时屏幕写 1、实际发 3）；
+   *   · 接管逐空那一步原来也按 1 写回 ⇒ 教师点一下「本地评分」，一道「每空 3 座奖杯」
+   *     的题就静默变成每空 1 座。
+   * ⚠️ 这正是 `worksheet-points-migration.ts` 那条纪律：**写进去的是它当时实际用的那个数，
+   *    不是默认值** —— 猜一个 1 就是静默改分。
+   */
+  const inheritScore = fullPoints > 0 ? fullPoints : 1;
+  /**
+   * 这一格「分值」**会不会被谁读** —— 不被读的就不画（死控件会在屏幕上静静说谎）。
+   *
+   * 🔴 判分只有**填空题**走逐空那一支：`worksheet-questions.ts` 的 `grade()` 里写死了
+   *    `node.type === 'fill-blank'`，AI 评分（`analysis-scoring.ts`）同样只认填空题
+   *    ⇒ **选择填空**空卡片上那一格填进去没有任何人读，判分仍按题目级「得分方式 + 分值」。
+   * ⚠️ 旧口径的「整题给分」里也没有逐空分值这回事（所有空都答对才发一份），照样不画 ——
+   *    那一型由下面那句「旧口径」说明 + 一个转换按钮交代（**不猜**：不替教师把整题那一份
+   *    分偷偷摊到每个空上，那是静默改分）。
+   */
+  const perBlankScoreShown = node.type === 'fill-blank'
+    && (explicitGrading || node.data.fillScoring === 'per-blank');
   const explicitSettings = () => settings.map(setting => ({
     ...setting,
     gradingMode: gradingModeOf(setting),
-    maxScore: setting.maxScore ?? 1,
+    // ⚠️ 缺省跟着上面那个 `inheritScore`：**接管逐空评分这一步不许把分值静默改成 1**
+    //    （一道「每空 3 座奖杯」的题，教师点一下「本地评分」就变成每空 1 座）。
+    maxScore: setting.maxScore ?? inheritScore,
   }));
   const setMode = (index: number, mode: FillAnswerMode) => {
     const next = settings.map((setting, settingIndex) => settingIndex === index
@@ -172,8 +208,10 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
     updateSettings(next);
   };
   const setGradingMode = (index: number, gradingMode: FillGradingMode) => {
+    // ⚠️ 不再在这里补 `maxScore ?? 1`：`explicitSettings()` 已经把缺省值补成
+    //    `inheritScore`，两处各写一个缺省就是两处会漂移的地方。
     const next = explicitSettings().map((setting, settingIndex) => settingIndex === index
-      ? { ...setting, gradingMode, maxScore: setting.maxScore ?? 1, ...(gradingMode === 'ai' ? { mode: 'text' as const } : {}) }
+      ? { ...setting, gradingMode, ...(gradingMode === 'ai' ? { mode: 'text' as const } : {}) }
       : setting);
     updateSettings(next);
   };
@@ -290,10 +328,23 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                     })}
                   />
                 </div>
-                {gradingModeOf(settings[index]) !== 'none' && (
+                {perBlankScoreShown && gradingModeOf(settings[index]) !== 'none' && (
                   <label className="worksheet-editor-fill-score-input worksheet-editor-fill-answer-score">
                     <span>{pointsUnit === '分' ? '分值' : '奖励数量'}</span>
-                    <input type="number" min={1} max={99} value={settings[index].maxScore ?? 1} onChange={event => setMaxScore(index, event.target.value)} />
+                    {/*
+                      ★ 2026-10-05：「留空 = 跟随」那一套（与 `PointsRow` 同一条）：没设过逐空
+                      分值时框里是**空的**、灰字写着**生效的那个数**。原来这里是
+                      `value={… ?? 1}` —— 题级 3 分时屏幕写 1、服务端发 3，两处不是同一个数。
+                      ⚠️ 打字即接管（`setMaxScore` 会把每个空写成显式值），所以「空」不是空洞。
+                    */}
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={settings[index].maxScore ?? ''}
+                      placeholder={String(inheritScore)}
+                      onChange={event => setMaxScore(index, event.target.value)}
+                    />
                     <b>{pointsUnit}</b>
                   </label>
                 )}
@@ -301,16 +352,54 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
             </section>
           ))}
           {gradingEnabled && (<>
-            {node.type === 'fill-blank' && hasExplicitFillGrading(settings) && (() => {
+            {node.type === 'fill-blank' && explicitGrading && (() => {
               const totals = fillGradingTotals(settings);
               return <p className="worksheet-editor-fill-score-summary">本题合计 {totals.total} {pointsUnit}：本地评分 {totals.auto} {pointsUnit}，AI 评分 {totals.ai} {pointsUnit}。</p>;
             })()}
             <p className="worksheet-editor-compact-note">
               每个空可以填多个可接受答案；学生答出其中一个就算对。
             </p>
-            {node.data.fillScoring === 'per-blank' && fullPoints > 0 && (
+            {/* ⚠️ 只在**旧口径**下说这句（`!explicitGrading`）：接管逐空之后每个空的分值
+                可能各不相同，而这句话还按题目级分值报「每个空 X × N 空 ⇒ 全对最多 Y」——
+                它会与上面那句「本题合计」在同一张卡里给出两个数。逐空的账由合计那句说。
+                🔴 它说的数**与判分逐字一致**：服务端旧口径这一支就是
+                `命中空数 × 题目级满分`（`grade()`），所以它不是复述、是同一个事实。 */}
+            {!explicitGrading && node.data.fillScoring === 'per-blank' && fullPoints > 0 && (
               <p className="worksheet-editor-compact-note">
                 逐空给分：每个空 {fullPoints} {pointsUnit} × {slots.length} 空 ⇒ 全对最多 <strong>{fullPoints * slots.length}</strong> {pointsUnit}。
+              </p>
+            )}
+            {/*
+              ★ 2026-10-05：旧口径「整题给分」那一档 —— **不给控件，只给一句实话 + 一次转换**。
+
+              「得分方式（按空给分 / 整题给分）」那两个选项已随教师裁定删除（总开关只负责
+              是否评分，分值是逐空的事）。但库里还躺着 `fillScoring: 'whole'` 的老题：
+              它们**仍然按「全对才给一份分」在给学生发分**，而逐空那一格对它们没有意义。
+              三种做法里选了最不伤人的一种：
+                · 照旧判分（不动学生已有的分）——**不猜**：把题级那一份摊到每个空上是猜，
+                  摊成几份就凭空改了整题的分（`worksheet-points-migration.ts` 纪律 1）；
+                · 在屏幕上照实说明它是旧口径 + 一个明确的转换按钮（教师按一下才动）；
+                · 一旦转换，它就与其它填空题一模一样（逐空设置 + 逐空给分）。
+              ⚠️ 转换写的是 `inheritScore`（题目级分值）——**它当时实际用的那个数**，
+                 不是默认 1；写多少由上面那句话先告诉教师。
+
+              🔴 判据里的 `node.type === 'fill-blank'` 不能少：这一段与「得分方式」那两个
+                 控件是**两型的两种情形** —— 选择填空的「整题给分」是它**今天合法的**口径
+                 （那个开关就在下面那张卡里），对它说「这是旧口径，改成逐空吧」是错的。
+            */}
+            {node.type === 'fill-blank' && !explicitGrading && node.data.fillScoring !== 'per-blank' && (
+              <p className="worksheet-editor-compact-note worksheet-editor-fill-legacy-note">
+                <span>
+                  这道题还是旧口径「整题给分」：所有空都答对才得 {inheritScore} {pointsUnit}。
+                  改成逐空给分后，每个空先按 {inheritScore} {pointsUnit} 填好，可以再逐个调整。
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => updateSettings(explicitSettings())}
+                >
+                  改成逐空给分
+                </button>
               </p>
             )}
           </>)}

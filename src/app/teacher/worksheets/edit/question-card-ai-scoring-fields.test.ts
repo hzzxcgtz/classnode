@@ -60,11 +60,21 @@ test('🔴 填空题的 AI 评分改由**每一空**的评分方式开启（裁�
   const body = fs.readFileSync(FILL_BODY, 'utf8');
   assert.match(body, /aiScoringEnabled: totals\.ai > 0/, '填空题的 AI 开关没有跟着逐空评分方式走');
 
-  // ② 自动评分那一边仍然互斥：重新打开本地自动评分时关掉整题 AI 开关。
+  // ② 自动评分与 AI 评分仍然互斥 —— 只是**位置变了**。整题那块随裁定 B 删除之后，
+  //    这段接线（原来钉的 `enabled && node.type === 'fill-blank' && …aiScoringEnabled === true`）
+  //    在 `question-card.tsx` 里**已经不存在** ⇒ 从那次删除起这条断言就是**永久红**的
+  //    （2026-10-05 实测：`git stash` 到 HEAD 也红）。红网比没有网更坏：真回归时没人再看它。
+  //    ⇒ 互斥现在由**逐空结构**保证（`bodies/fill-blanks-body.tsx`），断言跟着搬过去，
+  //      能力一条都没少：① 选词那两档关掉这一空的 AI；② 选 AI 时把作答方式拉回手工填写。
   assert.match(
-    source,
-    /enabled && node\.type === 'fill-blank' && node\.data\.aiScoringEnabled === true[\s\S]*?onDataChange\(\{ aiScoringEnabled: false \}\)/,
-    '重新开启本地自动评分时，必须关掉 AI 评分',
+    body,
+    /mode !== 'text' && setting\.gradingMode === 'ai' \? \{ gradingMode: 'auto' as const \}/,
+    '选词那两档没有关掉这一空的 AI 评分 —— 那个组合服务端会拒绝保存',
+  );
+  assert.match(
+    body,
+    /gradingMode === 'ai' \? \{ mode: 'text' as const \}/,
+    '选「AI 评分」时没有把作答方式拉回「手工填写」',
   );
 });
 

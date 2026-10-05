@@ -2613,7 +2613,8 @@ test('🔴 `showsPartialPoints`：「得分规则」那一块画不画**部分�
   for (const type of ['order', 'match', 'categorize']) {
     assert.equal(showsPartialPoints(node('q_x', '题干', {}, type)), true, type);
   }
-  // ⚠️ 填空**两块都不是**：它的「得分规则」只有一格（`FillPointsRow`），没有这一栏。
+  // ⚠️ 填空**两块都不是**：它的分值是**逐空**的（每一空那一格 `maxScore`，
+  //    见 `bodies/fill-blanks-body.tsx`），没有这一栏。
   //    这条同时是 `findPartialPoints` 的闸门之一 —— 见那一条用例。
   for (const type of ['fill-blank', 'choice-blank']) {
     assert.equal(showsPartialPoints(node('q_f', '题干', {}, type)), false, type);
@@ -2669,6 +2670,22 @@ test('🔴 `scoreSummary`：题数与**满分**（只数会判分的题 —— �
     points: { full: 2, half: 0 },
   };
   assert.deepEqual(scoreSummary([perBlank], fallback), { questions: 1, maxScore: 4 });
+
+  // ★ 2026-10-05：设过**逐空分值**的填空题按逐空合计算。
+  // 原来这里自带一份 `full × 空数`（`blankCount(promptRuns)`），压根不读
+  // `fillBlankSettings[*].maxScore` ⇒ **页面头的「满分」比卡片上的「本题满分」小**，
+  // 而两处都不报错、也没有第二个人会发现。现在两处都走 `maximumPointsFor`（同一处算术）。
+  const explicitFill = {
+    ...perBlank,
+    data: {
+      ...perBlank.data,
+      fillBlankSettings: {
+        a: { mode: 'text', choices: [], gradingMode: 'auto', maxScore: 3 },
+        b: { mode: 'text', choices: [], gradingMode: 'auto', maxScore: 5 },
+      },
+    },
+  };
+  assert.deepEqual(scoreSummary([explicitFill], fallback), { questions: 1, maxScore: 8 });
 });
 
 /* ── 拖拽（spec 第 5 步）─────────────────────────────────────────────── */

@@ -153,10 +153,38 @@ test('🔴 并排的两栏必须**按权重压过**「上下两块之间的分�
   assert.ok(classes >= 3, `这条重置只有 ${classes} 个类选择器，压不过通用规则的两个类`);
 });
 
-test('★ 填空题的「得分方式 + 分值」是**一块两行**（不再卡中卡）', () => {
+test('🔴 填空题**没有**「得分方式 + 分值」这两行了（教师 2026-10-05 最终裁定：删掉）', () => {
+  // 教师原话：「我觉得应该删掉，因为现在总开关只需要负责是否自动评分（含 AI 评分），
+  // 打开后每题单独设置单独给分，**已经不涉及按整题给的问题**。」
+  //
+  // 🔴 这一条是**能力**上的反面断言，不是「这行字没了」：
+  //    它的坏法是把整题口径的开关又接回填空题 —— 于是同一道填空题同时有两个分值来源
+  //    （题目级 `points` 与逐空 `maxScore`），屏幕上两个数不一致而两边都不报错。
+  const card = body(CARD);
+  // 那两行的调用点必须且只能出现在 `node.type === 'choice-blank'` 那一支里。
+  const methodAt = card.indexOf('<FillScoringMethodRow');
+  const pointsAt = card.indexOf('<FillPointsRow');
+  assert.ok(methodAt > 0 && pointsAt > methodAt, '两行本身还在（它们仍服务选择填空）');
+  const gate = card.lastIndexOf("node.type === 'choice-blank' && (", methodAt);
+  assert.ok(gate > 0 && methodAt - gate < 120, '这两行没有收在选择填空那一支里 —— 填空题又会有整题口径的开关');
+  // ⚠️ 填空题**不能**再出现「得分方式」这个行首标签（它是 `FillScoringMethodRow` 画的那一行）。
+  assert.ok(
+    !/worksheet-editor-flat-label">得分方式/.test(card.slice(0, gate)),
+    '填空题那一块里又出现了「得分方式」',
+  );
+  // 「本题满分」徽章仍要在（它现在取逐空合计）。
+  assert.match(card, /本题满分/, '满分徽章被一起删掉了 —— 那道题在屏幕上就没有分数了');
+  // 两个大卡与内层卡片（「每空得分」）都不许回来（它们就是被删掉的那两层卡中卡）。
+  assert.ok(!/worksheet-editor-scoring-options/.test(card), '「得分方式」又用回了两个大卡');
+  assert.ok(!card.includes('每空得分'), '内层卡片那个标题又回来了（它就是"卡中卡"那一层）');
+});
+
+test('★ 选择填空仍留着「得分方式 + 分值」是**一块两行**（判分口径还没收口到逐空）', () => {
   // ★ 2026-10-05（教师）：「这里一层套一层有点怪啊，更看不懂了。」
   // 原来是三层：卡 →「得分方式」（标题+说明+两个大卡）→「得分规则」（标题+说明+内层卡片），
   // 而且两处还说同一件事。裁定：并成一块两行。
+  // 🔴 这一块**只服务选择填空**了 —— 判分的逐空那一支服务端写死了 `fill-blank`，
+  //    删了它选择填空就一个分值入口都没有。
   const card = body(CARD);
   const methodAt = card.indexOf('<FillScoringMethodRow');
   const pointsAt = card.indexOf('<FillPointsRow');
@@ -168,9 +196,6 @@ test('★ 填空题的「得分方式 + 分值」是**一块两行**（不再卡
     !/worksheet-editor-block/.test(card.slice(methodAt, pointsAt)),
     '两行之间又插了一个块容器 —— 「一块两行」被拆回两块了',
   );
-  // 🔴 两个大卡（`.worksheet-editor-scoring-options`）与内层卡片（「每空得分」）都不许回来。
-  assert.ok(!/worksheet-editor-scoring-options/.test(card), '「得分方式」又用回了两个大卡');
-  assert.ok(!card.includes('每空得分'), '内层卡片那个标题又回来了（它就是"卡中卡"那一层）');
   // 平铺行那两个类必须用上（样式另有 `editor-classes` 那张网守着"有没有定义"）。
   // ⚠️ 类名断言一律带词边界：本仓已经栽过三次「加个后缀前缀还在 ⇒ 断言是瞎的」
   //    （`includes('.x')` 对 `.xXX` 照样绿）。`editor-classes.test.ts` 另有一张网守"类名有没有定义"。

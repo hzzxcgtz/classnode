@@ -7500,6 +7500,22 @@ tr:hover td {
   color: #64748b;
 }
 
+/* ★ 2026-10-05：旧口径「整题给分」那一句 —— 它同时带一个**转换按钮**
+   （「得分方式」那两个选项已按教师裁定删除，老题由这一句 + 一次转换交代）。
+   一句说明 + 一个动作排在同一行；窄屏放不下就换行（`flex-wrap`）。
+   ⚠️ 这个类名必须在 globals.css 里有定义 —— `editor-classes.test.ts` 守着这条：
+   编辑页用到的每个 `.worksheet-editor-*` 都得有人给它写过样式，否则那个元素零样式、无报错。 */
+.worksheet-editor-fill-legacy-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.worksheet-editor-fill-legacy-note > span {
+  flex: 1 1 260px;
+}
+
 .worksheet-editor-manual-note {
   margin-top: 0;
   border-color: var(--primary-light);

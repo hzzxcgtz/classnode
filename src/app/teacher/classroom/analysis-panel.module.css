@@ -162,7 +162,9 @@
 .scoreRow:first-child { border-top: 0; }
 .scoreName { color: #263c54; font-weight: 700; }
 .scoreValue { color: #315f8c; }
-.scoreReason { color: #63778d; line-height: 1.5; }
+.scoreReason { display: grid; gap: 4px; color: #63778d; line-height: 1.5; }
+.scoreAdvice summary { width: fit-content; color: #315f8c; cursor: pointer; font-size: .74rem; }
+.scoreAdvice p { margin: 5px 0 0; color: #526a83; white-space: pre-wrap; }
 
 .payloadText { white-space: pre-wrap; }
 

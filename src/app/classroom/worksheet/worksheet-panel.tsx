@@ -134,10 +134,11 @@ function parseSavedAnswers(raw: unknown): SavedAnswerRow[] {
 }
 
 interface StudentAiReferenceScore {
-  score: number;
+  score: number | null;
   maxScore: number;
   unit: string;
   comment: string;
+  advice: string;
 }
 
 /** 学生作答回读中只取“本人逐题参考分”；坏形状静默忽略，不能拖垮整张学习单。 */
@@ -153,7 +154,7 @@ function parseAiReferenceScores(raw: unknown): Record<string, StudentAiReference
     const score = row.aiReferenceScore;
     if (typeof row.questionId !== 'string' || !score || typeof score !== 'object' || Array.isArray(score)) continue;
     const value = score as Record<string, unknown>;
-    if (typeof value.score !== 'number' || !Number.isFinite(value.score)
+    if ((value.score !== null && (typeof value.score !== 'number' || !Number.isFinite(value.score)))
       || typeof value.maxScore !== 'number' || !Number.isFinite(value.maxScore)
       || typeof value.unit !== 'string' || !value.unit) continue;
     result[row.questionId] = {
@@ -161,6 +162,7 @@ function parseAiReferenceScores(raw: unknown): Record<string, StudentAiReference
       maxScore: value.maxScore,
       unit: value.unit,
       comment: typeof value.comment === 'string' ? value.comment.trim().slice(0, 200) : '',
+      advice: typeof value.advice === 'string' ? value.advice.trim().slice(0, 1200) : '',
     };
   }
   return result;
@@ -501,11 +503,13 @@ export function WorksheetQuestionList({
                 <span
                   className={`${styles.resultCell} ${styles.aiReferenceCell}`}
                   data-tone="ai-reference"
-                  aria-label={`AI 评分 ${aiReferenceScore.score}/${aiReferenceScore.maxScore} ${aiReferenceScore.unit}。这是 AI 给你的小建议`}
+                  aria-label={aiReferenceScore.score === null
+                    ? 'AI 暂时无法可靠评分，但给出了学习建议'
+                    : `AI 评分 ${aiReferenceScore.score}/${aiReferenceScore.maxScore} ${aiReferenceScore.unit}。这是 AI 给你的小建议`}
                 >
-                  {reward && <RewardIcon kind={reward.style} state="earned" size={20} />}
-                  <b>{aiReferenceScore.score}/{aiReferenceScore.maxScore}</b>
-                  {(!reward || reward.style === 'points') && <em>{aiReferenceScore.unit}</em>}
+                  {reward && aiReferenceScore.score !== null && <RewardIcon kind={reward.style} state="earned" size={20} />}
+                  <b>{aiReferenceScore.score === null ? 'AI 建议' : `${aiReferenceScore.score}/${aiReferenceScore.maxScore}`}</b>
+                  {aiReferenceScore.score !== null && (!reward || reward.style === 'points') && <em>{aiReferenceScore.unit}</em>}
                   <small>这是 AI 给你的小建议</small>
                 </span>
               )}
@@ -624,13 +628,21 @@ export function WorksheetQuestionList({
             {interactive && aiReferenceScore?.comment && (
               <aside className={styles.aiScoreComment} aria-label="AI 评分反馈">
                 <span className={styles.aiScoreCommentMark} aria-hidden="true">AI</span>
-                <span className={styles.aiScoreCommentBody}>
-                  <span className={styles.aiScoreCommentHeading}>
-                    <strong>AI 评分反馈</strong>
-                    <small>这是 AI 给你的小建议</small>
-                  </span>
-                  <span className={styles.aiScoreCommentText}>{aiReferenceScore.comment}</span>
-                </span>
+                <details className={styles.aiScoreCommentBody}>
+                  <summary className={styles.aiScoreCommentSummary}>
+                    <span className={styles.aiScoreCommentHeading}>
+                      <strong>AI 给你的评价</strong>
+                      <small>{aiReferenceScore.advice ? '点击查看详细建议' : '继续保持并认真订正'}</small>
+                    </span>
+                    <span className={styles.aiScoreCommentText}>{aiReferenceScore.comment}</span>
+                  </summary>
+                  {aiReferenceScore.advice && (
+                    <span className={styles.aiScoreAdvice}>
+                      <strong>接下来可以这样做</strong>
+                      <span>{aiReferenceScore.advice}</span>
+                    </span>
+                  )}
+                </details>
               </aside>
             )}
 

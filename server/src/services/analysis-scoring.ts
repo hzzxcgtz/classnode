@@ -3,6 +3,7 @@ import { rubricTextOf } from './analysis-question.js';
 
 export const AI_SCORE_MAX = 100;
 export const AI_SCORE_CRITERIA_MAX = 1200;
+export const AI_SCORE_ADVICE_MAX = 1200;
 export const AI_SCORE_BLOCK_START = '<classnode-scores>';
 export const AI_SCORE_BLOCK_END = '</classnode-scores>';
 
@@ -17,15 +18,17 @@ export interface StoredAiScoring {
   maxScore: number;
   unit: string;
   criteria: string;
-  scores: Array<{ studentId: string; score: number | null; reason: string }>;
+  scores: Array<{ studentId: string; score: number | null; reason: string; advice: string }>;
 }
 
 export interface StudentAiReferenceScore {
-  score: number;
+  score: number | null;
   maxScore: number;
   unit: string;
   /** 只返回当前学生自己的简短评分依据。 */
   comment: string;
+  /** 学生主动展开后才显示的个性化改进建议。 */
+  advice: string;
 }
 
 /** 分数档允许一位小数；奖杯、星星等图标奖励只能按完整个数发放。 */
@@ -34,7 +37,9 @@ function normalizeAiScore(score: number, config: AiScoringConfig): number {
 }
 
 export function aiScoringConfigOf(node: QuestionNode, unit = '分'): AiScoringConfig {
-  const subjective = node.type === 'short-answer' || node.type === 'drawing';
+  // 普通填空只有在关闭本地自动判分后才按主观题交给 AI；选择填空仍是客观题。
+  const subjective = node.type === 'short-answer' || node.type === 'drawing'
+    || (node.type === 'fill-blank' && node.autoGrade === false);
   const enabled = subjective && node.data.aiScoringEnabled === true;
   const rawMax = node.data.aiScoringMaxScore;
   const maxScore = typeof rawMax === 'number' && Number.isInteger(rawMax) && rawMax >= 1 && rawMax <= AI_SCORE_MAX
@@ -69,7 +74,7 @@ export function parseAiAnalysisResult(
   }
 
   const byLabel = new Map(entries.map((entry) => [entry.anonLabel, entry.studentId]));
-  const found = new Map<string, { studentId: string; score: number | null; reason: string }>();
+  const found = new Map<string, { studentId: string; score: number | null; reason: string; advice: string }>();
   for (const item of (parsed as { scores: unknown[] }).scores) {
     if (!item || typeof item !== 'object') continue;
     const row = item as Record<string, unknown>;
@@ -81,7 +86,10 @@ export function parseAiAnalysisResult(
         ? normalizeAiScore(row.score, config) : undefined;
     if (score === undefined) continue;
     const reason = typeof row.reason === 'string' ? row.reason.trim().slice(0, 200) : '';
-    found.set(studentId, { studentId, score, reason });
+    const advice = typeof row.advice === 'string' ? row.advice.trim().slice(0, AI_SCORE_ADVICE_MAX) : '';
+    // 新协议要求“一句评价 + 详细建议”同时存在；缺一项就拒绝整次结果，避免学生页出现半张卡。
+    if (!reason || !advice) continue;
+    found.set(studentId, { studentId, score, reason, advice });
   }
   if (found.size !== entries.length) {
     return { error: `模型只返回了 ${found.size}/${entries.length} 份有效 AI 评分（未写入）` };
@@ -123,6 +131,8 @@ export function readStoredAiScoring(
       // 旧数据里若已经存在半个奖杯，这里也按离散奖励归一化，避免再次显示出来。
       score: row.score === null ? null : normalizeAiScore(row.score as number, config),
       reason: typeof row.reason === 'string' ? row.reason.slice(0, 200) : '',
+      // 兼容升级前的已保存结果：旧数据没有 advice，仍可显示原来的一句评价。
+      advice: typeof row.advice === 'string' ? row.advice.slice(0, AI_SCORE_ADVICE_MAX) : '',
     });
   }
   if (scores.length !== studentIds.length || new Set(scores.map((item) => item.studentId)).size !== studentIds.length) return null;
@@ -152,13 +162,16 @@ export function readStudentAiReferenceScore(
     && (candidate as Record<string, unknown>).studentId === studentId);
   if (!item || typeof item !== 'object') return null;
   const score = (item as Record<string, unknown>).score;
-  if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > config.maxScore) return null;
+  if (score !== null && (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > config.maxScore)) return null;
   return {
-    score: normalizeAiScore(score, config),
+    score: score === null ? null : normalizeAiScore(score, config),
     maxScore: config.maxScore,
     unit: config.unit,
     comment: typeof (item as Record<string, unknown>).reason === 'string'
       ? ((item as Record<string, unknown>).reason as string).trim().slice(0, 200)
+      : '',
+    advice: typeof (item as Record<string, unknown>).advice === 'string'
+      ? ((item as Record<string, unknown>).advice as string).trim().slice(0, AI_SCORE_ADVICE_MAX)
       : '',
   };
 }

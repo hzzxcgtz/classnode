@@ -366,14 +366,19 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
   //    一道两个空的表格题显示「最高 1 分」，而服务端按逐空给分、学生实际能拿 2 分。
   //    教师看到的数字与实际给分对不上，而**没有任何报错**（本仓最防的那一类）。
   const maximumPoints = maximumPointsFor(node, shownPoints.full);
-  const aiScoringEnabled = node.data.aiScoringEnabled === true;
+  const supportsAiScoring = node.type === 'short-answer' || node.type === 'drawing' || node.type === 'fill-blank';
+  // 普通填空的本地自动评分与 AI 评分互斥；选择填空仍按客观题处理。
+  const aiScoringEnabled = node.data.aiScoringEnabled === true
+    && (node.type !== 'fill-blank' || !gradedOn);
   const aiScoringMaxScore = typeof node.data.aiScoringMaxScore === 'number'
     ? node.data.aiScoringMaxScore : 10;
   const aiScoringCriteria = typeof node.data.aiScoringCriteria === 'string'
     ? node.data.aiScoringCriteria : '';
-  const gradingStatus = isGradedQuestionType(node.type)
-    ? (gradedOn ? `自动评分 · 最高 ${maximumPoints} ${pointsUnit}` : '仅统计作答')
-    : (aiScoringEnabled ? `AI 评分 · 满额 ${aiScoringMaxScore} ${pointsUnit}` : '教师查看');
+  const gradingStatus = aiScoringEnabled
+    ? `AI 评分 · 满额 ${aiScoringMaxScore} ${pointsUnit}`
+    : isGradedQuestionType(node.type)
+      ? (gradedOn ? `自动评分 · 最高 ${maximumPoints} ${pointsUnit}` : '仅统计作答')
+      : '教师查看';
 
   return (
     <section
@@ -644,16 +649,21 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
               ⚠️ 教师 2026-10-05 明确选了「只在 AI 评分打开时显示」——
                 代价是关掉 AI 评分后这里没有编辑入口，而「发给 AI 分析」仍会读这份标准。
             */}
-            {(node.type === 'short-answer' || node.type === 'drawing') && (
+            {supportsAiScoring && (
               <div className="worksheet-editor-block worksheet-editor-ai-scoring">
                 <div className="worksheet-editor-block-head">
                   <div>
                     <h4>AI 评分</h4>
-                    <p>分析本题时同步给出逐生评分；结果自动保存，无需教师逐条确认。</p>
+                    <p>{node.type === 'fill-blank'
+                      ? '适合需要理解语义、无法只靠标准答案判断的手工填空；开启后将关闭本地自动评分。'
+                      : '分析本题时同步给出逐生评分、简短评价和详细建议；结果自动保存。'}</p>
                   </div>
                   <HeadSwitch
                     checked={aiScoringEnabled}
-                    onChange={(enabled) => onDataChange({ aiScoringEnabled: enabled })}
+                    onChange={(enabled) => {
+                      if (enabled && node.type === 'fill-blank' && gradedOn) onAutoGradeChange(false);
+                      onDataChange({ aiScoringEnabled: enabled });
+                    }}
                     label="AI 评分"
                     title={aiScoringEnabled ? '已开启 AI 评分' : '已关闭 AI 评分'}
                   />
@@ -796,7 +806,12 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
               {gradedOn && <span className="worksheet-editor-points-badge">最高 {maximumPoints} {pointsUnit}</span>}
               <HeadSwitch
                 checked={gradedOn}
-                onChange={onAutoGradeChange}
+                onChange={(enabled) => {
+                  if (enabled && node.type === 'fill-blank' && node.data.aiScoringEnabled === true) {
+                    onDataChange({ aiScoringEnabled: false });
+                  }
+                  onAutoGradeChange(enabled);
+                }}
                 label="自动评分"
                 title={gradedOn ? '已开启：系统按标准答案判对错并计分' : '已关闭：只统计作答进度，不计分'}
               />

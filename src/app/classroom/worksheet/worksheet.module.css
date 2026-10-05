@@ -1986,11 +1986,32 @@
   font-weight: 800;
 }
 
-.aiScoreCommentBody { display: grid; min-width: 0; gap: 4px; }
+.aiScoreCommentBody { display: grid; min-width: 0; flex: 1; gap: 4px; }
+.aiScoreCommentBody[open] { gap: 10px; }
+.aiScoreCommentSummary {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  cursor: pointer;
+  list-style: none;
+}
+.aiScoreCommentSummary::-webkit-details-marker { display: none; }
 .aiScoreCommentHeading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
 .aiScoreCommentHeading strong { font-size: .78rem; }
 .aiScoreCommentHeading small { color: #7890a6; font-size: .64rem; }
 .aiScoreCommentText { color: #506b84; font-size: .78rem; line-height: 1.55; }
+.aiScoreAdvice {
+  display: grid;
+  gap: 5px;
+  padding: 10px 11px;
+  border-radius: 9px;
+  background: #eaf3fb;
+  color: #405f7b;
+  font-size: .76rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.aiScoreAdvice strong { color: #315f90; font-size: .72rem; }
 
 /* ⊘ 2026-09-28 删掉：那一档减号的「往上提 1px」（`padding-bottom: 2px`）。
    🔴 **它换一个浏览器就偏高了**（教师实测）。原因很实在：那 1px 是在补**某一个浏览器的

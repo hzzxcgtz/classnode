@@ -122,6 +122,7 @@ test('开启 AI 评分时消息带满分、评分标准与机器块协议；关�
   );
   assert.ok(!message.includes('评分要求：'), '「评分要求」那一行已随合并删除');
   assert.match(message, /<classnode-scores>/);
+  assert.match(message, /"advice"/, '机器协议必须要求逐生返回可展开的详细建议');
   assert.match(message, /"student":"User_001"/);
   assert.ok(!buildAnalysisMessage(payloadOf('text')).includes('<classnode-scores>'));
 });

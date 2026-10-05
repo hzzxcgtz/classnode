@@ -100,6 +100,11 @@ test('主观题评分标准进入分析；客观题与外部图片地址不会�
   assert.deepEqual(analysisRubric(node('drawing', { rubricText: '构图完整', rubricImageUrl: 'https://example.com/x.png' })), {
     text: '构图完整', imageUrl: null,
   });
+  assert.deepEqual(analysisRubric({ ...node('fill-blank', { rubricText: '语义合理即可', rubricImageUrl: imageUrl }), autoGrade: false }), {
+    text: '语义合理即可', imageUrl,
+  }, '关闭本地判分的普通填空按主观题携带评分标准');
+  assert.deepEqual(analysisRubric(node('fill-blank', { rubricText: '不应发送' })), { text: '', imageUrl: null },
+    '仍开启本地自动判分的填空不发送 AI 评分标准');
   assert.deepEqual(analysisRubric(node('single-choice', { rubricText: '不应发送' })), { text: '', imageUrl: null });
 });
 

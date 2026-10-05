@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * 卡片上「AI 评分」那一块的源码级网（问答题 / 绘图题）。
+ * 卡片上「AI 评分」那一块的源码级网（问答题 / 绘图题 / 手工填空）。
  *
  * ── 教师 2026-10-05 的三条批注，各对应下面一条断言 ──────────────────────
  *   ①「评分标准与下面的评分要求重复了，你把『评分标准』替换下面的『评分要求』，带图片上传。」
@@ -31,6 +31,25 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CARD = path.join(HERE, 'question-card.tsx');
+
+test('🔴 普通填空可开启 AI 评分，且与本地自动评分互斥', () => {
+  const source = fs.readFileSync(CARD, 'utf8');
+  assert.match(
+    source,
+    /supportsAiScoring\s*=\s*node\.type === 'short-answer'\s*\|\|\s*node\.type === 'drawing'\s*\|\|\s*node\.type === 'fill-blank'/,
+    '手工填空必须进入 AI 评分设置区',
+  );
+  assert.match(
+    source,
+    /enabled && node\.type === 'fill-blank' && gradedOn\) onAutoGradeChange\(false\)/,
+    '开启手工填空的 AI 评分时，必须关闭本地自动评分',
+  );
+  assert.match(
+    source,
+    /enabled && node\.type === 'fill-blank' && node\.data\.aiScoringEnabled === true[\s\S]*?onDataChange\(\{ aiScoringEnabled: false \}\)/,
+    '重新开启本地自动评分时，必须关闭 AI 评分',
+  );
+});
 
 test('🔴 评分标准与评分要求已合并：只剩一个输入框，编辑时旧字段被清掉', () => {
   const source = fs.readFileSync(CARD, 'utf8');

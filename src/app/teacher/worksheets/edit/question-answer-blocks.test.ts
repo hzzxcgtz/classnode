@@ -41,7 +41,9 @@ test('阳性对照：这条网真的在读这几个文件（否则下面几条�
 
 test('★ 主观题的参考答案：有输入框、写回 data.answers，但**不判分**', () => {
   const card = body(CARD);
-  const at = card.indexOf("node.type === 'short-answer'");
+  // 这里要从真正渲染参考答案的 JSX 条件开始找。题卡顶部还有
+  // `supportsAiScoring` 的题型判定，只找第一个 `short-answer` 会截错代码块。
+  const at = card.indexOf("{(node.type === 'short-answer' || node.type === 'drawing') && (");
   assert.ok(at >= 0, '找不到主观题那一块');
   const block = card.slice(at, at + 1200);
   // 输入框走**与填空题同一个**组件（`SymbolListInput` 本来就是待选词与标准答案共用的那个）

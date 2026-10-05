@@ -277,7 +277,15 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                 <strong className={styles.scoreValue}>
                   {item.score === null ? '暂无法评分' : `${item.score} / ${payload.perStudent!.maxScore} ${payload.perStudent!.unit}`}
                 </strong>
-                <span className={styles.scoreReason}>{item.reason || '智能体未补充说明'}</span>
+                <div className={styles.scoreReason}>
+                  <span>{item.reason || '智能体未补充简短评价'}</span>
+                  {item.advice && (
+                    <details className={styles.scoreAdvice}>
+                      <summary>查看给学生的详细建议</summary>
+                      <p>{item.advice}</p>
+                    </details>
+                  )}
+                </div>
               </div>
             ))}
           </div>

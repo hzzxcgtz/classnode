@@ -116,10 +116,10 @@ export function buildAnalysisMessage(payload: AnalysisPayload, labeled = true): 
       ? '评分步长：可以保留一位小数。'
       : `评分步长：只能返回整数（0、1、2…${payload.aiScoring.maxScore}），${payload.aiScoring.unit}不能拆分成小数。`,
     ...scoringFallback,
-    '请给每一位已提交作答的学生评分。无法可靠判断时 score 填 null，不要猜分。',
+    '请给每一位已提交作答的学生评分，并分别返回一句评价与可操作的详细建议。无法可靠判断时 score 填 null，不要猜分，但仍需如实返回评价和建议。',
     '在正常 Markdown 解读之后，必须追加下面的机器数据块；学生代号必须与输入完全一致，不能遗漏：',
     AI_SCORE_BLOCK_START,
-    '{"scores":[{"student":"User_001","score":8,"reason":"一句话说明给分依据"}]}',
+    '{"scores":[{"student":"User_001","score":8,"reason":"一句简短、友善、具体的评价","advice":"2—4 句可操作的个性化改进建议"}]}',
     AI_SCORE_BLOCK_END,
     '机器数据块内只能放一行合法 JSON，不要使用 Markdown 代码围栏。',
   ].join('\n') : '';

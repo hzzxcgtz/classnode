@@ -567,7 +567,7 @@ export interface WorksheetAnalysisPayload {
     maxScore: number;
     unit: string;
     criteria: string;
-    scores: Array<{ studentId: string; score: number | null; reason: string }>;
+    scores: Array<{ studentId: string; score: number | null; reason: string; advice: string }>;
   } | null;
   /** 只返回教师端，用于把评分中的参与者 ID 显示为姓名；不会进入远端智能体载荷。 */
   participantNames: Record<string, string>;

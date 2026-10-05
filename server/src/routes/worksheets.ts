@@ -2275,7 +2275,7 @@ router.get('/:id/answers', async (req, res) => {
     const scoringByQuestion = new Map(scoringRows.map(item => [item.questionId, item.perStudent]));
     res.json({ rows: rows.map(row => ({
       ...row,
-      // 只下发当前学生自己的评分与一句评语，不下发全班评分或智能体分析正文。
+      // 只下发当前学生自己的评分、简短评价与详细建议，不下发全班评分或智能体分析正文。
       aiReferenceScore: byId.has(row.questionId)
         ? readStudentAiReferenceScore(
             scoringByQuestion.get(row.questionId),

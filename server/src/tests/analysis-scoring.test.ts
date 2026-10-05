@@ -12,11 +12,16 @@ function node(data: Record<string, unknown>, type = 'short-answer'): QuestionNod
   return { id: 'q1', type, prompt: '说明理由', inputMode: 'keyboard', data, children: [] } as QuestionNode;
 }
 
-test('AI 评分设置只对问答题和绘图题生效，并归一化满分', () => {
+test('AI 评分对问答、绘图和关闭本地判分的普通填空生效，并归一化满分', () => {
   assert.deepEqual(aiScoringConfigOf(node({ aiScoringEnabled: true, aiScoringMaxScore: 5, aiScoringCriteria: ' 要点 ' })), {
     enabled: true, maxScore: 5, unit: '分', criteria: '要点',
   });
   assert.equal(aiScoringConfigOf(node({ aiScoringEnabled: true }, 'single-choice')).enabled, false);
+  assert.equal(aiScoringConfigOf(node({ aiScoringEnabled: true }, 'fill-blank')).enabled, false,
+    '普通填空仍开着本地自动判分时不能同时启用 AI 评分');
+  assert.equal(aiScoringConfigOf({ ...node({ aiScoringEnabled: true }, 'fill-blank'), autoGrade: false }).enabled, true);
+  assert.equal(aiScoringConfigOf({ ...node({ aiScoringEnabled: true }, 'choice-blank'), autoGrade: false }).enabled, false,
+    '选择填空仍是客观题，不进入 AI 评分');
   assert.equal(aiScoringConfigOf(node({ aiScoringEnabled: true, aiScoringMaxScore: 0 })).maxScore, 10);
 });
 
@@ -40,7 +45,7 @@ test('🔴 评分依据取「评分标准」（`rubricText`），旧字段只作
 
 test('开启评分时拆出机器块、映射匿名代号并保留 Markdown 解读', () => {
   const result = parseAiAnalysisResult(
-    '### 解读\n有两类思路。\n<classnode-scores>\n{"scores":[{"student":"User_001","score":4.5,"reason":"要点完整"},{"student":"User_002","score":null,"reason":"作品无法辨认"}]}\n</classnode-scores>',
+    '### 解读\n有两类思路。\n<classnode-scores>\n{"scores":[{"student":"User_001","score":4.5,"reason":"要点完整","advice":"补充一个具体依据。"},{"student":"User_002","score":null,"reason":"作品暂时无法辨认","advice":"请拍清楚作品后再试一次。"}]}\n</classnode-scores>',
     { enabled: true, maxScore: 5, unit: '分', criteria: '按要点评分' },
     [{ studentId: 's1', anonLabel: 'User_001' }, { studentId: 's2', anonLabel: 'User_002' }],
   );
@@ -48,14 +53,14 @@ test('开启评分时拆出机器块、映射匿名代号并保留 Markdown 解�
   if ('error' in result) return;
   assert.equal(result.narrative, '### 解读\n有两类思路。');
   assert.deepEqual(result.perStudent?.scores, [
-    { studentId: 's1', score: 4.5, reason: '要点完整' },
-    { studentId: 's2', score: null, reason: '作品无法辨认' },
+    { studentId: 's1', score: 4.5, reason: '要点完整', advice: '补充一个具体依据。' },
+    { studentId: 's2', score: null, reason: '作品暂时无法辨认', advice: '请拍清楚作品后再试一次。' },
   ]);
 });
 
 test('奖杯等图标奖励只能是整数，分数档仍可保留一位小数', () => {
   const entries = [{ studentId: 's1', anonLabel: 'User_001' }];
-  const raw = '解读<classnode-scores>{"scores":[{"student":"User_001","score":2.5,"reason":"达到一半要求"}]}</classnode-scores>';
+  const raw = '解读<classnode-scores>{"scores":[{"student":"User_001","score":2.5,"reason":"达到一半要求","advice":"再补充一个关键点。"}]}</classnode-scores>';
   const trophy = parseAiAnalysisResult(raw, {
     enabled: true, maxScore: 5, unit: '座奖杯', criteria: '',
   }, entries);
@@ -72,19 +77,19 @@ test('奖杯等图标奖励只能是整数，分数档仍可保留一位小数',
 test('开启评分时漏人或越界分数拒绝整次结果，避免保存半份评分', () => {
   const entries = [{ studentId: 's1', anonLabel: 'User_001' }, { studentId: 's2', anonLabel: 'User_002' }];
   const missing = parseAiAnalysisResult(
-    '解读<classnode-scores>{"scores":[{"student":"User_001","score":3,"reason":"ok"}]}</classnode-scores>',
+    '解读<classnode-scores>{"scores":[{"student":"User_001","score":3,"reason":"ok","advice":"继续完善。"}]}</classnode-scores>',
     { enabled: true, maxScore: 5, unit: '分', criteria: '' }, entries,
   );
   assert.ok('error' in missing);
   const overflow = parseAiAnalysisResult(
-    '解读<classnode-scores>{"scores":[{"student":"User_001","score":8,"reason":"bad"},{"student":"User_002","score":3,"reason":"ok"}]}</classnode-scores>',
+    '解读<classnode-scores>{"scores":[{"student":"User_001","score":8,"reason":"bad","advice":"修正。"},{"student":"User_002","score":3,"reason":"ok","advice":"继续。"}]}</classnode-scores>',
     { enabled: true, maxScore: 5, unit: '分', criteria: '' }, entries,
   );
   assert.ok('error' in overflow);
 });
 
 test('关闭评分或教师修改满分后，不显示上一次的旧评分', () => {
-  const stored = { maxScore: 5, unit: '分', criteria: '', scores: [{ studentId: 's1', score: 4, reason: '符合要点' }] };
+  const stored = { maxScore: 5, unit: '分', criteria: '', scores: [{ studentId: 's1', score: 4, reason: '符合要点', advice: '补充依据。' }] };
   assert.equal(readStoredAiScoring(stored, { enabled: false, maxScore: 5, unit: '分', criteria: '' }, ['s1']), null);
   assert.equal(readStoredAiScoring(stored, { enabled: true, maxScore: 10, unit: '分', criteria: '' }, ['s1']), null);
   assert.equal(readStoredAiScoring(stored, { enabled: true, maxScore: 5, unit: '座奖杯', criteria: '' }, ['s1']), null);
@@ -95,15 +100,29 @@ test('学生端只读取自己的 AI 评分和评语，不返回同班数据', (
   const stored = {
     maxScore: 5, unit: '座奖杯', criteria: '按要点评分',
     scores: [
-      { studentId: 's1', score: 4, reason: '理由一' },
-      { studentId: 's2', score: 2, reason: '理由二' },
+      { studentId: 's1', score: 4, reason: '理由一', advice: '建议一' },
+      { studentId: 's2', score: 2, reason: '理由二', advice: '建议二' },
     ],
   };
   assert.deepEqual(
     readStudentAiReferenceScore(stored, { enabled: true, maxScore: 5, unit: '座奖杯', criteria: '' }, 's2'),
-    { score: 2, maxScore: 5, unit: '座奖杯', comment: '理由二' },
+    { score: 2, maxScore: 5, unit: '座奖杯', comment: '理由二', advice: '建议二' },
   );
   assert.equal(readStudentAiReferenceScore(stored, { enabled: true, maxScore: 5, unit: '座奖杯', criteria: '' }, 'missing'), null);
+});
+
+test('证据不足无法给分时，学生仍能看到自己的评价与详细建议', () => {
+  const stored = {
+    maxScore: 5, unit: '分', criteria: '',
+    scores: [{ studentId: 's1', score: null, reason: '照片中的文字暂时看不清', advice: '请重新拍摄清晰照片，确保答案完整入镜。' }],
+  };
+  assert.deepEqual(
+    readStudentAiReferenceScore(stored, { enabled: true, maxScore: 5, unit: '分', criteria: '' }, 's1'),
+    {
+      score: null, maxScore: 5, unit: '分', comment: '照片中的文字暂时看不清',
+      advice: '请重新拍摄清晰照片，确保答案完整入镜。',
+    },
+  );
 });
 
 test('读取旧评分时也不会把半个奖杯送到教师端或学生端', () => {
@@ -115,4 +134,14 @@ test('读取旧评分时也不会把半个奖杯送到教师端或学生端', ()
   assert.equal(readStoredAiScoring(stored, config, ['s1'])?.scores[0]?.score, 2);
   assert.equal(readStudentAiReferenceScore(stored, config, 's1')?.score, 2);
   assert.equal(readStudentAiReferenceScore(stored, config, 's1')?.comment, '旧数据');
+  assert.equal(readStudentAiReferenceScore(stored, config, 's1')?.advice, '', '升级前结果没有详细建议时保持兼容');
+});
+
+test('新分析缺少逐生详细建议时拒绝写入，避免学生只看到半张反馈卡', () => {
+  const result = parseAiAnalysisResult(
+    '解读<classnode-scores>{"scores":[{"student":"User_001","score":4,"reason":"理解基本正确"}]}</classnode-scores>',
+    { enabled: true, maxScore: 5, unit: '分', criteria: '' },
+    [{ studentId: 's1', anonLabel: 'User_001' }],
+  );
+  assert.ok('error' in result);
 });

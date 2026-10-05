@@ -46,9 +46,11 @@ export function rubricTextOf(node: QuestionNode): string {
   return textOf(node.data.rubricText) ?? textOf(node.data.aiScoringCriteria) ?? '';
 }
 
-/** 教师为主观题提供的评分依据。图片路径只接受本站学习单上传端点生成的资源。 */
+/** 教师为主观题提供的评分依据。手工填空 = 关闭本地自动判分的普通填空。 */
 export function analysisRubric(node: QuestionNode): { text: string; imageUrl: string | null } {
-  if (node.type !== 'short-answer' && node.type !== 'drawing') return { text: '', imageUrl: null };
+  const supported = node.type === 'short-answer' || node.type === 'drawing'
+    || (node.type === 'fill-blank' && node.autoGrade === false);
+  if (!supported) return { text: '', imageUrl: null };
   const imageUrl = textOf(node.data.rubricImageUrl);
   return {
     text: rubricTextOf(node),

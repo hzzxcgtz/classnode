@@ -1244,4 +1244,17 @@ export async function proxyAnalysisRequest(
  * （随机会让平台侧把每次分析都当成一个新用户，不利于排查）。
  */
 const ANALYSIS_USER_ID = 'classnode-analysis';
-const ANALYSIS_POLL_TIMEOUT_SECONDS = 90;
+/**
+ * 分析链路等 Coze 出结果的上限（秒）。
+ *
+ * ★ 2026-10-05（教师）：「AI 分析会超时，目前的 90 秒估计还不够，加到 180 秒。」
+ * 🔴 它只影响**分析**这条路（`coze.chat({ pollTimeoutSeconds })`）—— 学生日常对话仍是
+ *   `CozeBot` 的 30 秒默认值（那一条要的是「学生别干等」，与这里的取舍正好相反）。
+ * ⚠️ 一次分析要先把联系表（全班的手写 / 照片）传到 Coze，再等模型推理完，比单轮对话重得多；
+ *   90 秒在 40 人的班上确实会切在半路 —— 而切了之后教师看到的是「分析失败」，
+ *   不是「还在跑」，很难判断是模型太慢还是真的坏了。
+ * ⚠️ **上调的代价只有一个**：真的失败时教师要多等 90 秒才知道结果。
+ * ⚠️ 服务端 HTTP 侧没有更短的闸（Node 的 `requestTimeout` 默认 300 秒，Express 不设），
+ *   所以 180 秒不会被别的东西提前掐掉。
+ */
+const ANALYSIS_POLL_TIMEOUT_SECONDS = 180;

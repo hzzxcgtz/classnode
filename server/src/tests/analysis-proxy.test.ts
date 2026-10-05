@@ -42,7 +42,7 @@ test('不认识的平台（无图）⇒ 如实失败，不是一个静默的空�
   assert.equal(r.content, undefined, '失败时不许带 content —— 那会让调用方以为拿到了解读');
 });
 
-test('分析专用轮询等待 90 秒，普通学生对话仍使用默认 30 秒', async (t) => {
+test('分析专用轮询等待 180 秒，普通学生对话仍使用默认 30 秒', async (t) => {
   const originalCreate = ChatAPI.prototype.create;
   const originalPoll = ChatAPI.prototype.pollUntilCompleted;
   const originalGetMessages = ChatAPI.prototype.getMessages;
@@ -73,7 +73,11 @@ test('分析专用轮询等待 90 秒，普通学生对话仍使用默认 30 秒
 
   assert.equal(student.success, true);
   assert.equal(analysis.success, true);
-  assert.deepEqual(receivedTimeouts, [undefined, 90], '学生走默认 30 秒，只有分析显式延长到 90 秒');
+  // ★ 2026-10-05（教师）：「AI 分析会超时，目前的 90 秒估计还不够，加到 180 秒。」
+  // ⇒ 分析那条路 180 秒（一次分析要传联系表 + 等模型推理，比单轮对话重得多）；
+  //    学生对话仍是 `undefined`（不传 = `CozeBot` 的 30 秒默认值）—— 那一条要的是
+  //    「学生别干等」，两条路的取舍正好相反，**别把它们合并成一个数**。
+  assert.deepEqual(receivedTimeouts, [undefined, 180], '学生走默认 30 秒，只有分析显式延长到 180 秒');
 });
 
 // ⚠️ **coze 那条路的成功路径没有自动化网**：它要真密钥才走得到 `uploadBuffer`，

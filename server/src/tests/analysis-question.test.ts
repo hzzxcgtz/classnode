@@ -108,6 +108,17 @@ test('主观题评分标准进入分析；客观题与外部图片地址不会�
   assert.deepEqual(analysisRubric(node('single-choice', { rubricText: '不应发送' })), { text: '', imageUrl: null });
 });
 
+test('★ 填空题的整题评分标准只在「关掉本地自动评分」时才读（旧数据的兼容路）', () => {
+  // ★ 2026-10-05（教师裁定 B）：编辑页不再给填空题提供「整题评分标准」入口
+  // （标准已经细化到每一空，见 `fill-blanks-body.tsx`）。但**旧学习单里写过的还在**：
+  // 这条 `fill-blank && autoGrade === false` 的路留着，它们照旧随分析发出去。
+  // 🔴 删掉它 = 让老数据的评分标准**静默失效**（模型少收到一段教师写过的标准，没人会报）。
+  const withRubric = { ...node('fill-blank', { rubricText: '错别字不扣分', answers: [['甲']] }), autoGrade: false };
+  assert.equal(analysisRubric(withRubric).text, '错别字不扣分');
+  // 自动评分的填空题不读整题标准（那一路没有 AI 评分，写了也不该发）。
+  assert.equal(analysisRubric(node('fill-blank', { rubricText: '不应发送', answers: [['甲']] })).text, '');
+});
+
 test('🔴 评分标准与评分要求合并：`rubricText` 为准，旧字段 `aiScoringCriteria` 只作回退', () => {
   // ★ 2026-10-05（教师）：编辑器里两个输入框合并成一个，数据以 `rubricText` 为准。
   // 这条网守的是**不许在迁移里丢掉教师已经写下的东西**：只填过「评分要求」的老学习单

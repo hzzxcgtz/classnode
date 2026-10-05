@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * 卡片上「AI 评分」那一块的源码级网（问答题 / 绘图题 / 手工填空）。
+ * 卡片上「AI 评分」那一块的源码级网（问答题 / 绘图题），以及填空题那条**逐空**的路。
  *
  * ── 教师 2026-10-05 的三条批注，各对应下面一条断言 ──────────────────────
  *   ①「评分标准与下面的评分要求重复了，你把『评分标准』替换下面的『评分要求』，带图片上传。」
@@ -31,23 +31,40 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CARD = path.join(HERE, 'question-card.tsx');
+const FILL_BODY = path.join(HERE, 'bodies', 'fill-blanks-body.tsx');
+const FILL_MODES = path.resolve(HERE, '../../../../lib/worksheet-fill-modes.ts');
 
-test('🔴 普通填空可开启 AI 评分，且与本地自动评分互斥', () => {
+test('🔴 填空题的 AI 评分改由**每一空**的评分方式开启（裁定 B 之后整题那块不服务填空题）', () => {
+  // ⚠️ 这一条原先是 ChatGPT 在 `1f107fa` 写的（「普通填空可开启 AI 评分，且与本地自动评分互斥」），
+  //    它钉的是**整题 AI 块**里那两条互斥接线。教师 2026-10-05 的裁定 B
+  //    （「评分标准已经细化到每一空（如果选了手工填写），不需要整体的评分标准」）之后，
+  //    填空题不再有整题那块 ⇒ 断言换了，但**它守的能力一条都没少**：
+  //    ① 空白的手工填空仍然能开 AI 评分；② 本地自动评分与 AI 评分仍然互斥（逐空结构上互斥）。
   const source = fs.readFileSync(CARD, 'utf8');
+
+  // 🔴 反面：`supportsAiScoring` 不许再把填空算进来 —— 算进来整题那块（连图片上传）就回来了。
   assert.match(
     source,
-    /supportsAiScoring\s*=\s*node\.type === 'short-answer'\s*\|\|\s*node\.type === 'drawing'\s*\|\|\s*node\.type === 'fill-blank'/,
-    '手工填空必须进入 AI 评分设置区',
+    /supportsAiScoring\s*=\s*node\.type === 'short-answer'\s*\|\|\s*node\.type === 'drawing';/,
+    '`supportsAiScoring` 又把填空算进去了 —— 填空题的整题 AI 块会跟着回来',
   );
+
+  // ① 能力没丢：手工填写那一档必须能选「AI 评分」（判据层那一条，界面只是消费它）。
+  const modes = fs.readFileSync(FILL_MODES, 'utf8');
   assert.match(
-    source,
-    /enabled && node\.type === 'fill-blank' && gradedOn\) onAutoGradeChange\(false\)/,
-    '开启手工填空的 AI 评分时，必须关闭本地自动评分',
+    modes,
+    /mode === 'text' \? \['auto', 'ai', 'none'\] : \['auto', 'none'\]/,
+    '手工填写那一档不能选 AI 评分了 —— 填空题就没有开 AI 评分的路了',
   );
+  // 并且逐空的选择必须真的驱动整题那个 AI 开关（否则选了也不生效）。
+  const body = fs.readFileSync(FILL_BODY, 'utf8');
+  assert.match(body, /aiScoringEnabled: totals\.ai > 0/, '填空题的 AI 开关没有跟着逐空评分方式走');
+
+  // ② 自动评分那一边仍然互斥：重新打开本地自动评分时关掉整题 AI 开关。
   assert.match(
     source,
     /enabled && node\.type === 'fill-blank' && node\.data\.aiScoringEnabled === true[\s\S]*?onDataChange\(\{ aiScoringEnabled: false \}\)/,
-    '重新开启本地自动评分时，必须关闭 AI 评分',
+    '重新开启本地自动评分时，必须关掉 AI 评分',
   );
 });
 

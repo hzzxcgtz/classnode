@@ -370,7 +370,19 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
   const fillSettings = node.type === 'fill-blank' ? fillSettingsFor(node, readPromptRunsFor(node)) : [];
   const explicitFillScoring = node.type === 'fill-blank' && hasExplicitFillGrading(fillSettings);
   const fillTotals = fillGradingTotals(fillSettings);
-  const supportsAiScoring = node.type === 'short-answer' || node.type === 'drawing' || node.type === 'fill-blank';
+  /**
+   * 这一型有没有**整题级**的 AI 评分设置块（开关 + 满额 + 评分标准 + 图片）。
+   *
+   * ⊘ ★ 2026-10-05（教师裁定 B）：「评分标准已经细化到每一空（如果选了手工填写），
+   * 不需要整体的评分标准。……为了简化，填空题的评分标准不需要上传图片。」
+   * ⇒ 填空题**没有**这一块：它的标准是「填空与作答设置」里每个空那一份
+   *（手工填写时那一格的标签就叫「评分标准」），而那份文字会以
+   * **「参考答案（逐空）」** 的形式进分析载荷 —— 模型该拿到的已经拿到了。
+   * ⚠️ 服务端仍保留「填空题 + `autoGrade === false` 时也读 `rubricText`」那条老路
+   *（`analysis-question.ts`）—— **旧数据里已经写过的整题标准照旧会发出去**，
+   * 只是编辑页不再提供入口。删那条路等于让老学习单的评分标准**静默失效**。
+   */
+  const supportsAiScoring = node.type === 'short-answer' || node.type === 'drawing';
   const aiScoringEnabled = explicitFillScoring ? fillTotals.ai > 0 : node.data.aiScoringEnabled === true;
   const aiScoringMaxScore = typeof node.data.aiScoringMaxScore === 'number'
     ? node.data.aiScoringMaxScore : 10;
@@ -659,39 +671,32 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                 代价是关掉 AI 评分后这里没有编辑入口，而「发给 AI 分析」仍会读这份标准。
             */}
             {/*
-              ★ 2026-10-05（教师裁定 A）：填空题这一块**只剩评分标准**。
-              教师问「这部分是不是多余了？」—— 拆开看：整题的开关与满额**确实重复**
-              （每个空的「评分方式」与「满额」各自就能表达），而「评分标准」（文字 + 图片）
-              **全站只有这一个入口**：删掉它，填空题的 AI 评分就没有标准可写
-              （那份标准会随本题作答一起发给智能体，「发给 AI 分析」也读它）。
-              ⇒ 填空题：标题改「AI 评分标准」，去掉开关与满额，并且**一直显示** ——
-                写标准与「评不评分」是两件事，不评分时它仍被「发给 AI 分析」读。
-              ⇒ 问答题 / 绘图题：原样保留（那两型没有逐题评分方式，开关与满额就该在这儿）。
-              ⚠️ 「满额」那一格仍然只属于**非填空题**，且仍不许用 `<label>` 把三个控件包起来
-                （`<label>` 的第一个可标注元素会被点空白误触发，10-05 那次「点空白也会减」）。
+              ★ 2026-10-05（教师裁定 B）：填空题**整块去掉**（上一版按裁定 A 缩成了「AI 评分标准」，
+              教师看到之后说「这里也不对……不需要整体的评分标准」）。
+              ⇒ 现在这一块只服务**问答题 / 绘图题**：那两型没有逐空的评分方式，
+                整题的开关、满额、评分标准就该在这儿，评分标准也仍然可以带图片。
+              ⚠️ 填空题的评分为何不需要「整题标准」：它的标准已经细化到每一空
+                （手工填写那一格的标签就叫「评分标准」），并以「参考答案（逐空）」进载荷。
+              ⚠️ 旧的「评分标准 / 评分要求」合并（见上面那段）对这两型仍然有效：
+                `rubricText` 为准，`aiScoringCriteria` 只作回退。
             */}
-            {supportsAiScoring && (node.type === 'fill-blank' || !explicitFillScoring || aiScoringEnabled) && (
+            {supportsAiScoring && (
               <div className="worksheet-editor-block worksheet-editor-ai-scoring">
                 <div className="worksheet-editor-block-head">
                   <div>
-                    <h4>{node.type === 'fill-blank' ? 'AI 评分标准' : 'AI 评分'}</h4>
-                    <p>{node.type === 'fill-blank'
-                      ? '每个空评不评、按什么评，在上面的「填空与作答设置」里各自选择；这里写的是智能体评分（以及「发给 AI 分析」）依据的标准 —— 文字与图片都会随本题作答一起发出去。'
-                      : '分析本题时同步给出逐生评分、简短评价和详细建议；结果自动保存。'}</p>
+                    <h4>AI 评分</h4>
+                    <p>分析本题时同步给出逐生评分、简短评价和详细建议；结果自动保存。</p>
                   </div>
-                  {node.type !== 'fill-blank' && !explicitFillScoring && <HeadSwitch
+                  <HeadSwitch
                     checked={aiScoringEnabled}
-                    onChange={(enabled) => {
-                      if (enabled && node.type === 'fill-blank' && gradedOn) onAutoGradeChange(false);
-                      onDataChange({ aiScoringEnabled: enabled });
-                    }}
+                    onChange={(enabled) => onDataChange({ aiScoringEnabled: enabled })}
                     label="AI 评分"
                     title={aiScoringEnabled ? '已开启 AI 评分' : '已关闭 AI 评分'}
-                  />}
+                  />
                 </div>
-                {(node.type === 'fill-blank' || aiScoringEnabled) && (
+                {aiScoringEnabled && (
                   <div className="worksheet-editor-ai-scoring-fields">
-                    {node.type !== 'fill-blank' && !explicitFillScoring && <div className="worksheet-editor-ai-scoring-field">
+                    <div className="worksheet-editor-ai-scoring-field">
                       <label htmlFor={`ai-scoring-max-${node.id}`}>
                         {pointsUnit === '分' ? '满分' : '奖励总量'}（{pointsUnit}）
                       </label>
@@ -724,7 +729,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                           aria-label={`增加 1 ${pointsUnit}`}
                         >+</button>
                       </div>
-                    </div>}
+                    </div>
                     {/*
                       🔴 显示的是**合并后**的值：`rubricText` 为准，旧字段 `aiScoringCriteria`
                       作回退 —— 老学习单只填过「评分要求」的，教师在这里照旧看得见原文。

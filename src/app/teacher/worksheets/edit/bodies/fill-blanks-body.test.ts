@@ -88,30 +88,24 @@ test('★ 填空题的答案住在**每张空卡片里**（教师 2026-10-05 裁
   );
 });
 
-test('★ 填空题的 AI 块**只剩评分标准**（裁定 A）：没有整题开关、没有满额', () => {
-  // 教师问「这部分是不是多余了？」——开关与满额确实与每个空的「评分方式 / 满额」重复；
-  // 而「评分标准」全站只有这一个入口，删了就没地方写。
+test('★ 填空题**没有**整题 AI 块（裁定 B）：标准只在每一空，整块只服务问答 / 绘图', () => {
+  // ★ 2026-10-05（教师裁定 B）：「评分标准已经细化到每一空（如果选了手工填写），不需要整体的
+  // 评分标准。……为了简化，填空题的评分标准不需要上传图片。」
+  // ⇒ 上一版（裁定 A）把这块缩成「AI 评分标准」还留着；教师看到之后否掉了整块。
   const card = body(CARD);
-  // ⚠️ 判据用**JSX 字面量**，不是「AI 评分」这个词 —— 注释里到处都是那个词。
-  assert.match(card, /\{node\.type === 'fill-blank' \? 'AI 评分标准' : 'AI 评分'\}/, '标题没按裁定 A 分开');
+
+  // 🔴 定义处：`supportsAiScoring` 不许再含 fill-blank —— 含了就等于这块（连同图片上传）回来。
   assert.match(
     card,
-    /node\.type !== 'fill-blank' && !explicitFillScoring && <HeadSwitch/,
-    '填空题的整题开关又回来了（与每个空的「评分方式」重复）',
+    /const supportsAiScoring = node\.type === 'short-answer' \|\| node\.type === 'drawing';/,
+    '`supportsAiScoring` 又把填空算进去了 —— 填空题的整题 AI 块（含图片上传）会跟着回来',
   );
-  assert.match(
-    card,
-    /node\.type !== 'fill-blank' && !explicitFillScoring && <div className="worksheet-editor-ai-scoring-field">/,
-    '填空题的满额又回来了（每个空自己有一个满额）',
-  );
-  // 评分标准本身必须在（它是全站唯一条目），且填空题**一直显示**它 ——
-  // 写标准与「评不评分」是两件事：不评分时「发给 AI 分析」照样读它。
-  assert.match(card, /worksheet-editor-rubric-upload/, '评分标准的入口丢了 —— 填空题就没有标准可写了');
-  assert.match(
-    card,
-    /supportsAiScoring && \(node\.type === 'fill-blank' \|\| !explicitFillScoring \|\| aiScoringEnabled\)/,
-    '填空题那一块的显示条件被改窄了（不评分时教师就写不了标准）',
-  );
+  // 那一块里不许再出现「按题型分叉」的痕迹（它现在只服务问答 / 绘图，一个分叉都没有）。
+  assert.ok(!card.includes("'AI 评分标准'"), '「AI 评分标准」那个分叉标题又回来了');
+
+  // 但整块的开关 / 满额 / 评分标准对**问答与绘图**必须还在 —— 那是它们唯一的入口。
+  assert.match(card, /worksheet-editor-ai-scoring-stepper/, '问答 / 绘图那个满额步进器丢了');
+  assert.match(card, /worksheet-editor-rubric-upload/, '问答 / 绘图的评分标准图片上传丢了');
 });
 
 test('★ 评分方式那一排由**作答方式**决定（手工填写三项 / 选词两项），答案标签跟着变', () => {

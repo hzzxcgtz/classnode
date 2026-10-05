@@ -75,7 +75,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
       // 值是笔迹、但读不出画布（手改过的行）——**如实说**，不画一个空框
       //（空框与「他画了东西但读不出来」长得一模一样）。
       return view.ink
-        ? <InkPreview value={view.ink} />
+        ? <InkPreview value={view.ink} node={node} />
         : <span style={{ fontSize: '0.813rem', color: FAINT }}>读不出这幅画</span>;
 
     case 'photo':

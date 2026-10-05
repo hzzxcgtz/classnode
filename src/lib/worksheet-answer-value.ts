@@ -1,6 +1,7 @@
 import type { WorksheetQuestionNode } from './types';
 import { defaultInkBox, inkFormatOf, isInkColor, isInkNode, isInkShapeKind, isInkTextSize, readInkValue, INK_DEFAULT_TEXT_SIZE, INK_STROKE_COLOR } from './worksheet-ink.ts';
 import type { InkCanvas, InkPoint, InkStroke, InkText, InkValue } from './worksheet-ink.ts';
+import type { DrawingDocument } from './worksheet-drawing-document.ts';
 import { blankLayout } from './worksheet-table.ts';
 
 /**
@@ -150,7 +151,15 @@ export type AnswerDraft =
   | { kind: 'match'; links: Array<{ leftId: string; rightId: string }> }
   | { kind: 'categorize'; assignment: Record<string, string> }
   | { kind: 'photo'; url: string }
-  | { kind: 'ink'; box: InkCanvas; strokes: InkStroke[]; /** ★ 第二轮：文字（可选）。 */ texts?: InkText[] };
+  | {
+      kind: 'ink';
+      box: InkCanvas;
+      strokes: InkStroke[];
+      /** ★ 第二轮：文字（可选）。 */
+      texts?: InkText[];
+      /** 绘图题第三方编辑器文档；手写问答不使用。 */
+      drawing?: DrawingDocument;
+    };
 
 /** 问答题与绘图题的拍照作答档。 */
 export function isPhotoNode(node: { type: string; inputMode?: unknown }): boolean {
@@ -443,7 +452,7 @@ export function isDraftEmpty(draft: AnswerDraft): boolean {
   // ★ M4b：「一笔都没有」才算空 —— 与选择 / 连线 / 归类同一条口径（只有 `text` 那两支
   // 才看 trim）。⚠️ 不看 `box`：起点那个默认框是占位，把它当内容会让一道**没画过**的
   // 画布题变成「有内容可提交」。
-  if (draft.kind === 'ink') return draft.strokes.length === 0;
+  if (draft.kind === 'ink') return draft.strokes.length === 0 && !draft.drawing;
   if (draft.kind === 'order') return draft.order.length === 0;
   if (draft.kind === 'match') return draft.links.length === 0;
   if (draft.kind === 'categorize') return Object.keys(draft.assignment).length === 0;
@@ -469,7 +478,8 @@ function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): Worksh
   // ⇒ 反证用例逐字钉着它（`worksheet-answer-value.test.ts` 那条
   //   「手写问答的 ink 输入态能提交」）；把这一支挪到下面去，它必红。
   if (isInkNode(node)) {
-    if (draft.kind !== 'ink' || draft.strokes.length === 0) return null;
+    if (draft.kind !== 'ink' || (draft.strokes.length === 0 && !draft.drawing)) return null;
+    if (draft.drawing && node.type !== 'drawing') return null;
     return {
       format: inkFormatOf(node),
       // 🔴 `canvas` 用的是**学生作答那一刻量出来的框**（`worksheet-ink.ts` 的单位规则），
@@ -505,6 +515,7 @@ function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): Worksh
               })),
           }
         : {}),
+      ...(node.type === 'drawing' && draft.drawing ? { drawing: draft.drawing } : {}),
     };
   }
   if (type === 'single-choice' || type === 'true-false' || type === 'multi-choice') {
@@ -669,6 +680,7 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
   if (ink) {
     const draft: Extract<AnswerDraft, { kind: 'ink' }> = { kind: 'ink', box: ink.canvas, strokes: ink.strokes };
     if (ink.texts && ink.texts.length > 0) draft.texts = ink.texts;
+    if (ink.drawing) draft.drawing = ink.drawing;
     return draft;
   }
   // 🔴 **没有「题型是画布题 ⇒ 一律回空画布」这一支。** R2 在这里加过一句

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#fff"/>
+  <path d="M55 300H755" stroke="#52677f" stroke-width="2.5"/><path d="m755 300-14-8v16z" fill="#52677f"/>
+  <g stroke="#52677f" stroke-width="2" fill="#52677f" font-family="Arial,sans-serif" font-size="15" text-anchor="middle">
+    <path d="M100 288V312M160 288V312M220 288V312M280 288V312M340 288V312M400 284V316M460 288V312M520 288V312M580 288V312M640 288V312M700 288V312"/>
+    <text x="100" y="337" stroke="none">-5</text><text x="160" y="337" stroke="none">-4</text><text x="220" y="337" stroke="none">-3</text><text x="280" y="337" stroke="none">-2</text><text x="340" y="337" stroke="none">-1</text><text x="400" y="337" stroke="none">0</text><text x="460" y="337" stroke="none">1</text><text x="520" y="337" stroke="none">2</text><text x="580" y="337" stroke="none">3</text><text x="640" y="337" stroke="none">4</text><text x="700" y="337" stroke="none">5</text>
+  </g>
+</svg>

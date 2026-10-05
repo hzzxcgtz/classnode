@@ -11,15 +11,23 @@ import {
   normalizeAxis,
   INK_TOOL_SELECT,
   INK_TOOL_TEXT,
+  centerInkTextInShape,
+  fitInkShapeToText,
   isInkShapeTool,
+  isInkTextInsideShape,
   hitTestText,
+  inkConnectionAnchors,
   isShapeTooSmall,
   moveStroke,
   moveText,
   pickInkHandle,
+  pickInkConnectionAnchor,
+  pickInkNodeShape,
   pickInkStroke,
   resizeStroke,
   shapeOutline,
+  snapInkPoint,
+  snapInkConnectionTarget,
   strokeHandles,
   textBoxOf,
   strokeWidthPx,
@@ -30,7 +38,7 @@ import {
 // 模块里其实能共存（`import type` 只占类型名字空间），但那样 `InkCanvasProps.box` 的类型
 // 会比它自己的名字更值得解释。⇒ 类型侧引入为 `InkCanvasBox`：**同一个类型**，只改本文件的
 // 本地名，不是第二份定义。
-import type { InkCanvas as InkCanvasBox, InkPoint, InkShapeKind, InkStroke, InkText, InkTool } from '@/lib/worksheet-ink';
+import type { InkCanvas as InkCanvasBox, InkConnectionAnchor, InkPoint, InkShapeKind, InkStroke, InkText, InkTool } from '@/lib/worksheet-ink';
 import styles from './worksheet.module.css';
 
 /**
@@ -115,6 +123,14 @@ export interface InkCanvasProps {
    */
   selected: InkSelection | null;
   onSelect: (next: InkSelection | null) => void;
+  /** 教师设置的只读底图。它不进入学生作答值。 */
+  backgroundUrl?: string | null;
+  /** 数学作图模式的归一化吸附步长；0 表示不吸附。 */
+  snapStep?: number;
+  /** 思维导图、流程图：允许双击节点写字。 */
+  enableShapeText?: boolean;
+  /** 思维导图、流程图：线与箭头自动吸附到节点轮廓。 */
+  snapConnections?: boolean;
 }
 
 /**
@@ -156,6 +172,10 @@ const HANDLE_RADIUS_PX = 5;
  *    所以「点得中」这件事对矩形这类还算宽，对直线才真要宽容度）。
  */
 const HANDLE_HIT_TOLERANCE_PX = 14;
+/** 连接锚点视觉保持轻巧，但触摸命中与吸附范围更大。 */
+const CONNECTION_ANCHOR_RADIUS_PX = 5;
+const CONNECTION_ANCHOR_HIT_PX = 18;
+const CONNECTION_ANCHOR_SNAP_PX = 26;
 
 /** 一组归一化点的**像素**外接框（`[x, y, w, h]`，喂 `strokeRect`）。 */
 function boundsOf(points: readonly InkPoint[], box: InkCanvasBox): [number, number, number, number] {
@@ -177,11 +197,16 @@ interface LiveStroke {
   pointerId: number;
   box: InkCanvasBox;
   points: InkPoint[];
+  /** 落笔时的原始点。连接线吸附时不能拿已经吸附过的点再次命中。 */
+  originPoint: InkPoint;
   /** ★ 2026-09-30：正在拖出来的图形（缺省 = 手写，那时 `points` 是**一串采样点**）。 */
   shape?: InkShapeKind;
+  /** 连接线从锚点开始；拖动时只在命中另一节点锚点后才允许落笔。 */
+  connectionStart?: InkConnectionAnchor;
+  connectionTarget?: InkConnectionAnchor | null;
 }
 
-export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disabled, tool, width, color, selected, onSelect }: InkCanvasProps) {
+export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disabled, tool, width, color, selected, onSelect, backgroundUrl = null, snapStep = 0, enableShapeText = false, snapConnections = false }: InkCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   /** 已经收笔的笔画。`pointerup` 那一刻必须读到**当下**的值（state 是异步的）——
    *  与 `use-pointer-drag.ts:99-100` 的 `hoverRef` 同一条理由。 */
@@ -203,7 +228,12 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
    *    自己实现光标 / 选区 / 输入法等于重写一个输入框 —— 而这一屏跑在老 iPad 上。
    * ⚠️ `at` 是归一化坐标（与文字元素同一套），落定时才换算。
    */
-  const [draftText, setDraftText] = useState<{ at: InkPoint; value: string } | null>(null);
+  const [draftText, setDraftText] = useState<{
+    at: InkPoint;
+    value: string;
+    shapeIndex?: number;
+    textIndex?: number;
+  } | null>(null);
 
   // 一帧的全量重绘是**廉价**的：上限 2000 个点（A1）保证了这个循环最多 2000 次 lineTo。
   // 🔴 不要为了「优化」改成增量绘制 —— 增量绘制在「撤销 / 清空 / 水合」三条路上都要
@@ -335,11 +365,50 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
     // 线的颜色 / 粗细会跳一下。
     const live = liveRef.current;
     if (live && live.kind === 'stroke') drawStroke({ color, width, points: live.points, shape: live.shape });
-  }, [selected, width, color, disabled]);
+
+    // 连接工具激活时实时显示每个节点的四向锚点。拖动中的起点和吸附目标使用实心与光晕
+    // 区分，其余锚点保持白底细描边，不和“选择”工具的方框控制点混淆。
+    const connectorActive = snapConnections && !disabled && (tool === 'line' || tool === 'arrow');
+    if (connectorActive) {
+      const activeStart = live?.kind === 'stroke' ? live.connectionStart : undefined;
+      const activeTarget = live?.kind === 'stroke' ? live.connectionTarget : undefined;
+      strokesRef.current.forEach((stroke, shapeIndex) => {
+        inkConnectionAnchors(stroke, scale).forEach((anchor, anchorIndex) => {
+          const isStart = activeStart?.shapeIndex === shapeIndex && activeStart.anchorIndex === anchorIndex;
+          const isTarget = activeTarget?.shapeIndex === shapeIndex && activeTarget.anchorIndex === anchorIndex;
+          const [ax, ay] = toPixel(anchor, scale);
+          ctx.save();
+          if (isTarget) {
+            ctx.beginPath();
+            ctx.arc(ax, ay, CONNECTION_ANCHOR_RADIUS_PX + 6, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(82, 113, 152, 0.18)';
+            ctx.fill();
+          }
+          ctx.beginPath();
+          ctx.arc(ax, ay, isTarget ? CONNECTION_ANCHOR_RADIUS_PX + 1 : CONNECTION_ANCHOR_RADIUS_PX, 0, Math.PI * 2);
+          ctx.fillStyle = isStart || isTarget ? SELECT_COLOR : '#fff';
+          ctx.fill();
+          ctx.strokeStyle = SELECT_COLOR;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+        });
+      });
+    }
+  }, [selected, width, color, disabled, tool, snapConnections]);
 
   // ★ 水合 / 撤销 / 清空 / 收笔后回填都走它。
   // ⚠️ 依赖里有 `selected`：选中态是**画上去的**，它变了必须重画。
   useEffect(() => { redraw(); }, [redraw, strokes, texts, selected]);
+
+  /** 最大化与缩放会改变 CSS 框；每次实际尺寸变化后重建位图并重绘。 */
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => redraw());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [redraw]);
 
   /**
    * 上限提示的**第一个来源**（主来源）：当下就在上限上时它自己就在屏幕上。
@@ -374,10 +443,13 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
     if (liveRef.current) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const liveBox = { w: rect.width, h: rect.height };
-    const point: InkPoint = [
+    let point: InkPoint = [
       normalizeAxis(event.clientX - rect.left, rect.width),
       normalizeAxis(event.clientY - rect.top, rect.height),
     ];
+    if (snapStep > 0 && isInkShapeTool(tool)) {
+      point = snapInkPoint(point, snapStep);
+    }
     // ★ 2026-09-30（教师选「甲」）：**选择档** —— 点图形选中它、拖框内移动、拖控制点改大小。
     // ⚠️ 它**不经过上限闸**（没有新笔画产生），也不做采样过滤（那不是画线）。
     // ★ 2026-09-30 第二轮：**文字档** —— 点一下在那里放一个文本框（真的 `<input>` 浮上来）。
@@ -449,12 +521,29 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
     const reason = inkLimitReason(filled);
     if (reason) { setBlockedReason(reason); return; }        // ★ 到上限：不落笔，把提示留在屏幕上
     setBlockedReason(null);
+    // 思维导图 / 流程图的连接必须从一个可见锚点开始。视觉圆点只有 5px，实际命中区放大到
+    // 18px，兼顾触控；按在节点内部但没按到锚点时不生成一条来源不明的悬空线。
+    if (snapConnections && (tool === 'line' || tool === 'arrow')) {
+      const connectionStart = pickInkConnectionAnchor(point, filled, liveBox, CONNECTION_ANCHOR_HIT_PX);
+      if (!connectionStart) { event.stopPropagation(); return; }
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 纪律 ① */ }
+      event.currentTarget.style.touchAction = 'none';
+      liveRef.current = {
+        kind: 'stroke', originPoint: connectionStart.point,
+        el: event.currentTarget, box: liveBox, pointerId: event.pointerId,
+        points: [connectionStart.point, connectionStart.point], shape: tool,
+        connectionStart, connectionTarget: null,
+      };
+      redraw();
+      event.stopPropagation();
+      return;
+    }
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 纪律 ① */ }
     event.currentTarget.style.touchAction = 'none';        // 纪律 ②
     // ★ 2026-09-30：图形档 ⇒ 这一笔**只有两个点**（外接框的两个对角），拖动时**换掉第二个点**
     //    而不是往后追加 —— 见 `handlePointerMove`。手写档一行都没变。
     liveRef.current = {
-      kind: 'stroke',
+      kind: 'stroke', originPoint: point,
       el: event.currentTarget, box: liveBox, pointerId: event.pointerId, points: [point],
       ...(isInkShapeTool(tool) ? { shape: tool } : {}),
     };
@@ -467,10 +556,26 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
     if (!live || live.pointerId !== event.pointerId) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const liveBox = { w: rect.width, h: rect.height };
-    const point: InkPoint = [
+    let point: InkPoint = [
       normalizeAxis(event.clientX - rect.left, rect.width),
       normalizeAxis(event.clientY - rect.top, rect.height),
     ];
+    if (snapStep > 0 && live.kind === 'stroke' && live.shape) {
+      point = snapInkPoint(point, snapStep);
+    }
+    if (snapConnections && live.kind === 'stroke' && (live.shape === 'line' || live.shape === 'arrow')) {
+      const start = live.connectionStart;
+      if (!start) return;
+      const target = snapInkConnectionTarget(
+        point, strokesRef.current, liveBox, CONNECTION_ANCHOR_SNAP_PX, start.shapeIndex,
+      );
+      live.box = liveBox;
+      live.connectionTarget = target;
+      live.points = [start.point, target?.point ?? point];
+      redraw();
+      event.stopPropagation();
+      return;
+    }
     // ★ 图形档：**换掉第二个点**（形状恒是两点定义几何），也不做采样过滤 ——
     //   采样过滤会把「拖到一半的手」判成没动，而形状只需要那两个点。
     if (live.kind === 'stroke' && live.shape) {
@@ -524,7 +629,17 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
           onChange({ box: live.box, strokes: [...strokesRef.current], texts: nextTexts });
         } else {
           const nextStrokes = strokesRef.current.map((stroke, index) => (index === live.target.index ? live.current as InkStroke : stroke));
-          onChange({ box: live.box, strokes: nextStrokes, texts: [...textsRef.current] });
+          const origin = live.origin as InkStroke;
+          const current = live.current as InkStroke;
+          const dx = current.points[0]?.[0] - origin.points[0]?.[0];
+          const dy = current.points[0]?.[1] - origin.points[0]?.[1];
+          const nextTexts = textsRef.current.map((text) => {
+            if (!isInkTextInsideShape(text, origin, live.box)) return text;
+            return live.mode === 'move'
+              ? moveText(text, Number.isFinite(dx) ? dx : 0, Number.isFinite(dy) ? dy : 0)
+              : centerInkTextInShape(text, current, live.box);
+          });
+          onChange({ box: live.box, strokes: nextStrokes, texts: nextTexts });
         }
       } else {
         redraw();                       // 按了没动（或拖回原地）⇒ 不写库，只重画掉高亮
@@ -565,16 +680,84 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
     setDraftText(null);
     const text = value.trim();
     if (!draft || text === '') return;
-    const next: InkText = {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const liveBox = rect ? { w: rect.width, h: rect.height } : box;
+    let next: InkText = {
       text, at: [normalizeAxis(draft.at[0], 1), normalizeAxis(draft.at[1], 1)],
       color, size: textSize,
     };
-    onChange({ box, strokes: [...strokesRef.current], texts: [...textsRef.current, next] });
+    const nextStrokes = [...strokesRef.current];
+    if (draft.shapeIndex !== undefined && nextStrokes[draft.shapeIndex]) {
+      const fitted = fitInkShapeToText(nextStrokes[draft.shapeIndex], next, liveBox);
+      nextStrokes[draft.shapeIndex] = fitted;
+      next = centerInkTextInShape(next, fitted, liveBox);
+    }
+    const nextTexts = [...textsRef.current];
+    if (draft.textIndex !== undefined && nextTexts[draft.textIndex]) nextTexts[draft.textIndex] = next;
+    else nextTexts.push(next);
+    onChange({ box: liveBox, strokes: nextStrokes, texts: nextTexts });
+  };
+
+  const handleDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (disabled || !enableShapeText) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const liveBox = { w: rect.width, h: rect.height };
+    const point: InkPoint = [
+      normalizeAxis(event.clientX - rect.left, rect.width),
+      normalizeAxis(event.clientY - rect.top, rect.height),
+    ];
+    const shapeIndex = pickInkNodeShape(point, strokesRef.current, liveBox, HANDLE_HIT_TOLERANCE_PX);
+    if (shapeIndex < 0) return;
+    let textIndex = -1;
+    for (let index = textsRef.current.length - 1; index >= 0; index -= 1) {
+      if (isInkTextInsideShape(textsRef.current[index], strokesRef.current[shapeIndex], liveBox)) {
+        textIndex = index;
+        break;
+      }
+    }
+    const current = textIndex >= 0 ? textsRef.current[textIndex] : {
+      text: '', at: point, color, size: textSize,
+    };
+    const handles = strokeHandles(strokesRef.current[shapeIndex]);
+    const editorAt: InkPoint = handles.length > 0
+      ? [
+          (Math.min(...handles.map(handle => handle[0])) + Math.max(...handles.map(handle => handle[0]))) / 2,
+          (Math.min(...handles.map(handle => handle[1])) + Math.max(...handles.map(handle => handle[1]))) / 2,
+        ]
+      : point;
+    setDraftText({
+      at: editorAt,
+      value: current.text,
+      shapeIndex,
+      ...(textIndex >= 0 ? { textIndex } : {}),
+    });
+    onSelect({ kind: 'stroke', index: shapeIndex });
+    event.preventDefault();
+    event.stopPropagation();
   };
 
   // ★ 纪律 ③：**两条都要**。少任何一条都会让一次被系统中断的手势留下状态。
   const handlePointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (liveRef.current?.pointerId !== event.pointerId) return;
+    const live = liveRef.current;
+    if (snapConnections && live.kind === 'stroke' && (live.shape === 'line' || live.shape === 'arrow')) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const liveBox = { w: rect.width, h: rect.height };
+      const point: InkPoint = [
+        normalizeAxis(event.clientX - rect.left, rect.width),
+        normalizeAxis(event.clientY - rect.top, rect.height),
+      ];
+      const start = live.connectionStart;
+      const target = start
+        ? snapInkConnectionTarget(point, strokesRef.current, liveBox, CONNECTION_ANCHOR_SNAP_PX, start.shapeIndex)
+        : null;
+      live.box = liveBox;
+      live.connectionTarget = target;
+      if (start && target) live.points = [start.point, target.point];
+      event.stopPropagation();
+      endStroke(Boolean(start && target));
+      return;
+    }
     event.stopPropagation();
     endStroke(true);                       // 收笔 ⇒ 落一笔
   };
@@ -592,6 +775,13 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
 
   return (
     <div className={styles.inkFrame}>
+      {backgroundUrl ? (
+        <div
+          className={styles.inkBackdrop}
+          aria-hidden="true"
+          style={{ backgroundImage: `url(${backgroundUrl})` }}
+        />
+      ) : null}
       {draftText && (
         /* ★ 第二轮：文字输入框。**绝对定位浮在画布上**（画布是 `<canvas>`，它没有文本编辑）。
            ⚠️ `fontSize` 按**像素**算（与落定后 `textBoxOf` 的行高同一个换算）——
@@ -610,8 +800,10 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
           }}
           style={{
             position: 'absolute',
-            left: `${draftText.at[0] * box.w}px`,
-            top: `${draftText.at[1] * box.h}px`,
+            left: `${draftText.at[0] * 100}%`,
+            top: `${draftText.at[1] * 100}%`,
+            transform: draftText.shapeIndex !== undefined ? 'translate(-50%, -50%)' : undefined,
+            width: draftText.shapeIndex !== undefined ? 'min(260px, 46vw)' : undefined,
             minWidth: 90,
             padding: '2px 4px',
             font: `${(textSize * Math.min(box.w, box.h) * 1.3).toFixed(1)}px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif`,
@@ -627,11 +819,14 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
         ref={canvasRef}
         className={styles.inkCanvas}
         // 高 = `box.h`（`defaultInkBox` 那两个数是**界面上看得见的**），宽由 CSS 给 100%。
-        style={{ height: box.h }}
+        style={{
+          background: backgroundUrl ? 'transparent' : '#fff',
+        }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
+        onDoubleClick={handleDoubleClick}
       />
       {/* ★ 2026-09-28：**只读态不显示这句提示。**
           🔴 它说的是「用手指在画布上作图（画错了可以点「撤销」或「清空」）」——

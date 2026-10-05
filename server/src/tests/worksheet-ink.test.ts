@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DRAWING_DOCUMENT_MAX_CHARS,
   INK_MAX_POINTS,
   INK_MAX_STROKES,
   findInkValueError,
@@ -113,6 +114,31 @@ test('🔴 别的格式一律放行（本文件最重要的一条：这个校验
 test('合法的空画布（0 笔）放行 —— 学生打开画布还没落笔的那一份', () => {
   assert.equal(findInkValueError({ format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [] }), null);
   assert.equal(findInkValueError({ format: 'drawing/v1', canvas: { w: 320, h: 240 }, strokes: [] }), null);
+});
+
+test('第三方作图文档：只允许 drawing/v1 的四种工具，并限制体积', () => {
+  for (const tool of ['free', 'math', 'mind-map', 'flowchart']) {
+    assert.equal(findInkValueError({
+      format: 'drawing/v1',
+      canvas: { w: 320, h: 240 },
+      strokes: [],
+      drawing: { tool, data: { nodes: [] } },
+    }), null);
+  }
+  assert.notEqual(findInkValueError({
+    format: 'ink/v1', strokes: [], drawing: { tool: 'free', data: {} },
+  }), null);
+  assert.notEqual(findInkValueError({
+    format: 'drawing/v1', strokes: [], drawing: { tool: 'unknown', data: {} },
+  }), null);
+  assert.notEqual(findInkValueError({
+    format: 'drawing/v1', strokes: [], drawing: { tool: 'free' },
+  }), null);
+  assert.notEqual(findInkValueError({
+    format: 'drawing/v1',
+    strokes: [],
+    drawing: { tool: 'free', data: { text: 'x'.repeat(DRAWING_DOCUMENT_MAX_CHARS + 1) } },
+  }), null);
 });
 
 // ---------------------------------------------------------------------------

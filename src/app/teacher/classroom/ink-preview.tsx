@@ -1,6 +1,10 @@
 'use client';
 
 import { strokePath, strokeWidthPx, textBoxOf, type InkValue } from '@/lib/worksheet-ink';
+import { readDrawingBackground } from '@/lib/worksheet-drawing';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import type { WorksheetQuestionNode } from '@/lib/types';
+import { DrawingDocumentPreview } from './drawing-document-preview';
 
 /**
  * 学生笔迹的**只读**渲染（★ M4b/E1）。
@@ -19,11 +23,20 @@ import { strokePath, strokeWidthPx, textBoxOf, type InkValue } from '@/lib/works
  * ⚠️ 抽屉的宽度是 420px 固定（规格 §7.3），所以一幅 320×240 的图在这里是**缩小的**。
  * 「教师能不能看清学生的字」是产品判断，本批**不做**放大视图 —— 已写进 F1 的真机清单。
  */
-export function InkPreview({ value }: { value: InkValue }) {
+export function InkPreview({ value, node }: { value: InkValue; node?: WorksheetQuestionNode }) {
   const { w, h } = value.canvas;
   // `w`/`h` 可能是 0（手改过的值 / 读不出来的框，见 `readCanvas` 的哨兵）：那时给一个最小
   // 可渲染的框，别让 SVG 的 viewBox 变成 "0 0 0 0"（那在 Safari 上什么都不画）。
   const box = { w: w > 0 ? w : 1, h: h > 0 ? h : 1 };
+  const background = node ? readDrawingBackground(node) : { url: null };
+  const backgroundUrl = background.url ? worksheetAssetUrl(background.url) : null;
+  if (value.drawing) {
+    return (
+      <div style={{ overflow: 'hidden', border: '1px solid #e2e8f0', borderRadius: 4, background: '#fff' }}>
+        <DrawingDocumentPreview document={value.drawing} width={box.w} height={box.h} backgroundUrl={backgroundUrl} />
+      </div>
+    );
+  }
   return (
     <svg
       viewBox={`0 0 ${box.w} ${box.h}`}
@@ -32,6 +45,9 @@ export function InkPreview({ value }: { value: InkValue }) {
       role="img"
       aria-label="学生的手写作答"
     >
+      {backgroundUrl && (
+        <image href={backgroundUrl} x="0" y="0" width={box.w} height={box.h} preserveAspectRatio="none" />
+      )}
       {/* `key={index}` 在这里**可以**接受：这个列表是静态的（只读、不重排、不增删、
           没有输入控件），React 只需要它在同一次渲染内唯一。⚠️ 但别照抄到别处 ——
           任何可排序 / 可增删的列表上用下标当 key 会让 React 复用错元素的状态。 */}

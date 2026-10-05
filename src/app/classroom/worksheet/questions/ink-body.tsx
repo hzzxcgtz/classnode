@@ -1,17 +1,22 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import type { WorksheetQuestionNode } from '@/lib/types';
+import { drawingModesFor, readDrawingBackground, type DrawingMode } from '@/lib/worksheet-drawing';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import {
   INK_DEFAULT_COLOR, INK_DEFAULT_TOOL, INK_DEFAULT_WIDTH, INK_PALETTE, INK_SHAPE_KINDS, INK_WIDTH_OPTIONS,
   isInkShapeTool,
+  isInkTextInsideShape,
   textSizeForWidth,
   defaultInkBox, inkFormatOf, inkHint, undoStroke,
 } from '@/lib/worksheet-ink';
 import type { InkShapeKind, InkTool, InkValue, InkWidth } from '@/lib/worksheet-ink';
 import { InkCanvas, type InkSelection } from '../ink-canvas';
+import { DrawingToolBody } from './drawing-tool-body';
 import styles from '../worksheet.module.css';
 
 /**
@@ -51,6 +56,7 @@ const TOOL_LABELS: Record<InkTool, string> = {
   line: '直线',
   arrow: '箭头',
   rect: '矩形',
+  diamond: '判断',
   ellipse: '圆',
   triangle: '三角形',
   'right-triangle': '直角三角形',
@@ -86,6 +92,7 @@ const TOOL_ICONS: Record<InkTool, ReactNode> = {
     </>
   ),
   rect: <rect x="3.5" y="5.5" width="13" height="9" rx="0.8" />,
+  diamond: <path d="M10 3.5 17 10l-7 6.5L3 10z" />,
   ellipse: <ellipse cx="10" cy="10" rx="6.5" ry="4.8" />,
   triangle: <path d="M10 4 17 15.5H3z" />,
   'right-triangle': <path d="M4.5 5v10.5h11" />,
@@ -117,7 +124,7 @@ const TOOL_ICONS: Record<InkTool, ReactNode> = {
 /** 粗细三档的名字（顺序与 `INK_WIDTH_OPTIONS` 一致）。 */
 const WIDTH_LABELS = ['细', '中', '粗'] as const;
 /** 粗细三档各自的圆点直径（按钮上那个「当前值」的预览）。 */
-const WIDTH_DOTS: Record<number, number> = { 0.009: 6, 0.016: 11, 0.028: 16 };
+const WIDTH_DOTS: Record<number, number> = { 0.004: 4, 0.008: 7, 0.016: 11 };
 
 /** 弹出按钮右边那个小三角。 */
 function Caret() {
@@ -173,7 +180,19 @@ function ToolIcon({ tool }: { tool: InkTool }) {
   );
 }
 
-export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
+export function InkBody(props: InkBodyProps) {
+  const { node, draft } = props;
+  // 已经使用旧画板作答的题继续回到旧编辑器，保证历史笔迹可见且可继续修改。
+  if (node.type === 'drawing' && draft.strokes.length === 0 && (draft.texts?.length ?? 0) === 0) {
+    return <DrawingToolBody {...props} />;
+  }
+  return <LegacyInkBody {...props} />;
+}
+
+function LegacyInkBody({ node, draft, onChange, disabled }: InkBodyProps) {
+  const modes = drawingModesFor(node);
+  const background = readDrawingBackground(node);
+  const [mode, setMode] = useState<DrawingMode>('free');
   /**
    * ★ 2026-09-30：当前档。**默认恒是「手写」**（`INK_DEFAULT_TOOL`）——
    * 老习惯的学生进题目直接画；默认成别的档他会以为画布坏了。
@@ -188,7 +207,7 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
   /**
    * ★ 2026-09-30（教师：「笔的粗细」+「要能选」）：**新画的那一笔**用多粗。
    * ⚠️ 已经画下去的那些**不受影响**（粗细是每一笔各自的字段，这是数据的形状决定的）。
-   * 默认档 = `INK_DEFAULT_WIDTH`，而它**就是**改动前的那个常量值 ⇒ 默认手感没变。
+   * 默认档 = `INK_DEFAULT_WIDTH`；老笔迹各自保存宽度，调整默认档不会改动已有作答。
    */
   const [width, setWidth] = useState<InkWidth>(INK_DEFAULT_WIDTH);
   /**
@@ -209,7 +228,60 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
    * ⇒ 记住**最后一次选的图形**，那才是那个按钮要显示的「当前值」。
    */
   const [lastShape, setLastShape] = useState<InkShapeKind>('rect');
+  const [zoom, setZoom] = useState(1);
+  const [maximized, setMaximized] = useState(false);
   const groupRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * 扩展模式的核心工具直接摊在工具栏里，并写清用途。
+   * 之前这里只缩小了“图形”下拉菜单的内容，学生切换模式后看不到新增能力，
+   * 也不知道矩形、菱形分别该在什么时候使用。
+   */
+  const modeTools: readonly { tool: InkTool; label: string; title: string }[] = mode === 'math'
+    ? [
+        { tool: 'line', label: '直线', title: '绘制直线' },
+        { tool: 'arrow', label: '箭头', title: '绘制带方向的线' },
+        { tool: 'ellipse', label: '圆', title: '绘制圆或椭圆' },
+        { tool: 'triangle', label: '三角形', title: '绘制三角形' },
+        { tool: 'angle', label: '角', title: '绘制角' },
+        { tool: 'text', label: '标注', title: '在画布上添加标注' },
+        { tool: 'select', label: '选择', title: '选择、移动或调整元素' },
+      ]
+    : mode === 'mind-map'
+      ? [
+          { tool: 'rect', label: '主题框', title: '绘制主题或分支节点' },
+          { tool: 'ellipse', label: '子主题', title: '绘制子主题节点' },
+          { tool: 'arrow', label: '分支线', title: '连接主题与分支' },
+          { tool: 'text', label: '文字', title: '在节点中添加文字' },
+          { tool: 'select', label: '选择', title: '选择、移动或调整元素' },
+        ]
+      : mode === 'flowchart'
+        ? [
+            { tool: 'ellipse', label: '开始/结束', title: '绘制开始或结束节点' },
+            { tool: 'rect', label: '过程', title: '绘制处理过程' },
+            { tool: 'diamond', label: '判断', title: '绘制判断节点' },
+            { tool: 'parallelogram', label: '输入/输出', title: '绘制输入或输出节点' },
+            { tool: 'arrow', label: '连接线', title: '连接流程节点' },
+            { tool: 'text', label: '文字', title: '在节点中添加文字' },
+            { tool: 'select', label: '选择', title: '选择、移动或调整元素' },
+          ]
+        : [];
+
+  const changeMode = (next: DrawingMode) => {
+    setMode(next);
+    setSelected(null);
+    setOpenGroup(null);
+    if (next === 'math') { setTool('line'); setLastShape('line'); }
+    else if (next === 'mind-map') { setTool('rect'); setLastShape('rect'); }
+    else if (next === 'flowchart') { setTool('rect'); setLastShape('rect'); }
+    else setTool(INK_DEFAULT_TOOL);
+  };
+
+  useEffect(() => {
+    if (!modes.includes(mode)) changeMode('free');
+  // `modes` 是按节点配置即时算出的短数组；逐项签名避免每次渲染都重置工具。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modes.join('|'), mode]);
 
   /**
    * 点一个色块。🔴 **选中了东西的时候它是「改那个元素的颜色」**（教师选的八色板那一条）——
@@ -298,6 +370,20 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
     if (openGroup !== 'more') setClearArmed(false);
   }, [openGroup]);
 
+  useEffect(() => {
+    if (!maximized) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMaximized(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [maximized]);
+
   const empty = draft.strokes.length === 0 && (draft.texts?.length ?? 0) === 0;
 
   const undoLast = () => {
@@ -317,50 +403,90 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
     onChange({ kind: 'ink', box, strokes: [], texts: [] });
   };
 
-  return (
-    <div className={styles.inkWorkspace}>
+  const canvasHeight = maximized
+    ? `calc(100vh - 190px + ${Math.round((zoom - 1) * 480)}px)`
+    : `${Math.round(box.h * zoom)}px`;
+  const workspaceStyle = {
+    '--ink-canvas-height': canvasHeight,
+    '--ink-canvas-width': `${Math.round(zoom * 100)}%`,
+  } as CSSProperties;
+
+  const workspace = (
+    <div className={`${styles.inkWorkspace} ${maximized ? styles.inkWorkspaceMaximized : ''}`}
+      style={workspaceStyle} data-maximized={maximized ? '1' : '0'}>
+      {node.type === 'drawing' && modes.length > 1 && (
+        <div className={styles.inkModeBar} role="tablist" aria-label="绘图方式">
+          {modes.map(item => {
+            const labels: Record<DrawingMode, string> = {
+              free: '自由绘图', math: '数学作图', 'mind-map': '思维导图', flowchart: '流程图',
+            };
+            return (
+              <button key={item} type="button" role="tab" aria-selected={mode === item}
+                className={styles.inkModeButton} onClick={() => changeMode(item)} disabled={disabled}>
+                {labels[item]}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className={styles.inkToolbar} role="toolbar" aria-label="画图工具" ref={groupRef}>
         <div className={styles.inkToolGroup} role="group" aria-label="绘制工具">
-          <button type="button" className={styles.inkButton} disabled={disabled}
-            aria-pressed={tool === 'pen'} aria-label="画笔" title="画笔"
-            onClick={() => changeTool('pen')} style={tool === 'pen' ? ACTIVE_STYLE : undefined}>
-            <ToolIcon tool="pen" />
-          </button>
+          {mode === 'free' ? (
+            <>
+              <button type="button" className={styles.inkButton} disabled={disabled}
+                aria-pressed={tool === 'pen'} aria-label="画笔" title="画笔"
+                onClick={() => changeTool('pen')} style={tool === 'pen' ? ACTIVE_STYLE : undefined}>
+                <ToolIcon tool="pen" />
+              </button>
 
-          <div className={styles.inkPopoverAnchor}>
-            <button type="button" className={styles.inkButton} disabled={disabled}
-              aria-haspopup="menu" aria-expanded={openGroup === 'shapes'} aria-label="图形" title="图形"
-              onClick={() => setOpenGroup(openGroup === 'shapes' ? null : 'shapes')}
-              style={isInkShapeTool(tool) ? ACTIVE_STYLE : undefined}>
-              <ToolIcon tool={isInkShapeTool(tool) ? tool : lastShape} />
-              <Caret />
-            </button>
-            {openGroup === 'shapes' && (
-              <div role="menu" aria-label="选择图形" className={`${styles.inkPopover} ${styles.inkShapePopover}`}>
-                {INK_SHAPE_KINDS.map((shape) => (
-                  <button key={shape} type="button" role="menuitemradio" aria-checked={tool === shape}
-                    className={styles.inkButton} disabled={disabled}
-                    aria-label={TOOL_LABELS[shape]} title={TOOL_LABELS[shape]}
-                    onClick={() => { changeTool(shape); setLastShape(shape); setOpenGroup(null); }}
-                    style={tool === shape ? ACTIVE_STYLE : undefined}>
-                    <ToolIcon tool={shape} />
-                  </button>
-                ))}
+              <div className={styles.inkPopoverAnchor}>
+                <button type="button" className={styles.inkButton} disabled={disabled}
+                  aria-haspopup="menu" aria-expanded={openGroup === 'shapes'} aria-label="图形" title="图形"
+                  onClick={() => setOpenGroup(openGroup === 'shapes' ? null : 'shapes')}
+                  style={isInkShapeTool(tool) ? ACTIVE_STYLE : undefined}>
+                  <ToolIcon tool={isInkShapeTool(tool) ? tool : lastShape} />
+                  <Caret />
+                </button>
+                {openGroup === 'shapes' && (
+                  <div role="menu" aria-label="选择图形" className={`${styles.inkPopover} ${styles.inkShapePopover}`}>
+                    {INK_SHAPE_KINDS.map((shape) => (
+                      <button key={shape} type="button" role="menuitemradio" aria-checked={tool === shape}
+                        className={styles.inkButton} disabled={disabled}
+                        aria-label={TOOL_LABELS[shape]} title={TOOL_LABELS[shape]}
+                        onClick={() => { changeTool(shape); setLastShape(shape); setOpenGroup(null); }}
+                        style={tool === shape ? ACTIVE_STYLE : undefined}>
+                        <ToolIcon tool={shape} />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <button type="button" className={styles.inkButton} disabled={disabled}
-            aria-pressed={tool === 'text'} aria-label="文字" title="点击画布添加文字"
-            onClick={() => changeTool('text')} style={tool === 'text' ? ACTIVE_STYLE : undefined}>
-            <ToolIcon tool="text" />
-          </button>
+              <button type="button" className={styles.inkButton} disabled={disabled}
+                aria-pressed={tool === 'text'} aria-label="文字" title="点击画布添加文字"
+                onClick={() => changeTool('text')} style={tool === 'text' ? ACTIVE_STYLE : undefined}>
+                <ToolIcon tool="text" />
+              </button>
 
-          <button type="button" className={styles.inkButton} disabled={disabled}
-            aria-pressed={tool === 'select'} aria-label="选择" title="选择、移动或调整元素"
-            onClick={() => changeTool('select')} style={tool === 'select' ? ACTIVE_STYLE : undefined}>
-            <ToolIcon tool="select" />
-          </button>
+              <button type="button" className={styles.inkButton} disabled={disabled}
+                aria-pressed={tool === 'select'} aria-label="选择" title="选择、移动或调整元素"
+                onClick={() => changeTool('select')} style={tool === 'select' ? ACTIVE_STYLE : undefined}>
+                <ToolIcon tool="select" />
+              </button>
+            </>
+          ) : modeTools.map(item => (
+            <button key={item.tool} type="button"
+              className={`${styles.inkButton} ${styles.inkNamedButton}`} disabled={disabled}
+              aria-pressed={tool === item.tool} aria-label={item.label} title={item.title}
+              onClick={() => {
+                changeTool(item.tool);
+                if (isInkShapeTool(item.tool)) setLastShape(item.tool);
+              }}
+              style={tool === item.tool ? ACTIVE_STYLE : undefined}>
+              <ToolIcon tool={item.tool} />
+              <span>{item.label}</span>
+            </button>
+          ))}
         </div>
 
         <div className={styles.inkToolGroup} role="group" aria-label="画笔样式">
@@ -411,6 +537,26 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
           </div>
         </div>
 
+        <div className={`${styles.inkToolGroup} ${styles.inkViewGroup}`} role="group" aria-label="画板视图">
+          <button type="button" className={styles.inkButton} disabled={zoom <= 1}
+            aria-label="缩小画板" title="缩小画板"
+            onClick={() => setZoom(value => Math.max(1, Number((value - 0.25).toFixed(2))))}>
+            <span aria-hidden="true" className={styles.inkZoomSymbol}>−</span>
+          </button>
+          <span className={styles.inkZoomValue} aria-live="polite">{Math.round(zoom * 100)}%</span>
+          <button type="button" className={styles.inkButton} disabled={zoom >= 2}
+            aria-label="放大画板" title="放大画板"
+            onClick={() => setZoom(value => Math.min(2, Number((value + 0.25).toFixed(2))))}>
+            <span aria-hidden="true" className={styles.inkZoomSymbol}>+</span>
+          </button>
+          <button type="button" className={`${styles.inkButton} ${styles.inkNamedButton}`}
+            aria-pressed={maximized} aria-label={maximized ? '退出最大化' : '最大化画板'}
+            title={maximized ? '退出最大化（Esc）' : '最大化画板'}
+            onClick={() => setMaximized(value => !value)}>
+            <span>{maximized ? '退出最大化' : '最大化'}</span>
+          </button>
+        </div>
+
         <div className={`${styles.inkToolGroup} ${styles.inkActionGroup}`} role="group" aria-label="修改画布">
           {tool === 'select' && selected !== null && (
             <button type="button" className={styles.inkButton} disabled={disabled}
@@ -421,8 +567,12 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
                   const texts = (draft.texts ?? []).filter((_, index) => index !== selected.index);
                   onChange({ kind: 'ink', box, strokes: draft.strokes, texts });
                 } else {
+                  const removed = draft.strokes[selected.index];
                   const strokes = draft.strokes.filter((_, index) => index !== selected.index);
-                  onChange({ kind: 'ink', box, strokes, texts: draft.texts });
+                  const texts = removed
+                    ? (draft.texts ?? []).filter(text => !isInkTextInsideShape(text, removed, box))
+                    : draft.texts;
+                  onChange({ kind: 'ink', box, strokes, texts });
                 }
               }}>
               <TrashIcon />
@@ -451,20 +601,34 @@ export function InkBody({ node, draft, onChange, disabled }: InkBodyProps) {
         </div>
       </div>
 
-      <InkCanvas
-        box={box}
-        strokes={draft.strokes}
-        texts={draft.texts ?? []}
-        textSize={textSizeForWidth(width)}
-        hint={inkHint(node)}
-        disabled={disabled}
-        tool={tool}
-        width={width}
-        color={color}
-        selected={selected}
-        onSelect={setSelected}
-        onChange={(next) => onChange({ kind: 'ink', box: next.box, strokes: next.strokes, texts: next.texts })}
-      />
+      <div className={styles.inkViewport}>
+        <InkCanvas
+          box={box}
+          strokes={draft.strokes}
+          texts={draft.texts ?? []}
+          textSize={textSizeForWidth(width)}
+          hint={inkHint(node)}
+          disabled={disabled}
+          tool={tool}
+          width={width}
+          color={color}
+          selected={selected}
+          onSelect={setSelected}
+          backgroundUrl={background.url ? worksheetAssetUrl(background.url) : null}
+          snapStep={mode === 'math' ? 0.025 : 0}
+          enableShapeText={mode === 'mind-map' || mode === 'flowchart'}
+          snapConnections={mode === 'mind-map' || mode === 'flowchart'}
+          onChange={(next) => onChange({ kind: 'ink', box: next.box, strokes: next.strokes, texts: next.texts })}
+        />
+      </div>
+      {node.type === 'drawing' && mode !== 'free' && !disabled && (
+        <p className={styles.inkModeHint}>
+          {mode === 'math' && '数学作图：图形端点会自动吸附到网格位置。'}
+          {mode === 'mind-map' && '思维导图：双击节点写文字；选择“分支线”后，从节点连接点拖向另一节点，靠近时会自动吸附。'}
+          {mode === 'flowchart' && '流程图：双击图形写文字；选择“连接线”后，从图形连接点拖向另一图形，靠近时会自动吸附。'}
+        </p>
+      )}
     </div>
   );
+  return maximized && typeof document !== 'undefined' ? createPortal(workspace, document.body) : workspace;
 }

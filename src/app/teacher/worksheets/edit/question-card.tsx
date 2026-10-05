@@ -59,6 +59,7 @@ import { tableMarkIndex } from '@/lib/worksheet-table';
 import { OrderBody } from './bodies/order-body';
 import { MatchBody } from './bodies/match-body';
 import { CategorizeBody } from './bodies/categorize-body';
+import { DrawingSettings } from './bodies/drawing-settings';
 // ★ M4b/D1：「这道题是不是手写作答」这个判据只有一份，在 `src/lib/worksheet-ink.ts`
 //（学生端的分派器 `questions/index.tsx` 用的也是它）。此处**不重写**那条判据 ——
 // 重写一遍就是两份真源，而它们漂移的后果是「教师在教师端选的档」与「学生端拿到的输入形态」
@@ -576,6 +577,10 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             </div>
 
             {showInputModeRow && <InputModeRow node={node} onInputModeChange={onInputModeChange} />}
+
+            {node.type === 'drawing' && (
+              <DrawingSettings node={node} onDataChange={onDataChange} onNotice={onNotice} />
+            )}
 
             {/* 题型 → 作答体。这里保持与学生端题型数据结构一一对应。
                 🔴 本页是按 `node.type === '…'` 逐个分派的（不是 `Record`），少写一支的后果是

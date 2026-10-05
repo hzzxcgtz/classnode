@@ -496,7 +496,7 @@ export function QuestionAnswers({
                     style={{ display: 'block', width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 8 }}
                   />
                 ) : outcome?.ink ? (
-                  <InkPreview value={outcome.ink} />
+                  <InkPreview value={outcome.ink} node={node ?? undefined} />
                 ) : (
                   outcome?.answerText ?? <span style={{ color: '#94a3b8' }}>未作答</span>
                 )}

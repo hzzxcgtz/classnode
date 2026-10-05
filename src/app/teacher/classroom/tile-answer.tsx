@@ -7,6 +7,7 @@ import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 // 🔴 **只包「教师写的原文」**：本文件里 `view.text`（问答）/ `blank.text`（填空）/
 //    排序那个 `{text}` 都是**学生填的答案**，一律**不**包（裁定 ④）。
 import { PromptText } from '@/lib/worksheet-prompt-text';
+import type { WorksheetQuestionNode } from '@/lib/types';
 import type { TileAnswer } from './worksheet-tile-state';
 import { InkPreview } from './ink-preview';
 
@@ -77,10 +78,10 @@ export function TileAnswerBody({ answer }: { answer: TileAnswer }) {
   // 滚动条」）：外面那一层是 column flex + `overflowY: auto`，而子项默认 `flex-shrink: 1`
   // 会被压到刚好塞下 —— 那时没有任何东西溢出，滚动条永远不出现，长内容**直接被切掉**
   //（不报错，只是「后半截没了」）。不许被压，那一层才会真的溢出、才谈得上滚。
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flexShrink: 0 }}>{renderCompact(view)}</div>;
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flexShrink: 0 }}>{renderCompact(view, answer.node)}</div>;
 }
 
-function renderCompact(view: AnswerView): React.ReactNode {
+function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.ReactNode {
   switch (view.kind) {
     // 未作答：一句短的。**不画空框** —— 空框与「他写了但读不出来」长得一样。
     case 'none':
@@ -109,7 +110,7 @@ function renderCompact(view: AnswerView): React.ReactNode {
       // 一幅画在这一格里只能给一块固定高度的窗口（按宽度缩放的话 4:3 的图会高过整格）。
       return view.ink ? (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', borderRadius: 4, border: '1px solid #e2e8f0' }}>
-          <InkPreview value={view.ink} />
+          <InkPreview value={view.ink} node={node} />
         </div>
       ) : <Line color={FAINT}>读不出这幅画</Line>;
 

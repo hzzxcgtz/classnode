@@ -15,6 +15,10 @@
 export const INK_MAX_STROKES = 400;
 export const INK_MAX_POINTS = 2000;
 
+/** 与前端 `worksheet-drawing-document.ts` 保持一致：一题的第三方绘图文档最大字符数。 */
+export const DRAWING_DOCUMENT_MAX_CHARS = 600_000;
+const DRAWING_TOOLS = ['free', 'math', 'mind-map', 'flowchart'] as const;
+
 /** 笔迹的两个 `format` 串（规格 §12 裁定 6：一个实现、两个 format 名）。 */
 export const INK_FORMATS = ['ink/v1', 'drawing/v1'] as const;
 export type InkFormat = (typeof INK_FORMATS)[number];
@@ -83,7 +87,7 @@ const INK_MAX_TEXTS = 100;
 const INK_MAX_TEXT_CHARS = 2000;
 
 const SHAPE_KINDS = [
-  'line', 'arrow', 'rect', 'ellipse', 'triangle',
+  'line', 'arrow', 'rect', 'diamond', 'ellipse', 'triangle',
   'right-triangle', 'parallelogram', 'trapezoid', 'angle',
 ] as const;
 
@@ -154,6 +158,31 @@ export function findInkValueError(value: unknown): string | null {
     }
     if (chars > INK_MAX_TEXT_CHARS) {
       return `文字太多：最多 ${INK_MAX_TEXT_CHARS} 个字，请删掉一些`;
+    }
+  }
+  const drawing = row.drawing;
+  if (drawing !== undefined) {
+    if (row.format !== 'drawing/v1') return '作图文档只能用于作图题';
+    if (!drawing || typeof drawing !== 'object' || Array.isArray(drawing)) {
+      return '作图文档的形状不对';
+    }
+    const document = drawing as Record<string, unknown>;
+    if (typeof document.tool !== 'string'
+      || !(DRAWING_TOOLS as readonly string[]).includes(document.tool)) {
+      return '作图文档使用了不支持的工具';
+    }
+    if (!Object.prototype.hasOwnProperty.call(document, 'data')) {
+      return '作图文档缺少绘图数据';
+    }
+    let serialized: string | undefined;
+    try {
+      serialized = JSON.stringify(document.data);
+    } catch {
+      return '作图文档的内容无法保存';
+    }
+    if (serialized === undefined) return '作图文档的内容无法保存';
+    if (serialized.length > DRAWING_DOCUMENT_MAX_CHARS) {
+      return '作图内容太多，请删除部分图形后再提交';
     }
   }
   return null;

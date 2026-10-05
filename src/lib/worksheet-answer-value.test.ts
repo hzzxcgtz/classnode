@@ -480,6 +480,34 @@ test('★ isDraftEmpty：ink 的判据是「一笔都没有」，不看那个占
   assert.equal(isDraftEmpty({ kind: 'ink', box: { w: 320, h: 240 }, strokes: [STROKE] }), false);
   // 照 `box` 判会反过来：空画布带着一个非零的占位框 ⇒ 误判成「有内容」。
   assert.equal(isDraftEmpty({ kind: 'ink', box: DRAWN_BOX, strokes: [] }), true);
+  assert.equal(isDraftEmpty({
+    kind: 'ink',
+    box: DRAWN_BOX,
+    strokes: [],
+    drawing: { tool: 'flowchart', data: { nodes: [{ id: 'n1' }], edges: [] } },
+  }), false, '第三方文档没有旧笔迹也仍是一份有效作答');
+});
+
+test('第三方绘图文档能提交并从 drawing/v1 无损恢复', () => {
+  const draft: AnswerDraft = {
+    kind: 'ink',
+    box: DRAWN_BOX,
+    strokes: [],
+    drawing: {
+      tool: 'flowchart',
+      data: { nodes: [{ id: 'n1', position: { x: 20, y: 30 } }], edges: [] },
+    },
+  };
+  const built = buildAnswerValue(drawingNode(), draft);
+  assert.deepEqual(built, {
+    format: 'drawing/v1',
+    canvas: DRAWN_BOX,
+    strokes: [],
+    drawing: draft.drawing,
+  });
+  assert.deepEqual(draftFromValue(drawingNode(), built), draft);
+  assert.equal(buildAnswerValue(handwritingNode('short-answer'), draft), null,
+    '第三方绘图文档不能借手写问答格式提交');
 });
 
 test('🔴 buildAnswerValue：画布题的 `canvas` 必须是**学生量出来的框**，不是默认框', () => {

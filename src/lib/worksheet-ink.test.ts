@@ -65,13 +65,22 @@ import {
   INK_SHAPE_KINDS,
   estimateTextWidth,
   hitTestText,
+  inkConnectionAnchors,
   isShapeTooSmall,
   moveText,
   pickInkHandle,
+  pickInkConnectionAnchor,
+  pickInkNodeShape,
   pickInkStroke,
+  centerInkTextInShape,
+  fitInkShapeToText,
+  isInkTextInsideShape,
+  snapInkConnector,
+  snapInkConnectionTarget,
   shapeOutline,
   strokeHandles,
   normalizeAxis,
+  snapInkPoint,
   readInkValue,
   strokePath,
   strokeWidthPx,
@@ -330,6 +339,13 @@ test('normalizeAxis：正常比例原样；越界夹到 0..1；size 为 0 回 0�
   assert.equal(normalizeAxis(0.5, -5), 0);
   assert.equal(Number.isNaN(normalizeAxis(Number.NaN, 100)), false);
   assert.equal(Number.isNaN(normalizeAxis(0.5, Number.NaN)), false);
+});
+
+test('数学作图网格吸附：按步长取最近点，并把边界夹在画布内', () => {
+  assert.deepEqual(snapInkPoint([0.113, 0.486], 0.025), [0.125, 0.475]);
+  assert.deepEqual(snapInkPoint([0.99, 0.01], 0.1), [1, 0]);
+  const point: [number, number] = [0.113, 0.486];
+  assert.equal(snapInkPoint(point, 0), point, '自由绘图不吸附，也不制造一份新坐标');
 });
 
 // ── 换算（两处渲染的公共入口）──────────────────────────────────────────
@@ -634,10 +650,11 @@ test('🔴 shapeOutline：角的弧也是折线，且**半径比例一致**', ()
   assert.ok(parts[2].points.length >= 4, '弧要是折线（至少几段）');
 });
 
-test('🔴 INK_SHAPE_KINDS：九个，且一条不多一条不少', () => {
-  assert.deepEqual([...INK_SHAPE_KINDS], ['line', 'arrow', 'rect', 'ellipse', 'triangle',
+test('🔴 INK_SHAPE_KINDS：十个，且一条不多一条不少', () => {
+  assert.deepEqual([...INK_SHAPE_KINDS], ['line', 'arrow', 'rect', 'diamond', 'ellipse', 'triangle',
     'right-triangle', 'parallelogram', 'trapezoid', 'angle']);
   assert.equal(isInkShapeKind('rect'), true);
+  assert.equal(isInkShapeKind('diamond'), true);
   assert.equal(isInkShapeKind('hexagon'), false);
   assert.equal(isInkShapeKind(undefined), false);
   assert.equal(isInkShapeKind(42), false);
@@ -799,13 +816,11 @@ test('🔴 INK_TOOLS：**默认档是手写**，顺序 = 工具栏顺序', () =>
   assert.equal(isInkShapeTool('text'), false, '文字档不是一个图形');
 });
 
-test('🔴 INK_WIDTH_OPTIONS：三档，且**中间那档就是原来的默认值**', () => {
-  // ★ 2026-09-30（教师：「笔的粗细」+「要能选」）。
-  // 🔴 「中间那档 = `INK_STROKE_WIDTH`」是一条**兼容性**要求，不是口味：
-  //    它保证**加选项这件事不改默认手感** —— 否则以前画的与现在画的会不一样粗，
-  //    而屏幕上只是「今天这笔怎么变粗了」，没有任何报错。
+test('🔴 INK_WIDTH_OPTIONS：三档整体降细，中间档是新笔默认值', () => {
+  // 2026-10-05：细 / 中 / 粗整体下调两档；旧笔迹自带 width，不会因此变细。
   assert.equal(INK_WIDTH_OPTIONS.length, 3);
-  assert.equal(INK_WIDTH_OPTIONS[1], INK_STROKE_WIDTH, '中间那档必须还是原来的默认值');
+  assert.deepEqual([...INK_WIDTH_OPTIONS], [0.004, 0.008, 0.016]);
+  assert.equal(INK_WIDTH_OPTIONS[1], INK_STROKE_WIDTH, '中间档必须与新笔默认值同源');
   assert.equal(INK_DEFAULT_WIDTH, INK_STROKE_WIDTH);
   // 从小到大（UI 上「细中粗」的顺序就靠它）。
   assert.ok(INK_WIDTH_OPTIONS[0] < INK_WIDTH_OPTIONS[1] && INK_WIDTH_OPTIONS[1] < INK_WIDTH_OPTIONS[2]);
@@ -951,4 +966,41 @@ test('🔴 hitTestText / moveText / textSizeForWidth', () => {
   assert.equal(textSizeForWidth(INK_WIDTH_OPTIONS[0]), INK_TEXT_SIZES[0]);
   assert.equal(textSizeForWidth(INK_WIDTH_OPTIONS[2]), INK_TEXT_SIZES[2]);
   assert.equal(textSizeForWidth(0.999), INK_DEFAULT_TEXT_SIZE, '认不出的粗细档取中间');
+});
+
+test('思维导图节点文字：居中、长文字扩框，且仍落在节点内部', () => {
+  const box = { w: 400, h: 300 };
+  const node = shapeStroke('rect', [[0.35, 0.35], [0.55, 0.5]]);
+  const label: InkText = { text: '这是一个较长的主题文字', at: [0, 0], color: '#1f2937', size: 0.07 };
+  const fitted = fitInkShapeToText(node, label, box);
+  assert.ok(fitted.points[1][0] - fitted.points[0][0] > node.points[1][0] - node.points[0][0], '长文字要把节点撑宽');
+  const centered = centerInkTextInShape(label, fitted, box);
+  assert.equal(isInkTextInsideShape(centered, fitted, box), true, '居中后的文字中心必须仍在节点里');
+});
+
+test('流程图连接线：两端精确吸附到两个节点轮廓，不停在节点中心', () => {
+  const box = { w: 400, h: 300 };
+  const left = shapeStroke('rect', [[0.1, 0.3], [0.3, 0.6]]);
+  const right = shapeStroke('diamond', [[0.65, 0.3], [0.85, 0.6]]);
+  const strokes = [left, right];
+  assert.equal(pickInkNodeShape([0.2, 0.45], strokes, box, 8), 0);
+  const [start, end] = snapInkConnector([0.2, 0.45], [0.75, 0.45], strokes, box, 8);
+  assert.ok(Math.abs(start[0] - 0.3) < 1e-6, `起点应吸附到左节点右边界，实际 ${start[0]}`);
+  assert.ok(Math.abs(end[0] - 0.65) < 1e-6, `终点应吸附到右节点左顶点，实际 ${end[0]}`);
+  assert.ok(start[0] < end[0], '连接线方向不能反');
+});
+
+test('连接控制点：四向实时可见，可宽容命中并吸附到另一节点', () => {
+  const box = { w: 400, h: 300 };
+  const left = shapeStroke('rect', [[0.1, 0.3], [0.3, 0.6]]);
+  const right = shapeStroke('diamond', [[0.65, 0.3], [0.85, 0.6]]);
+  const strokes = [left, right];
+  assert.deepEqual(inkConnectionAnchors(left, box), [
+    [0.2, 0.3], [0.3, 0.45], [0.2, 0.6], [0.1, 0.45],
+  ]);
+  const start = pickInkConnectionAnchor([0.305, 0.45], strokes, box, 8);
+  assert.deepEqual(start, { shapeIndex: 0, anchorIndex: 1, point: [0.3, 0.45] });
+  const target = snapInkConnectionTarget([0.74, 0.45], strokes, box, 24, 0);
+  assert.deepEqual(target, { shapeIndex: 1, anchorIndex: 3, point: [0.65, 0.45] }, '手指进入节点后应自动选最近锨点');
+  assert.equal(snapInkConnectionTarget([0.45, 0.1], strokes, box, 24, 0), null, '空白处不应生成悬空连线');
 });

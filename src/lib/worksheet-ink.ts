@@ -1,3 +1,6 @@
+import { readDrawingDocument } from './worksheet-drawing-document.ts';
+import type { DrawingDocument } from './worksheet-drawing-document.ts';
+
 /**
  * 笔迹（`ink/v1` / `drawing/v1`）的**纯逻辑层** —— 没有 React、没有 DOM、没有 `@/` 路径。
  *
@@ -8,9 +11,8 @@
  * 渲染）**都不自己写判据** —— 它们按本文件的接口逐字消费，正确性建立在这里。
  *
  * 与 `worksheet-answer-value.ts` 同一条纪律：
- *   · **不引任何 React / DOM，也不引任何联名路径（`@/…`）** —— 它要能被 `node --test`
- *     直接执行（Node 24 的类型擦除），所以 `worksheet-ink.test.ts` 能真的跑到这些判据；
- *   · `import type` 是**唯一**的 import 形态（本文件不需要任何 import）；
+ *   · **不引任何 React / DOM，也不引任何联名路径（`@/…`）** —— 它只通过相对路径引用
+ *     同层的纯逻辑模块，仍能被 `node --test` 直接执行（Node 24 的类型擦除）；
  *   · 本文件在 `scripts/check-classroom-browser-compat.mjs` 的扫描根（`src/lib`）内：
  *     不得出现 `Object.hasOwn` / `structuredClone` / `findLast` / `.at(` / `:has(` /
  *     `@container` / `content-visibility` / `color-mix(`（学生端跑在 Safari 15 的老 iPad 上）。
@@ -48,7 +50,7 @@ export const INK_MIN_POINT_DISTANCE_PX = 1.5;
 /** 笔迹颜色与粗细。裁定 2：M4b **不做**颜色 / 粗细的选择，所以它们是常量。 */
 export const INK_STROKE_COLOR = '#1f2937';
 /** ⚠️ **归一化**宽度（基准是 `min(canvas.w, canvas.h)`，不是像素）—— 见 `InkStroke` 的单位规则。 */
-export const INK_STROKE_WIDTH = 0.016;
+export const INK_STROKE_WIDTH = 0.008;
 
 export const INK_FORMATS = ['ink/v1', 'drawing/v1'] as const;
 export type InkFormat = (typeof INK_FORMATS)[number];
@@ -89,7 +91,7 @@ export type InkPoint = [number, number];
  *    一个永远 90° 的「角」在几何课上没用。
  */
 export const INK_SHAPE_KINDS = [
-  'line', 'arrow', 'rect', 'ellipse', 'triangle',
+  'line', 'arrow', 'rect', 'diamond', 'ellipse', 'triangle',
   'right-triangle', 'parallelogram', 'trapezoid', 'angle',
 ] as const;
 export type InkShapeKind = (typeof INK_SHAPE_KINDS)[number];
@@ -130,8 +132,8 @@ export function isInkShapeTool(tool: string): tool is InkShapeKind {
 /**
  * 笔的粗细：**三档**（★ 2026-09-30 教师：「笔的粗细」+「要能选」）。
  *
- * 🔴 **中间那一档就是原来的默认值**（`INK_STROKE_WIDTH`）—— 加选项**不改默认手感**，
- *    否则「以前画的」与「现在画的」会不一样粗，而那在屏幕上只是「今天这笔怎么变粗了」。
+ * 🔴 中间档恒等于 `INK_STROKE_WIDTH`，保证新建笔迹与坏样式回落使用同一默认值。
+ *    2026-10-05 按课堂反馈将三档整体下调；老作答把宽度存在每一笔里，因此不会被改细。
  * ⚠️ 单位与 `InkStroke.width` 同一条规则：**归一化到 `min(画布宽, 画布高)`**，
  *    所以同一档在不同尺寸的画布上看起来一样粗（A1 的 `strokeWidthPx` 负责换算）。
  * ⚠️ 下限那一档不能太细：老 iPad 上 0.4px 的线画不出来（`strokeWidthPx` 里有 1px 的兜底）。
@@ -254,7 +256,7 @@ export function isInkColor(raw: unknown): raw is string {
   return typeof raw === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(raw);
 }
 
-export const INK_WIDTH_OPTIONS = [0.009, INK_STROKE_WIDTH, 0.028] as const;
+export const INK_WIDTH_OPTIONS = [0.004, INK_STROKE_WIDTH, 0.016] as const;
 export type InkWidth = (typeof INK_WIDTH_OPTIONS)[number];
 /** 默认档 = 中间那一档。 */
 export const INK_DEFAULT_WIDTH: InkWidth = INK_STROKE_WIDTH;
@@ -281,7 +283,15 @@ export interface InkStroke {
 export interface InkCanvas { w: number; h: number }
 
 /** 一份笔迹作答值：落在 `WorksheetAnswer.value` 那个 Json 列里（Global Constraint 18）。 */
-export interface InkValue { format: InkFormat; canvas: InkCanvas; strokes: InkStroke[]; /** ★ 第二轮：文字（可选 ⇒ 老数据零改动）。 */ texts?: InkText[] }
+export interface InkValue {
+  format: InkFormat;
+  canvas: InkCanvas;
+  strokes: InkStroke[];
+  /** ★ 第二轮：文字（可选 ⇒ 老数据零改动）。 */
+  texts?: InkText[];
+  /** 第三方绘图工具的可编辑原始文档。旧作答没有该字段，继续按笔迹渲染。 */
+  drawing?: DrawingDocument;
+}
 
 /** 这个 `format` 串是不是笔迹（`ink/v1` / `drawing/v1`）。服务端 B1 有一份同名的对应实现。 */
 export function isInkFormat(raw: unknown): raw is InkFormat {
@@ -464,6 +474,15 @@ function clamp01(value: number): number {
 export function normalizeAxis(offset: number, size: number): number {
   if (!Number.isFinite(offset) || !Number.isFinite(size) || size <= 0) return 0;
   return clamp01(offset / size);
+}
+
+/** 把归一化点吸附到等距网格。`step <= 0` 时保持原点，供数学作图模式使用。 */
+export function snapInkPoint(point: InkPoint, step: number): InkPoint {
+  if (!Number.isFinite(step) || step <= 0) return point;
+  return [
+    clamp01(round6(Math.round(point[0] / step) * step)),
+    clamp01(round6(Math.round(point[1] / step) * step)),
+  ];
 }
 
 /**
@@ -696,6 +715,227 @@ export function pickInkStroke(
   return -1;
 }
 
+/** 思维导图与流程图中可以承载文字、接受连接线的节点图形。 */
+export function isInkNodeShape(shape: unknown): shape is InkShapeKind {
+  return shape === 'rect' || shape === 'diamond' || shape === 'ellipse'
+    || shape === 'parallelogram' || shape === 'trapezoid'
+    || shape === 'triangle' || shape === 'right-triangle';
+}
+
+/** 从上层图形开始找命中的节点，`exclude` 用于避免把连接线接回起点本身。 */
+export function pickInkNodeShape(
+  point: InkPoint,
+  strokes: readonly InkStroke[],
+  box: InkCanvas,
+  tolPx: number,
+  exclude = -1,
+): number {
+  for (let index = strokes.length - 1; index >= 0; index -= 1) {
+    if (index === exclude || !isInkNodeShape(strokes[index].shape)) continue;
+    if (hitTestStroke(point, strokes[index], box, tolPx)) return index;
+  }
+  return -1;
+}
+
+function inkShapeBounds(stroke: InkStroke): [number, number, number, number] | null {
+  if (!isInkNodeShape(stroke.shape) || stroke.points.length < 2) return null;
+  const x0 = Math.min(stroke.points[0][0], stroke.points[1][0]);
+  const x1 = Math.max(stroke.points[0][0], stroke.points[1][0]);
+  const y0 = Math.min(stroke.points[0][1], stroke.points[1][1]);
+  const y1 = Math.max(stroke.points[0][1], stroke.points[1][1]);
+  return [x0, y0, x1, y1];
+}
+
+/** 把一段文字放到节点正中间。文字仍是普通 InkText，旧数据与教师端渲染路径不变。 */
+export function centerInkTextInShape(text: InkText, stroke: InkStroke, box: InkCanvas): InkText {
+  const bounds = inkShapeBounds(stroke);
+  if (!bounds || box.w <= 0 || box.h <= 0) return text;
+  const [x0, y0, x1, y1] = bounds;
+  const sizePx = text.size * Math.min(box.w, box.h);
+  const widthPx = estimateTextWidth(text.text) * sizePx;
+  const heightPx = sizePx * 1.3;
+  const cx = ((x0 + x1) / 2) * box.w;
+  const cy = ((y0 + y1) / 2) * box.h;
+  return {
+    ...text,
+    at: [
+      round6(clamp01((cx - widthPx / 2) / box.w)),
+      round6(clamp01((cy - heightPx / 2) / box.h)),
+    ],
+  };
+}
+
+/**
+ * 节点文字放不下时只向外扩，不缩小教师或学生已经画好的节点。
+ * 留出 28px 水平、20px 垂直内边距，并把节点限制在画布内。
+ */
+export function fitInkShapeToText(stroke: InkStroke, text: InkText, box: InkCanvas): InkStroke {
+  const bounds = inkShapeBounds(stroke);
+  if (!bounds || box.w <= 0 || box.h <= 0) return stroke;
+  const [x0, y0, x1, y1] = bounds;
+  const sizePx = text.size * Math.min(box.w, box.h);
+  const wantedW = Math.min(0.94, (estimateTextWidth(text.text) * sizePx + 28) / box.w);
+  const wantedH = Math.min(0.94, (sizePx * 1.3 + 20) / box.h);
+  const nextW = Math.max(x1 - x0, wantedW);
+  const nextH = Math.max(y1 - y0, wantedH);
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  const left = Math.max(0, Math.min(1 - nextW, cx - nextW / 2));
+  const top = Math.max(0, Math.min(1 - nextH, cy - nextH / 2));
+  if (nextW === x1 - x0 && nextH === y1 - y0) return stroke;
+  return {
+    ...stroke,
+    points: [[round6(left), round6(top)], [round6(left + nextW), round6(top + nextH)]],
+  };
+}
+
+/** 文字中心是否落在这个节点内，用于双击编辑、节点移动时带着内部文字走。 */
+export function isInkTextInsideShape(text: InkText, stroke: InkStroke, box: InkCanvas): boolean {
+  if (!isInkNodeShape(stroke.shape) || box.w <= 0 || box.h <= 0) return false;
+  const [x, y, w, h] = textBoxOf(text, box);
+  return hitTestStroke([(x + w / 2) / box.w, (y + h / 2) / box.h], stroke, box, 0);
+}
+
+function connectorPointOnShape(stroke: InkStroke, toward: InkPoint, box: InkCanvas): InkPoint | null {
+  const bounds = inkShapeBounds(stroke);
+  const outline = shapeOutline(stroke, box).find((part) => part.closed && part.points.length >= 3);
+  if (!bounds || !outline) return null;
+  const [x0, y0, x1, y1] = bounds;
+  const centerPx: InkPoint = [((x0 + x1) / 2) * box.w, ((y0 + y1) / 2) * box.h];
+  const towardPx: InkPoint = [toward[0] * box.w, toward[1] * box.h];
+  const direction: InkPoint = [towardPx[0] - centerPx[0], towardPx[1] - centerPx[1]];
+  if (Math.hypot(direction[0], direction[1]) < 0.001) return [(x0 + x1) / 2, y0];
+
+  let best = Infinity;
+  const points = outline.points.map((point): InkPoint => [point[0] * box.w, point[1] * box.h]);
+  for (let index = 0; index < points.length; index += 1) {
+    const a = points[index];
+    const b = points[(index + 1) % points.length];
+    const segment: InkPoint = [b[0] - a[0], b[1] - a[1]];
+    const det = direction[0] * segment[1] - direction[1] * segment[0];
+    if (Math.abs(det) < 1e-9) continue;
+    const offset: InkPoint = [a[0] - centerPx[0], a[1] - centerPx[1]];
+    const ray = (offset[0] * segment[1] - offset[1] * segment[0]) / det;
+    const edge = (offset[0] * direction[1] - offset[1] * direction[0]) / det;
+    if (ray >= 0 && edge >= 0 && edge <= 1 && ray < best) best = ray;
+  }
+  if (!Number.isFinite(best)) return null;
+  return [
+    round6(clamp01((centerPx[0] + direction[0] * best) / box.w)),
+    round6(clamp01((centerPx[1] + direction[1] * best) / box.h)),
+  ];
+}
+
+/** 节点可用于拖出连接线的锚点，固定按「上、右、下、左」排列。 */
+export interface InkConnectionAnchor {
+  shapeIndex: number;
+  anchorIndex: number;
+  point: InkPoint;
+}
+
+/**
+ * 取节点四个方向的精确轮廓点。锚点必须复用 `connectorPointOnShape`，否则菱形、椭圆等
+ * 非矩形节点的可见圆点与最终连线端点会错开。
+ */
+export function inkConnectionAnchors(stroke: InkStroke, box: InkCanvas): InkPoint[] {
+  const bounds = inkShapeBounds(stroke);
+  if (!bounds || !isInkNodeShape(stroke.shape) || box.w <= 0 || box.h <= 0) return [];
+  const [x0, y0, x1, y1] = bounds;
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  return [
+    connectorPointOnShape(stroke, [cx, -1], box),
+    connectorPointOnShape(stroke, [2, cy], box),
+    connectorPointOnShape(stroke, [cx, 2], box),
+    connectorPointOnShape(stroke, [-1, cy], box),
+  ].filter((point): point is InkPoint => point !== null);
+}
+
+/** 在像素宽容度内选择最近的连接锚点；`excludeShape` 用于禁止节点连向自己。 */
+export function pickInkConnectionAnchor(
+  point: InkPoint,
+  strokes: readonly InkStroke[],
+  box: InkCanvas,
+  tolPx: number,
+  excludeShape = -1,
+): InkConnectionAnchor | null {
+  const [px, py] = toPixel(point, box);
+  const tolerance = Number.isFinite(tolPx) && tolPx > 0 ? tolPx : 0;
+  let best: InkConnectionAnchor | null = null;
+  let bestDistance = tolerance;
+  for (let shapeIndex = strokes.length - 1; shapeIndex >= 0; shapeIndex -= 1) {
+    if (shapeIndex === excludeShape) continue;
+    const anchors = inkConnectionAnchors(strokes[shapeIndex], box);
+    anchors.forEach((anchor, anchorIndex) => {
+      const [ax, ay] = toPixel(anchor, box);
+      const distance = Math.hypot(px - ax, py - ay);
+      if (distance <= bestDistance) {
+        bestDistance = distance;
+        best = { shapeIndex, anchorIndex, point: anchor };
+      }
+    });
+  }
+  return best;
+}
+
+/**
+ * 拖线时优先吸附附近锚点；手指已进入另一节点时，即使没精确压住圆点，也自动取离手指
+ * 最近的那个锚点。这样可见控制点负责“从哪开始”，大面积节点负责“容易接上”。
+ */
+export function snapInkConnectionTarget(
+  point: InkPoint,
+  strokes: readonly InkStroke[],
+  box: InkCanvas,
+  tolPx: number,
+  excludeShape: number,
+): InkConnectionAnchor | null {
+  const nearby = pickInkConnectionAnchor(point, strokes, box, tolPx, excludeShape);
+  if (nearby) return nearby;
+  const shapeIndex = pickInkNodeShape(point, strokes, box, 0, excludeShape);
+  if (shapeIndex < 0) return null;
+  const anchors = inkConnectionAnchors(strokes[shapeIndex], box);
+  const [px, py] = toPixel(point, box);
+  let bestIndex = -1;
+  let bestDistance = Infinity;
+  anchors.forEach((anchor, anchorIndex) => {
+    const [ax, ay] = toPixel(anchor, box);
+    const distance = Math.hypot(px - ax, py - ay);
+    if (distance < bestDistance) { bestDistance = distance; bestIndex = anchorIndex; }
+  });
+  return bestIndex >= 0 ? { shapeIndex, anchorIndex: bestIndex, point: anchors[bestIndex] } : null;
+}
+
+/**
+ * 把连接线的两端吸附到命中的节点轮廓。两端都命中不同节点时，连线沿两个节点中心的方向
+ * 精确落在边界上；只命中一端时只吸附那一端。
+ */
+export function snapInkConnector(
+  start: InkPoint,
+  end: InkPoint,
+  strokes: readonly InkStroke[],
+  box: InkCanvas,
+  tolPx: number,
+): [InkPoint, InkPoint] {
+  const from = pickInkNodeShape(start, strokes, box, tolPx);
+  const to = pickInkNodeShape(end, strokes, box, tolPx, from);
+  if (from >= 0 && to >= 0) {
+    const fromBounds = inkShapeBounds(strokes[from]);
+    const toBounds = inkShapeBounds(strokes[to]);
+    if (fromBounds && toBounds) {
+      const fromCenter: InkPoint = [(fromBounds[0] + fromBounds[2]) / 2, (fromBounds[1] + fromBounds[3]) / 2];
+      const toCenter: InkPoint = [(toBounds[0] + toBounds[2]) / 2, (toBounds[1] + toBounds[3]) / 2];
+      return [
+        connectorPointOnShape(strokes[from], toCenter, box) ?? start,
+        connectorPointOnShape(strokes[to], fromCenter, box) ?? end,
+      ];
+    }
+  }
+  return [
+    from >= 0 ? connectorPointOnShape(strokes[from], end, box) ?? start : start,
+    to >= 0 ? connectorPointOnShape(strokes[to], start, box) ?? end : end,
+  ];
+}
+
 /**
  * 读一个点：只收**两个都是有限数的二元数组**，并把两个数**夹到 0..1**
  * （手改过的行可能写着 `x: 7`）。其余一律 `null` —— 那个点丢掉。
@@ -864,6 +1104,8 @@ export function readInkValue(raw: unknown): InkValue | null {
   }
   const value: InkValue = { format: row.format, canvas: readCanvas(row.canvas), strokes };
   if (texts.length > 0) value.texts = texts;
+  const drawing = readDrawingDocument(row.drawing);
+  if (drawing) value.drawing = drawing;
   return value;
 }
 
@@ -1002,6 +1244,8 @@ export function shapeOutline(
 
   if (stroke.shape === 'rect') {
     parts.push({ closed: true, points: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] });
+  } else if (stroke.shape === 'diamond') {
+    parts.push({ closed: true, points: [[cx, y0], [x1, cy], [cx, y1], [x0, cy]] });
   } else if (stroke.shape === 'ellipse') {
     const ring: InkPoint[] = [];
     for (let i = 0; i < 32; i += 1) {

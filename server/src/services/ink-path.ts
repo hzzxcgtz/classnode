@@ -23,7 +23,7 @@
 /** 笔迹颜色与粗细。裁定 2：M4b **不做**颜色 / 粗细的选择，所以它们是常量。 */
 export const INK_STROKE_COLOR = '#1f2937';
 /** ⚠️ **归一化**宽度（基准是 `min(canvas.w, canvas.h)`，不是像素）—— 见 `InkStroke` 的单位规则。 */
-export const INK_STROKE_WIDTH = 0.016;
+export const INK_STROKE_WIDTH = 0.008;
 
 export const INK_FORMATS = ['ink/v1', 'drawing/v1'] as const;
 export type InkFormat = (typeof INK_FORMATS)[number];
@@ -55,7 +55,7 @@ export type InkPoint = [number, number];
  *    一个永远 90° 的「角」在几何课上没用。
  */
 export const INK_SHAPE_KINDS = [
-  'line', 'arrow', 'rect', 'ellipse', 'triangle',
+  'line', 'arrow', 'rect', 'diamond', 'ellipse', 'triangle',
   'right-triangle', 'parallelogram', 'trapezoid', 'angle',
 ] as const;
 export type InkShapeKind = (typeof INK_SHAPE_KINDS)[number];
@@ -96,8 +96,8 @@ export function isInkShapeTool(tool: string): tool is InkShapeKind {
 /**
  * 笔的粗细：**三档**（★ 2026-09-30 教师：「笔的粗细」+「要能选」）。
  *
- * 🔴 **中间那一档就是原来的默认值**（`INK_STROKE_WIDTH`）—— 加选项**不改默认手感**，
- *    否则「以前画的」与「现在画的」会不一样粗，而那在屏幕上只是「今天这笔怎么变粗了」。
+ * 🔴 中间档恒等于 `INK_STROKE_WIDTH`，保证新建笔迹与坏样式回落使用同一默认值。
+ *    2026-10-05 按课堂反馈将三档整体下调；老作答把宽度存在每一笔里，因此不会被改细。
  * ⚠️ 单位与 `InkStroke.width` 同一条规则：**归一化到 `min(画布宽, 画布高)`**，
  *    所以同一档在不同尺寸的画布上看起来一样粗（A1 的 `strokeWidthPx` 负责换算）。
  * ⚠️ 下限那一档不能太细：老 iPad 上 0.4px 的线画不出来（`strokeWidthPx` 里有 1px 的兜底）。
@@ -220,7 +220,7 @@ export function isInkColor(raw: unknown): raw is string {
   return typeof raw === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(raw);
 }
 
-export const INK_WIDTH_OPTIONS = [0.009, INK_STROKE_WIDTH, 0.028] as const;
+export const INK_WIDTH_OPTIONS = [0.004, INK_STROKE_WIDTH, 0.016] as const;
 export type InkWidth = (typeof INK_WIDTH_OPTIONS)[number];
 /** 默认档 = 中间那一档。 */
 export const INK_DEFAULT_WIDTH: InkWidth = INK_STROKE_WIDTH;
@@ -725,6 +725,8 @@ export function shapeOutline(
 
   if (stroke.shape === 'rect') {
     parts.push({ closed: true, points: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] });
+  } else if (stroke.shape === 'diamond') {
+    parts.push({ closed: true, points: [[cx, y0], [x1, cy], [cx, y1], [x0, cy]] });
   } else if (stroke.shape === 'ellipse') {
     const ring: InkPoint[] = [];
     for (let i = 0; i < 32; i += 1) {

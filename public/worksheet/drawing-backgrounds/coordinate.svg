@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <defs><pattern id="g" width="25" height="25" patternUnits="userSpaceOnUse"><path d="M25 0H0V25" fill="none" stroke="#d9e3ee" stroke-width="1"/></pattern></defs>
+  <rect width="800" height="600" fill="#fff"/><rect width="800" height="600" fill="url(#g)"/>
+  <path d="M40 300H770M400 570V30" stroke="#64748b" stroke-width="2"/><path d="m770 300-12-7v14zM400 30l-7 12h14z" fill="#64748b"/>
+  <g fill="#64748b" font-family="Arial,sans-serif" font-size="16"><text x="775" y="294">x</text><text x="410" y="28">y</text><text x="408" y="319">0</text></g>
+</svg>

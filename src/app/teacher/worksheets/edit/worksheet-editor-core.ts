@@ -442,13 +442,13 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
     // ⚠️ **已有题目一个字不动**：这条只影响之后新建的题（老题的键本来就存在或缺席，
     // 上面那个默认值不回溯）。
     ...(isGradedQuestionType(type) ? { autoGrade: false as const } : {}),
-    data: {},
+    data: type === 'drawing'
+      ? { drawingTool: 'free', drawingBackgroundPreset: 'blank' }
+      : {},
     children: [],
   };
   // ⚠️ `drawing` **不进下面这条链**（它不在这里出现，也**不许**在这里出现）：
-  // 它的 `data` 恒为 `{}` —— 没有答案键、也没有条目，与 `short-answer` 同一档。
-  // 给它臆造一份 `data`（哪怕只是一个空壳键）就是 M4a/C2 Step 1 立过的那条纪律
-  // 所禁的事，代价是**静默判分**。
+  // 它没有答案键；`data` 只保存画布扩展与底图配置，不参与本地判分。
   if (type === 'single-choice') {
     // ★ 2026-10-05（教师）：「编辑题目时，这些类似的输入框，默认只给灰色的提示文字，
     // 鼠标点击后可以让用户直接输入自己的文字。」

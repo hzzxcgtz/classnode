@@ -1588,8 +1588,7 @@
  * ⚠️ **本机未验证**（Global Constraint 16）：这条规则在真机上有没有把落笔从滚动手里
  * 抢过来，只能由老 iPad 上的手指作答；鼠标下的效果**不算**手写验收。
  *
- * ⚠️ 高度**不在这里**：它由组件按 `box.h` 写行内样式（`defaultInkBox` 给的 240 / 160
- * 是界面上看得见的数）。这里只管宽（100%）与外观。
+ * ⚠️ 高度由工作区 CSS 变量控制。普通态取题型高度并可缩放，最大化态取视口剩余高度。
  *
  * ⚠️ 本文件在 `scripts/check-classroom-browser-compat.mjs` 的扫描根内，且那个脚本把本文件的
  * `dvh` 用量**冻结为 3** —— 这一节一行 `dvh` 都没有（也不许加）。 */
@@ -1597,14 +1596,100 @@
   margin-top: 12px;
 }
 
+.inkWorkspaceMaximized {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  overflow: hidden;
+  background: #f5f8fb;
+  box-sizing: border-box;
+}
+
+.inkViewport {
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.inkWorkspaceMaximized .inkViewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  background: #e8eef5;
+}
+
+.inkModeBar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid #cbd5e1;
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  background: #eef3f8;
+  overflow-x: auto;
+}
+
+.inkModeButton {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.inkModeButton[aria-selected='true'] {
+  border-color: #c5d3e1;
+  background: #fff;
+  color: #385b7f;
+  box-shadow: 0 1px 2px rgba(42, 77, 128, .08);
+}
+
+.inkModeButton:focus-visible { outline: 2px solid rgba(82, 113, 152, .42); outline-offset: 1px; }
+.inkModeButton:disabled { cursor: default; opacity: .65; }
+
+.inkModeBar + .inkToolbar { border-radius: 0; }
+
 .inkFrame {
   position: relative;
+  width: var(--ink-canvas-width, 100%);
+  min-width: 100%;
   margin: 0;
 }
 
+.inkBackdrop {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--ink-canvas-height, 240px);
+  border-radius: 0 0 12px 12px;
+  background-color: #fff;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
 .inkCanvas {
+  position: relative;
+  z-index: 1;
   display: block;              /* 不给行内元素留基线间隙（否则画布下面会多出几像素） */
   width: 100%;
+  height: var(--ink-canvas-height, 240px);
   border: 1px solid #cbd5e1;
   border-radius: 0 0 12px 12px;
   border-top-color: #e2e8f0;
@@ -1624,6 +1709,13 @@
   font-size: .75rem;
   line-height: 1.55;
   color: #64748b;
+}
+
+.inkModeHint {
+  margin: 6px 2px 0;
+  color: #466384;
+  font-size: .74rem;
+  line-height: 1.5;
 }
 
 /* 上限提示（`inkLimitReason` 的文案）。它出现时**必须在屏幕上看得见** ——
@@ -1654,14 +1746,43 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  min-width: 0;
   padding-right: 7px;
   border-right: 1px solid #dbe3ee;
+}
+
+.inkToolbar > .inkToolGroup:first-child {
+  flex: 1 1 420px;
+  flex-wrap: wrap;
 }
 
 .inkActionGroup {
   margin-left: auto;
   padding-right: 0;
   border-right: 0;
+}
+
+.inkViewGroup {
+  padding-right: 7px;
+}
+
+.inkZoomSymbol {
+  font-size: 1.25rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.inkZoomValue {
+  min-width: 42px;
+  color: #52677f;
+  font-size: .72rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+@media (max-width: 680px) {
+  .inkWorkspaceMaximized { padding: 6px; }
+  .inkViewGroup { flex: 1 1 100%; }
 }
 
 .inkPopoverAnchor {
@@ -1705,6 +1826,17 @@
   color: #94a3b8;
   background: transparent;
   cursor: default;
+}
+
+.inkNamedButton {
+  min-width: auto;
+  padding-inline: 8px;
+  white-space: nowrap;
+}
+
+.inkNamedButton > span {
+  font-size: .76rem;
+  line-height: 1;
 }
 
 .inkValuePreview {
@@ -2167,3 +2299,147 @@
 }
 
 .photoAnswerError { margin: 0; color: #a34848; font-size: 0.813rem; }
+
+/* 第三方绘图内核共用的外壳。工具自己管理画布，外壳只统一标题、全屏和课堂色彩。 */
+.thirdPartyWorkspace {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #cbd9e8;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.thirdPartyWorkspaceMaximized {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  border: 0;
+  border-radius: 0;
+  background: #edf2f7;
+  padding: 14px;
+}
+
+.drawingWorkspaceHeader {
+  min-height: 54px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #dbe5ef;
+  background: #f7f9fc;
+}
+
+.drawingWorkspaceHeader > div { display: grid; gap: 2px; }
+.drawingWorkspaceHeader strong { color: #263b53; font-size: .875rem; }
+.drawingWorkspaceHeader span { color: #71849a; font-size: .75rem; }
+.drawingWorkspaceHeader button,
+.drawingSurfaceToolbar button,
+.drawingSurfaceToolbar select,
+.drawingSurfaceToolbar input[type='color'] {
+  min-height: 40px;
+  border: 1px solid #c6d5e4;
+  border-radius: 9px;
+  background: #fff;
+  color: #3e5d7d;
+  font: inherit;
+}
+
+.drawingWorkspaceHeader button,
+.drawingSurfaceToolbar button { padding: 7px 11px; font-weight: 650; cursor: pointer; }
+.drawingToolbarButton { min-height: 44px !important; }
+.drawingSurfaceToolbar button[aria-pressed='true'] {
+  border-color: #527198;
+  background: #eaf0f6;
+  color: #294d73;
+}
+.drawingWorkspaceHeader button:active,
+.drawingSurfaceToolbar button:active { transform: translateY(1px); }
+.drawingWorkspaceHeader button:disabled,
+.drawingSurfaceToolbar button:disabled { cursor: default; opacity: .55; }
+
+.thirdPartySurface { background: #fff; }
+.drawingSurfaceToolbar {
+  min-height: 54px;
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  border-bottom: 1px solid #dbe5ef;
+  background: #fff;
+}
+.drawingSurfaceToolbar label {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #5c7189;
+  font-size: .75rem;
+  font-weight: 650;
+}
+.drawingSurfaceToolbar select { padding: 0 8px; }
+.drawingSurfaceToolbar input[type='color'] { width: 42px; padding: 4px; }
+.drawingToolbarSpacer { flex: 1 1 16px; }
+.drawingToolbarHint { color: #7b8da1; font-size: .75rem; }
+
+.thirdPartyCanvas {
+  position: relative;
+  width: 100%;
+  height: var(--third-party-canvas-height, 520px);
+  min-height: 360px;
+  overflow: hidden;
+  background-color: #fff;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  touch-action: none;
+}
+
+.mathCanvas { cursor: crosshair; }
+.mathCanvas :global(svg) { touch-action: none; }
+.mindmapCanvas :global(me-main) { height: 100%; }
+.mindmapCanvas :global(.map-container) { height: 100%; }
+.mindmapCanvasWithBackground :global(me-main),
+.mindmapCanvasWithBackground :global(.map-container) { background: transparent !important; }
+
+.flowNode {
+  min-width: 150px;
+  min-height: 54px;
+  padding: 10px 14px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid #7895b3;
+  background: #fff;
+  color: #263b53;
+  box-shadow: 0 3px 12px rgb(58 83 111 / .1);
+}
+.flowNode[data-selected='1'] { border-color: #365f88; box-shadow: 0 0 0 3px rgb(82 113 152 / .16); }
+.flowNode_process { border-radius: 9px; }
+.flowNode_terminator { border-radius: 999px; }
+.flowNode_io { transform: skew(-10deg); }
+.flowNode_io input { transform: skew(10deg); }
+.flowNode_decision { min-width: 112px; min-height: 112px; transform: rotate(45deg); }
+.flowNode_decision input { transform: rotate(-45deg); width: 96px; }
+.flowNode input {
+  width: 122px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  text-align: center;
+  font: 600 .8rem/1.35 inherit;
+}
+.flowNode input:disabled { opacity: 1; -webkit-text-fill-color: currentColor; }
+.flowNode :global(.react-flow__handle) {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #527198;
+  background: #fff;
+}
+
+@media (max-width: 720px) {
+  .thirdPartyCanvas { min-height: 430px; }
+  .drawingToolbarHint { flex-basis: 100%; }
+  .drawingWorkspaceHeader span { display: none; }
+}

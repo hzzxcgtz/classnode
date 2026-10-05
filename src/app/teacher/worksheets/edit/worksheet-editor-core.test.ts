@@ -2100,13 +2100,11 @@ test('🔴 readCorrectKeys：空串与坏元素丢掉（服务端 `readStrings` 
 // ⚠️ 「那一行画不画」的判据在 `question-card.tsx`（组件层，本仓没有 jsdom / testing-library，
 // 没有回归网）—— 这里能钉住的只有它脚下的那三格数据。
 
-test('★ newQuestion(drawing)：inputMode 恒为 handwriting、`data` 逐字等于 {}', () => {
+test('★ newQuestion(drawing)：默认使用画板，并带空白底图与自由绘图底座', () => {
   const question = newQuestion('drawing');
   assert.equal(question.inputMode, 'handwriting');
-  // 🔴 `data` 不许有**任何**键：给它臆造一份「画布题的空壳 data」正是 M4a/C2 Step 1 禁的
-  // 那件事（代价是静默判分）。它与 `short-answer` 同一档 —— 没有答案键、也没有条目。
-  assert.deepEqual(question.data, {});
-  assert.equal(Object.keys(question.data).length, 0);
+  assert.deepEqual(question.data, { drawingTool: 'free', drawingBackgroundPreset: 'blank' });
+  assert.equal('answers' in question.data, false, '画布配置不是答案键，不能让绘图题进入本地判分');
   assert.equal(question.prompt, '');
   assert.deepEqual(question.children, []);
 });

@@ -4581,6 +4581,40 @@ tr:hover td {
   outline-offset: 1px;
 }
 
+/* ★ 2026-10-05（教师）：「这两个能不能有点区分度？UI要优化一下」
+   填空题空卡片里的**两排**（作答方式 / 评分方式）原来共用上面那一套药丸样式 ——
+   从形状上完全分不出哪排是哪排。⇒ 评分方式改**页签**：
+   没有轨道、没有白药丸，选中 = 蓝字加粗 + 底部 2px 蓝线；作答方式仍留药丸。
+   ⚠️ 区分度由**形态**给，不靠颜色：本产品只有一个主操作色
+     （`design/teacher-ui-system-v2.md`「同一个产品只有一个主操作色」），
+     再上一个强调色会立刻出跳。
+   ⚠️ 选中态那条选择器**必须带 `label.is-selected`**（三个类）：
+     只写 `.is-underline label > span` 的话，它与上面药丸的选中态**权重相同**
+     （都是两个类两个元素），只靠"写在后面"决定胜负 —— 文件一重排就静默失效。 */
+.worksheet-editor-mode-tabs.is-underline {
+  grid-auto-columns: auto;
+  gap: 16px;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.worksheet-editor-mode-tabs.is-underline label > span {
+  min-height: 0;
+  padding: 2px 0 7px;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+}
+
+.worksheet-editor-mode-tabs.is-underline label.is-selected > span {
+  border-bottom-color: var(--primary);
+  background: transparent;
+  color: var(--primary-dark);
+  font-weight: 700;
+  box-shadow: none;
+}
+
 .worksheet-editor-inline-word-field {
   margin-top: 12px;
 }

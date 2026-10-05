@@ -106,6 +106,33 @@ test('★ 逐空设置是三行：作答方式 → 评分方式 → 答案，分
   assert.match(bodySrc, /<b>\{pointsUnit\}<\/b>/, '分值输入框后没有显示「分 / 座奖杯」等单位');
 });
 
+test('★ 两排互斥选择必须有**区分度**：作答方式 = 药丸，评分方式 = 页签', () => {
+  // ★ 2026-10-05（教师）：「这两个能不能有点区分度？UI要优化一下」
+  // —— 两排原来共用同一套药丸样式，形状上完全分不出哪排是哪排。
+  const bodySrc = body(BODY);
+
+  // 🔴 有且只有**一排**带页签变体（评分方式）；作答方式必须仍是纯净的药丸那一支。
+  //    两边一旦都用（或都不用）同一个类，两排就又长得一模一样 —— 而屏幕上看不出"坏"，
+  //    只是教师又说一句「没区分度」。
+  assert.equal(
+    (bodySrc.match(/worksheet-editor-mode-tabs is-underline/g) ?? []).length, 1,
+    '评分方式那一排的页签变体不见了（或不止一处）—— 两排又会长得一样',
+  );
+  assert.equal(
+    (bodySrc.match(/className="worksheet-editor-mode-tabs"/g) ?? []).length, 1,
+    '作答方式那一排应当仍是**独占**药丸样式的那一个',
+  );
+
+  // 样式必须在，且选中态那条要有**三个类**（否则压不过药丸的选中态，见 CSS 里的注释）。
+  const css = fs.readFileSync(GLOBALS, 'utf8');
+  assert.match(css, /\.worksheet-editor-mode-tabs\.is-underline \{/, 'is-underline 没有定义样式');
+  assert.match(
+    css,
+    /\.worksheet-editor-mode-tabs\.is-underline label\.is-selected > span/,
+    '选中态那条选择器少了 `label.is-selected` —— 它与药丸那条权重相同，会随文件重排静默失效',
+  );
+});
+
 test('★ 服务端那条校验文案点名的档，必须与界面上那一档**同一个词**', () => {
   // 🔴 教师 2026-10-05 把逐空那一档从「自动评分」改名成「本地评分」，而服务端有一条
   //    **会拒绝保存**的校验里也点着这一档的名字。两处不同名 = 报错指着一个屏幕上

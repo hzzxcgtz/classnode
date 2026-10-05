@@ -247,7 +247,16 @@ export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPo
               {node.type === 'fill-blank' && (
                 <div className="worksheet-editor-fill-grading-row">
                   <span>评分方式</span>
-                  <div className="worksheet-editor-mode-tabs" role="radiogroup" aria-label={`${slot.label}的评分方式`}>
+                  {/*
+                    ★ 2026-10-05（教师）：「这两个能不能有点区分度？UI要优化一下」
+                    —— 同一张卡里的**两排**（作答方式 / 评分方式）原来用的是同一个控件、
+                    同一套药丸样式，从形状上完全分不出哪排是哪排。
+                    ⇒ 评分方式改**页签**（`is-underline`：无轨道、选中 = 蓝字加粗 + 底部蓝线）；
+                      作答方式仍留药丸（它是"学生怎么作答"，是这一空更靠前的那个选择）。
+                    ⚠️ 区分度由**形态**给，不是再加一个颜色：本产品只有一个主操作色
+                      （`design/teacher-ui-system-v2.md`），多一个强调色会立刻出跳。
+                  */}
+                  <div className="worksheet-editor-mode-tabs is-underline" role="radiogroup" aria-label={`${slot.label}的评分方式`}>
                     {/*
                       ★ 2026-10-05（教师）：「手工填写含三项评分方式，……右侧或下方选词则只有
                       自动评分或不评分。」⇒ 这一排由 `fillGradingModesFor(本空的作答方式)` 给，

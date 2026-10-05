@@ -70,7 +70,7 @@ test('★ 那几处提示语是**同一句**（同一份事实不许有两份拷
 });
 
 test('★ 填空题的答案住在**每张空卡片里**（教师 2026-10-05 裁定 A），且不许有第二个入口', () => {
-  // 教师原话：「填空题的答案放到这里」——箭头指着那张空卡片作答方式行**右侧的空白**。
+  // 教师最新裁定：答案仍属于这张空卡片，但要放到最下面的第三行独立编辑。
   const bodySrc = body(BODY);
   const card = body(CARD);
 
@@ -88,6 +88,17 @@ test('★ 填空题的答案住在**每张空卡片里**（教师 2026-10-05 裁
     /!gradedOn && isGradedQuestionType\(node\.type\) && !isBlankType/,
     '填空题又被算进「正确答案暂时隐藏」那句里了 —— 而它的答案现在一直可编辑',
   );
+});
+
+test('★ 逐空设置是三行：作答方式 → 评分方式 → 答案，分值带学习单奖励单位', () => {
+  const bodySrc = body(BODY);
+  const modeAt = bodySrc.indexOf('worksheet-editor-fill-mode-head');
+  const gradingAt = bodySrc.indexOf('worksheet-editor-fill-grading-row');
+  const answerAt = bodySrc.indexOf('worksheet-editor-fill-answer-field');
+
+  assert.ok(modeAt >= 0 && gradingAt > modeAt && answerAt > gradingAt, '三行的渲染顺序不对');
+  assert.match(bodySrc, /pointsUnit === '分' \? '分值' : '奖励数量'/, '分数档与图标奖励档没有使用合适的名称');
+  assert.match(bodySrc, /<b>\{pointsUnit\}<\/b>/, '分值输入框后没有显示「分 / 座奖杯」等单位');
 });
 
 test('★ 填空题**没有**整题 AI 块（裁定 B）：标准只在每一空，整块只服务问答 / 绘图', () => {

@@ -141,7 +141,7 @@ export type ContentAction =
      */
     points?: QuestionPointsDraft;
   }
-  /** ★ 2026-09-25：新建一个**任务**容器，标题按序号预填（教师可改）。 */
+  /** ★ 2026-09-25：新建一个**任务**容器。标题预填一句提醒（`NEW_TASK_TITLE`，教师改成自己的名字）。 */
   | { kind: 'addTask' }
   /**
    * 改题干（★ 2026-09-26：可选地**同一次**带上一批 `data` 补丁）。
@@ -450,9 +450,13 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
   // 给它臆造一份 `data`（哪怕只是一个空壳键）就是 M4a/C2 Step 1 立过的那条纪律
   // 所禁的事，代价是**静默判分**。
   if (type === 'single-choice') {
-    // ⚠️ 单选的选项文案**保持空串**（不是这次的「占位文案」那一条）：它的初始形状有既有用例
-    // 逐字钉着（`worksheet-editor-core.test.ts` 的「newQuestion 的单选题 correctKeys 默认是空的」），
-    // 而 Step 1 要改的是**新增的 6 个题型**。改它没有需求、却要动一条既有断言。
+    // ★ 2026-10-05（教师）：「编辑题目时，这些类似的输入框，默认只给灰色的提示文字，
+    // 鼠标点击后可以让用户直接输入自己的文字。」
+    // 🔴 于是**新建的题里一个字都不预填**：这些格子的文字全部留空串，屏幕上只显示
+    //    `placeholder`（灰字，如「左项 1」「条目 2」「选项 A」）。原来给它们塞了
+    //    「左项一」「条目二」这类**假内容** —— 教师得先删掉再写，而且很容易以为
+    //    那是真数据（本仓最防的那类「屏幕上有字、但那不是你要的东西」）。
+    // ⚠️ 判分/保存都只看 **id 与答案键**，不看这些文字 ⇒ 留空不会让哪条判据失效。
     question.data = {
       options: [{ key: optionKey(0), text: '' }, { key: optionKey(1), text: '' }],
       correctKeys: [],
@@ -463,7 +467,7 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
     question.data = { correctKeys: [] };
   } else if (type === 'multi-choice') {
     question.data = {
-      options: [{ key: optionKey(0), text: '选项一' }, { key: optionKey(1), text: '选项二' }],
+      options: [{ key: optionKey(0), text: '' }, { key: optionKey(1), text: '' }],
       correctKeys: [],
       // ⚠️ `partialCredit` **不是**答案键，是判分口径，所以它有默认值：
       // 界面上那两个单选按钮需要有一个选中态，而服务端只认这两个字面量
@@ -478,28 +482,28 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
     question.data = { answers: [], fillScoring: 'per-blank' };
   } else if (type === 'order') {
     question.data = {
-      // ⚠️ 占位条目的**文字刻意不是「一、二」的升序**：`items` 是**学生看到的顺序**，
-      // 而「取当前顺序」会把屏幕上这个顺序变成答案 —— 先给它一个看着就是打乱的形状，
-      // 教师替换文字时便不会以为这个顺序本身有任何含义。
+      // ⚠️ 条目文字**空串**（灰字提示是 `条目 1` / `条目 2`），与其余「加一行」的格子同一条。
+      // 🔴 防「学生什么都不做就是满分」的那条闸**不在这个初始形状里**，它有两处：
+      //    服务端 `isSameOrder`（保存时拒绝「显示顺序 = 正确顺序」）与
+      //    `ensureOrderDistinct` / `shuffleOrderItems`（配答案时保证两者不同）。
+      //    这里原来把占位文字写成「条目二、条目一」来暗示「顺序本身没有含义」——
+      //    那只是观感，闸在别处（而且那串假文字正是这次要去掉的东西）。
       items: [
-        { id: newItemId(), text: '条目二' },
-        { id: newItemId(), text: '条目一' },
+        { id: newItemId(), text: '' },
+        { id: newItemId(), text: '' },
       ],
       // 空数组 = **还没配过答案**（教师用「取当前顺序」或 ▲▼ 配上）。
-      // ⚠️ 它同时让 A1 Step 5 那条「显示顺序必须与正确顺序不同」暂时无从谈起
-      //（长度都不同，谈不上相同）—— 那条校验要等答案配好之后才有内容，
-      // 而配好之后维持它的是 `ensureOrderDistinct`（见那里）。
       correctOrder: [],
     };
   } else if (type === 'match') {
     question.data = {
       left: [
-        { id: newItemId(), text: '左项一' },
-        { id: newItemId(), text: '左项二' },
+        { id: newItemId(), text: '' },
+        { id: newItemId(), text: '' },
       ],
       right: [
-        { id: newItemId(), text: '右项一' },
-        { id: newItemId(), text: '右项二' },
+        { id: newItemId(), text: '' },
+        { id: newItemId(), text: '' },
       ],
       // 一条配对都没有 = 还没配答案。教师用每行的下拉一条一条配。
       pairs: [],
@@ -507,12 +511,12 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
   } else if (type === 'categorize') {
     question.data = {
       items: [
-        { id: newItemId(), text: '条目一' },
-        { id: newItemId(), text: '条目二' },
+        { id: newItemId(), text: '' },
+        { id: newItemId(), text: '' },
       ],
       zones: [
-        { id: newZoneId(), label: '框一' },
-        { id: newZoneId(), label: '框二' },
+        { id: newZoneId(), label: '' },
+        { id: newZoneId(), label: '' },
       ],
       // 每个条目都还没归到框里（下拉显示「请选择」）。
       placement: {},
@@ -2681,63 +2685,31 @@ export function editorRenderBlocks(nodes: WorksheetQuestionNode[]): EditorBlock[
   return blocks;
 }
 
-/** 中文序号（任务标题预填用）。够 1..99 —— 一份学习单不会有更多任务。 */
-const TASK_NUMERALS = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
-function taskNumeral(n: number): string {
-  if (n <= 9) return TASK_NUMERALS[n - 1];
-  // ⚠️ 10..99 走中文序号；≥100 超出这套写法 ⇒ 回落阿拉伯数字（原来会产出「任务undefined十」）。
-  // 一份学习单不会有 100 个任务，但产出「undefined」是一个**看着像 bug 的**字符串。
-  if (n > 99) return String(n);
-  const tens = Math.floor(n / 10);
-  const ones = n % 10;
-  return `${tens === 1 ? '' : TASK_NUMERALS[tens - 1]}十${ones === 0 ? '' : TASK_NUMERALS[ones - 1]}`;
-}
-
 /**
- * 新任务预填的标题 —— 按**已有的顶层任务数**推下一个序号。
+ * 新任务预填的标题 —— **一句提醒**，不是给它取好的名字。
  *
- * ⚠️ 它是**输入框里的预填值**，不是定稿：教师可以改，也可以清空
- *（标题留空 ⇒ 学生端题号没有前缀，那是合法的，见 `flattenAnswerable`）。
- * 预填的理由：迁移写下的就是「任务一」这套惯例，新任务跟着它，
- * 两个任务的题号才不会长得一模一样（都是 `1 2 3`）。
+ * ★ 2026-10-05（教师）：「任务标题默认写『新任务标题』或其它字样，以提醒用户填写。」
+ *
+ * 🔴 原来预填的是**序号名**（`任务一`/`任务二`，按已有的顶层任务号往下推，F4 那次修的是
+ *    「删掉中间一个再新建 ⇒ 撞名」）。问题不在撞名，在**它长得像一个已经取好的名字**：
+ *    教师顺手留着，那份单的题号前缀就变成 `任务三 · 1` 这种跟内容毫无关系的东西，
+ *    而学生看到的也是它。序号名是**系统的话**，提醒是**要教师说话**。
+ *
+ * ⚠️ 教师可以改名，也可以清空（留空 ⇒ 学生端题号没有前缀，见 `flattenAnswerable`）——
+ *    两种都合法，所以 `task-card.tsx` 的 placeholder 仍然写着「可以留空」。
+ * ⚠️ 两个都没改名的任务会印出一样的前缀 —— 这是**故意的**：那句话就是拿来被替换的，
+ *    而它一旦留在纸上，教师一眼就看得见（比一个看着像真名字的「任务二」显眼得多）。
+ * ⇒ 于是那套中文序号机制（`nextTaskTitle` / `taskNumeral` / `numeralValue`）**整块删掉**：
+ *    它没有第二个调用点，留着就是一段「看着还在生效」的死代码。
  */
-export function nextTaskTitle(nodes: WorksheetQuestionNode[]): string {
-  // ★ 2026-09-25（第二轮终审 F4）：按**已有最大序号 + 1**，不是「已有任务个数 + 1」。
-  // 按个数推的实测序列：新建→任务一、再新建→任务二、**删掉任务一**、再新建 ⇒ 两个「任务二」
-  // ⇒ 题号逐字撞车（`任务二 · 1` 出现两次）。而 C3 那次改迁移判据要防的就是撞号 ——
-  // 这条是同一件事的另一条来路（创建路径），所以一起堵上。
-  // ⚠️ 教师改过名的任务**不参与**推断（解析不出序号的忽略）：一份全是自定义名字的学习单里，
-  // 下一个新任务从「任务一」开始，不与任何**已用的号**冲突（它压根没占号）。
-  let max = 0;
-  for (const node of nodes) {
-    if (node.type !== TASK_TYPE) continue;
-    const match = /^任务([一二三四五六七八九十]+)$/.exec((node.prompt ?? '').trim());
-    if (!match) continue;
-    const value = numeralValue(match[1]);
-    if (value > max) max = value;
-  }
-  return `任务${taskNumeral(max + 1)}`;
-}
-
-/** 中文序号 → 数（`taskNumeral` 的逆）。认不出回 0（调用方据此忽略那个名字）。 */
-function numeralValue(text: string): number {
-  const digits = '一二三四五六七八九';
-  const ten = text.indexOf('十');
-  if (ten < 0) {
-    const only = digits.indexOf(text);
-    return only < 0 ? 0 : only + 1;
-  }
-  const high = ten === 0 ? 1 : digits.indexOf(text[0]) + 1;
-  const low = ten === text.length - 1 ? 0 : digits.indexOf(text[ten + 1]) + 1;
-  return high * 10 + low;
-}
+export const NEW_TASK_TITLE = '新任务标题';
 
 /** 一个新任务容器：**空的是合法的**（教师 2026-09-25 裁定），所以不预置小题。 */
-export function newTask(nodes: WorksheetQuestionNode[]): WorksheetQuestionNode {
+export function newTask(): WorksheetQuestionNode {
   return {
     id: `t_${randomIdSuffix()}`,
     type: TASK_TYPE,
-    prompt: nextTaskTitle(nodes),
+    prompt: NEW_TASK_TITLE,
     inputMode: 'keyboard',
     data: {},
     children: [],
@@ -2765,7 +2737,7 @@ function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetC
     }
 
     case 'addTask':
-      return { ...content, nodes: [...content.nodes, newTask(content.nodes)] };
+      return { ...content, nodes: [...content.nodes, newTask()] };
 
     case 'updatePrompt':
       return replaceNode(content, action.id, (node) => {

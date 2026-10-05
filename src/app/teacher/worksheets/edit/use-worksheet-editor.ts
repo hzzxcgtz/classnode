@@ -635,7 +635,11 @@ export function useWorksheetEditor({ id, onNotice }: {
     dispatch({ kind: 'updateTolerance', id: questionId, tolerance });
   }, []);
 
-  /** 新建一个任务容器（标题按序号预填，教师可改）。 */
+  /**
+   * 新建一个任务容器。标题预填的是**一句提醒**（`NEW_TASK_TITLE`，教师改成自己的名字）。
+   * ★ 2026-10-05：加完要**选中它并把焦点落到标题上** —— 那件事在 `page.tsx`
+   * （它才知道主工作区选中了谁）；这里只管把节点加进去。
+   */
   const addTask = useCallback(() => {
     dispatch({ kind: 'addTask' });
   }, []);

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { TrashIcon } from './editor-icons';
@@ -37,6 +38,8 @@ export function TaskCard({
   onAddQuestion,
   onDragStart,
   inheritedPoints,
+  focusTitle = false,
+  onTitleFocused,
   children,
 }: {
   /** 这是第几个任务（0-based）。只用于「上移/下移」的边界与无障碍标签。 */
@@ -53,6 +56,13 @@ export function TaskCard({
   onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   /** ★ 2026-09-26：任务头上那两个数（几道题 / 满分）要用它算逐题分值。 */
   inheritedPoints: { full: number; half: number };
+  /**
+   * ★ 2026-10-05（教师）：「点击新任务后，焦点要跳到这个任务的标题，提示用户输入任务标题。」
+   * ⇒ 由页面在「刚新建了这个任务」时打开一次（见 `page.tsx` 的 `focusTaskTitleId`）。
+   */
+  focusTitle?: boolean;
+  /** 焦点已经落到标题上（**一次性请求**用完就销账，免得下次渲染又抢一次焦点）。 */
+  onTitleFocused?: () => void;
   /** 这个任务里的小题目卡（由页面渲染 —— 它要传一堆各自的回调）。 */
   children: ReactNode;
 }) {
@@ -61,6 +71,26 @@ export function TaskCard({
   // ⚠️ 变量名用 `kids` 而不是 `children` —— `children` 是本组件的 prop（下面那堆卡片）。
   const kids = Array.isArray(node.children) ? node.children : [];
   const hasChildren = kids.length > 0;
+
+  const titleRef = useRef<HTMLInputElement | null>(null);
+  /**
+   * 把焦点落到标题框，并**整段选中**里面那句话。
+   *
+   * 🔴 两件事都要做：
+   *   · `focus()` —— 教师点「添加任务」就是为了给这个新任务起名，光标不在那儿他得再点一次；
+   *   · `select()` —— 标题里预填的是**一句提醒**（`新任务标题`，见 `NEW_TASK_TITLE`），
+   *     整段选中意味着**直接打字就替换掉它**，不用先按退格清空。
+   * ⚠️ 只在 `focusTitle` 为真时做一次；做完立刻回调销账（页面把那个 id 清掉），
+   *    否则之后每次渲染都会再抢一次焦点 —— 教师正打字时被拽回来是灾难。
+   * ⚠️ 滚动交给 `focus()` 自己（浏览器会把它滚进视野）。
+   */
+  useEffect(() => {
+    if (!focusTitle) return;
+    const input = titleRef.current;
+    input?.focus();
+    input?.select();
+    onTitleFocused?.();
+  }, [focusTitle, onTitleFocused]);
 
   return (
     <section
@@ -79,6 +109,7 @@ export function TaskCard({
           所以 placeholder 说的是「可以留空」，不是「必填」。
         */}
         <input
+          ref={titleRef}
           className="worksheet-editor-task-title"
           value={node.prompt}
           onChange={event => onTitleChange(event.target.value)}

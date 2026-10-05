@@ -93,7 +93,8 @@ import {
   moveIdInList,
   moveOptionTo,
   newQuestion,
-  nextTaskTitle,
+  newTask,
+  NEW_TASK_TITLE,
   normalizeLoadedContent,
   normalizeLoadedSettings,
   optionKey,
@@ -1479,20 +1480,27 @@ test('🔴 newQuestion：6 个新题型的**答案键一律留空**（臆造答�
   assert.deepEqual(newQuestion('single-choice').data.correctKeys, []);
 });
 
-test('newQuestion：**非答案**内容给占位条目（让教师替换，而不是从零填）', () => {
-  assert.deepEqual(readOptions(newQuestion('multi-choice')), [
-    { key: 'A', text: '选项一' },
-    { key: 'B', text: '选项二' },
-  ]);
-  // ⚠️ 占位条目的文字刻意**不是**「一、二」的升序：`items` 是学生看到的顺序，
-  // 而「取当前顺序」会把屏幕上这个顺序变成答案。
-  assert.deepEqual(readEntries(newQuestion('order').data.items).map((item) => item.text), ['条目二', '条目一']);
+test('🔴 newQuestion：这些输入框**一个字都不预填**（默认只给灰色占位提示）', () => {
+  // ★ 2026-10-05（教师）：「编辑题目时，这些类似的输入框，默认只给灰色的提示文字，
+  //   鼠标点击后可以让用户直接输入自己的文字。」
+  // ⇒ 原来给新建题塞了「左项一」「条目二」「选项一」这类**假内容**：它看起来就是真数据，
+  //   教师得先删掉再写（而屏幕上没有任何东西提示「这是替你写好的占位」）。
+  // ⚠️ 灰字提示是**显示层**的事（各 `bodies/*.tsx` 的 `placeholder`，另有一张网守着），
+  //   数据层留空串；判分与保存只看 id 与答案键，不看这些文字。
+  assert.deepEqual(readOptions(newQuestion('single-choice')).map((option) => option.text), ['', '']);
+  assert.deepEqual(readOptions(newQuestion('multi-choice')).map((option) => option.text), ['', '']);
+  const order = newQuestion('order');
+  assert.deepEqual(readEntries(order.data.items).map((item) => item.text), ['', '']);
   const match = newQuestion('match');
-  assert.deepEqual(readEntries(match.data.left).map((item) => item.text), ['左项一', '左项二']);
-  assert.deepEqual(readEntries(match.data.right).map((item) => item.text), ['右项一', '右项二']);
+  assert.deepEqual(readEntries(match.data.left).map((item) => item.text), ['', '']);
+  assert.deepEqual(readEntries(match.data.right).map((item) => item.text), ['', '']);
   const categorize = newQuestion('categorize');
-  assert.deepEqual(readEntries(categorize.data.items).map((item) => item.text), ['条目一', '条目二']);
-  assert.deepEqual(readEntries(categorize.data.zones, 'label').map((item) => item.text), ['框一', '框二']);
+  assert.deepEqual(readEntries(categorize.data.items).map((item) => item.text), ['', '']);
+  assert.deepEqual(readEntries(categorize.data.zones, 'label').map((item) => item.text), ['', '']);
+  // 空的**行数**仍然要够（两行选项 / 两个条目 / 左右各两项 / 两个框），否则教师得先点「添加」。
+  assert.equal(readOptions(newQuestion('single-choice')).length, 2);
+  assert.equal(readEntries(newQuestion('order').data.items).length, 2);
+  assert.equal(readEntries(newQuestion('categorize').data.zones, 'label').length, 2);
 });
 
 test('🔴 newQuestion 的填空题仍然是**单空形状**（`blanks` 键不出现），多选带上判分口径', () => {
@@ -2238,12 +2246,14 @@ test('🔴 删得掉任务里的**一道小题**，也删得掉**整个任务**�
   assert.deepEqual(whole.present.nodes, [], '删任务 = 删掉它和它的全部小题');
 });
 
-test('🔴 新建的任务追加在**末尾**，且标题按序号预填（教师可改）', () => {
+test('🔴 新建的任务追加在**末尾**，标题预填一句提醒（★ 2026-10-05）', () => {
   const state = twoLevel(taskNode('t_1', '任务一', [node('q_a')]));
   const next = contentReducer(state, { kind: 'addTask' });
   assert.equal(next.present.nodes.length, 2);
   assert.equal(next.present.nodes[1].type, 'task');
-  assert.equal(next.present.nodes[1].prompt, '任务二', '预填「任务二」—— 与迁移写下的「任务一」同一套惯例');
+  // ⚠️ 原来是按序号预填「任务二」—— 那一版**长得像教师已经取好的名字**，容易被留着不改；
+  //    现在预填「新任务标题」，明摆着要人替换（同题目的占位提示，见 `newTask` 的注释）。
+  assert.equal(next.present.nodes[1].prompt, NEW_TASK_TITLE);
   assert.deepEqual(next.present.nodes[1].children, [], '空任务是合法的（教师 2026-09-25 裁定）');
 });
 
@@ -2393,18 +2403,25 @@ test('🔴 F1：正常的草稿仍然解析得出来（阳性对照）', () => {
   assert.equal(draft.content.nodes[0].children.length, 1);
 });
 
-test('🔴 F4：删掉中间一个任务之后新建的**不许撞名**（原来按「个数 + 1」推）', () => {
-  // 实跑过的序列：新建 → 任务一、再新建 → 任务二、删掉任务一、再新建 ⇒ **两个「任务二」**
-  // ⇒ 题号逐字撞车（`任务二 · 1` 出现两次），而 C3 那次改判据要防的就是撞号，只是换了条来路。
-  const three = contentOf(taskNode('t1', '任务一'), taskNode('t2', '任务二'), taskNode('t3', '任务三'));
-  assert.equal(nextTaskTitle(three.nodes), '任务四');
-  // 删掉「任务一」之后还剩 任务二 / 任务三 ⇒ 下一个必须是「任务四」，不是「任务三」
-  const afterDelete = contentOf(taskNode('t2', '任务二'), taskNode('t3', '任务三'));
-  assert.equal(nextTaskTitle(afterDelete.nodes), '任务四');
-  // 删光 ⇒ 从「任务一」重来（不与任何已用的号冲突）
-  assert.equal(nextTaskTitle([]), '任务一');
-  // 教师改过名的任务**不参与**序号推断：全是自定义名字时，下一个仍是「任务一」
-  assert.equal(nextTaskTitle([taskNode('t1', '读材料'), taskNode('t2', '写结论')]), '任务一');
+test('🔴 新任务的标题预填**一句提醒**（「新任务标题」），不再预填序号名', () => {
+  // ★ 2026-10-05（教师）：「任务标题默认写『新任务标题』或其它字样，以提醒用户填写。」
+  // 🔴 原来按已有任务号推「任务一 / 任务二 / 任务四…」（F4 那次修的是「删掉中间一个再新建
+  //    ⇒ 撞名」）。问题不在撞名，在**它长得像一个已经取好的名字**：教师顺手留着，那份单的
+  //    题号前缀就成了 `任务三 · 1` 这种跟内容无关的东西，学生看到的也是它。
+  // ⇒ 序号机制（`nextTaskTitle` 及其中文序号）整块删掉，预填改成这句话。
+  assert.equal(NEW_TASK_TITLE, '新任务标题');
+  assert.equal(newTask().prompt, '新任务标题', '又按已有序号推名字了');
+  // ⚠️ 它**不再读**已有任务的标题（序号机制整块删掉了），所以两份「全是自定义名字」的
+  //    学习单新建出来的任务也一样是这句话。
+  // 而**两个都没改名**的任务会印出一样的前缀 —— 那是故意的（这句话就是拿来被替换的）。
+  const a = newTask();
+  const b = newTask();
+  assert.equal(a.prompt, b.prompt);
+  // 别的字段照旧：任务**不预置小题**（教师 2026-09-25 裁定「空的合法」）。
+  assert.deepEqual(a.children, []);
+  assert.deepEqual(a.data, {});
+  assert.equal(a.type, 'task');
+  assert.notEqual(a.id, b.id, '两个任务的 id 不能撞');
 });
 
 test('🔴 F2/F3：编辑页要渲染的行由**一个纯函数**给出，且与判据同一份覆盖', () => {

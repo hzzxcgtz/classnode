@@ -198,6 +198,45 @@ function WorksheetEditorBody() {
     }
   }, [blocks, selectQuestion]);
 
+  /**
+   * ★ 2026-10-05（教师）：「点击新任务后，焦点要跳到这个任务的标题，提示用户输入任务标题。」
+   *
+   * 与上面那条「新题自动选中」**同一手法**（记一份加之前的 id 集合，再从新树里找出多出来的
+   * 那一个）：新任务同样要被**选中**（否则主工作区还停在旧任务上），并且**焦点落到它的标题**。
+   *
+   * 🔴 为什么不在 `newTask()` 里带上 id 让调用方自己找：那个 id 是 reducer 里现生成的
+   *   （`randomIdSuffix()`），外面拿不到；而「加完再比一次 id 集合」既不依赖随机数，
+   *   也不给 reducer 加一个新参数。
+   * ⚠️ 焦点**不在这个 effect 里直接 `document.querySelector`**：新任务这一刻还没渲染出来
+   *   （它要等 `selectTask` 之后的那一次渲染）。⇒ 只记下「要聚焦哪一个任务」，由那张
+   *   任务卡自己落地（`TaskCard` 的 `focusTitle` + `onTitleFocused`）。
+   */
+  const pendingNewTaskIds = useRef<Set<string> | null>(null);
+  const [focusTaskTitleId, setFocusTaskTitleId] = useState<string | null>(null);
+  const clearTaskTitleFocus = useCallback(() => setFocusTaskTitleId(null), []);
+  useEffect(() => {
+    const previous = pendingNewTaskIds.current;
+    if (!previous) return;
+    for (const block of blocks) {
+      const task = block.task;
+      if (!task || previous.has(task.node.id)) continue;
+      pendingNewTaskIds.current = null;
+      selectTask(block);
+      setFocusTaskTitleId(task.node.id);
+      return;
+    }
+  }, [blocks, selectTask]);
+
+  /**
+   * 「＋ 添加任务」的唯一入口：先记下**现有的**任务 id，再加。
+   * ⚠️ 两个按钮（结构栏底部那个、空卷时画布中间那个）都必须走它 —— 直接 `editor.addTask()`
+   *    会加出一个**不选中、不聚焦**的任务（教师得自己找它、再点一下标题框）。
+   */
+  const addTaskAndFocusTitle = useCallback(() => {
+    pendingNewTaskIds.current = new Set(blocks.flatMap(block => (block.task ? [block.task.node.id] : [])));
+    editor.addTask();
+  }, [blocks, editor]);
+
 
   /**
    * 删题确认（规格 §6.4）。文案里必须含**已收到的作答份数** —— 不说的后果是教师
@@ -594,7 +633,7 @@ function WorksheetEditorBody() {
             })}
           </div>
 
-          <button type="button" className="worksheet-editor-add" onClick={() => editor.addTask()}>
+          <button type="button" className="worksheet-editor-add" onClick={addTaskAndFocusTitle}>
             ＋ 添加任务
           </button>
         </aside>
@@ -605,7 +644,7 @@ function WorksheetEditorBody() {
               <span>01</span>
               <h2>先创建第一个任务</h2>
               <p>任务用于组织一组相关题目，学生会按任务顺序完成学习单。</p>
-              <button type="button" className="btn btn-primary" onClick={() => editor.addTask()}>添加任务</button>
+              <button type="button" className="btn btn-primary" onClick={addTaskAndFocusTitle}>添加任务</button>
             </div>
           ) : activeBlock?.task ? (
             <>
@@ -627,6 +666,9 @@ function WorksheetEditorBody() {
                 onDragStart={event => startDrag(event, activeBlock.task!.node.id, '', activeBlock.task!.index)}
                 onAddQuestion={() => setPickerFor({ parentId: activeBlock.task!.node.id })}
                 inheritedPoints={inheritedPoints}
+                /* ★ 2026-10-05：刚新建的这个任务要把焦点落到标题上（一次性，用完即销账）。 */
+                focusTitle={focusTaskTitleId === activeBlock.task.node.id}
+                onTitleFocused={clearTaskTitleFocus}
               >
                 {activeQuestion ? renderQuestionCard(activeQuestion) : null}
               </TaskCard>

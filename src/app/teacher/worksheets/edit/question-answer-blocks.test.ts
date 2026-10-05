@@ -19,6 +19,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CARD = fs.readFileSync(path.join(HERE, 'question-card.tsx'), 'utf8');
 const ORDER = fs.readFileSync(path.join(HERE, 'bodies', 'order-body.tsx'), 'utf8');
 const CHOICE = fs.readFileSync(path.join(HERE, 'bodies', 'choice-options.tsx'), 'utf8');
+const MATCH = fs.readFileSync(path.join(HERE, 'bodies', 'match-body.tsx'), 'utf8');
+const CATEGORIZE = fs.readFileSync(path.join(HERE, 'bodies', 'categorize-body.tsx'), 'utf8');
+const FILL = fs.readFileSync(path.join(HERE, 'bodies', 'fill-blanks-body.tsx'), 'utf8');
 const GLOBALS = path.resolve(HERE, '../../../../app/globals.css');
 const QTYPES = path.resolve(HERE, '../../../../lib/worksheet-questions.ts');
 
@@ -105,6 +108,27 @@ test('★ 右栏的标题要和左栏**同一个类**（换行标签，不是 h4
     /<span className="worksheet-editor-block-label">正确顺序<\/span>\s*\n\s*\{correctOrder\.length === 0 \? \(/,
     '「正确顺序」标签后面又插了一整段说明 —— 那正是把右栏的行推下去的 ~52px',
   );
+});
+
+test('🔴 「加一行 / 新建题」的输入框都必须有**灰色占位提示**（数据层留空之后，那一格只剩它可看）', () => {
+  // ★ 2026-10-05（教师）：「编辑题目时，这些类似的输入框，默认只给灰色的提示文字，
+  //   鼠标点击后可以让用户直接输入自己的文字。」
+  // 🔴 数据层已经把这些格子的文字改成空串（`createEmptyQuestion` / `matchAddLeft` …）。
+  //    ⇒ **placeholder 成了那一格唯一能看见的东西**：它一旦丢掉（改名、漏写、被顺手删掉），
+  //      教师看到的是一排**什么都没有的空框**，而构建、类型、既有用例全绿。
+  //    ⚠️ 这是 `editor-classes.test.ts`（守「类名有没有样式」）的同一族：**屏幕上少了一样东西**，
+  //      而没有任何东西会红 ⇒ 只能靠源码级的网钉住。
+  // ⚠️ 断言用的是**剥过 import/注释**的活代码（写在注释里不算数）。
+  assert.match(body(MATCH), /placeholder=\{`左项 \$\{index \+ 1\}`\}/, '连线题左项那一格没有灰色提示');
+  assert.match(body(MATCH), /placeholder=\{`右项 \$\{index \+ 1\}`\}/, '连线题右项那一格没有灰色提示');
+  assert.match(body(ORDER), /placeholder=\{`条目 \$\{index \+ 1\}`\}/, '排序题条目那一格没有灰色提示');
+  assert.match(body(CATEGORIZE), /placeholder=\{`框 \$\{index \+ 1\}`\}/, '归类题的框名那一格没有灰色提示');
+  assert.match(body(CATEGORIZE), /placeholder=\{`条目 \$\{index \+ 1\}`\}/, '归类题的条目那一格没有灰色提示');
+  assert.match(body(CHOICE), /placeholder=\{`选项 \$\{option\.key\}`\}/, '选项那一格没有灰色提示');
+  // 填空题的答案 / 评分标准 / 选词那几格（同一个 `SymbolListInput`）。
+  for (const hint of ['本空的答案', '这一空的评分标准', '例如：唐、宋、元', '例如：阳光、水分、空气']) {
+    assert.ok(body(FILL).includes(hint), `填空题少了一处灰色提示：${hint}`);
+  }
 });
 
 test('★ 那两句说明搬进了卡片顶部那句话里（不许丢）', () => {

@@ -592,6 +592,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                 onDataChange={onDataChange}
                 onAutoGradeChange={onAutoGradeChange}
                 fullPoints={shownPoints.full}
+                pointsUnit={pointsUnit}
               />
             )}
 

@@ -4428,16 +4428,15 @@ tr:hover td {
   font-size: 0.813rem;
 }
 
-/* ★ 2026-10-05（教师裁定 A）：「填空题的答案放到这里」——每个空的答案就摆在它自己那张
-   卡片的**作答方式行右侧**（原来住在自动评分区里的「标准答案」网格，只有打开自动评分才可见）。
-   `margin-left: auto` 把它推到行尾；那一行本来就 `flex-wrap`，窄屏时它会整块折到下一行。 */
+/* 每个空的答案/评分标准独占卡片第三行；长内容不再挤压作答方式与评分方式。 */
 .worksheet-editor-fill-answer-field {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  margin-left: auto;
-  flex: 1 1 220px;
-  max-width: 460px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e7edf5;
   font-size: 0.75rem;
   color: #40566f;
 }
@@ -4466,6 +4465,7 @@ tr:hover td {
 }
 
 .worksheet-editor-fill-score-input { display: inline-flex; align-items: center; gap: 6px; }
+.worksheet-editor-fill-score-input b { color: #526985; font-size: .75rem; font-weight: 600; white-space: nowrap; }
 .worksheet-editor-fill-score-input input { width: 58px; min-height: 32px; border: 1px solid #cbd8e8; border-radius: 7px; padding: 4px 7px; color: #233854; background: #fff; }
 .worksheet-editor-fill-score-summary { margin: 0; padding: 10px 12px; border-left: 3px solid #5a7da5; background: #f2f6fb; color: #526985; font-size: .813rem; }
 

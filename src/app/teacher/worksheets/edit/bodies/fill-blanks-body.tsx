@@ -120,12 +120,14 @@ const FILL_GRADING_LABELS: Record<FillGradingMode, string> = {
   none: '不评分',
 };
 
-export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPoints = 0 }: {
+export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPoints = 0, pointsUnit = '分' }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
   onAutoGradeChange?: (enabled: boolean) => void;
   /** 「全对」值几分（逐题或继承学习单级）—— 只用来把「逐空给分」那笔账算给教师看。 */
   fullPoints?: number;
+  /** 跟随学习单奖励形式，例如「分」「座奖杯」「颗星星」。 */
+  pointsUnit?: string;
 }) {
   const runs = readPromptRunsFor(node);
   // ★ 2026-09-28（教师反馈）：清单走 `blankSlots` —— **题干里的空与表格里的空是同一批**。
@@ -230,41 +232,6 @@ export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPo
                     </label>
                   ))}
                 </div>
-                {/*
-                  ★ 2026-10-05（教师裁定 A）：「填空题的答案放到这里」——
-                  这个空原来就在这一行右侧。答案**属于这个空**，与它的作答方式摆在一起，
-                  教师不必滚到自动评分区里去找（那一块还只有打开自动评分时才看得见）。
-                  ⚠️ 外层是 `<label>`，里面**只有一个** `<input>`（`SymbolListInput` 渲染的就是它）
-                     —— 标题文字与控件同属一个 label 是安全的；这里**绝不能**再塞按钮进去：
-                     `<label>` 的隐式关联对象是它内部第一个可标注元素，而 `<button>` 也是
-                     可标注元素 ⇒ 点标签空白会被转发给那个按钮（10-05 那次「点空白也会减」就是这个坑）。
-                  ⚠️ 写回形状与原来那一份**逐字一致**（`blanks: undefined` + nested `answers`）。
-                */}
-                <label
-                  className="worksheet-editor-fill-answer-field"
-                  title={gradingModeOf(settings[index]) === 'ai'
-                    ? `${slot.label}：这一空交给 AI 评分，这里写的是它评分（以及「发给 AI 分析」）依据的标准。`
-                    : `${slot.label}：每个空可以填多个可接受答案；学生答出其中一个就算对。`}
-                >
-                  {/* ★ 2026-10-05（教师，第二条截图）：「手工填写 + 自动评分：答案」「手工填写 + AI 评分：评分标准」
-                      ⇒ 名字跟**评分方式**走，不是跟作答方式走（上一版按「手工填写 ⇒ 评分标准」分，
-                        教师随后把规则说细了：只有**交给 AI 评**的那一空，这份文字才叫评分标准）。 */}
-                  <span>{gradingModeOf(settings[index]) === 'ai' ? '评分标准' : '答案'}</span>
-                  <SymbolListInput
-                    values={answerSets[index] ?? []}
-                    split={splitChoiceText}
-                    placeholder={gradingModeOf(settings[index]) === 'ai' ? '这一空的评分标准' : '本空的答案'}
-                    onChange={items => onDataChange({
-                      blanks: undefined,
-                      answers: Array.from(
-                        { length: answerSlots },
-                        (_, answerIndex) => answerIndex === index
-                          ? writeFillAnswers(items.join('\n'))
-                          : (answerSets[answerIndex] ?? []),
-                      ),
-                    })}
-                  />
-                </label>
               </div>
               {settings[index].mode === 'inline' && (
                 <label className="worksheet-editor-field worksheet-editor-inline-word-field">
@@ -298,17 +265,41 @@ export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPo
                   </div>
                   {gradingModeOf(settings[index]) !== 'none' && (
                     <label className="worksheet-editor-fill-score-input">
-                      <span>满额</span>
+                      <span>{pointsUnit === '分' ? '分值' : '奖励数量'}</span>
                       <input type="number" min={1} max={99} value={settings[index].maxScore ?? 1} onChange={event => setMaxScore(index, event.target.value)} />
+                      <b>{pointsUnit}</b>
                     </label>
                   )}
                 </div>
               )}
+              {/* 答案/评分标准独占第三行。横向空间全部留给输入内容，长答案也不会把前两组控件挤散。 */}
+              <label
+                className="worksheet-editor-fill-answer-field"
+                title={gradingModeOf(settings[index]) === 'ai'
+                  ? `${slot.label}：这一空交给 AI 评分，这里写的是它评分（以及「发给 AI 分析」）依据的标准。`
+                  : `${slot.label}：每个空可以填多个可接受答案；学生答出其中一个就算对。`}
+              >
+                <span>{gradingModeOf(settings[index]) === 'ai' ? '评分标准' : '答案'}</span>
+                <SymbolListInput
+                  values={answerSets[index] ?? []}
+                  split={splitChoiceText}
+                  placeholder={gradingModeOf(settings[index]) === 'ai' ? '这一空的评分标准' : '本空的答案'}
+                  onChange={items => onDataChange({
+                    blanks: undefined,
+                    answers: Array.from(
+                      { length: answerSlots },
+                      (_, answerIndex) => answerIndex === index
+                        ? writeFillAnswers(items.join('\n'))
+                        : (answerSets[answerIndex] ?? []),
+                    ),
+                  })}
+                />
+              </label>
             </section>
           ))}
           {node.type === 'fill-blank' && hasExplicitFillGrading(settings) && (() => {
             const totals = fillGradingTotals(settings);
-            return <p className="worksheet-editor-fill-score-summary">本题满额 {totals.total}：本地评分 {totals.auto}，AI 评分 {totals.ai}。</p>;
+            return <p className="worksheet-editor-fill-score-summary">本题合计 {totals.total} {pointsUnit}：本地评分 {totals.auto} {pointsUnit}，AI 评分 {totals.ai} {pointsUnit}。</p>;
           })()}
           {/*
             ★ 2026-10-05：下面两句是从删掉的「标准答案」块搬来的 —— 答案本身搬进了上面每张卡片，
@@ -321,7 +312,7 @@ export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPo
           </p>
           {node.data.fillScoring === 'per-blank' && fullPoints > 0 && (
             <p className="worksheet-editor-compact-note">
-              逐空给分：每个空 {fullPoints} 分 × {slots.length} 空 ⇒ 全对最多 <strong>{fullPoints * slots.length}</strong> 分。
+              逐空给分：每个空 {fullPoints} {pointsUnit} × {slots.length} 空 ⇒ 全对最多 <strong>{fullPoints * slots.length}</strong> {pointsUnit}。
             </p>
           )}
         </div>

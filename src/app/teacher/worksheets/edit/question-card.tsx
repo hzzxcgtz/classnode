@@ -585,8 +585,8 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             {/* ★ 2026-09-28：这一块现在覆盖**这道题全部的空**（题干里的 + 表格里的），
                 所以它排在表格面板**之后**（表格在上、空的清单在下，读起来才是一条线）。 */}
             {(node.type === 'fill-blank' || node.type === 'choice-blank') && (
-              // ★ 2026-10-05（教师裁定 A）：每个空的**答案**也在这里（卡片作答方式行的右侧），
-              // 所以要把「全对值几分」传进去 —— 「逐空给分」那笔账是在这里算给教师看的。
+              // ★ 2026-10-05（教师最新裁定）：每个空的**答案**也在这里（卡片最下方的独立第三行），
+              // 所以要把「全对的奖励数量」传进去 —— 「逐空评分」那笔账是在这里算给教师看的。
               <ChoiceBlankSetup
                 node={node}
                 onDataChange={onDataChange}

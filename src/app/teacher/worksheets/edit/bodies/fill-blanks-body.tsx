@@ -124,7 +124,7 @@ export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPo
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
   onAutoGradeChange?: (enabled: boolean) => void;
-  /** 「全对」值几分（逐题或继承学习单级）—— 只用来把「逐空给分」那笔账算给教师看。 */
+  /** 「全对」的奖励数量（逐题或继承学习单级）——只用来把「逐空评分」那笔账算给教师看。 */
   fullPoints?: number;
   /** 跟随学习单奖励形式，例如「分」「座奖杯」「颗星星」。 */
   pointsUnit?: string;

@@ -4469,6 +4469,54 @@ tr:hover td {
 .worksheet-editor-fill-score-input input { width: 58px; min-height: 32px; border: 1px solid #cbd8e8; border-radius: 7px; padding: 4px 7px; color: #233854; background: #fff; }
 .worksheet-editor-fill-score-summary { margin: 0; padding: 10px 12px; border-left: 3px solid #5a7da5; background: #f2f6fb; color: #526985; font-size: .813rem; }
 
+/* ★ 2026-10-05（教师）：「这里一层套一层有点怪啊，更看不懂了。」
+   填空题的「得分方式 + 分值」并成**一块两行**：行首一个小标签 + 控件。
+   原来是三层（卡 → 块〔标题 + 说明 + 两个大卡〕→ 块〔标题 + 说明 + 内层卡片〕），
+   而且两处还在说同一件事。
+   ⚠️ 只服务这一处：`.worksheet-editor-points`（内层卡那套）与
+      `.worksheet-editor-scoring-options`（两个大卡那套）**一个字没动** ——
+      它们还被多选题的「评分方式」与学习单设置里的「卡片透度」用着。 */
+.worksheet-editor-flat-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 两行之间一条细线（与 `.worksheet-editor-fill-grading-row` 同款的分隔手法）。 */
+.worksheet-editor-flat-row + .worksheet-editor-flat-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e7edf5;
+}
+
+.worksheet-editor-flat-row > .worksheet-editor-flat-label {
+  flex: 0 0 auto;
+  min-width: 56px;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.worksheet-editor-flat-row > .worksheet-editor-flat-note {
+  color: #6a7e93;
+  font-size: 0.72rem;
+}
+
+.worksheet-editor-flat-row .worksheet-editor-points-control { flex: 0 0 auto; }
+
+.worksheet-editor-flat-row .worksheet-editor-points-control .input {
+  width: 62px;
+  height: 34px;
+  padding: 5px 7px;
+  border-color: #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-align: center;
+}
+
 /* 编辑页**唯一的**分段控件（★ 2026-09-27）。
    原来它叫 `-fill-mode-tabs`，只服务填空题那个三格；教师当天指着选择题那个又大又笨的
    单选/多选切换说「参考一下填空题里边的样式」⇒ 把它提升成共用的这一条。

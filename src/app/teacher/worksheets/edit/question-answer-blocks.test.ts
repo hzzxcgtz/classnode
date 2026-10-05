@@ -153,6 +153,31 @@ test('🔴 并排的两栏必须**按权重压过**「上下两块之间的分�
   assert.ok(classes >= 3, `这条重置只有 ${classes} 个类选择器，压不过通用规则的两个类`);
 });
 
+test('★ 填空题的「得分方式 + 分值」是**一块两行**（不再卡中卡）', () => {
+  // ★ 2026-10-05（教师）：「这里一层套一层有点怪啊，更看不懂了。」
+  // 原来是三层：卡 →「得分方式」（标题+说明+两个大卡）→「得分规则」（标题+说明+内层卡片），
+  // 而且两处还说同一件事。裁定：并成一块两行。
+  const card = body(CARD);
+  const methodAt = card.indexOf('<FillScoringMethodRow');
+  const pointsAt = card.indexOf('<FillPointsRow');
+  assert.ok(methodAt > 0, '找不到「得分方式」那一行');
+  assert.ok(pointsAt > methodAt, '「分值」那一行不在「得分方式」之后（顺序变了？）');
+
+  // 🔴 两者之间不许再出现**块级容器** —— 出现就是又拆成两块（多一条分隔线、多一层卡）。
+  assert.ok(
+    !/worksheet-editor-block/.test(card.slice(methodAt, pointsAt)),
+    '两行之间又插了一个块容器 —— 「一块两行」被拆回两块了',
+  );
+  // 🔴 两个大卡（`.worksheet-editor-scoring-options`）与内层卡片（「每空得分」）都不许回来。
+  assert.ok(!/worksheet-editor-scoring-options/.test(card), '「得分方式」又用回了两个大卡');
+  assert.ok(!card.includes('每空得分'), '内层卡片那个标题又回来了（它就是"卡中卡"那一层）');
+  // 平铺行那两个类必须用上（样式另有 `editor-classes` 那张网守着"有没有定义"）。
+  // ⚠️ 类名断言一律带词边界：本仓已经栽过三次「加个后缀前缀还在 ⇒ 断言是瞎的」
+  //    （`includes('.x')` 对 `.xXX` 照样绿）。`editor-classes.test.ts` 另有一张网守"类名有没有定义"。
+  assert.match(card, /\bworksheet-editor-flat-row\b/, '没有用平铺行');
+  assert.match(card, /\bworksheet-editor-flat-label\b/, '行首那个小标签不见了');
+});
+
 test('★ 填空题设过逐空评分方式后**不显示**逐题「自动评分」开关（裁定 A）', () => {
   // 教师 2026-10-05 问「这个开关到底控制什么」→ 查实它对填空题**已经不通电**
   //（服务端 `grade()` 见到逐空设置就走逐空那条分支，不看 `node.autoGrade`；

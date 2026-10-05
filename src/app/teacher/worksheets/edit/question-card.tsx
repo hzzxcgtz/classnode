@@ -862,35 +862,39 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             </div>
           )}
 
+          {/*
+            ★ 2026-10-05（教师）：「这里一层套一层有点怪啊，更看不懂了。」
+            原来填空题这里是**三层**：卡片 →「得分方式」（标题 + 说明 + 两个大卡）→
+            「得分规则」（标题 + 说明 + **内层卡片**）。而且两处还在说同一件事
+            （两个大卡的小字 vs 上面那句说明；内层卡的「每空得分/答对几个空…」vs 块标题那句）。
+            ⇒ 裁定：**并成一块两行** —— 行首小标签 + 控件；
+              两个大卡换成与「作答方式 / 评分方式」**同款**的药丸（一屏里三处互斥选择长一样，
+              教师不用重新认）；内层卡片去掉，那一格直接叫**「分值」**（今天刚统一的叫法）。
+            ⚠️ 非填空题（`PointsRow` 那条两栏）与「设过逐空评分方式」的合计展示**都不动形状**。
+          */}
           {isBlankType && !explicitFillScoring && (
             <div className="worksheet-editor-block">
-              <div className="worksheet-editor-block-head">
-                <div>
-                  <h4>得分方式</h4>
-                  <p>按每个空单独计分，还是整道题全对才计分。</p>
-                </div>
-              </div>
               <FillScoringMethodRow node={node} onDataChange={onDataChange} />
-            </div>
-          )}
-
-          <div className="worksheet-editor-block">
-            <div className="worksheet-editor-block-head">
-              <div>
-                <h4>得分规则</h4>
-                <p>{isBlankType
-                  ? '答对之后每个空（或整题）能得到多少。'
-                  : '全部答对与只答对一部分时，各自能得到多少。'}</p>
-              </div>
-            </div>
-            {isBlankType && !explicitFillScoring ? (
               <FillPointsRow
                 node={node}
                 inheritedPoints={inheritedPoints}
                 pointsUnit={pointsUnit}
                 onPointsChange={onPointsChange}
               />
-            ) : !isBlankType ? (
+            </div>
+          )}
+
+          {(!isBlankType || explicitFillScoring) && (
+          <div className="worksheet-editor-block">
+            <div className="worksheet-editor-block-head">
+              <div>
+                <h4>得分规则</h4>
+                <p>{isBlankType
+                  ? '每个空的值在上面的「填空与作答设置」里各自设置，这里是它的合计。'
+                  : '全部答对与只答对一部分时，各自能得到多少。'}</p>
+              </div>
+            </div>
+            {!isBlankType ? (
               <PointsRow
                 heading={heading}
                 node={node}
@@ -913,6 +917,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
               <ToleranceRow node={node} onToleranceChange={onToleranceChange} />
             )}
           </div>
+          )}
 
           {/* ⊘ ★ 2026-09-30（教师）：「排序题的答案设置可以参考连线题和归类题，放在
               **选项顺序的右侧**。」⇒ 「正确顺序」从这一张卡**搬回**容器 A，与条目**并排**
@@ -1023,15 +1028,28 @@ function FillScoringMethodRow({ node, onDataChange }: {
 }) {
   const perBlank = node.data.fillScoring === 'per-blank';
   return (
-    <div className="worksheet-editor-scoring-options">
-      <label className={perBlank ? 'is-selected' : ''}>
-        <input type="radio" name={`fill-score-${node.id}`} checked={perBlank} onChange={() => onDataChange({ fillScoring: 'per-blank' })} />
-        <span><strong>按空给分</strong><em>每答对一空就得分</em></span>
-      </label>
-      <label className={!perBlank ? 'is-selected' : ''}>
-        <input type="radio" name={`fill-score-${node.id}`} checked={!perBlank} onChange={() => onDataChange({ fillScoring: 'whole' })} />
-        <span><strong>整题给分</strong><em>所有空都答对才得分</em></span>
-      </label>
+    <div className="worksheet-editor-flat-row">
+      <span className="worksheet-editor-flat-label">得分方式</span>
+      {/*
+        ★ 2026-10-05（教师）：两个大卡换成与「作答方式 / 评分方式」**同款**的药丸
+        （`.worksheet-editor-mode-tabs`）—— 一屏里三处互斥选择长得一样，才不用重新认。
+        ⚠️ 原来那个 `.worksheet-editor-scoring-options` 是**多选「评分方式」与「卡片透度」**
+           共用的（见 `multi-choice-body.tsx` / `page.tsx`），所以这里换控件，
+           而不是去改那条 CSS（改它会连带挤坏那两处）。
+        ⚠️ 原来写在卡片小字里的解释（「每答对一空就得分」）**没有丢** —— 它跟着选中的那一档
+           显示在右边，而块标题那句与它重复的说明整句删掉了。
+      */}
+      <div className="worksheet-editor-mode-tabs" role="radiogroup" aria-label="得分方式">
+        <label className={perBlank ? 'is-selected' : ''}>
+          <input type="radio" name={`fill-score-${node.id}`} checked={perBlank} onChange={() => onDataChange({ fillScoring: 'per-blank' })} />
+          <span>按空给分</span>
+        </label>
+        <label className={!perBlank ? 'is-selected' : ''}>
+          <input type="radio" name={`fill-score-${node.id}`} checked={!perBlank} onChange={() => onDataChange({ fillScoring: 'whole' })} />
+          <span>整题给分</span>
+        </label>
+      </div>
+      <span className="worksheet-editor-flat-note">{perBlank ? '每答对一空就得分' : '所有空都答对才得分'}</span>
     </div>
   );
 }
@@ -1043,7 +1061,8 @@ function FillPointsRow({ node, inheritedPoints, pointsUnit, onPointsChange }: {
   pointsUnit: string;
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
 }) {
-  const perBlank = node.data.fillScoring === 'per-blank';
+  /* ⚠️ 这一行不再看「得分方式」：口径解释搬到了上面那一行（跟着选中的档显示），
+     这里再说一遍就是同一件事说两遍 —— 而那正是教师说的「一层套一层」。 */
   const value = node.points?.full ?? inheritedPoints.full;
   const setValue = (raw: string) => {
     const parsed = Number(raw);
@@ -1051,10 +1070,25 @@ function FillPointsRow({ node, inheritedPoints, pointsUnit, onPointsChange }: {
     onPointsChange({ full: parsed, half: 0 });
   };
   return (
-    <label className="worksheet-editor-points-field">
-      <span><strong>{perBlank ? '每空得分' : '整题总分'}</strong><em>{perBlank ? '答对几个空，就累计几份奖励' : '全部答对时一次获得'}</em></span>
-      <span className="worksheet-editor-points-control"><input className="input" type="number" min={1} max={POINTS_MAX} value={value} onChange={event => setValue(event.target.value)} /><b>{pointsUnit}</b></span>
-    </label>
+    /* ★ 2026-10-05（教师）：原来这里是一张**内层卡片**（「每空得分 / 答对几个空，就累计几份奖励」
+       + 输入框）—— 卡里套卡就是教师说的「一层套一层」。现在是一行：
+       标签「分值」（今天刚统一的叫法）+ 输入框 + 单位；口径解释在上一行的「得分方式」那里，
+       不再说第二遍。 */
+    <div className="worksheet-editor-flat-row">
+      <span className="worksheet-editor-flat-label">分值</span>
+      <span className="worksheet-editor-points-control">
+        <input
+          className="input"
+          type="number"
+          min={1}
+          max={POINTS_MAX}
+          value={value}
+          aria-label="这一题的分值"
+          onChange={event => setValue(event.target.value)}
+        />
+        <b>{pointsUnit}</b>
+      </span>
+    </div>
   );
 }
 

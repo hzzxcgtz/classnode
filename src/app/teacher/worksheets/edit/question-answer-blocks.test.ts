@@ -175,8 +175,40 @@ test('★ 选项行：答案设置（圆点/勾选框）在**行尾**，字母�
 
   // 选中态由 React 算类名 —— `:has(input:checked)` 在 globals.css 里被兼容闸门禁用。
   assert.match(choice, /' is-on' : ''/, '选中态类名不见了');
-  assert.ok(
-    fs.readFileSync(GLOBALS, 'utf8').includes('.worksheet-editor-option-answer.is-on'),
-    'CSS 里没有选中态那一条（整块不会亮）',
+
+  const css = fs.readFileSync(GLOBALS, 'utf8');
+  assert.ok(css.includes('.worksheet-editor-option-answer.is-on'), 'CSS 里没有选中态那一条（整块不会亮）');
+
+  // ★ 同日第二条：「大小要一致」—— 右边三个盒（答案 / 配图 / 删除）必须是**同一个 28×28**。
+  //   三个数写在三条不同的规则里 ⇒ 只改其中一个，屏幕上就是「有一个大了一圈」，
+  //   而 tsc / eslint / 构建一个都不会红 ⇒ 三个都要钉。
+  const boxOf = (selector: string, span = 400) => {
+    const at = css.indexOf(selector);
+    assert.ok(at >= 0, `CSS 里找不到 ${selector}`);
+    return css.slice(at, at + span);
+  };
+  assert.match(boxOf('.worksheet-editor-option-answer {'), /width:\s*28px;[\s\S]*?height:\s*28px;/, '答案盒不是 28×28');
+  assert.match(boxOf('.worksheet-editor-icon-button {', 300), /width:\s*28px;[\s\S]*?height:\s*28px;/, '删除按钮不是 28×28');
+  assert.match(
+    boxOf('.worksheet-editor-option-image-action label,', 700),
+    /width:\s*28px;[\s\S]*?height:\s*28px;/,
+    '配图按钮不是 28×28（它是 padding 撑出来的，最容易漂）',
+  );
+
+  // ★ 同日第三条：「答案选择的上面要有提示文字」。
+  assert.match(choice, /worksheet-editor-options-head-label/, '答案列上方的表头不见了');
+  assert.match(choice, />正确答案</, '表头文字要写「正确答案」');
+  // 🔴 表头**只占右边三列**：靠一条 `flex: 1` 的空白把它顶到与行内同一列。
+  //    少了那条空白（或它丢了 `flex: 1`），表头就会跟左边（把手 / 字母 / 选项文字）对齐
+  //    而不是跟答案那一列 —— 看着「就差一点」却没有任何东西会红；而左边宽度随内容变，抄不出来。
+  //    ⚠️ 这条断言原来只 `includes('.…-head-gap')`：**变异检验当场证伪** —— 把类名改成
+  //       `…-head-gapXX`，那个 `includes` 照样绿（前缀还在）。所以现在查**声明**，
+  //       并且 TSX 与 CSS 两边都要在（只留一边 = 要么表头不顶到右边、要么这条规则是死的）。
+  assert.match(choice, /\bworksheet-editor-options-head-gap\b/, 'TSX 里没有那条表头空白');
+  const gapCss = css.slice(css.indexOf('.worksheet-editor-options-head-gap'));
+  assert.match(
+    gapCss.slice(0, 200),
+    /flex:\s*1/,
+    '表头那条空白丢了 `flex: 1` —— 表头会跟左边对齐，而不是跟答案那一列',
   );
 });

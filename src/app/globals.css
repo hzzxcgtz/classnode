@@ -3980,6 +3980,36 @@ tr:hover td {
   margin-bottom: 8px;
 }
 
+/* ★ 2026-10-05（教师）：「答案选择的上面要有提示文字」。
+   表头**只占右边那三列**：左边（把手 / 字母 / 选项文字）宽度随内容变，没法照抄；
+   而右边三个盒是**定宽 28**（答案 / 配图 / 删除，见 `.worksheet-editor-option-answer`），
+   所以用一条 `flex: 1` 的空白把它们顶到与行内同一列 —— 不依赖左边任何宽度。
+   🔴 「移除图片」必须待在这一簇之外（它搬去了缩略图旁边）：
+      否则有配图的那一行尾巴宽 42px，这一列立刻不齐，而表头是照着**定宽**算的。 */
+.worksheet-editor-options-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.688rem;
+  color: #7a8b9c;
+}
+
+.worksheet-editor-options-head-gap { flex: 1 1 auto; }
+
+.worksheet-editor-options-head-slot {
+  flex: 0 0 auto;
+  width: 28px;
+  display: flex;
+  justify-content: center;
+}
+
+/* 标签故意可以溢出那个 28px 的槽（居中溢出两侧）—— 右边两格是空的，压不到任何东西；
+   写窄了会挤成两行，反而对不上它要标的那一列。 */
+.worksheet-editor-options-head-label {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
 /* ★ 2026-09-26（教师：「没有对齐啊」）：`align-items` 从 `flex-start` 改成 `center`。
    原来是**每个控件各自顶对齐**，而这一行里四样东西高度各不相同（正确答案那个小圆点标签
    ≈22px、输入框更高、配图按钮与删除按钮又各是一档）⇒ 它们的文字基线相差近 10px，
@@ -4062,8 +4092,11 @@ tr:hover td {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 34px;
-  height: 30px;
+  /* ★ 2026-10-05（教师）：「大小要一致」—— 右边这三个盒（答案 / 配图 / 删除）必须逐像素同尺寸。
+     这一条与 `.worksheet-editor-icon-button`（删除那个）取同一个数：28×28。
+     ⚠️ 原来是 34×30（比另外两个大一圈），教师一眼就看出来了。 */
+  width: 28px;
+  height: 28px;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   background: #f8fafc;
@@ -6226,9 +6259,11 @@ tr:hover td {
   margin-bottom: 18px;
 }
 
+/* ⊘ ★ 2026-10-05（教师）：「这根线去掉」—— 这是**第二处**蓝竖条（第一处在列表视图，
+   已随 `[data-expanded='1']` 那次一并删掉）：聚焦模式（「编辑题目」那一屏）自己还有一份。
+   去掉左侧那 4px，卡片仍靠 `--primary-border` + 投影与别的题区分开。 */
 .worksheet-editor-canvas .worksheet-editor-question.is-focused {
   border: 1px solid var(--primary-border);
-  border-left: 4px solid var(--primary);
   box-shadow: 0 10px 26px rgba(var(--primary-focus-rgb), 0.07);
 }
 
@@ -7186,6 +7221,26 @@ tr:hover td {
   object-fit: contain;
 }
 
+/* ★ 2026-10-05：「移除图片」从行尾那一簇搬到这里（与「评分标准图片」同一套做法）。
+   搬的理由是**几何**：它一出现在行尾，那一行的尾部就宽约 42px，答案那一列随之左移，
+   整列的圆点不再对齐，上面那个表头也就对不上了。 */
+.worksheet-editor-option-image-preview {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.worksheet-editor-option-image-preview img {
+  margin-top: 7px;
+  border: 1px solid #d7e2ed;
+  background: #fff;
+}
+
+.worksheet-editor-option-image-preview button {
+  flex: 0 0 auto;
+  margin-bottom: 4px;
+}
+
 .worksheet-editor-option-image-action {
   position: relative;
   flex: 0 0 auto;
@@ -7196,7 +7251,14 @@ tr:hover td {
 
 .worksheet-editor-option-image-action label,
 .worksheet-editor-option-image-action button {
-  padding: 5px 7px;
+  /* ★ 2026-10-05（教师）：「大小要一致」。原来是 `padding: 5px 7px` 撑出来的尺寸
+     （约 30×26，且随里头的图标大小漂）⇒ 现在与答案盒、删除按钮同一个 28×28。 */
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: 1px solid #dbe3ee;
   border-radius: 6px;
   background: #fff;

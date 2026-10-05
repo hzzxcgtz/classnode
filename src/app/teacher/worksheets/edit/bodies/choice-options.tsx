@@ -124,9 +124,40 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
     };
   }, [dragFrom, node.id]);
 
+  /**
+   * 写回某一行的配图。
+   *
+   * ★ 2026-10-05：抽出来是因为**同一件事现在有两个调用点**（图标按钮换图 / 缩略图旁边的
+   * 「移除图片」），两处各写一遍 map+commit 就是本仓最防的那种分叉。
+   * `undefined` = 移除（写回时把键删掉，与 `OptionImageButton` 原来的写法逐字一致）。
+   */
+  const setOptionImage = (index: number, imageUrl?: string) => {
+    commit(options.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, ...(imageUrl ? { imageUrl } : { imageUrl: undefined }) } : item
+    )), correctKeys);
+  };
+
   return (
     <>
       <div className="worksheet-editor-options">
+        {/*
+          ★ 2026-10-05（教师）：「答案选择的上面要有提示文字」。
+          ⇒ 答案那一列现在是**光秃秃一个圆点**（原来盒子里还写着字母），不说明白没人知道点它是干嘛。
+          🔴 表头**只画右边那三个槽**：左边（把手 / 字母 / 选项文字）宽度随内容变，
+             而右边三个盒是**定宽 28px** ⇒ 用一条 `flex: 1` 的空白把它们顶到与行内同一列，
+             不依赖左边任何宽度。这也是为什么「移除图片」必须从这一簇里搬走
+             （它一出现，那一行的尾巴就宽 42px，整列立刻对不齐）。
+        */}
+        {showAnswer && (
+          <div className="worksheet-editor-options-head" aria-hidden="true">
+            <span className="worksheet-editor-options-head-gap" />
+            <span className="worksheet-editor-options-head-slot">
+              <span className="worksheet-editor-options-head-label">正确答案</span>
+            </span>
+            <span className="worksheet-editor-options-head-slot" />
+            <span className="worksheet-editor-options-head-slot" />
+          </div>
+        )}
         {options.map((option, optionIndex) => (
           <div className="worksheet-editor-option" key={option.key} data-option-row={node.id}>
             <button
@@ -164,7 +195,23 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
                   commit(nextOptions, correctKeys);
                 }}
               />
-              {option.imageUrl && <img src={worksheetAssetUrl(option.imageUrl)} alt={`选项 ${option.key} 配图预览`} />}
+              {option.imageUrl && (
+                /* ★ 2026-10-05：「移除图片」原来挤在右边那三个小盒中间。它一出现，
+                   那一行的**尾巴就宽了约 42px** ⇒ 这一行的答案圆点比同题其它行靠左，
+                   「答案列」不成一条线（上面那个表头更对不齐）。
+                   挪到缩略图旁边 —— 与「评分标准图片」那一块同一套做法（预览 + 操作按钮并排）。 */
+                <div className="worksheet-editor-option-image-preview">
+                  <img src={worksheetAssetUrl(option.imageUrl)} alt={`选项 ${option.key} 配图预览`} />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    title={`移除选项 ${option.key} 的图片`}
+                    onClick={() => setOptionImage(optionIndex, undefined)}
+                  >
+                    移除图片
+                  </button>
+                </div>
+              )}
             </div>
             {showAnswer && (
               <label
@@ -195,14 +242,7 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
             <OptionImageButton
               optionKey={option.key}
               hasImage={Boolean(option.imageUrl)}
-              onChange={(imageUrl) => {
-                const nextOptions = options.map((item, itemIndex) => (
-                  itemIndex === optionIndex
-                    ? { ...item, ...(imageUrl ? { imageUrl } : { imageUrl: undefined }) }
-                    : item
-                ));
-                commit(nextOptions, correctKeys);
-              }}
+              onChange={(imageUrl) => setOptionImage(optionIndex, imageUrl)}
             />
             <button
               type="button"
@@ -295,7 +335,6 @@ function OptionImageButton({ optionKey, hasImage, onChange }: {
           </svg>
         )}
       </label>
-      {hasImage && <button type="button" onClick={() => onChange()} title={`移除选项 ${optionKey} 的图片`}>移除</button>}
       {error && <span role="alert">{error}</span>}
     </div>
   );

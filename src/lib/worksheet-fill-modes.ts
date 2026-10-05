@@ -20,13 +20,34 @@ export function hasExplicitFillGrading(settings: readonly FillBlankSetting[]): b
   return settings.some(setting => setting.gradingMode !== undefined);
 }
 
+/**
+ * 这一空的作答方式**开放哪几种评分方式**。
+ *
+ * ★ 2026-10-05（教师）：「手工填写含三项评分方式，……右侧或下方选词则只有自动评分或不评分。」
+ *   道理是选词那两种方式下答案是一份**词表**，判分只能靠本地比对词表 —— 没有语义可交给 AI 评。
+ *
+ * 🔴 **与校验逐字同源**：`server/src/services/worksheet-questions.ts` 那边是
+ *    「填空题第 N 空只有手工填写时才能使用 AI 评分」（一条会**拒绝保存**的校验）。
+ *    界面照抄一份的话，教师会在「下方选词 + AI 评分」这个组合上**点得动、存不下**，
+ *    而报错说的是另一块屏幕上的事。所以两处必须同一条口径 —— 这一份是界面侧的来源。
+ */
+export function fillGradingModesFor(mode: FillAnswerMode): readonly FillGradingMode[] {
+  return mode === 'text' ? ['auto', 'ai', 'none'] : ['auto', 'none'];
+}
+
+/** 这一空的作答方式**是否允许** AI 评分（`fillGradingModesFor` 的谓词形式）。 */
+export function allowsAiGrading(mode: FillAnswerMode): boolean {
+  return mode === 'text';
+}
+
 export function fillGradingTotals(settings: readonly FillBlankSetting[]): { auto: number; ai: number; total: number } {
   let auto = 0;
   let ai = 0;
   settings.forEach((setting) => {
     const score = Number.isInteger(setting.maxScore) && (setting.maxScore ?? 0) > 0 ? setting.maxScore! : 1;
     if (setting.gradingMode === 'auto') auto += score;
-    if (setting.gradingMode === 'ai') ai += score;
+    // ⚠️ 选词那两种方式**不计 AI 分**，哪怕数据里留着一条历史 `'ai'`（见 `fillGradingModesFor`）。
+    if (setting.gradingMode === 'ai' && allowsAiGrading(setting.mode)) ai += score;
   });
   return { auto, ai, total: auto + ai };
 }

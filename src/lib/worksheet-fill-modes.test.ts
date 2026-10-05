@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { CHOICE_JOINER, CHOICE_SEPARATORS, blankSlots, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, placedValue, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
+import { CHOICE_JOINER, CHOICE_SEPARATORS, allowsAiGrading, blankSlots, fillGradingModesFor, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, placedValue, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 import { DEFAULT_PROMPT_STYLE, type PromptRun } from './worksheet-prompt-marks.ts';
 
@@ -46,6 +46,27 @@ test('逐空评分方式与满额按 blank id 往返，并分别汇总自动与 
   assert.equal(hasExplicitFillGrading(settings), true);
   assert.deepEqual(settings.map(item => [item.gradingMode, item.maxScore]), [['auto', 2], ['auto', 1], ['ai', 5]]);
   assert.deepEqual(fillGradingTotals(settings), { auto: 3, ai: 5, total: 8 });
+});
+
+test('🔴 AI 评分只对「手工填写」开放；选词那两种方式连历史数据里的 ai 都不算分', () => {
+  // ★ 2026-10-05（教师）：「手工填写含三项评分方式，……右侧或下方选词则只有自动评分或不评分。」
+  // 🔴 这条与**服务端会拒绝保存**的校验同源（`worksheet-questions.ts`：
+  //    「填空题第 N 空只有手工填写时才能使用 AI 评分」）。界面侧若多给一个选项，
+  //    教师就会点得动、存不下 —— 所以这里既钉选项表，也钉汇总口径。
+  assert.deepEqual([...fillGradingModesFor('text')], ['auto', 'ai', 'none']);
+  assert.deepEqual([...fillGradingModesFor('inline')], ['auto', 'none']);
+  assert.deepEqual([...fillGradingModesFor('pool')], ['auto', 'none']);
+  assert.equal(allowsAiGrading('text'), true);
+  assert.equal(allowsAiGrading('inline'), false);
+  assert.equal(allowsAiGrading('pool'), false);
+
+  // 历史数据（或手工改过的库）里可能有「下方选词 + ai」这种组合：**不许算进 AI 那一档**，
+  // 否则界面上会出现一笔「AI 评分 5 分」的账，而那个组合压根存不下去。
+  const legacy = [
+    { mode: 'pool' as const, choices: [], gradingMode: 'ai' as const, maxScore: 5 },
+    { mode: 'text' as const, choices: [], gradingMode: 'ai' as const, maxScore: 3 },
+  ];
+  assert.deepEqual(fillGradingTotals(legacy), { auto: 0, ai: 3, total: 3 });
 });
 
 test('旧选择填空继续读取原来的共用词池与右侧两词分组', () => {

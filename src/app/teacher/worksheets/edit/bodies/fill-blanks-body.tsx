@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { readBlankCount } from '@/lib/worksheet-questions';
 import { BLANK_MARK_TEXT } from '@/lib/worksheet-prompt-marks';
-import { CHOICE_JOINER, blankSlots, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode, type FillGradingMode } from '@/lib/worksheet-fill-modes';
+import { CHOICE_JOINER, allowsAiGrading, blankSlots, fillGradingModesFor, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode, type FillBlankSetting, type FillGradingMode } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
   readBlankAnswers,
@@ -103,6 +103,13 @@ export function SymbolListInput({ values, split, placeholder, onChange }: {
  *     因此对填空题不再成立（已按题型排除）。
  *   · 原来那两句说明（「每个空可以填多个可接受答案…」与「逐空给分」的算术）跟着搬到列表下方。
  */
+/** 评分方式的中文名 —— **一份**（那一排按钮与将来的别处都从这儿取）。 */
+const FILL_GRADING_LABELS: Record<FillGradingMode, string> = {
+  auto: '自动评分',
+  ai: 'AI 评分',
+  none: '不评分',
+};
+
 export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPoints = 0 }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
@@ -132,9 +139,22 @@ export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPo
     });
     if (node.type === 'fill-blank' && totals.auto > 0 && node.autoGrade === false) onAutoGradeChange?.(true);
   };
+  /**
+   * 这一空**实际生效**的评分方式。
+   *
+   * 老题没有 `gradingMode` ⇒ 跟随题目级那条老规则（`autoGrade === false && aiScoringEnabled`
+   * 就是当年选了 AI）。
+   * 🔴 回退也必须看**作答方式**：选词那两种方式下 `'ai'` 根本不合法
+   *    （`fillGradingModesFor` 只给 `auto` / `none`）—— 否则界面会渲染成「一个都没选中」，
+   *    而那个组合服务端**存不下**（会回一句「只有手工填写时才能使用 AI 评分」）。
+   */
+  const gradingModeOf = (setting: FillBlankSetting): FillGradingMode => setting.gradingMode ?? (
+    allowsAiGrading(setting.mode) && node.autoGrade === false && node.data.aiScoringEnabled === true
+      ? 'ai' : 'auto'
+  );
   const explicitSettings = () => settings.map(setting => ({
     ...setting,
-    gradingMode: setting.gradingMode ?? (node.autoGrade === false && node.data.aiScoringEnabled === true ? 'ai' as const : 'auto' as const),
+    gradingMode: gradingModeOf(setting),
     maxScore: setting.maxScore ?? 1,
   }));
   const setMode = (index: number, mode: FillAnswerMode) => {
@@ -212,13 +232,17 @@ export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPo
                 */}
                 <label
                   className="worksheet-editor-fill-answer-field"
-                  title={`${slot.label}：每个空可以填多个可接受答案；学生答出其中一个就算对。`}
+                  title={settings[index].mode === 'text'
+                    ? `${slot.label}：手工填写时，这里既是本地判分的参考答案（可填多个，答出其一即算对），也是 AI 评分与「发给 AI 分析」依据的评分标准。`
+                    : `${slot.label}：每个空可以填多个可接受答案；学生答出其中一个就算对。`}
                 >
-                  <span>答案</span>
+                  {/* ★ 2026-10-05（教师）：「手工填写……答案应该叫『评分标准』，右侧或下方选词则……答案就叫答案。」
+                      —— 手工填写时这份文字还要给 AI 当评分依据，叫「答案」说不清它是什么。 */}
+                  <span>{settings[index].mode === 'text' ? '评分标准' : '答案'}</span>
                   <SymbolListInput
                     values={answerSets[index] ?? []}
                     split={splitChoiceText}
-                    placeholder="填写标准答案"
+                    placeholder={settings[index].mode === 'text' ? '评分标准或参考答案' : '本空的答案'}
                     onChange={items => onDataChange({
                       blanks: undefined,
                       answers: Array.from(
@@ -246,21 +270,22 @@ export function ChoiceBlankSetup({ node, onDataChange, onAutoGradeChange, fullPo
                 <div className="worksheet-editor-fill-grading-row">
                   <span>评分方式</span>
                   <div className="worksheet-editor-mode-tabs" role="radiogroup" aria-label={`${slot.label}的评分方式`}>
-                    {([
-                      ['auto', '自动评分'],
-                      ['ai', 'AI 评分'],
-                      ['none', '不评分'],
-                    ] as const).map(([mode, label]) => {
-                      const selected = (settings[index].gradingMode ?? (node.autoGrade === false && node.data.aiScoringEnabled === true ? 'ai' : 'auto')) === mode;
+                    {/*
+                      ★ 2026-10-05（教师）：「手工填写含三项评分方式，……右侧或下方选词则只有
+                      自动评分或不评分。」⇒ 这一排由 `fillGradingModesFor(本空的作答方式)` 给，
+                      与那条会**拒绝保存**的服务端校验同源（见 `worksheet-fill-modes.ts` 的注释）。
+                    */}
+                    {fillGradingModesFor(settings[index].mode).map((mode) => {
+                      const selected = gradingModeOf(settings[index]) === mode;
                       return (
                         <label className={selected ? 'is-selected' : ''} key={mode}>
                           <input type="radio" name={`fill-grading-${node.id}-${index}`} checked={selected} onChange={() => setGradingMode(index, mode)} />
-                          <span>{label}</span>
+                          <span>{FILL_GRADING_LABELS[mode]}</span>
                         </label>
                       );
                     })}
                   </div>
-                  {(settings[index].gradingMode ?? (node.autoGrade === false && node.data.aiScoringEnabled === true ? 'ai' : 'auto')) !== 'none' && (
+                  {gradingModeOf(settings[index]) !== 'none' && (
                     <label className="worksheet-editor-fill-score-input">
                       <span>满额</span>
                       <input type="number" min={1} max={99} value={settings[index].maxScore ?? 1} onChange={event => setMaxScore(index, event.target.value)} />

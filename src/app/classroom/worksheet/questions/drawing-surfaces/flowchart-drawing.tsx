@@ -31,6 +31,14 @@ import {
 //      免得将来换主题时它又变成不可读的颜色。
 import '@xyflow/react/dist/style.css';
 
+import {
+  emptyHistory,
+  flowchartSignature,
+  pushHistory,
+  type FlowHistory,
+  type FlowSnapshot,
+} from '@/lib/worksheet-flowchart-history.ts';
+import { tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
 import { flowchartSvg } from '@/lib/worksheet-flowchart-svg.ts';
 import { svgToPngBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 import { normalizePastedText } from '@/lib/worksheet-text-normalize.ts';
@@ -123,7 +131,28 @@ type FlowSelection = { kind: 'node' | 'edge'; id: string };
 function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
   const instance = useReactFlow<FlowNode, Edge>();
   const [editing, setEditing] = useState(false);
-  const textWidth = Math.min(30, Math.max(10, Array.from(data.label).length + 2));
+  /**
+   * 编辑期间的**本地草稿**（★ 2026-10-06 教师报「双击后无法输入中文」的修法）。
+   *
+   * 🔴 原先是直接受控到 store（`value={data.label}` + 每次按键 `updateNodeData`）——
+   *    那样每敲一个键都会让画板的 `visibleNodes` 重算、**全图重渲染**。中文输入法要靠
+   *    连续几次按键维持一个「组合态」，这个往返正好把它打断：候选框和拼音字母一起没掉。
+   *    英文是逐字提交的，所以从现象上看「只有中文不行」。
+   * ✅ 现在打字只改这个本地 state（React 自己的更新，与 DOM 始终一致），Enter/blur 才提交。
+   *    连线标签那个就地输入框一直是这么做的（`defaultValue`），是本文件里「中文能打」的对照物。
+   */
+  const [draft, setDraft] = useState(data.label);
+  /** ⚠️ 宽度跟着**正在编辑的那一份**走：编辑时看 draft，平时看 store 里的 label。 */
+  const textWidth = Math.min(30, Math.max(10, Array.from(editing ? draft : data.label).length + 2));
+  /**
+   * 提交草稿（blur / Enter / Escape 都汇到这里）。
+   * ⚠️ 只在**真改了**的时候才写 store：双击进来什么都没动就点走，不该产生一次「内容变更」
+   *    （那会让画板往外报一次、快照跟着重算一次）。
+   */
+  const commitLabel = () => {
+    setEditing(false);
+    if (draft !== data.label) instance.updateNodeData(id, { label: draft });
+  };
   /** ★ 连接点是**一个小圆点**、没有文字 ⇒ 它不能有那个可编辑文字输入框（否则图上多一个空框）。 */
   const isJunction = data.kind === 'junction';
   return (
@@ -132,7 +161,11 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
           ⚠️ `overflow: visible` 不需要：这块 SVG 撑满盒子，四个顶点正好是四个连接点。 */}
       {data.kind === 'decision' && (
         <svg className={styles.flowNodeShape} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-          <polygon points="50,1.5 98.5,50 50,98.5 1.5,50" fill="#fff" stroke="#7895b3" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+          {/* ⚠️ `strokeWidth` 必须与 CSS 的 `.flowNode { border: 1.5px }` **同值**：
+              菱形是**画出来的** SVG，其它形状的描边是 CSS border —— 两处各写一个数就会分叉。
+              教师 2026-10-06 报的正是这个（「菱形的框太粗了，要跟其它图形一样」，当时这里是 3、
+              CSS 是 1.5）。`flowchart-node-stroke.test.ts` 把两边现读现比，改任一边都会红。 */}
+          <polygon points="50,1.5 98.5,50 50,98.5 1.5,50" fill="#fff" stroke="#7895b3" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
         </svg>
       )}
       {/* ⚠️ 交点也要**四个句柄照旧**：它的上/下就是那两段线接上去的地方。 */}
@@ -154,11 +187,16 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
           className="nodrag"
           aria-label="节点文字"
           autoFocus
-          value={data.label}
+          value={draft}
           style={{ width: `${textWidth}em` }}
-          onChange={(event) => instance.updateNodeData(id, { label: event.target.value })}
-          onBlur={() => setEditing(false)}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commitLabel}
           onKeyDown={(event) => {
+            /* ⚠️ 输入法组合中：Enter 是「上屏候选词」、Escape 是「取消组合」，两个键都归输入法用，
+               不能当成「确认/放弃」—— 不看这一条，按回车的那一瞬间编辑框就关了。
+               这与上面「组合被重渲染打断」是**两件**独立的事，得各修各的。
+               `keyCode === 229` 是老浏览器（含 Safari 15）的兜底：组合期间它固定是 229。 */
+            if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
             if (event.key === 'Enter' || event.key === 'Escape') event.currentTarget.blur();
           }}
         />
@@ -166,7 +204,7 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
         <span
           className={styles.flowNodeLabel}
           title={data.locked ? undefined : '双击修改文字'}
-          onDoubleClick={(event) => { event.stopPropagation(); setEditing(true); }}
+          onDoubleClick={(event) => { event.stopPropagation(); setDraft(data.label); setEditing(true); }}
         >{data.label}</span>
       ))}
     </div>
@@ -501,88 +539,6 @@ function toFlowPayload(nodes: FlowNode[], edges: Edge[]) {
   };
 }
 
-/**
- * 轻量的分层排版。流程图课堂题通常是自上而下的有向图；这里按拓扑层级放置，
- * 对循环边保留一个兜底层，不因学生画出回路而卡死。无需把浏览器端画板绑到额外布局运行时。
- */
-function layoutFlowchart(nodes: FlowNode[], edges: Edge[]): { nodes: FlowNode[]; edges: Edge[] } {
-  if (nodes.length === 0) return { nodes, edges };
-  const ids = new Set(nodes.map((node) => node.id));
-  const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]));
-  const incoming = new Map(nodes.map((node) => [node.id, 0]));
-  for (const edge of edges) {
-    if (!ids.has(edge.source) || !ids.has(edge.target) || edge.source === edge.target) continue;
-    outgoing.get(edge.source)?.push(edge.target);
-    incoming.set(edge.target, (incoming.get(edge.target) ?? 0) + 1);
-  }
-  const level = new Map<string, number>();
-  const queue = nodes.filter((node) => incoming.get(node.id) === 0).map((node) => node.id);
-  if (queue.length === 0) queue.push(nodes[0].id);
-  const spread = (baseLevel: number) => {
-    for (let cursor = 0; cursor < queue.length; cursor += 1) {
-      const id = queue[cursor];
-      for (const target of outgoing.get(id) ?? []) {
-        if (level.has(target)) continue; // 已访问边视为回边，避免循环把层级无限拉长。
-        level.set(target, (level.get(id) ?? baseLevel) + 1);
-        queue.push(target);
-      }
-    }
-  };
-  for (const id of queue) level.set(id, 0);
-  spread(0);
-  let fallbackLevel = Math.max(0, ...level.values()) + 1;
-  for (const node of nodes) {
-    if (level.has(node.id)) continue;
-    queue.length = 0;
-    queue.push(node.id);
-    level.set(node.id, fallbackLevel);
-    spread(fallbackLevel);
-    fallbackLevel = Math.max(...level.values()) + 1;
-  }
-  const layers = new Map<number, FlowNode[]>();
-  for (const node of nodes) {
-    const row = level.get(node.id) ?? 0;
-    layers.set(row, [...(layers.get(row) ?? []), node]);
-  }
-  const widthOf = (node: FlowNode) => node.measured?.width ?? (node.data.kind === 'junction' ? 8 : 150);
-  const heightOf = (node: FlowNode) => node.measured?.height ?? (node.data.kind === 'decision' ? 84 : node.data.kind === 'junction' ? 8 : 54);
-  const H_GAP = 64;
-  const V_GAP = 58;
-  const MARGIN = 44;
-  const orderedLayers = [...layers.entries()].sort(([a], [b]) => a - b);
-  const widest = Math.max(...orderedLayers.map(([, row]) => row.reduce((sum, node) => sum + widthOf(node), 0) + Math.max(0, row.length - 1) * H_GAP));
-  let y = MARGIN;
-  const positioned = new Map<string, FlowNode>();
-  for (const [, row] of orderedLayers) {
-    row.sort((a, b) => a.position.x - b.position.x);
-    const rowWidth = row.reduce((sum, node) => sum + widthOf(node), 0) + Math.max(0, row.length - 1) * H_GAP;
-    let x = MARGIN + (widest - rowWidth) / 2;
-    let rowHeight = 0;
-    for (const node of row) {
-      positioned.set(node.id, { ...node, position: { x, y } });
-      x += widthOf(node) + H_GAP;
-      rowHeight = Math.max(rowHeight, heightOf(node));
-    }
-    y += rowHeight + V_GAP;
-  }
-  const nextNodes = nodes.map((node) => positioned.get(node.id) ?? node);
-  const byId = new Map(nextNodes.map((node) => [node.id, node]));
-  const nextEdges = edges.map((edge) => {
-    const source = byId.get(edge.source);
-    const target = byId.get(edge.target);
-    if (!source || !target) return edge;
-    const sourceCenter = source.position.x + widthOf(source) / 2;
-    const targetCenter = target.position.x + widthOf(target) / 2;
-    const sameLayer = level.get(source.id) === level.get(target.id);
-    return {
-      ...edge,
-      sourceHandle: sameLayer ? (targetCenter >= sourceCenter ? 'right' : 'left') : 'bottom',
-      targetHandle: sameLayer ? (targetCenter >= sourceCenter ? 'left' : 'right') : 'top',
-      data: undefined,
-    };
-  });
-  return { nodes: nextNodes, edges: nextEdges };
-}
 
 function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, starter }: DrawingSurfaceProps) {
   /**
@@ -618,6 +574,20 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   const lastFlow = useRef<ReturnType<typeof toFlowPayload> | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(initial.current.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.current.edges);
+  /*
+    ★ 2026-10-06（教师：「流程图要提供撤销/重做功能」）—— **快照栈**。
+    规格与取舍见 `specs/2026-10-06-流程图撤销重做.md`；纯逻辑在 `@/lib/worksheet-flowchart-history.ts`。
+
+    ⚠️ 历史住在 **ref** 里而不是 state：它不参与渲染，只有两颗按钮的**可用性**要看它
+       ⇒ 那个由 `historyVersion` 这个自增计数器负责（见下面那条 effect 与撤销函数）。
+    ⚠️ `lastSnapshotRef` 是「上一次压栈时的图」，`lastSigRef` 是它的指纹。
+       `lastSigRef` 初值是 `null`，表示**基线还没建立** —— 首帧只记基线、不压栈。
+  */
+  const historyRef = useRef<FlowHistory<FlowSnapshot<FlowNode, Edge>>>(emptyHistory());
+  const lastSnapshotRef = useRef<FlowSnapshot<FlowNode, Edge>>({ nodes: initial.current.nodes, edges: initial.current.edges });
+  const lastSigRef = useRef<string | null>(null);
+  const draggingRef = useRef(false);
+  const [, setHistoryVersion] = useState(0);
   const initialized = useRef(false);
   /**
    * ★ 2026-10-06（教师：「拖到线附近松手要能连上」）：**落点吸附**要用的两个记号（见 `onConnectEnd`）。
@@ -648,7 +618,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *    用库自己的换算而不是自己乘 `viewport`：那是**页面**坐标（含容器 rect 与页面滚动），
    *    而 `viewport.x + flowX * zoom` 只对「浮层住在 `.flowStage` 里」成立。
    */
-  const { fitView, flowToScreenPosition, screenToFlowPosition } = useReactFlow<FlowNode, Edge>();
+  const { flowToScreenPosition, screenToFlowPosition } = useReactFlow<FlowNode, Edge>();
   const nodeTypes = useMemo(() => ({ flow: FlowNodeEditor }), []);
   /**
    * ★ 2026-10-06（教师上传的标准流程图）：注册那份**只管标签**的自定义边。
@@ -679,6 +649,27 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     }, 180);
     return () => window.clearTimeout(timer);
   }, [nodes, edges, onChange, scheduleRaster, starterPayload]);
+
+  /**
+   * ★ 2026-10-06：**变化检测** —— 决定「刚才那一下算不算一步」。
+   *
+   * 🔴 判据是**指纹**（`flowchartSignature`），不是「nodes 变了没有」：React Flow 的
+   *    `onNodesChange` 也会为**选中**和**尺寸测量**触发，不滤掉的话学生点一下框就等于做了一步
+   *    （详见那个函数的注释）。
+   * 🔴 **拖动中一律不压栈**（`draggingRef`）：拖动期间每个 mousemove 都会让 nodes 变一次，
+   *    照压的话拖一下框要用五十次撤销才退得回去。拖动中**连 `lastSigRef` 都不更新** ——
+   *    这样松手后这一次 effect 比的就是「拖动前 vs 拖动后」，**恰好压一步**。
+   */
+  useEffect(() => {
+    if (draggingRef.current) return; // 先查它，顺便省掉拖动中每一次指纹计算
+    const sig = flowchartSignature(nodes, edges);
+    if (lastSigRef.current === null) { lastSigRef.current = sig; return; } // 首帧：只立基线
+    if (lastSigRef.current === sig) return;                                 // 没有实质变化
+    historyRef.current = pushHistory(historyRef.current, lastSnapshotRef.current);
+    lastSnapshotRef.current = { nodes, edges };
+    lastSigRef.current = sig;
+    setHistoryVersion((v) => v + 1); // 让两颗按钮的 disabled 跟着刷新
+  }, [nodes, edges]);
 
   /**
    * ★ 2026-10-06（教师）：「连接线默认没箭头的吗？」
@@ -725,13 +716,21 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     setEdges(base.edges as unknown as Edge[]);
   };
 
+  /**
+   * 「一键整理」（★ 2026-10-06 教师报「会打乱我原有的结果」之后重写）。
+   *
+   * 🔴 算法整个挪进了 `@/lib/worksheet-flowchart-layout.ts` —— 那边是**纯函数**，能被**真正地**
+   *    单元测试（本仓没有 jsdom，算法长在 `.tsx` 里就只能靠读源码文本猜，抓不住行为回归）。
+   *    逐条契约见那个文件的开头。
+   * ⚠️ 这里**不再** `fitView`：整理只动画布上的东西，不动**你看画布的那个视角** ——
+   *    视图一跳，教师就分不清「是图变了还是镜头变了」，那本身也是「被打乱」的一部分。
+   */
   const tidyLayout = () => {
-    const arranged = layoutFlowchart(nodes, edges);
+    const arranged = tidyFlowchart(nodes, edges);
     setNodes(arranged.nodes);
     setEdges(arranged.edges);
     setSelected(null);
     setLabelingEdge(null);
-    window.setTimeout(() => { void fitView({ padding: 0.12, duration: 280 }); }, 60);
   };
 
   /**
@@ -1339,6 +1338,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
             setSnapCandidateId(null);
           }}
           onConnectEnd={disabled ? undefined : onConnectEnd}
+          // ★ 2026-10-06：一次拖动 = 一步撤销（详见上面那条变化检测 effect）。
+          onNodeDragStart={disabled ? undefined : () => { draggingRef.current = true; }}
+          onNodeDragStop={disabled ? undefined : () => { draggingRef.current = false; }}
           // ★ 2026-10-06（教师）：点图形就选中它；点线就选中那条线。
           //   ⚠️ 「选中」只有一个槽位 ⇒「点框清线、点线清框」是**结构性成立**的（不必两边互相清）。
           onNodeClick={(_, node) => { setSelected({ kind: 'node', id: node.id }); setLabelingEdge(null); }}
@@ -1422,6 +1424,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
             placeholder="线上文字"
             defaultValue={String(edges.find((edge) => edge.id === overlay.edgeId)?.label ?? '')}
             onKeyDown={(event) => {
+              /* ⚠️ 与节点文字同一个坑：组合中按回车是「上屏候选词」，不是「确认」——
+                 不排除组合态的话，还没上屏的拼音会被这一下丢掉。`keyCode === 229` 是老浏览器兜底。 */
+              if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
               if (event.key === 'Enter') { setEdgeLabel(overlay.edgeId, event.currentTarget.value); setLabelingEdge(null); }
               if (event.key === 'Escape') setLabelingEdge(null);
             }}

@@ -110,7 +110,7 @@ test('菱形里的文字必须落在内接矩形内 —— 半宽是硬上限', 
   🔴 **位置要紧**：这条规则必须排在 `@media (hover: none)` **之后** —— 同特异性、后写的赢，
   否则压不住里面那条 `opacity: .5`。
 */
-test('连接点的句柄不许露出来 —— 4 个 12x12 挤在 8x8 的节点上会糊成一个十字', () => {
+test('连接点的句柄不许露出来 —— 4 个 12x12 挤在 8x8 的节点上会糊成一个十字（教师真机截图）', () => {
   const mediaAt = CSS.indexOf('@media (hover: none)');
   assert.ok(mediaAt > -1, '找不到触屏那段媒体查询（样式表改结构了？）');
   const ruleAt = CSS.indexOf('.flowNode_junction :global(.react-flow__handle)');

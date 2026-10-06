@@ -52,12 +52,15 @@ test('切片找不到结束标记时返回空串 —— 不许静默泄漏到文
  * 「找不到就返回空串」，于是两条判据当场红。这正是 M3 那个修复想要的效果：
  * **依赖数组一变，切片立刻失效并喊出来**，而不是静默泄漏到文件末尾把判据泡软。
  */
-const detectSource = (s: string) => blockBetween(s, 'if (draggingRef.current', '}, [nodes, edges');
+const detectSource = (s: string) => blockBetween(s, 'if (typingRef.current', '}, [nodes, edges');
 
 test('拖动中不压栈 —— 一次拖动必须只记一步', () => {
   const block = detectSource(SOURCE);
   assert.ok(block.length > 100, `切片太短（${block.length}），判据可能在空串上假绿`);
-  assert.ok(/draggingRef\.current/.test(block), '拖动中要提前 return，否则每个 mousemove 都会压一步');
+  assert.ok(
+    /typingRef\.current/.test(block),
+    '打字期间要提前 return（工具条那颗「自定义」标注框每键写 store，不挡就一字一步）',
+  );
 });
 
 /*
@@ -129,20 +132,13 @@ test('两颗按钮的禁用态跟着 canUndo / canRedo', () => {
 });
 
 /*
-  ★ 2026-10-06（审查发现 C2）：**拖「路径调整圆点」也必须只记一步**。
-  那颗圆点是画布上的一层自定义浮层，它自己的 `move` 监听的是 **window 的 pointermove** ——
-  不归 React Flow 的 `onNodeDragStart/Stop` 管。于是变化检测里那道 `draggingRef` 守卫**看不见它**，
-  每个 pointermove 都满足「守卫为假 + 指纹变了（routeX/routeY 在指纹里）」⇒ **压一步**。
-  一次 1 秒的拖动约 60–120 个事件 ⇒ 超过 `HISTORY_LIMIT=50`，`pushHistory` 会把**最老的那一头丢掉**，
-  学生此前所有可撤销的步骤**不可恢复地消失**。
+  ⊘ 2026-10-06（教师：「全回原版」）：这里原有条判据「拖『路径调整圆点』也只记一步」
+  —— 那颗圆点（连同它的处理器 `moveSelectedEdgeRoute` 和 `draggingRef`）已经**整段删除**了：
+  边交回库内置的 `smoothstep`，绕行点这一层不存在了，也就没有「拖它要记几步」这回事。
+  ⚠️ 那一整套是**审查发现 C2** 的产物（每个 pointermove 压一步、冲掉 50 步上限）——
+  现在问题随功能一起消失，**不是**被压住了。若将来又把某颗自定义浮层加回来，
+  这条判据要跟着回来（判据原文在 git 历史里：commit 315198b）。
 */
-test('拖「路径调整圆点」也只记一步 —— 它走画布外的浮层，不是 React Flow 的节点拖动', () => {
-  const block = blockBetween(SOURCE, 'const moveSelectedEdgeRoute = ', '\n  };');
-  assert.ok(block.length > 200, `切片太短（${block.length}），判据可能在空串上假绿`);
-  assert.ok(block.length < 1500, `切片太长（${block.length}）—— 结束标记没找到、泄漏到文件末尾了`);
-  assert.match(block, /draggingRef\.current = true/, '拖动开始要置位，否则每个 pointermove 都压一步');
-  assert.match(block, /draggingRef\.current = false/, '拖动结束要清位，否则拖动标记卡死、撤销永久失灵');
-});
 
 test('快捷键在输入框里让位给浏览器原生撤销', () => {
   const block = blockBetween(SOURCE, 'const onKeyDown = (event: KeyboardEvent)', 'window.addEventListener');

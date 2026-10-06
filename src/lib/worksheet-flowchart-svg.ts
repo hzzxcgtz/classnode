@@ -266,13 +266,18 @@ export function flowchartSvg(raw: unknown): { svg: string; width: number; height
          横线那一支靠 `y` 抬到线的上方，字形整体在线之上，不依赖任何基线属性。
     */
     if (edge.label) {
-      const midX = routeX;
-      const midY = routeY;
-      const vertical = edge.targetHandle === 'top' || edge.targetHandle === 'bottom';
-      const anchor = vertical ? 'start' : 'middle';
-      const tx = vertical ? midX + FLOW_LABEL_OFFSET : midX;
-      const ty = vertical ? midY : midY - FLOW_LABEL_OFFSET;
-      parts.push(`<text x="${tx}" y="${ty}" dy="${vertical ? '0.35em' : '0'}" text-anchor="${anchor}" `
+      /*
+       * ★ 2026-10-06（教师：「**全回原版**」）：线上的字画在**路径中点**、带**白底框** ——
+       *   与画板一致：标签交回库之后，库就是这么画的（`.react-flow__edge-textbg` 那个白底框回来了）。
+       * ⊘ 原来这里画的是「偏在线旁边、不压线、无白底框」（配当时那份自定义边）——
+       *   教师定了「全回原版」，那条要求连同它的摆法一起撤了。
+       * ⚠️ 白底框**不是装饰**：中点那个位置**正好压在线段上**，没有它字和线会叠在一起读不清。
+       * ⚠️ 基线不用 `dominant-baseline`（Safari 15 对它支持不可靠），用 `dy="0.35em"` 把字抬到线上。
+       */
+      const bgWidth = Array.from(edge.label).length * FONT_SIZE + 6;
+      parts.push(`<rect x="${routeX - bgWidth / 2}" y="${routeY - LINE_HEIGHT + 3}" width="${bgWidth}" `
+        + `height="${LINE_HEIGHT}" rx="3" fill="#ffffff"/>`);
+      parts.push(`<text x="${routeX}" y="${routeY}" dy="0.35em" text-anchor="middle" `
         + `font-family="${FONT}" font-size="${FONT_SIZE}" fill="#263b53">${escapeXml(edge.label)}</text>`);
     }
   }

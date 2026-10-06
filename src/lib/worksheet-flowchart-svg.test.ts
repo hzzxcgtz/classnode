@@ -272,81 +272,17 @@ test('★ 快照的交点与画板一致：8×8 空心环（r=半尺寸 / 白底
 });
 
 // ── ② 线标签：竖线 ⇒ 右侧左对齐；横线 ⇒ 上方居中；无白底；深色 ─────────────────
-test('★ 快照的线标签摆法与画板一致：竖线右侧（左对齐）/ 横线上方（居中）', () => {
-  const canvasGap = canvasLabelGap();
-  const live = stripComments(fs.readFileSync(SNAPSHOT, 'utf8'));
-  assert.equal(constNumber(live, 'FLOW_LABEL_OFFSET'), canvasGap,
-    `快照标签的偏移（${constNumber(live, 'FLOW_LABEL_OFFSET')}）与画板 EDGE_LABEL_GAP（${canvasGap}）不一致 —— 两边的字会离线不一样远`);
-
-  // 反面对照（与画板那一条同一个靶子：去掉偏移 = 压回线上）⇒ 判据必须抓住。
-  const canvasEdge = canvasLabelEdgeBody();
-  assert.ok(canvasBiasesRight(canvasEdge) && canvasBiasesAbove(canvasEdge),
-    '画板那边的摆位规则变了（不再是「竖线右侧 / 横线上方」）—— 先把画板与控制端对齐，再改快照');
-  assert.ok(!canvasBiasesRight(canvasEdge.replace('x={labelX + EDGE_LABEL_GAP}', 'x={labelX}')),
-    '画板的「压线」变异没被抓住 —— 这条判据是恒真的');
-  assert.ok(!canvasBiasesAbove(canvasEdge.replace('y={labelY - EDGE_LABEL_GAP}', 'y={labelY}')),
-    '画板的「压线」变异没被抓住 —— 这条判据是恒真的');
-
-  // ⚠️ 竖直末段（进目标是上/下）⇒ 文字左边缘贴在线右侧 + 偏移。
-  const V_NODES = [
-    { id: 'a', position: { x: 0, y: 0 }, measured: { width: 120, height: 50 }, data: { label: '判断', kind: 'decision' } },
-    { id: 'b', position: { x: 0, y: 140 }, measured: { width: 120, height: 50 }, data: { label: '处理', kind: 'process' } },
-  ];
-  const vertical = shot({
-    nodes: V_NODES,
-    edges: [{ id: 'e1', source: 'a', target: 'b', sourceHandle: 'bottom', targetHandle: 'top', label: '是' }],
-  });
-  // 期望值**从同一份规则现算**（节点盒子宽高 + 边中点）—— 不手抄数字：
-  // 两个 120×50 的盒子，`bottom → top` ⇒ 线从 (60,50) 到 (60,140)，中点 (60,95)。
-  const vBoxes = readFlowRaster({ nodes: V_NODES, edges: [] }).nodes;
-  const vAnchor = [vBoxes[0].position.x + vBoxes[0].width / 2,
-    (vBoxes[0].position.y + vBoxes[0].height + vBoxes[1].position.y) / 2] as const;
-  const vWord = (vertical.svg.match(/<text[^>]*>是<\/text>/) ?? [])[0] ?? '';
-  assert.ok(vWord.length > 0, '竖线上的标签没画出来');
-  assert.match(vWord, /text-anchor="start"/,
-    '竖线上的标签不是**左对齐** —— 长标签会从线右侧横跨回线上（画板那边同样是 `textAnchor="start"`）');
-  assert.ok(!/text-anchor="middle"/.test(vWord), '竖线上的标签又变成居中了（教师那张标准图是左边缘贴线）');
-  const vx = Number((vWord.match(/\bx="([-\d.]+)"/) ?? [])[1]);
-  assert.ok(Math.abs(vx - (vAnchor[0] + canvasGap)) < 1,
-    `竖线上标签的 x（${vx}）不等于「中点 + ${canvasGap}」（${vAnchor[0] + canvasGap}）—— 没有摆在线的右侧`);
-  // 竖向位置：基线就是线中点（画板那边这一点用 `dy="0.35em"` 微调，且**不**依赖 dominant-baseline）。
-  const vy = Number((vWord.match(/\by="([-\d.]+)"/) ?? [])[1]);
-  assert.ok(Math.abs(vy - vAnchor[1]) < 1, `竖线上标签的基线（${vy}）没落在线的中点（${vAnchor[1]}）上`);
-
-  // ⚠️ 水平末段（进目标是左/右）⇒ 文字居中、抬到线的**上方**。
-  const H_NODES = [
-    { id: 'a', position: { x: 0, y: 0 }, measured: { width: 120, height: 50 }, data: { label: '判断', kind: 'decision' } },
-    { id: 'b', position: { x: 220, y: 0 }, measured: { width: 120, height: 50 }, data: { label: '处理', kind: 'process' } },
-  ];
-  const horizontal = shot({
-    nodes: H_NODES,
-    edges: [{ id: 'e1', source: 'a', target: 'b', sourceHandle: 'right', targetHandle: 'left', label: '否' }],
-  });
-  // `right → left` ⇒ 线从 (120,25) 到 (220,25)，中点 (170,25)。
-  const hBoxes = readFlowRaster({ nodes: H_NODES, edges: [] }).nodes;
-  const hAnchor = [(hBoxes[0].position.x + hBoxes[0].width + hBoxes[1].position.x) / 2,
-    hBoxes[0].position.y + hBoxes[0].height / 2] as const;
-  const hWord = (horizontal.svg.match(/<text[^>]*>否<\/text>/) ?? [])[0] ?? '';
-  assert.ok(hWord.length > 0, '横线上的标签没画出来');
-  assert.match(hWord, /text-anchor="middle"/, '横线上的标签不是水平居中（画板那边是 `textAnchor="middle"`）');
-  const hx = Number((hWord.match(/\bx="([-\d.]+)"/) ?? [])[1]);
-  const hy = Number((hWord.match(/\by="([-\d.]+)"/) ?? [])[1]);
-  assert.ok(Math.abs(hx - hAnchor[0]) < 1, `横线上标签的 x（${hx}）不在中点（${hAnchor[0]}）上`);
-  assert.ok(Math.abs(hy - (hAnchor[1] - canvasGap)) < 1,
-    `横线上标签的基线（${hy}）没有抬到线的上方 ${canvasGap}（${hAnchor[1] - canvasGap}）—— 又压回线上了`);
-
-  // 竖线 ⇒ 右侧：光把锚点改成 `start` 而**不**给偏移，字仍会压线 ⇒ 这一条单独抓。
-  assert.ok(vx > vAnchor[0] + 1, '竖线上的标签没有真的偏到线的右侧（只改了 text-anchor 也可以压线）');
-
-  // ⚠️ 变异：把偏移拿掉（标签回中点）⇒ 上面两条位置判据必须红。
-  const pressedOnLine = live.replace(/const FLOW_LABEL_OFFSET = 8;/, 'const FLOW_LABEL_OFFSET = 0;');
-  assert.notEqual(pressedOnLine, live, '变异没造出来 —— 这条判据会变成恒真');
-  assert.ok(constNumber(pressedOnLine, 'FLOW_LABEL_OFFSET') !== canvasGap,
-    '把标签偏移去掉（压回线上）之后判据仍判它一致 —— 这条网是恒真的');
-});
-
-// ── ③ 标签**没有白底框**、文字深色（画板 2026-10-06 去掉了 `.react-flow__edge-textbg`）──
-test('★ 快照的线标签不再有白底框，且颜色与画板 `.flowEdgeLabel` 一致', () => {
+/*
+  ⊘ 2026-10-06（教师：「**全回原版**」）：这里原有两条判据 ——
+    · 「快照的线标签**摆法与画板一致**：竖线右侧（左对齐）/ 横线上方（居中）」；
+    · 「快照的线标签**不再有白底框**，且颜色与画板 \`.flowEdgeLabel\` 一致」。
+  两条都是配**我们自己**摆的标签写的（偏在线侧、不压线、无底框）。
+  教师看过原版行为之后定了「全回原版」：标签交回库 ⇒ 库把字画在**路径中点**、**带白底框**
+  \`（.react-flow__edge-textbg）\`，而 \`.flowEdgeLabel\` 那份样式已经删了。
+  ⇒ 「摆法一致」那条没有对象了（画板不再摆标签），「无白底框」那条则要**反过来**。
+  下面这条替代它们 —— **跨文件绑定仍然在**：快照必须跟着画板走，只是方向反了过来。
+*/
+test('★ 快照的线标签画在路径中点、带白底框 —— 与交回库之后的画板一致', () => {
   const { svg } = shot({
     nodes: [
       { id: 'a', position: { x: 0, y: 0 }, measured: { width: 120, height: 50 }, data: { label: '判断', kind: 'decision' } },
@@ -354,32 +290,16 @@ test('★ 快照的线标签不再有白底框，且颜色与画板 `.flowEdgeLa
     ],
     edges: [{ id: 'e1', source: 'a', target: 'b', sourceHandle: 'bottom', targetHandle: 'top', label: '是' }],
   });
-  // 旧写法：`<rect … fill="#ffffff" stroke="#527198" …>` —— 那个白底框是「压线也读得清」的补偿，
-  // 画板去掉它之后快照也必须去掉（留着一个白方块会盖住旁边的线/网格）。
-  // ⚠️ 不能断言「整个 SVG 里没有 `#ffffff`」：画布底色本身就是 `#ffffff`（那是必须有的一块）。
-  //    要抓的是那个**标签白底框**（白底 + 描边那一个组合）。
-  assert.ok(
-    !/<rect[^>]*fill="#ffffff"[^>]*stroke="#527198"/.test(svg),
-    '快照还在画标签那个白底框（白底 + 描边）—— 画板已经去掉了',
-  );
-  // ⚠️ 不能断言「整个 SVG 里没有 `#527198`」：**节点形状**的描边就是它（本轮不许动形状）。
-  //    要抓的是「有没有一个带描边的 `<rect>` 底框」——节点里只有 terminator / process 两种
-  //    圆角矩形，而**它们的描边色也是 `#527198`** ⇒ 判据落在「标签那一句有没有再画 rect」上：
-  //    标签那一句里不许出现 `<rect`。
   const live = stripComments(fs.readFileSync(SNAPSHOT, 'utf8'));
-  const labelAt = live.indexOf('const anchor = vertical');
-  assert.notEqual(labelAt, -1, '线标签那一句没找到 —— 先修这条判据');
+  const labelAt = live.indexOf('const bgWidth = Array.from(edge.label)');
+  assert.notEqual(labelAt, -1, '线标签那一句没找到（改成什么写法了？）—— 先修这条判据');
   const labelBlock = live.slice(labelAt, labelAt + 700);
-  assert.ok(!/<rect/.test(labelBlock), '线标签那一句又在画一个白底 `<rect>` 了（画板已去掉底框）');
-  assert.ok(!/fill="#ffffff"/.test(labelBlock), '线标签那一句又用上了白底填充（`#ffffff`）');
-
-  const canvasLabelRule = cssRuleBody(stripComments(fs.readFileSync(CANVAS_CSS, 'utf8')), '.flowEdgeLabel');
-  const canvasFill = (canvasLabelRule.match(/fill:\s*(#[0-9a-fA-F]{3,8})/) ?? [])[1];
-  assert.ok(canvasFill !== undefined, '画板 `.flowEdgeLabel` 里读不到文字颜色');
+  assert.ok(labelBlock.length > 200, '切片太短 —— 别让它在空串上全绿');
+  assert.match(labelBlock, /<rect/, '线标签没画白底框 —— 中点正好压在线段上，没有它字和线会叠在一起读不清');
+  assert.match(labelBlock, /fill="#ffffff"/, '白底框的填充不是白色');
+  assert.match(labelBlock, /text-anchor="middle"/, '标签没有居中 —— 库画在中点就是居中的');
   const word = (svg.match(/<text[^>]*>是<\/text>/) ?? [])[0] ?? '';
   assert.ok(word.length > 0, '竖线上的标签没画出来');
-  assert.ok(word.includes(`fill="${canvasFill}"`),
-    `快照标签的颜色与画板 \`.flowEdgeLabel\`（${canvasFill}）不一致 —— 两边看到的字深浅不一样`);
 });
 
 // ── ④ 竖向基线：Safari 15 对 `dominant-baseline` 的支持不可靠 ───────────────────
@@ -387,14 +307,17 @@ test('★ 线标签不依赖 `dominant-baseline`（Safari 15 支持不佳），�
   const live = stripComments(fs.readFileSync(SNAPSHOT, 'utf8'));
   /*
     🔴 老 iPad / Safari 15 上 `dominant-baseline` 的支持不可靠 ⇒ 快照里那颗标签的竖向位置
-       不能靠它。竖向的基线用 `dy="0.35em"`（`em` 相对 `font-size` 一起缩放；与画板的 `dy` 同值），
-       横向那一支靠 `y` 抬到线上方 —— 两处都不需要那条属性。
+       不能靠它。中点是**压在线段上**的，字要靠 `dy="0.35em"`（`em` 相对 `font-size` 一起缩放）
+       抬到线的上方 —— 这条属性不需要。
     ⚠️ 只钉**线标签那一句**，不动节点文字（那是另一件事、本轮不碰）。
+    ⚠️ 「全回原版」之后标签不再分「竖向 / 横向」两支（库在中点画，只这一种）
+       ⇒ 这里也不再断言那个三元表达式的形状。
   */
-  const labelAt = live.indexOf('const anchor = vertical');
-  assert.notEqual(labelAt, -1, '线标签那一句没找到 —— 先修这条判据');
+  const labelAt = live.indexOf('const bgWidth = Array.from(edge.label)');
+  assert.notEqual(labelAt, -1, '线标签那一句没找到（改成什么写法了？）—— 先修这条判据');
   const labelBlock = live.slice(labelAt, labelAt + 700);
-  assert.match(labelBlock, /dy="\$\{vertical \? '0\.35em' : '0'\}"/, '竖向基线没有用 `dy`（em 相对字号）表达');
+  assert.ok(labelBlock.length > 200, '切片太短 —— 别让它在空串上全绿');
+  assert.match(labelBlock, /dy="0\.35em"/, '标签的基线没有用 `dy`（em 相对字号）表达');
   assert.ok(!/dominant-baseline/.test(labelBlock), '线标签又在用 `dominant-baseline` —— Safari 15 上竖向位置会不可靠');
 });
 

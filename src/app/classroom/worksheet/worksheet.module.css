@@ -2385,29 +2385,11 @@
   z-index: 6;
 }
 .flowEdgeFloat:disabled { cursor: default; opacity: .55; }
-.flowEdgeRouteHandle {
-  position: absolute;
-  width: 44px;
-  height: 44px;
-  transform: translate(-50%, -50%);
-  display: grid;
-  place-items: center;
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  cursor: move;
-  z-index: 5;
-  touch-action: none;
-}
-.flowEdgeRouteHandle > span {
-  width: 16px;
-  height: 16px;
-  border: 3px solid #365f88;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 5px rgb(16 42 67 / .2);
-}
-.flowEdgeRouteHandle:hover > span { background: #eaf0f6; }
+/*
+ * ⊘ 2026-10-06（教师：「全回原版」）：这里原有 `.flowEdgeRouteHandle` 那三块样式 ——
+ *   它是「拖动线中圆点调走向」那颗浮层圆点。教师定了「全回原版」之后，那颗圆点连同它的
+ *   处理器一起删了（边交回库内置的 `smoothstep`，绕行点这一层不存在了）⇒ 样式也没有对象了。
+ */
 .flowEdgeInput {
   position: absolute;
   transform: translate(-50%, -150%);
@@ -2630,27 +2612,13 @@
   box-shadow: none;
 }
 /*
-  ★ 2026-10-06（教师）：「加上去的字变成了小黑块」。
-  🔴 那个黑块是**边的标签**：SVG 默认填充是**黑色**，样式表里没给 `fill` 就会渲染成黑块。
-  ★ 2026-10-06（教师上传的标准流程图）：标签改由**我们自己**那份只管标签的自定义边
-    （`FlowLabelEdge`）摆位 —— 它偏在线的一侧（竖线 ⇒ 右侧、横线 ⇒ 上方），不再压线
-    ⇒ **白底框（`.react-flow__edge-textbg`）整个去掉了**（它当初唯一的作用就是「压线也读得清」，
-      留着一个白方块反而会把旁边的线/网格盖掉）。所以下面只有 `.flowEdgeLabel` 这一条：
-      · `fill` 深色 —— 与节点文字同一档（`#263b53`）；
-      · `pointer-events: all` —— 🔴 **必须**：库有一条 `.react-flow__edge .react-flow__edge-text
-        { pointer-events: none }`（给「居中压线」的老标签用的），而我们的标签偏在线外、
-        底下没有那条 1.5px 的线可以点 ⇒ 不让它自己接事件的话，「双击标签改文字」会变成
-        「点到空白、取消选中」（实测过）。
-      · `user-select: none` —— 与库的老标签一致，免得拖动时选中文字。
-  ⚠️ 节点文字/判据里的颜色、字号由 `surface-lifecycle.test.ts` 钉住。
-*/
-.flowEdgeLabel {
-  fill: #263b53;
-  font-size: 12px;
-  font-weight: 650;
-  pointer-events: all;
-  user-select: none;
-}
+ * ⊘ 2026-10-06（教师：「全回原版」）：这里原有 `.flowEdgeLabel` 那一条 —— 它是给**我们自己**
+ *   那份自定义边（`FlowLabelEdge`）摆的标签用的（偏在线的一侧、不压线，所以配深色 + 让 pointer-events
+ *   自己接住双击）。
+ *   教师定了「全回原版」之后标签交回库：库把字画在**路径中点**、带白底框（`.react-flow__edge-textbg`），
+ *   配色与事件都由库那条样式管 ⇒ 这一条不再被任何元素用上，删掉。
+ *   ⚠️ 留着的唯一效果是骗下一个人以为标签还是我们摆的。
+ */
 /*
   ★ 2026-10-06（可发现性补偿）：「拖到线附近松手就能连」这条交互要**看得见**。
   拖动连线**过程中**，组件按「指针到各边中点的距离」算出会吸到哪条边（`snapCandidateId`），

@@ -67,7 +67,12 @@ import styles from '../../worksheet.module.css';
  */
 type FlowKind = 'terminator' | 'process' | 'decision' | 'io' | 'junction';
 type FlowData = { label: string; kind: FlowKind; locked?: boolean };
-type FlowEdgeData = { routeX?: number; routeY?: number };
+/*
+ * ⊘ 2026-10-06（教师：「全回原版」）：这里原来有 `type FlowEdgeData = { routeX?, routeY? }`
+ *   —— 那是「拖动线中圆点调走向」存绕行点用的。圆点连同它的处理器一起删了，
+ *   边交回库内置的 `smoothstep`（它不认 `centerX/centerY`）⇒ 这个类型没有对象了。
+ *   ⚠️ 老作答里可能仍**存着** `data.routeX/routeY` 那两个字段：无害，只是不再被读。
+ */
 
 /**
  * 工具按钮上的**形状图标**（★ 2026-10-06 教师：「分别加上一个形象的图形表示」）。
@@ -91,16 +96,22 @@ export type FlowIconKey = keyof typeof FLOW_ICONS;
 type FlowNode = Node<FlowData>;
 
 /**
- * ★ 2026-10-06：边的**类型**就这一个名字，别在别处再写字面量。
- *   · `FLOW_EDGE_TYPE` —— **我们注册的那份只管标签的自定义边**（`FlowLabelEdge`，见上）：
- *     线由 `BaseEdge` 画、标签摆在线的旁边（教师给的标准图）。
- *   · ⊘ `LEGACY_EDGE_TYPE = 'flow'` 已经删掉：现在**所有**不是这个类型的边都会被换成它
- *     （见 `visibleEdges`）—— 旧的 `'flow'`、上一版写进作答里的 `'smoothstep'`、
- *     以及任何手改出来的怪类型，全都一视同仁。
- *     ⚠️ 必须**全部**换：老作答里存着 `'smoothstep'`（上一版的 `FLOW_EDGE_TYPE`），
- *     只换 `'flow'` 的话那些线的标签仍然压线，同一个画板上两种摆法并存。
+ * ★ 2026-10-06（**教师：「全回原版」**）：边的类型就是**库内置的** `smoothstep`。
+ *
+ * 🔴 本仓曾经注册过一份自定义边（`FlowLabelEdge`）：它做两件事 —— 把标签从库自带的
+ *    「路径中点 + 白底框」挪到线旁边，以及把 `data.routeX/routeY` 喂给
+ *    `getSmoothStepPath` 的 `centerX/centerY` 当**绕行点**（就是那颗能拖的圆点）。
+ *    教师看过原版的行为之后拍板：**先回到库的基线**，那份自定义边
+ *    连同它带的一整套「拖动线中圆点调走向」都撤了。
+ *
+ * ⚠️ 代价（教师已知情）：**线不能调走向了** —— 库内置的 `smoothstep` 只认 `pathOptions` 的
+ *    `borderRadius` / `offset` / `stepPosition`，**根本不传** `centerX`/`centerY`
+ *    （实测 `@xyflow/react@12.11.6` 的 `createSmoothStepEdge`）；标签也回到库自带的样子。
+ *
+ * ⚠️ **名字保留、值改成库内置的那个**：`visibleEdges` 靠它把**所有**边归一化到同一个类型
+ *    （老作答里存着 `'flow'`、`'flowLabel'` 这些我们自造的名字）—— 这一步仍然需要。
  */
-const FLOW_EDGE_TYPE = 'flowLabel';
+const FLOW_EDGE_TYPE = 'smoothstep';
 
 /**
  * ★ 2026-10-06（教师拍板 + 参考图）：**判断框出边的默认标注**是「是 / 否」，不是 `Y / N`。
@@ -217,64 +228,6 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
   );
 }
 
-/*
-  ★ 2026-10-06（教师上传的标准流程图）：**线标签只许那一份自定义边** —— 它除了「把线画出来 +
-    把标签摆到线的旁边」什么都不管。
-  🔴 教师的问题：库内置边把标签画在**路径中点正上方并压住线**（白底框盖住那一小段），
-    而标准流程图里标注是写在**线的旁边**的（判断框分出的两条线：竖线的字在**右侧**、
-    横线的字在**上方**），文字紧贴但完全不压线。
-  🔴 为什么「往哪一侧偏」必须由**方向**决定、纯 CSS 做不到：同一个标签元素，竖线要往 +x 偏、
-    横线要往 -y 偏，而 CSS 拿不到这条路径的方向（`targetPosition` 只有组件里才有）。
-  ⊘⊘ **绝不要**把以前删掉的那套带回来（见下面那段注释）：不要 `Handle`、不要 `data-nodeid`、
-    不要用它来接任何连线 —— 这一份自定义边**只画标签**，连线全靠 `EDGE_SNAP_RADIUS` 那套几何吸附。
-  ⚠️ 标签必须**还在边的 `<g>` 里**（不是 `EdgeLabelRenderer` 那个 portal）：库把
-    `onEdgeDoubleClick` 挂在边外面那层 `<g class="react-flow__edge">` 上，portal 出去之后
-    事件不再冒泡到它 ⇒「双击标签改文字」会变成「点空白、取消选中」（实测过）。
-    在 `<g>` 里画的话标签与线走**同一条**事件路，双击哪一处都进就地输入框。
-  ⚠️ 箭头：`markerEnd` 是库算好的 `url('#…')`，必须原样转交给 `BaseEdge`，否则箭头会没。
-*/
-
-/** 标签离线多远（**流坐标**；屏幕上还要乘 zoom —— 默认视图 zoom≈1.25 ⇒ 约 10 屏幕 px）。 */
-const EDGE_LABEL_GAP = 8;
-
-/**
- * **只管标签**的自定义边：`BaseEdge` 画线（带箭头）+ 一个自己摆位的 `<text>`。
- *
- * 摆位规则（教师给的标准图）：
- *   · 线**进目标那一侧**是上/下（末段竖直）⇒ 标签在线的**右侧**：`textAnchor="start"` +
- *     `x = labelX + GAP` ⇒ 不管标签多长，它的**左边缘**都贴在线右侧 `GAP` 处，永不压线；
- *   · 是左/右（末段水平）⇒ 标签在线的**上方**：`textAnchor="middle"` + `y = labelY - GAP` ⇒
- *     基线抬到线的上方 `GAP` 处（字形最低点还在基线之上）⇒ 也永不压线。
- * ⚠️ 「按长度居中再偏移」那套**不行**：`是/否` 两个字与 12 字自定义标注的宽度差十倍，
- *    居中会让长标签横跨回线上。`textAnchor` 两个方向各取一个，才与长度无关。
- * ⚠️ 文字颜色/字号在 `worksheet.module.css` 的 `.flowEdgeLabel` 里钉住（深色，无白底框）。
- */
-function FlowLabelEdge({
-  sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, label, markerEnd, style, data,
-}: EdgeProps) {
-  const route = data as FlowEdgeData | undefined;
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
-    sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
-    ...(Number.isFinite(route?.routeX) && Number.isFinite(route?.routeY)
-      ? { centerX: route!.routeX, centerY: route!.routeY }
-      : {}),
-  });
-  // ⚠️ `<text>` 里只放得了字符串：`Edge.label` 的类型是 `string | ReactNode`（我们只写字符串）。
-  const text = typeof label === 'string' ? label : '';
-  const vertical = targetPosition === Position.Top || targetPosition === Position.Bottom;
-  return (
-    <>
-      {/* ⚠️ `markerEnd` 必须转交给 `BaseEdge` —— 自定义边忘了它 = 箭头没了（教师问过的那件事）。
-          ⚠️ `BaseEdge` **不**接 `label`：库那套标签是「居中压线」的，正是本轮要换掉的东西。 */}
-      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
-      {text ? (vertical ? (
-        <text className={styles.flowEdgeLabel} x={labelX + EDGE_LABEL_GAP} y={labelY} dy="0.35em" textAnchor="start">{text}</text>
-      ) : (
-        <text className={styles.flowEdgeLabel} x={labelX} y={labelY - EDGE_LABEL_GAP} textAnchor="middle">{text}</text>
-      )) : null}
-    </>
-  );
-}
 
 /*
   ⊘ 2026-10-06：这里原有「**自定义边** `FlowEdgeLine` + 线上中点那颗 `Handle`（`id="edge-mid"`
@@ -603,7 +556,6 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   }, [historyKey]);
   const lastSnapshotRef = useRef<FlowSnapshot<FlowNode, Edge>>({ nodes: initial.current.nodes, edges: initial.current.edges });
   const lastSigRef = useRef<string | null>(null);
-  const draggingRef = useRef(false);
   /**
    * ★ M1（审查留下的）：工具条那颗「自定义」标注框**打字期间先别记历史**。
    *
@@ -649,14 +601,13 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    */
   const { flowToScreenPosition, screenToFlowPosition } = useReactFlow<FlowNode, Edge>();
   const nodeTypes = useMemo(() => ({ flow: FlowNodeEditor }), []);
-  /**
-   * ★ 2026-10-06（教师上传的标准流程图）：注册那份**只管标签**的自定义边。
-   * ⊘ 旧版这里注册的是带**中点句柄**的那套 `FlowEdgeLine` —— 那一套永远不许回来（理由见上面）。
-   * ✅ 这一份只做两件事：`BaseEdge` 画线（含箭头）+ 把标签摆到线的旁边；它**没有** `Handle`、
-   *    没有 `data-nodeid`、也不参与任何连线判定。
-   * ⚠️ 必须是**稳定的**引用（`useMemo([])`）：每次渲染新建一个对象会让所有边重新挂载。
+  /*
+   * ★ 2026-10-06（教师：「全回原版」）：这里原来注册着一份自定义边（`FlowLabelEdge`）——
+   * **现在不注册了**：边的类型就是库内置的 `smoothstep`（见 `FLOW_EDGE_TYPE`），
+   * 线、标签、箭头全交给库。
+   * 🔴 千万别在这里写 `edgeTypes={{ smoothstep: … }}` —— 那是**替换**库内置的那份，
+   * 不是给它加东西；一写回去，「原版那种」就没了。
    */
-  const edgeTypes = useMemo(() => ({ [FLOW_EDGE_TYPE]: FlowLabelEdge }), []);
   /** 位图快照：自己吐一份纯 SVG 再栅格化（**不用 `foreignObject`**，老 iPad 上那条路可能出空白图）。 */
   const scheduleRaster = useDrawingRaster({
     capture: async () => {
@@ -685,24 +636,23 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    * 🔴 判据是**指纹**（`flowchartSignature`），不是「nodes 变了没有」：React Flow 的
    *    `onNodesChange` 也会为**选中**和**尺寸测量**触发，不滤掉的话学生点一下框就等于做了一步
    *    （详见那个函数的注释）。
-   * 🔴 **拖动中一律不压栈**（`draggingRef`）：拖动期间每个 mousemove 都会让 nodes 变一次，
-   *    照压的话拖一下框要用五十次撤销才退得回去。拖动中**连 `lastSigRef` 都不更新** ——
-   *    这样松手后这一次 effect 比的就是「拖动前 vs 拖动后」，**恰好压一步**。
+   * 🔴 **拖动中一律不压栈**：拖动期间每个 mousemove 都会让 nodes 变一次，照压的话拖一下框
+   *    要用五十次撤销才退得回去。拖动中**连 `lastSigRef` 都不更新** —— 这样松手后这一次 effect
+   *    比的就是「拖动前 vs 拖动后」，**恰好压一步**。
+   * ⊘ 2026-10-06：这里原来还挡着一条 `draggingRef`（自己那颗「路径调整圆点」的拖动）——
+   *    教师定了「全回原版」之后，那颗圆点连同它的处理器一起删了，这条守卫也就没有对象了。
    */
   useEffect(() => {
     /*
-      🔴 两条「正在拖动」都要挡：
-        · `draggingRef` —— 我们自己那颗**路径调整圆点**（它走 window 的 pointermove，不归 React Flow
-          管，见 `moveSelectedEdgeRoute`）。它的 `stop()` 在 pointerup 与 pointercancel 上**都**挂着，不会漏。
-        · `nodes.some(n => n.dragging)` —— React Flow 的**节点拖动**。
-          ⚠️ 这里**故意不**用回调置的标记：库有**两条路径结束拖动时不调 `onNodeDragStop`**
-          （多点触控的第二根手指、拖动中被删掉的那个节点）⇒ 靠回调置的标记会**永久卡在 true**，
-          此后这条 effect 每次 `return`、`lastSigRef` 也不再更新，**整个会话记不下任何新步骤**
-          （撤销键变灰后再也不亮）。读节点上这个字段则**自愈** —— 库在
-          `updateNodePositions(dragItems, false)` 里会把它置回 false，**abort 路径也走那一句**。
-          （★ 审查发现 I1。）
+      🔴 判据是**节点自己的** `dragging` 字段，**不是**我们自己用回调置的标记：
+      库有**两条路径结束拖动时不调 `onNodeDragStop`**（多点触控的第二根手指、拖动中被删掉的
+      那个节点）⇒ 靠回调置的标记会**永久卡在 true**，此后这条 effect 每次 `return`、`lastSigRef`
+      也不再更新，**整个会话记不下任何新步骤**（撤销键变灰后再也不亮）。读节点上这个字段则
+      **自愈** —— 库在 `updateNodePositions(dragItems, false)` 里会把它置回 false，
+      **abort 路径也走那一句**。（★ 审查发现 I1。）
+      ⚠️ `typingRef` 是另一条：工具条那颗「自定义」标注框**打字期间**先别记历史（M1）。
     */
-    if (draggingRef.current || typingRef.current || nodes.some((node) => node.dragging)) return;
+    if (typingRef.current || nodes.some((node) => node.dragging)) return;
     const sig = flowchartSignature(nodes, edges);
     if (lastSigRef.current === null) { lastSigRef.current = sig; return; } // 首帧：只立基线
     if (lastSigRef.current === sig) return;                                 // 没有实质变化
@@ -903,13 +853,15 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     /* ★ 删除按钮「往 source 退」的方向 = **目标句柄轴的外法线**（末段方向），不是「起点→终点」直线。
        ⚠️ 由 `targetPosition` 决定 —— 线从哪一侧进目标，就往那一侧退（见 `backAxis`）。 */
     const back = backAxis(targetPosition);
-    const route = edge.data as FlowEdgeData | undefined;
+    /*
+     * ⚠️ 这里**不再**把 `data.routeX/routeY` 传给 `centerX/centerY`：教师定了「全回原版」之后，
+     * 边就是库内置的 `smoothstep`（它压根不认 `centerX/centerY`，见 `FLOW_EDGE_TYPE` 的注释），
+     * 而写路由点的那颗圆点也删了。这里算的必须是**库画出来的那条路径**上的中点 ——
+     * 否则浮层会停在一条屏幕上并不存在的线上。
+     */
     const [, labelX, labelY] = getSmoothStepPath({
       sourceX: from.x, sourceY: from.y, sourcePosition,
       targetX: to.x, targetY: to.y, targetPosition,
-      ...(Number.isFinite(route?.routeX) && Number.isFinite(route?.routeY)
-        ? { centerX: route!.routeX, centerY: route!.routeY }
-        : {}),
     });
     return {
       midX: labelX, midY: labelY, endX: to.x, endY: to.y, fromX: from.x, fromY: from.y,
@@ -965,39 +917,6 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     }]);
   };
 
-  /**
-   * ★ 2026-10-06（**审查发现 C2**）：拖这颗圆点**也必须走同一个 `draggingRef`**。
-   *
-   * 🔴 它的 `move` 监听的是 **window 的 pointermove**（这是画布上的一层自定义浮层，
-   *    不是 React Flow 的节点拖动）⇒ 上面那条变化检测 effect 的 `draggingRef` 守卫
-   *    **原本看不见它**：每个 pointermove 都满足「守卫为假 + 指纹变了（`routeX/routeY` 在指纹里）」
-   *    ⇒ **压一步**。一次 1 秒的拖动 60–120 个事件 ⇒ 冲过 `HISTORY_LIMIT=50`，
-   *    `pushHistory` 就把**最老的那一头丢掉** —— 学生此前所有可撤销的步骤**不可恢复地消失**。
-   * ✅ 首尾各置/清一次位之后，松手那一次 effect 比的正好是「拖动前 vs 拖动后」⇒ **恰好一步**，
-   *    与节点拖动同一套机制。
-   */
-  const moveSelectedEdgeRoute = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!selectedEdgeId || disabled) return;
-    event.preventDefault();
-    event.stopPropagation();
-    draggingRef.current = true;
-    const edgeId = selectedEdgeId;
-    const move = (pointer: PointerEvent) => {
-      const point = screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY });
-      setEdges((current) => current.map((edge) => edge.id === edgeId
-        ? { ...edge, data: { ...(edge.data as FlowEdgeData | undefined), routeX: point.x, routeY: point.y } }
-        : edge));
-    };
-    const stop = () => {
-      draggingRef.current = false;
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', stop);
-      window.removeEventListener('pointercancel', stop);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', stop, { once: true });
-    window.addEventListener('pointercancel', stop, { once: true });
-  };
   /**
    * 🔴 **拆线的唯一实现**（「插交点 + 拆原线 + 接上学生这一拖」）——**唯一**那条入口用它：
    *    `onConnectEnd`（几何吸附：松手点离某条线的中点 ≤ `EDGE_SNAP_RADIUS`，见 `EDGE_SNAP_RADIUS`）。
@@ -1355,7 +1274,6 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     if (!selected) return null;
     return selected.kind === 'edge' ? edgeEndAnchor(selected.id) : nodeFloatAnchor(selected.id);
   })();
-  const routeAnchor = selectedEdgeId && !labelingEdge ? edgeMidAnchor(selectedEdgeId) : null;
 
   /**
    * ★ 第 1 步整理：**一处渲染** —— 舞台里只有这一个浮层，两种形态：
@@ -1478,7 +1396,6 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           nodes={visibleNodes}
           edges={visibleEdges}
           nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
           onNodesChange={disabled ? undefined : onNodesChange}
           onEdgesChange={disabled ? undefined : onEdgesChange}
           onConnect={disabled ? undefined : onConnect}
@@ -1553,18 +1470,6 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           {!backgroundUrl && <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#cbd7e5" />}
           <Controls showInteractive={false} />
         </ReactFlow>
-        {routeAnchor && (
-          <button
-            className={styles.flowEdgeRouteHandle}
-            type="button"
-            aria-label="拖动调整连线路径"
-            title="拖动调整连线路径"
-            style={{ left: routeAnchor.x, top: routeAnchor.y }}
-            onPointerDown={moveSelectedEdgeRoute}
-          >
-            <span aria-hidden="true" />
-          </button>
-        )}
         {/*
           ★ 2026-10-06（教师认可的第 1 步整理）：**画布上只有这一处浮层** —— 三套（线的删除按钮、
           就地输入框、图形的删除按钮）合并成同一个 `overlay` 描述式的两个形态，位置都来自同一处

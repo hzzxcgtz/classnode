@@ -260,13 +260,16 @@ test('★ 2026-10-06（教师）：判断框出来的两条线带上默认标注
   // ★ 2026-10-06（教师）：「加上去的字变成了小黑块」——根因是只引了 `base.css`（没有颜色），
   //   边的标签拿不到 `fill` ⇒ SVG 默认黑填充。两条判据：① 引带主题的那份样式表；
   //   ② 我们自己的 CSS 再把标签颜色钉一遍（换主题也不会变成读不出来的颜色）。
-  //   ★ 2026-10-06（教师上传的标准流程图）：标签改由我们那份**只管标签**的自定义边摆位
-  //     ⇒ 白底框（`.react-flow__edge-textbg`）整个去掉（它唯一的作用是「压线也读得清」）。
-  assert.match(live, /@xyflow\/react\/dist\/style\.css/, '还在用没有颜色的 base.css —— 线标签会渲染成小黑块');
-  assert.ok(!/@xyflow\/react\/dist\/base\.css/.test(live), 'base.css 还留着（两份样式表会打架）');
+  /*
+   * ★ 2026-10-06（教师：「**全回原版**」）：这里原来钉的是「`.flowEdgeLabel` 的 fill 是深色」
+   *   +「**不许**有 `.react-flow__edge-textbg`（白底框）」—— 那是给**我们自己**摆的标签配的
+   *   （偏在线侧、不压线，所以用不着白底框）。
+   *   标签交回库之后，配色与白底框都由库那条样式管 ⇒ 反过来钉「这两样都不该再由我们管」。
+   * ⚠️ 上面那两条**仍然必须**：库那份带主题的 `style.css` 一定要引 —— 只引 `base.css` 的话
+   *   SVG 标签拿不到 `fill`，会渲染成**黑块**（教师报过的原话：「加上去的字变成了小黑块」）。
+   */
   const flowCss = stripComments(CSS);
-  assert.match(flowCss, /\.flowEdgeLabel \{[\s\S]{0,220}?fill: #263b53;/, '线标签的文字颜色没有钉住');
-  assert.ok(!/\.react-flow__edge-textbg/.test(flowCss), '白底框那条规则又回来了（标签已经不压线，白方块只会盖住旁边的线/网格）');
+  assert.ok(!/\.flowEdgeLabel/.test(flowCss), '`.flowEdgeLabel` 还留着 —— 标签已交回库，这份样式没人用了');
   // 老师问「可不可以用户加自定义的字？」⇒ 那一组里必须有一个自由输入框（受控）。
   assert.match(live, /aria-label="这条线上的自定义文字"/, '没有自定义文字输入框');
   assert.match(live, /value=\{editingLabel\}/, '输入框不是受控的（切走线会残留上一条的字）');
@@ -734,27 +737,25 @@ test('★ 2026-10-06：连到线中点 —— **自定义边 / 中点句柄已�
     '自定义边 / 中点句柄又回来了（它们是库的结构限制：「只能接不能起」+ 吞掉中点单击，见上面那段）');
   assert.ok(!/'data-nodeid': edgeId/.test(live), '中点句柄那颗 `data-nodeid = 边 id` 的补丁又回来了（它是已删机制的唯一凭据）');
   assert.ok(!/\bHANDLE_GAP\b/.test(live), '`HANDLE_GAP` 又回来了 —— 它的唯一用途就是避让那颗已删的中点句柄');
-  // ★ 2026-10-06（教师上传的标准流程图）：**允许**（且必须有）一份「只管标签」的自定义边，
-  //    但那一套带句柄的东西永远不许回来 —— 判据按**语义**分两条：
-  //    ① 自定义边那一份实现里**不许**出现 `Handle` / `useNodeId` / `EdgeLabelRenderer`
-  //      （那颗句柄的三个凭据：接不了、起不了、还得补 `data-nodeid`）；
-  //    ② 它必须**真的**在画线 + 摆标签（`BaseEdge` + 标签元素），而不是把整条边接过去。
-  const edgeComponentAt = live.indexOf('function FlowLabelEdge');
-  assert.notEqual(edgeComponentAt, -1, '那份只管标签的自定义边（`FlowLabelEdge`）没了 —— 标签又会回到「压线」的摆法');
-  const edgeComponent = blockAfter(live, 'function FlowLabelEdge', '\n}\n');
-  assert.ok(edgeComponent.length > 200, '`FlowLabelEdge` 没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  assert.ok(!/Handle|useNodeId|EdgeLabelRenderer|data-nodeid/.test(edgeComponent),
-    '自定义边里又长出句柄那一套了（`Handle` / `useNodeId` / `EdgeLabelRenderer` / `data-nodeid`）—— 那是库的结构限制：只能接不能起、还吞掉中点单击');
-  assert.ok(!/edge-mid\b/.test(live), '中点句柄的记号 `edge-mid` 又回来了');
-  assert.match(edgeComponent, /BaseEdge/, '自定义边没有用 `BaseEdge` 画线（高亮与箭头都挂在它给的那条路径上）');
-  // ① `FLOW_EDGE_TYPE` 是我们注册的那份自定义边；`edgeTypes` 必须把它注册进 `<ReactFlow>`。
+  /*
+   * ★ 2026-10-06（教师：「**全回原版**」）：这一段原来钉的是「**必须**有一份自定义边
+   *   （`FlowLabelEdge`）+ `FLOW_EDGE_TYPE` 不许是内置类型 + `edgeTypes` 必须注册」——
+   *   那条要求已被教师推翻：边交回库内置的 `smoothstep`，线、标签、箭头全归库管。
+   * ⇒ 现在反过来钉「**不许**再长出那一套」。
+   *
+   * ⚠️ 上面那三条（`FlowEdgeLine` / `EdgeLabelRenderer` / `edge-mid` / `data-nodeid` /
+   *    `HANDLE_GAP`）**仍然有效**，与「标签摆哪儿」无关 —— 它们记的是库的结构限制
+   *    （那颗中点句柄只能「接」不能「起」、还吞掉中点的单击/双击）。
+   * ⚠️ 下面「归一化」那条判据也仍然有效：`visibleEdges` 还是要把所有边归到同一个类型
+   *    （老作答里存着 `'flow'` / `'flowLabel'` 这些我们自造的名字）。
+   */
   const edgeTypeName = (live.match(/const FLOW_EDGE_TYPE = '([^']+)'/) ?? [])[1];
-  assert.ok(edgeTypeName, '没有命名常量 FLOW_EDGE_TYPE');
-  assert.ok(!['smoothstep', 'default', 'step', 'straight', 'simplebezier'].includes(edgeTypeName),
-    `FLOW_EDGE_TYPE=${edgeTypeName} 还是**库内置**类型 —— 内置边的标签是「居中压线」的，教师要求挪到线旁`);
-  assert.match(live, /const edgeTypes = useMemo\(\(\) => \(\{ \[FLOW_EDGE_TYPE\]: FlowLabelEdge \}\), \[\]\)/,
-    '那份自定义边没有注册进 `<ReactFlow edgeTypes={…}>`（注册不了 ⇒ 库退回 default 边、标签又压线）');
-  assert.match(live, /edgeTypes=\{edgeTypes\}/, '`<ReactFlow>` 没有接上 edgeTypes');
+  assert.equal(edgeTypeName, 'smoothstep',
+    `FLOW_EDGE_TYPE=${edgeTypeName} —— 教师定的「全回原版」要求它就是库内置的 smoothstep`);
+  assert.ok(!/edgeTypes=/.test(live),
+    '`<ReactFlow>` 又接上 edgeTypes 了 —— 那是**替换**库内置的 smoothstep（不是给它加东西），「原版那种」就没了');
+  assert.ok(!/FlowLabelEdge/.test(live.split('曾经')[1] ?? live),
+    '`FlowLabelEdge` 那份自定义边又回来了 —— 教师定的是「全回原版」');
   // ② 旧类型记号**全部**规范化成它（只换 `'flow'` 不够：上一版把 `'smoothstep'` 写进了作答）。
   const normalizesAll = (source: string): boolean => {
     const body = blockAfter(source, 'const visibleEdges = useMemo', '[edges, snapCandidateId]');
@@ -768,10 +769,14 @@ test('★ 2026-10-06：连到线中点 —— **自定义边 / 中点句柄已�
     "edge.type === 'flow' ? { ...edge, type: FLOW_EDGE_TYPE } : edge");
   assert.notEqual(legacyOnly, live, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.ok(!normalizesAll(legacyOnly), '反面对照没被抓住 —— 这条判据是恒真的');
-  // ③ 线上的字**由我们自己**那份边摆 ⇒ 配色写在 `.flowEdgeLabel` 上（删/改名 = 又变黑块）。
-  assert.match(css, /\.flowEdgeLabel \{[\s\S]{0,220}?fill: #263b53;/, '线标签的文字颜色没有钉住（会渲染成小黑块）');
-  assert.ok(!/\.react-flow__edge-textbg/.test(css),
-    '白底框那条规则又回来了 —— 标签现在偏在线外、不压线，白方块只会把旁边的线/网格盖掉');
+  /*
+   * ★ 2026-10-06（「全回原版」）：这里原来钉的是「线上的字由**我们自己**那份边摆 ⇒ 配色写在
+   *   `.flowEdgeLabel` 上、而且**不许**有 `.react-flow__edge-textbg`（白底框）」。
+   *   标签交回库之后那份样式作废了 ⇒ 反过来钉：**不许**再留着它 ——
+   *   留着的唯一效果是骗下一个人以为标签还是我们摆的。
+   */
+  assert.ok(!/\.flowEdgeLabel/.test(css),
+    '`.flowEdgeLabel` 还留在样式表里 —— 标签已交回库，这份样式不会再被任何元素用上');
   // ③ 拆线只留**一份实现**：声明恰好一处、而且吸附那一路真的调用它（它现在也是唯一一条入口）。
   const splitBody = splitEdgeSource(live);
   assert.ok(splitBody.length > 400, '拆线的那一份实现没抠出来 —— 先修这条判据，别让它在空串上全绿');
@@ -832,65 +837,14 @@ test('★ 2026-10-06：连到线中点 —— **自定义边 / 中点句柄已�
   assert.ok(!/flowEdgeHandle/.test(live), '组件还在挂中点句柄的类名');
 });
 
-test('★ 2026-10-06（教师上传的标准流程图）：线标签摆在**线的旁边**（竖线 ⇒ 右侧 / 横线 ⇒ 上方），不压线', () => {
-  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
-  const css = stripComments(CSS);
-  /*
-    🔴 教师给了一张**标准流程图**当对齐目标，里面判断框分出的两条线把「是」「否」写在
-       **竖线的右侧 / 横线的上方** —— 文字紧贴但完全不压线，线本身是干净的。
-       我们的现状（库内置边）是「标签居中压在中点正上方 + 白底框盖住那一小段」⇒ 不是标准样子。
-    ⇒ 本轮加了一份**只管标签**的自定义边（`FlowLabelEdge`）。这条用例钉四件事：
-      ① 偏的方向由 `targetPosition` 决定（CSS 拿不到方向 ⇒ 必须写在组件里）；
-      ② 竖线分支：`x = labelX + GAP` **且左对齐**（这样多长的标签左边缘都贴在线右侧，不压线）；
-      ③ 横线分支：`y = labelY - GAP`（基线抬到线上方）+ 水平居中；
-      ④ 箭头（`markerEnd`）转交给 `BaseEdge`；高亮选择器仍打在 `.react-flow__edge-path` 上。
-    📏 实测（CDP 真组件）：竖线的字左边缘离线 ~10 屏幕 px、横线的字底边离线 ~11 屏幕 px，
-      两处都不压线（数字见报告）。
-  */
-  const edgeComponent = blockAfter(live, 'function FlowLabelEdge', '\n}\n');
-  assert.ok(edgeComponent.length > 200, '`FlowLabelEdge` 没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  const gapRaw = (live.match(/const EDGE_LABEL_GAP = ([^;]+);/) ?? [])[1];
-  assert.ok(gapRaw !== undefined, '没有命名常量 EDGE_LABEL_GAP（偏移量会变成魔法数）');
-  const gap = Number(new Function(`return (${gapRaw});`)());
-  assert.ok(Number.isFinite(gap) && gap > 0, `EDGE_LABEL_GAP 不是正数（读到 ${gapRaw}）`);
-  // ① 方向：按「线**进目标那一侧**」判竖/横（进上/下 ⇒ 末段竖直）。
-  assert.match(edgeComponent, /targetPosition === Position\.Top \|\| targetPosition === Position\.Bottom/,
-    '没有按 targetPosition 判断这一段是竖直还是水平 —— 标签会被摆到线的一侧以外的地方');
-  // ② 竖直段 ⇒ 右侧：`x = labelX + GAP` + **左对齐**（与标签长度无关）。
-  const biasesRight = (source: string): boolean => /vertical \? \([\s\S]{0,400}?x=\{labelX \+ EDGE_LABEL_GAP\}[\s\S]{0,200}?textAnchor="start"/.test(source);
-  assert.ok(biasesRight(edgeComponent), '竖直段上的标签没有摆到线的**右侧**（左对齐 + x 偏出 GAP）—— 教师那张标准图就是这么摆的');
-  // ③ 水平段 ⇒ 上方：`y = labelY - GAP` + 水平居中。
-  const biasesAbove = (source: string): boolean => /\) : \([\s\S]{0,400}?y=\{labelY - EDGE_LABEL_GAP\}[\s\S]{0,200}?textAnchor="middle"/.test(source);
-  assert.ok(biasesAbove(edgeComponent), '水平段上的标签没有摆到线的**上方**（y 抬出 GAP）');
-  // ⚠️ 反面对照 1：把竖直段的偏移去掉（标签又压回线上）⇒ 必须判违规。
-  const pressedOnLine = edgeComponent.replace('x={labelX + EDGE_LABEL_GAP}', 'x={labelX}');
-  assert.notEqual(pressedOnLine, edgeComponent, '反面对照没造出来 —— 这条判据会变成恒真');
-  assert.ok(!biasesRight(pressedOnLine), '反面对照没被抓住 —— 这条判据是恒真的');
-  // ⚠️ 反面对照 2：把水平段的偏移去掉 ⇒ 也必须判违规。
-  const pressedOnLine2 = edgeComponent.replace('y={labelY - EDGE_LABEL_GAP}', 'y={labelY}');
-  assert.notEqual(pressedOnLine2, edgeComponent, '反面对照没造出来 —— 这条判据会变成恒真');
-  assert.ok(!biasesAbove(pressedOnLine2), '反面对照没被抓住 —— 这条判据是恒真的');
-  // ④ 箭头：库把 `markerEnd` 算成 `url('#…')` 交进来，自定义边必须原样转交（忘了 = 箭头没了）。
-  assert.match(edgeComponent, /markerEnd=\{markerEnd\}/, '自定义边没有把 markerEnd 转交给 BaseEdge —— 箭头会消失');
-  assert.match(edgeComponent, /<BaseEdge path=\{edgePath\}/, '自定义边没有用 BaseEdge 画那条路径');
-  // ⚠️ 反面对照 3：把 markerEnd 拿掉 ⇒ 必须判违规。
-  const noArrow = edgeComponent.replace(' markerEnd={markerEnd}', '');
-  assert.notEqual(noArrow, edgeComponent, '反面对照没造出来 —— 这条判据会变成恒真');
-  assert.ok(!/markerEnd=\{markerEnd\}/.test(noArrow), '反面对照没被抓住 —— 这条判据是恒真的');
-  // ⑤ 拖动中高亮：类挂在库那层 `<g class="react-flow__edge">` 上，而**宽度规则必须打在
-  //    `.react-flow__edge-path`** —— `BaseEdge` 给的正是这个类名，换了边也不能失效。
-  assert.match(live, /<BaseEdge/, '自定义边没有走 BaseEdge（它给的那条路径才带 `react-flow__edge-path`）');
-  const snapRuleAt = css.indexOf('.flowEdgeSnap');
-  assert.notEqual(snapRuleAt, -1, '样式表里没有高亮那条规则');
-  const snapRule = css.slice(snapRuleAt, css.indexOf('}', snapRuleAt) + 1);
-  assert.match(snapRule, /react-flow__edge-path/, '高亮没有打在 `.react-flow__edge-path` 上 —— 换了自定义边之后这条选择器会落空');
-  // ⑥ 标签必须**能点到**（双击进就地输入框）：`pointer-events` 不许是 none。
-  const labelRule = css.slice(css.indexOf('.flowEdgeLabel {'), css.indexOf('}', css.indexOf('.flowEdgeLabel {')) + 1);
-  assert.ok(labelRule.length > 30, '`.flowEdgeLabel` 那条规则没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  assert.match(labelRule, /pointer-events:\s*all/, '标签接不到指针事件 —— 「双击标签改文字」会变成「点到空白」');
-  assert.ok(!/pointer-events:\s*none/.test(labelRule), '标签被设成 pointer-events: none（双击标签改文字会失效）');
-});
-
+/*
+  ⊘ 2026-10-06（教师：「**全回原版**」）：这里原有整条判据「线标签摆在**线的旁边**（竖线 ⇒ 右侧 /
+    横线 ⇒ 上方），不压线」—— 它是围着自定义边（\`FlowLabelEdge\` + \`EDGE_LABEL_GAP\`）写的。
+    教师看过原版行为之后定了「全回原版」：标签交回库（中点 + 白底框），那条要求连同它的判据一起撤了。
+    ⚠️ 若将来又要「标签摆在线旁」，这份判据的原文在 git 历史里（commit 315198b 之后的那几批）。
+    相关的还有 \`worksheet-flowchart-svg.test.ts\` 里的「快照与画板标签摆法一致」——
+    那一条是**跨文件绑定**，改画板时它必须一起改（本轮也一起处理了）。
+*/
 test('★ 2026-10-06（教师报「连线加不上」）：连到线中点时，**学生拉的那根线本身**必须真的接上', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   /*

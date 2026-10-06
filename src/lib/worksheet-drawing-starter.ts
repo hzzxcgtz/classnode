@@ -57,6 +57,34 @@ export function readFlowchartPayload(raw: unknown): FlowchartPayload {
  * ⚠️ 底稿的节点**不再加锁**（见上面那条反转说明）。
  * ⚠️ 这条边不加锁 —— 与节点一样，学生可以删、可以改标注（回退靠「恢复初始图」）。
  */
+/**
+ * 剥掉**老数据里那一版「锁定」**留下的标记。
+ *
+ * 🔴 为什么必须有这一步（教师 2026-10-06：「我发现初始图中有的东西我改不了」）：
+ *    上一版按 B 决定把锁定**写进了保存的数据**（`draggable: false` / `deletable: false` /
+ *    `data.locked: true`）。后来 B 反转成「学生可以修改」，我去掉了**加锁的代码**，
+ *    但**存量数据里的标记还在** —— 读回来时 `data.locked === true` 仍然让节点文字只读，
+ *    `draggable: false` 仍然拖不动。**只改代码不改数据，表现就是「有的东西改不了」**。
+ * ⇒ 在「初始图进入画板」这**唯一**的入口处剥干净：不管标记是从初始图来的还是从老草稿来的。
+ * ⚠️ 只剥「锁」这三个标记，其余字段（`position`/`measured`/`data.label`…）原样保留。
+ */
+// ⚠️ 泛型是**必须的**：入口的负载类型是 `Record<string, unknown> & { id: string }`，
+//    若这里退回成裸 `Record<string, unknown>`，调用点会因为「丢了 id」而报类型错 ——
+//    而「为了消错」在调用点强转，等于把这条闸关掉（本仓反复防的就是这个）。
+//    末尾的 `as T` 成立的理由：这里只**删**键，不新增、不改类型。
+function withoutLegacyLocks<T extends Record<string, unknown>>(item: T): T {
+  const rest: Record<string, unknown> = { ...item };
+  delete rest.draggable;
+  delete rest.deletable;
+  const data = rest.data;
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const nextData: Record<string, unknown> = { ...(data as Record<string, unknown>) };
+    delete nextData.locked;
+    rest.data = nextData;
+  }
+  return rest as T;
+}
+
 export function mergeFlowchart(starter: FlowchartPayload, mine: FlowchartPayload): FlowchartPayload {
   const starterNodeIds = new Set(starter.nodes.map((node) => node.id));
   const starterEdgeIds = new Set(starter.edges.map((edge) => edge.id));
@@ -66,14 +94,15 @@ export function mergeFlowchart(starter: FlowchartPayload, mine: FlowchartPayload
     //   想回到教师给的样子就按工具条上的「恢复初始图」（`restoreFlowchart`）。
     // ⚠️ 于是 B 那条决定的实现从「锁」换成了「可恢复」——**恢复是唯一回退路径**
     //   （流程图那一档没有撤销/清空），所以那个按钮不是可选装饰。
-    nodes: [...starter.nodes, ...mine.nodes.filter((node) => !starterNodeIds.has(node.id))],
-    edges: [...starter.edges, ...mine.edges.filter((edge) => !starterEdgeIds.has(edge.id))],
+    nodes: [...starter.nodes.map(withoutLegacyLocks), ...mine.nodes.filter((node) => !starterNodeIds.has(node.id))],
+    edges: [...starter.edges.map(withoutLegacyLocks), ...mine.edges.filter((edge) => !starterEdgeIds.has(edge.id))],
   };
 }
 
 /** 「恢复初始图」：把画板内容重置回教师给的那份（不看学生改过什么）。 */
 export function restoreFlowchart(starter: FlowchartPayload): FlowchartPayload {
-  return { nodes: [...starter.nodes], edges: [...starter.edges] };
+  // ⚠️ 恢复时也要剥锁：学生「恢复初始图」之后同样必须是**能改**的。
+  return { nodes: starter.nodes.map(withoutLegacyLocks), edges: starter.edges.map(withoutLegacyLocks) };
 }
 
 export function subtractFlowchart(all: FlowchartPayload, starter: FlowchartPayload): FlowchartPayload {

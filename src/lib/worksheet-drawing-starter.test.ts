@@ -77,3 +77,30 @@ test('坏数据不许把画板弄崩：缺 nodes/edges、混进没有 id 的条�
   assert.deepEqual(readFlowchartPayload({ nodes: 'x', edges: [1, 2] }), { nodes: [], edges: [] });
   assert.deepEqual(readFlowchartPayload({ nodes: [node('a'), { position: {} }, null] }).nodes.map((item) => item.id), ['a']);
 });
+
+test('★ 教师 2026-10-06：「初始图中有的东西我改不了」——老数据里的锁必须被剥掉', () => {
+  // 上一版按 B 决定把锁**写进了数据**：draggable/deletable/data.locked。
+  const legacy = readFlowchartPayload({
+    nodes: [
+      { id: 't1', data: { label: '开始/结束', kind: 'terminator', locked: true }, draggable: false, deletable: false, position: { x: 0, y: 0 } },
+      { id: 't2', data: { label: '过程', kind: 'process', locked: true }, draggable: false, deletable: false, position: { x: 0, y: 120 } },
+    ],
+    edges: [{ id: 'e1', source: 't1', target: 't2', deletable: false }],
+  });
+  const merged = mergeFlowchart(legacy, readFlowchartPayload(null));
+  for (const node of merged.nodes) {
+    assert.equal(node.draggable, undefined, `${node.id} 还带着老数据的 draggable:false（拖不动）`);
+    assert.equal(node.deletable, undefined, `${node.id} 还带着老数据的 deletable:false`);
+    assert.equal((node.data as Record<string, unknown>).locked, undefined, `${node.id} 的文字还是只读（data.locked 没剥掉）`);
+    // 别的字段不许被剥掉（只剥锁那三个）。
+    assert.ok(typeof (node.data as Record<string, unknown>).label === 'string', `${node.id} 的 label 被剥没了`);
+  }
+  assert.equal(merged.edges[0].deletable, undefined, '边还带着老数据的 deletable:false');
+  // 「恢复初始图」那条路同样要剥（否则恢复完又变回改不了）。
+  for (const node of restoreFlowchart(legacy).nodes) {
+    assert.equal((node.data as Record<string, unknown>).locked, undefined, '恢复之后文字又变只读了');
+  }
+  // 反面对照：学生自己那条边没被误伤（它本来就不带标记）。
+  const mine = mergeFlowchart(legacy, readFlowchartPayload({ nodes: [], edges: [{ id: 'e9', source: 't1', target: 't2' }] }));
+  assert.equal(mine.edges.find((edge) => edge.id === 'e9')?.deletable, undefined);
+});

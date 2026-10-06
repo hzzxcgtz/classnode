@@ -28,7 +28,26 @@ export const DRAWING_BACKGROUND_PRESETS = [
 
 export type DrawingBackgroundPreset = (typeof DRAWING_BACKGROUND_PRESETS)[number]['value'];
 
-const UPLOADED_DRAWING_BACKGROUND = /^\/uploads\/chat\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
+/**
+ * 没挑过背景的作图题用哪一档（★ 2026-10-06 教师：「背景默认应该是点阵图」）。
+ *
+ * 🔴 **必须只有这一处**：学生端解析（`readDrawingBackground`）与教师端那个选择器
+ *    都要走它 —— 两处各写一个默认值的话，会出现「教师看到选中的是空白、学生看到的
+ *    是点阵」这种谁都不报错的偏差。
+ * ⚠️ `blank` 仍是**可选项**（第一位、教师想纯白就点它）；这里改的只是**没挑过时**的兜底。
+ */
+export const DEFAULT_DRAWING_BACKGROUND: DrawingBackgroundPreset = 'dot-grid';
+
+/**
+ * **本站上传图片**的 URL 形状（作图背景、学生拍的照片、第三方画板的位图，都认这一个）。
+ *
+ * 🔴 一处定义、多处读：这条形状同时是**文件读取的入口**（服务端导出/AI 分析要拿它拼磁盘
+ *    路径），所以放宽它等于给任意路径开口子；而**散成三份**必然分叉 —— 实测原来确实有三份，
+ *    其中 `worksheet-answer-value.ts` 那两份**不认 `.jpeg`**（服务端认），
+ *    于是「服务端存得下、学生端读不回来」的照片会**静默**变成空作答。
+ * ⚠️ 与 `server/src/services/worksheet-ink.ts` 的 `CHAT_IMAGE_URL` 逐字相同（跨工程对拍网钉着）。
+ */
+export const CHAT_IMAGE_URL = /^\/uploads\/chat\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
 
 export function readDrawingExtensions(node: Pick<WorksheetQuestionNode, 'type' | 'data'>): DrawingExtension[] {
   if (node.type !== 'drawing' || !Array.isArray(node.data.drawingExtensions)) return [];
@@ -54,16 +73,17 @@ export function readDrawingBackground(node: Pick<WorksheetQuestionNode, 'type' |
   preset: DrawingBackgroundPreset | 'custom';
   url: string | null;
 } {
-  if (node.type !== 'drawing') return { preset: 'blank', url: null };
+  if (node.type !== 'drawing') return { preset: 'blank', url: null };   // 不是作图题 ⇒ 与「没挑过」无关
   const rawPreset = node.data.drawingBackgroundPreset;
   if (rawPreset === 'custom') {
     const rawUrl = node.data.drawingBackgroundImageUrl;
-    return typeof rawUrl === 'string' && UPLOADED_DRAWING_BACKGROUND.test(rawUrl)
+    return typeof rawUrl === 'string' && CHAT_IMAGE_URL.test(rawUrl)
       ? { preset: 'custom', url: rawUrl }
       : { preset: 'blank', url: null };
   }
+  // ★ 2026-10-06：兜底从「第一位（空白）」改成 **DEFAULT_DRAWING_BACKGROUND（点阵）**。
   const preset = DRAWING_BACKGROUND_PRESETS.find(option => option.value === rawPreset)
-    ?? DRAWING_BACKGROUND_PRESETS[0];
+    ?? DRAWING_BACKGROUND_PRESETS.find(option => option.value === DEFAULT_DRAWING_BACKGROUND)!;
   return { preset: preset.value, url: preset.url };
 }
 

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  DEFAULT_DRAWING_BACKGROUND,
   DRAWING_BACKGROUND_PRESETS,
   drawingModesFor,
   readDrawingBackground,
@@ -11,11 +12,17 @@ import {
 
 const drawing = (data: Record<string, unknown> = {}) => ({ type: 'drawing', data });
 
-test('旧绘图题默认只有自由绘图与空白底图', () => {
+test('旧绘图题默认只有自由绘图 + 点阵底图', () => {
   assert.deepEqual(readDrawingExtensions(drawing()), []);
   assert.equal(readDrawingTool(drawing()), 'free');
   assert.deepEqual(drawingModesFor(drawing()), ['free']);
-  assert.deepEqual(readDrawingBackground(drawing()), { preset: 'blank', url: null });
+  // ⊘ 2026-10-06（教师）：「背景默认应该是点阵图」——这一条原来断言的是
+  //   `{ preset: 'blank', url: null }`（列表第一位）。默认值**有意**改了，所以这里跟着改：
+  //   没挑过背景的作图题现在给点阵（便于定位与对齐），空白仍是一个**可选**档。
+  assert.deepEqual(readDrawingBackground(drawing()), {
+    preset: 'dot-grid',
+    url: '/worksheet/drawing-backgrounds/dot-grid.svg',
+  });
 });
 
 test('旧版多选配置仍能读取，但迁移为第一个合法的单选工具', () => {
@@ -50,4 +57,18 @@ test('内置底图都能读出发布路径，自定义底图只接受安全上�
   assert.deepEqual(readDrawingBackground(drawing({
     drawingBackgroundPreset: 'custom', drawingBackgroundImageUrl: 'https://example.com/tracker.png',
   })), { preset: 'blank', url: null });
+});
+
+test('★ 2026-10-06（教师）：「背景默认应该是点阵图」', () => {
+  // 没挑过（字段缺席 / 认不出的值）⇒ 点阵；**不是**第一位那个「空白」。
+  assert.equal(readDrawingBackground({ type: 'drawing', data: {} }).preset, 'dot-grid');
+  assert.equal(readDrawingBackground({ type: 'drawing', data: { drawingBackgroundPreset: 'no-such' } }).preset, 'dot-grid');
+  assert.equal(DEFAULT_DRAWING_BACKGROUND, 'dot-grid');
+  // 点阵有图可贴（否则学生会看到一个「点阵」但其实是纯白）。
+  assert.match(String(readDrawingBackground({ type: 'drawing', data: {} }).url), /dot-grid\.svg$/);
+  // 教师显式挑的档位照旧生效（默认值不许盖掉明确的选择）。
+  assert.equal(readDrawingBackground({ type: 'drawing', data: { drawingBackgroundPreset: 'blank' } }).preset, 'blank');
+  assert.equal(readDrawingBackground({ type: 'drawing', data: { drawingBackgroundPreset: 'coordinate' } }).preset, 'coordinate');
+  // 反面对照：这条判据本身能红（空白档仍在列表里、仍然可选）。
+  assert.ok(DRAWING_BACKGROUND_PRESETS.some((option) => option.value === 'blank'));
 });

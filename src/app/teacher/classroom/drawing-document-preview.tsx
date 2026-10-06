@@ -1,5 +1,6 @@
 'use client';
 
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import type { DrawingDocument } from '@/lib/worksheet-drawing-document';
 
 type Pair = [number, number];
@@ -69,6 +70,46 @@ function MathPreview({ data, width, height, backgroundUrl }: PreviewProps & { da
           const [x, y] = project(value);
           return <circle key={index} cx={x} cy={y} r="4" fill="#fff" stroke="#365b82" strokeWidth="2" />;
         }
+        /*
+          ★ 2026-10-06：新增的三种形状（教师端预览必须跟上 —— 少了它们，学生画的多边形/
+          角/文字在**教师这里完全看不见**，而学生那边的画板上明明有）。
+          坐标口径与画板完全一致：`data.elements` 里就是六种普通坐标数组。
+        */
+        if (item.kind === 'polyline') {
+          const list = Array.isArray(item.points) ? item.points.map((point) => pair(point)) : [];
+          const pts = list.filter((point): point is Pair => !!point).map((point) => project(point));
+          if (pts.length < 2) return null;
+          const d = pts.map(([x, y]) => `${x},${y}`).join(' ');
+          return item.closed
+            ? <polygon key={index} points={d} fill="none" stroke="#365b82" strokeWidth="2" />
+            : <polyline key={index} points={d} fill="none" stroke="#365b82" strokeWidth="2" />;
+        }
+        if (item.kind === 'angle') {
+          const vertex = pair(item.vertex); const armA = pair(item.a); const armB = pair(item.b);
+          if (!vertex || !armA || !armB) return null;
+          const [vx, vy] = project(vertex);
+          const [ax, ay] = project(armA);
+          const [bx, by] = project(armB);
+          // 小弧：两条边各取 36px 处连线再绕顶点画（够用且不必算角度）。
+          const shorten = (x: number, y: number): Pair => {
+            const len = Math.hypot(x - vx, y - vy) || 1;
+            return [vx + ((x - vx) / len) * 36, vy + ((y - vy) / len) * 36];
+          };
+          const [sa, sb] = [shorten(ax, ay), shorten(bx, by)];
+          return (
+            <g key={index}>
+              <line x1={vx} y1={vy} x2={ax} y2={ay} stroke="#365b82" strokeWidth="2" />
+              <line x1={vx} y1={vy} x2={bx} y2={by} stroke="#365b82" strokeWidth="2" />
+              <polyline points={`${sa[0]},${sa[1]} ${sb[0]},${sb[1]}`} fill="none" stroke="#7895b3" strokeWidth="2" />
+            </g>
+          );
+        }
+        if (item.kind === 'label') {
+          const at = pair(item.at); const text = typeof item.text === 'string' ? item.text : '';
+          if (!at || !text) return null;
+          const [x, y] = project(at);
+          return <text key={index} x={x} y={y} fontSize="14" fontWeight="600" fill="#263b53" textAnchor="middle">{text}</text>;
+        }
         const first = pair(item.kind === 'circle' ? item.center : item.a);
         const second = pair(item.kind === 'circle' ? item.edge : item.b);
         if (!first || !second) return null;
@@ -118,6 +159,26 @@ function MindPreview({ data, backgroundUrl }: PreviewProps & { data: Record<stri
 
 export function DrawingDocumentPreview(props: PreviewProps) {
   const data = row(props.document.data) ?? {};
+  /**
+   * ★ 2026-10-06（教师截图批注）：「教师看板显示有点问题」—— 那张卡里，学生的导图被
+   * 画成了**三行大纲文字**（中心主题 / 新主题 / 已经可以了），而不是一张导图。
+   *
+   * 下面那四个分支都是**近似**渲染（导图那条尤其粗糙：它是把树退化成 `<ul>`）——
+   * 而客户端在改动停下来之后会抓一张**位图快照**（`drawing.image`，见
+   * `worksheet-drawing-raster.ts`），服务端的 AI 分析与 Word 报告用的也正是那一张。
+   * ⇒ **有快照就先画快照**：教师看到的、模型看到的、报告里印的，从此是同一张图。
+   * ⚠️ 快照缺席（老作答、抓图失败）时才回到近似渲染 —— 那时至少有东西可看，
+   *    而不是一片空白。
+   */
+  if (props.document.image) {
+    return (
+      <img
+        src={worksheetAssetUrl(props.document.image)}
+        alt="学生的作图作答（快照）"
+        style={{ display: 'block', width: '100%', height: 'auto', background: '#fff' }}
+      />
+    );
+  }
   if (props.document.tool === 'math') return <MathPreview {...props} data={data} />;
   if (props.document.tool === 'mind-map') return <MindPreview {...props} data={data} />;
   if (props.document.tool === 'flowchart') return <FlowPreview {...props} data={data} />;

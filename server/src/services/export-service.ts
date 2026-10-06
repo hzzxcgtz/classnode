@@ -26,11 +26,36 @@ import {
 } from './worksheet-report.js';
 import { questionTypeLabel } from './question-type-labels.js';
 import { inkToPng } from './ink-render.js';
+import { resolveLocalPath } from './ai-proxy.js';
 // ★ 2026-09-30：教师用卷（含答案）。判据层 + 渲染层，与上面那份报告各走各的。
 import { buildWorksheetPaper } from './worksheet-paper.js';
 import { buildWorksheetPaperDocx, paperFilename } from './worksheet-paper-docx.js';
 type SharpModule = typeof import('sharp').default;
 let _sharp: SharpModule | null = null;
+/**
+ * ★ 2026-10-06：把一格**图片作答**读成 PNG（学生拍的照片 / 第三方画板的位图）。
+ *
+ * 🔴 失败一律回 `null`，**不抛**：抛出去会让**整份报告导不出来**，而教师只看到
+ *    「导出失败」四个字。回 null 之后那一格会印 `REPORT_TEXT.imageFallback`。
+ * ⚠️ 路径必须过 `resolveLocalPath`（与 AI 分析读图同一条闸）：作答值里的 URL 是
+ *    **学生可控**的，直接拼路径等于开放任意文件读取。
+ * ⚠️ 缩到 720px 宽：报告那一列约 6.9cm，原图（老 iPad 拍的能到 4000px）塞进去
+ *    会让 docx 从几百 KB 涨到几十 MB —— 而 `scaleImageSize` 只改「显示尺寸」，不改字节数。
+ */
+async function answerImagePng(url: string): Promise<Buffer | null> {
+  try {
+    const sharp = await getSharp();
+    if (!sharp) return null;
+    return await sharp(resolveLocalPath(url))
+      .rotate()
+      .resize({ width: 720, withoutEnlargement: true })
+      .png()
+      .toBuffer();
+  } catch {
+    return null;
+  }
+}
+
 async function getSharp(): Promise<SharpModule | null> {
   if (!_sharp) {
     try {
@@ -1178,6 +1203,10 @@ function worksheetRowCells(
     // ⚠️ **三种成因三句话**：「一根笔画都没有」与「渲染不出来」不是一回事，
     //    而后者那句写的是「本机无法渲染成图片」—— 拿它去说前者是**断言一个它不知道的成因**。
     answerChildren = [new TextRun({ text: REPORT_TEXT.inkEmpty, size: 18, color: C.textLight })];
+  } else if (row.cell.kind === 'image' && !row.png) {
+    // ⚠️ 与上面那条同一个理由：**成因不同就不能借用别人的话**。
+    //    这一格是「有图、但本机没读出来」，说成「手写作答，本机无法渲染成图片」是错的。
+    answerChildren = [new TextRun({ text: REPORT_TEXT.imageFallback, size: 18, color: C.gold })];
   } else if (row.png) {
     // 图片的宽高从 PNG 自己的 IHDR 里读（渲染层不知道值里的 canvas，那张图的真实尺寸在这里）。
     const w = row.png.readUInt32BE(16);
@@ -1337,7 +1366,10 @@ export async function generateWorksheetReportDocx(
           const row = byQuestion.get(node.id);
           const answer = answerCell(row ? row.value : undefined);
           // ⚠️ 笔迹在这里**同步渲染成 PNG**：`inkToPng` 自己会吞掉所有失败并回 `null`。
-          const png = answer.kind === 'ink' ? await inkToPng(answer.ink) : null;
+          const png = answer.kind === 'ink'
+            ? await inkToPng(answer.ink)
+            // ★ 2026-10-06：`image` 格（学生拍的照片 / 第三方画板交上来的位图）在这里读盘。
+            : answer.kind === 'image' ? await answerImagePng(answer.url) : null;
           tableRows.push(worksheetRowCells({
             heading, typeLabel: questionTypeLabel(node.type), prompt: questionTextFor(node),
             cell: answer, png,

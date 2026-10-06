@@ -1,4 +1,5 @@
 import { readInkValue, type InkValue } from './ink-path.js';
+import { CHAT_IMAGE_URL } from './worksheet-ink.js';
 
 /**
  * 「学习单与探究空间报告」的**判据层**（M6a）。
@@ -53,8 +54,36 @@ export function gradeLabel(row: { isCorrect: boolean | null; gradeState: string 
 export type AnswerCell =
   | { kind: 'text'; text: string }
   | { kind: 'ink'; ink: InkValue }
+  /**
+   * ★ 2026-10-06：**一张位图**。两种来源共用这一格：
+   *   · `photo/v1` —— 学生拍的那张作业纸（此前落到最后的 `unreadable`：
+   *     纸面上写「这一题的值读不出来」，而学生明明交了一张照片）；
+   *   · `drawing.image` —— 第三方画板交上来的位图（见 `answerCell` 里那一段）。
+   */
+  | { kind: 'image'; url: string }
   | { kind: 'cleared' }
   | { kind: 'unanswered' };
+
+/**
+ * `drawing.image`（第三方画板的位图）与 `photo/v1`（学生拍的照片）读出来。
+ *
+ * ⚠️ 两者都只认 `CHAT_IMAGE_URL` 那一个形状 —— 它是**文件读取的入口**
+ * （导出时要把这个 URL 变成磁盘路径），放行别的字符串就是把任意路径递给文件系统。
+ */
+function drawingRasterUrl(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const drawing = (value as Record<string, unknown>).drawing;
+  if (!drawing || typeof drawing !== 'object' || Array.isArray(drawing)) return null;
+  const image = (drawing as Record<string, unknown>).image;
+  return typeof image === 'string' && CHAT_IMAGE_URL.test(image) ? image : null;
+}
+
+function photoUrl(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (raw.format !== 'photo/v1') return null;
+  return typeof raw.url === 'string' && CHAT_IMAGE_URL.test(raw.url) ? raw.url : null;
+}
 
 /** 排序 / 连线 / 归类：值里存的是 **id**，对教师不可读 ⇒ 指一句，不印 id。 */
 const COARSE_LABEL: Record<string, string> = {
@@ -89,6 +118,12 @@ export function answerCell(value: unknown): AnswerCell {
   if (value === null) return { kind: 'cleared' };
   // ⚠️ 先读笔迹：它**只认 `format`**，所以「教师把题从手写改回键盘」之后，
   //    学生**之前交的**那幅画仍然读得回来（与抽屉同一条纪律）。
+  // ★ 2026-10-06：**先读位图**。第三方画板的作答 `strokes` 是空数组，而
+  //    `readInkValue` 只认 `format`（那条纪律保证「教师改了题，学生早先交的画仍读得回来」）
+  //    ⇒ 排在笔迹后面就永远轮不到，纸面上会印「（这一题没有笔画）」——
+  //    一句**看着像事实、其实是错的**话（学生画了满满一屏）。
+  const raster = drawingRasterUrl(value) ?? photoUrl(value);
+  if (raster) return { kind: 'image', url: raster };
   const ink = readInkValue(value);
   if (ink) return { kind: 'ink', ink };
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -203,6 +238,8 @@ export const REPORT_TEXT = {
   unreadable: '（这一题的值读不出来）',
   /** 笔迹渲染不出图（`sharp` 不在）。**不是**留空。 */
   inkFallback: '（手写作答，本机无法渲染成图片）',
+  /** ★ 2026-10-06：图片格读不出图（文件不在 / `sharp` 不在）。**不是**留空，也**不**说「手写」。 */
+  imageFallback: '（这一题有图片作答，本机没能读出来）',
   /** 探究空间表下那句实话。 */
   webappNoteMissingCounters: '交互次数与滚动深度本轮暂不可得（该项统计已停采）',
   /** 参与者的名字两个来源都读不出来。 */

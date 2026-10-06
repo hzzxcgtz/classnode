@@ -97,6 +97,28 @@ test('★ 照片作答进入图片载荷，并能在 aggregate 中持久化往�
   assert.deepEqual(entriesFromAggregate(entriesToAggregate([entry])), [entry]);
 });
 
+test('★ 第三方画板的位图进载荷：当**照片**条目，而不是「0 根笔画的 ink」', () => {
+  // 🔴 这条是这次修复的核心：新画板的作答 `strokes` 是空数组，而 `readInk` 照样认它
+  //    （「一条笔画都不剩时仍然算 ink」）⇒ 少了位图这一支，整条作答会变成
+  //    「有 ink、但一格都画不出来」，而 `payloadKindOf` 见 `kind === 'ink'` 就判 `image`
+  //    ⇒ **连文字文档都不发**，模型只看到一叠空格子。
+  const url = '/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.png';
+  const value = {
+    format: 'drawing/v1',
+    canvas: { w: 320, h: 240 },
+    strokes: [],
+    drawing: { tool: 'flowchart', data: { nodes: [{ id: 'n1' }], edges: [] }, image: url },
+  };
+  const [entry] = selectAnalyzeEntries([row('p1', 'submitted', value)], people, 'q1');
+  assert.deepEqual(entry, { studentId: 'p1', kind: 'photo', photoUrl: url, gradeState: null });
+  assert.equal(payloadKindOf([entry]), 'image');
+  // 形状不对的 image 不算数 ⇒ 退回 ink（那一格会是空白，但**不会**把任意路径读成文件）。
+  const bogus = { ...value, drawing: { ...value.drawing, image: '/etc/passwd' } };
+  const [fallback] = selectAnalyzeEntries([row('p1', 'submitted', bogus)], people, 'q1');
+  assert.equal(fallback.kind, 'ink');
+  assert.equal('photoUrl' in fallback, false);
+});
+
 test('只收这一道题的作答行（同一份学习单里别的题不进载荷）', () => {
   const entries = selectAnalyzeEntries([
     { participantId: 'p1', questionId: 'q2', status: 'submitted', value: { format: 'text/v1', text: '别题' } },

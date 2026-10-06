@@ -70,6 +70,28 @@ test('answerCell：文字类的五种各渲染成人话', () => {
   assert.deepEqual(answerCell({ format: 'text/v1', text: '因为光合作用' }), { kind: 'text', text: '因为光合作用' });
 });
 
+test('★ answerCell：图片类作答进 `image` 格（第三方画板的位图 / 学生拍的照片）', () => {
+  const raster = '/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.png';
+  // 🔴 为什么位图必须**排在笔迹前面**：新画板的 `strokes` 是空数组，而 `readInkValue`
+  //    只认 `format` ⇒ 排在后面就会印「（这一题没有笔画）」—— 学生画了满满一屏，
+  //    纸面上却是一句**看着像事实、其实是错的**话。
+  assert.deepEqual(
+    answerCell({ format: 'drawing/v1', canvas: { w: 320, h: 240 }, strokes: [], drawing: { tool: 'flowchart', data: { nodes: [] }, image: raster } }),
+    { kind: 'image', url: raster },
+  );
+  // 学生拍的照片：此前落到最后那句「（这一题的值读不出来）」—— 他明明交了一张纸。
+  assert.deepEqual(answerCell({ format: 'photo/v1', url: raster }), { kind: 'image', url: raster });
+  // ⚠️ 形状不对的路径**不许**进这一格：导出会拿它拼磁盘路径。
+  assert.notDeepEqual(answerCell({ format: 'photo/v1', url: '/etc/passwd' }), { kind: 'image', url: '/etc/passwd' });
+  assert.notDeepEqual(
+    answerCell({ format: 'drawing/v1', canvas: { w: 1, h: 1 }, strokes: [], drawing: { tool: 'free', data: {}, image: '../../secret.png' } }),
+    { kind: 'image', url: '../../secret.png' },
+  );
+  // 老笔迹（真有笔画、没有位图）照旧走 ink —— 没有被这条抢走。
+  const legacy = answerCell({ format: 'drawing/v1', canvas: { w: 320, h: 240 }, strokes: [{ color: '#111827', width: 0.01, points: [[0, 0], [1, 1]] }] });
+  assert.equal(legacy.kind, 'ink');
+});
+
 test('🔴 排序 / 连线 / 归类：**不许**说成「未作答」，也不许印裸 id', () => {
   // 独立审查发现（本批之外，但决定本函数怎么写）：教师抽屉的 `formatAnswer`
   // 只认 `text` / `fill` 两族 ⇒ 这三种作答值在抽屉里回 `null` ⇒ 屏幕显示「未作答」。

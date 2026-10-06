@@ -1,4 +1,5 @@
 import { INK_DEFAULT_TEXT_SIZE, INK_STROKE_COLOR, isInkColor, isInkFormat, isInkShapeKind, isInkTextSize, type InkValue } from './ink-path.js';
+import { CHAT_IMAGE_URL } from './worksheet-ink.js';
 import { analysisAnswerText } from './analysis-question.js';
 import type { QuestionNode } from './worksheet-questions.js';
 
@@ -66,14 +67,37 @@ function readText(value: unknown): string | null {
   return typeof raw.text === 'string' ? raw.text : '';
 }
 
-const PHOTO_URL = /^\/uploads\/chat\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
+// ★ 2026-10-06：URL 形状搬到 `worksheet-ink.ts`（报告/导出那一侧也要读同一份）。
+//    两份正则正是本仓反复被咬的那种分叉 —— 一处放宽、另一处没跟上，就会有人
+//    把任意路径喂进 `resolveLocalPath`。
+
 
 /** 从作答值中识别本站上传的照片，拒绝把任意本地路径带进后续文件读取。 */
 function readPhoto(value: unknown): string | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
   if (raw.format !== 'photo/v1') return null;
-  return typeof raw.url === 'string' && PHOTO_URL.test(raw.url) ? raw.url : null;
+  return typeof raw.url === 'string' && CHAT_IMAGE_URL.test(raw.url) ? raw.url : null;
+}
+
+/**
+ * ★ 2026-10-06：第三方画板交上来的**位图**（`drawing.image`）。
+ *
+ * 🔴 为什么必须有它：新画板把内容放在 `drawing.data` 里（流程图/思维导图/数学作图/
+ *    基础绘图都不再产 `strokes`），而服务端**渲染不了**那些文档。
+ *    ⇒ 少了这一支，`readInk` 会以「0 根笔画」把整条作答吃掉：联系表里那一格是空的，
+ *      而且 `payloadKindOf` 见 `kind === 'ink'` 就判 `'image'` ⇒ **连文字文档都不发**，
+ *      模型只看到一叠空格子（实测：`drawing` 字段被 `readInk` 整个丢掉）。
+ * ⚠️ 读出来当成 **photo** 条目：联系表那条合成照片的路是现成的、实测能出图。
+ */
+function readDrawingRaster(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  if (!isInkFormat(raw.format)) return null;
+  const drawing = raw.drawing;
+  if (!drawing || typeof drawing !== 'object' || Array.isArray(drawing)) return null;
+  const image = (drawing as Record<string, unknown>).image;
+  return typeof image === 'string' && CHAT_IMAGE_URL.test(image) ? image : null;
 }
 
 /**
@@ -209,6 +233,13 @@ export function selectAnalyzeEntries(
     const text = readText(answer.value);
     if (text !== null) {
       out.push({ studentId: answer.participantId, kind: 'text', text, gradeState: answer.gradeState ?? null });
+      continue;
+    }
+    // ⚠️ 位图排在笔迹**前面**：新画板的作答 `strokes` 是空数组，`readInk` 照样认它
+    //    （那条纪律写在 `readInk` 上：「一条笔画都不剩时仍然算 ink」）⇒ 排在后面就永远轮不到。
+    const raster = readDrawingRaster(answer.value);
+    if (raster) {
+      out.push({ studentId: answer.participantId, kind: 'photo', photoUrl: raster, gradeState: answer.gradeState ?? null });
       continue;
     }
     const ink = readInk(answer.value);
@@ -644,7 +675,7 @@ export function entriesFromAggregate(raw: unknown): AnalyzeEntry[] {
       continue;
     }
     if (row.kind === 'photo') {
-      const photoUrl = typeof row.photoUrl === 'string' && PHOTO_URL.test(row.photoUrl) ? row.photoUrl : null;
+      const photoUrl = typeof row.photoUrl === 'string' && CHAT_IMAGE_URL.test(row.photoUrl) ? row.photoUrl : null;
       out.push(photoUrl
         ? { studentId: row.studentId, kind: 'photo', photoUrl, gradeState }
         : { studentId: row.studentId, kind: 'unknown', gradeState });

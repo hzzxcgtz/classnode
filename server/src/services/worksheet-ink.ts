@@ -15,6 +15,16 @@
 export const INK_MAX_STROKES = 400;
 export const INK_MAX_POINTS = 2000;
 
+/**
+ * 本站上传图片的 URL 形状 —— **一处定义，三处读**（照片作答 `photo/v1`、
+ * 第三方作图位图 `drawing.image`、以及报告/导出那一侧）。
+ *
+ * ⚠️ 它同时是**安全判据**：只有这个形状才允许进文件读取
+ * （`analysis-render.ts` → `resolveLocalPath`），别的字符串一律不认。
+ * 形状与前端 `worksheet-answer-value.ts` 里那条**逐字相同**（跨工程对拍网钉着它）。
+ */
+export const CHAT_IMAGE_URL = /^\/uploads\/chat\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
+
 /** 与前端 `worksheet-drawing-document.ts` 保持一致：一题的第三方绘图文档最大字符数。 */
 export const DRAWING_DOCUMENT_MAX_CHARS = 600_000;
 const DRAWING_TOOLS = ['free', 'math', 'mind-map', 'flowchart'] as const;
@@ -183,6 +193,14 @@ export function findInkValueError(value: unknown): string | null {
     if (serialized === undefined) return '作图文档的内容无法保存';
     if (serialized.length > DRAWING_DOCUMENT_MAX_CHARS) {
       return '作图内容太多，请删除部分图形后再提交';
+    }
+    // ★ 2026-10-06：第三方画板交上来的**位图**（服务端渲染不了 `drawing.data`，
+    //   而 AI 分析与 Word 报告都要看学生画的东西 ⇒ 客户端连图一起交）。
+    //   ⚠️ 只认本站上传目录的形状：这是**文件读取的入口**，放行别的字符串
+    //      等于让作答值里的任意路径进到 `resolveLocalPath`。
+    const image = document.image;
+    if (image !== undefined && (typeof image !== 'string' || !CHAT_IMAGE_URL.test(image))) {
+      return '作图位图必须是本站上传的图片';
     }
   }
   return null;

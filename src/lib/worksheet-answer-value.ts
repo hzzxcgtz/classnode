@@ -2,6 +2,7 @@ import type { WorksheetQuestionNode } from './types';
 import { defaultInkBox, inkFormatOf, isInkColor, isInkNode, isInkShapeKind, isInkTextSize, readInkValue, INK_DEFAULT_TEXT_SIZE, INK_STROKE_COLOR } from './worksheet-ink.ts';
 import type { InkCanvas, InkPoint, InkStroke, InkText, InkValue } from './worksheet-ink.ts';
 import type { DrawingDocument } from './worksheet-drawing-document.ts';
+import { CHAT_IMAGE_URL } from './worksheet-drawing.ts';
 import { blankLayout } from './worksheet-table.ts';
 
 /**
@@ -464,7 +465,7 @@ export function isDraftEmpty(draft: AnswerDraft): boolean {
 function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): WorksheetAnswerValue | null {
   const type = node.type;
   if (isPhotoNode(node)) {
-    if (draft.kind !== 'photo' || !/^\/uploads\/chat\/chat-[0-9a-f-]+\.(png|jpg|webp)$/i.test(draft.url)) return null;
+    if (draft.kind !== 'photo' || !CHAT_IMAGE_URL.test(draft.url)) return null;
     return { format: 'photo/v1', url: draft.url };
   }
   // ★ M4b：手写 / 绘图**不参与判分**（规格 §12 裁定 3），但**照样要交** ——
@@ -713,7 +714,7 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
     : draftKindOf(node);
 
   if (kind === 'photo') {
-    return typeof row.url === 'string' && /^\/uploads\/chat\/chat-[0-9a-f-]+\.(png|jpg|webp)$/i.test(row.url)
+    return typeof row.url === 'string' && CHAT_IMAGE_URL.test(row.url)
       ? { kind: 'photo', url: row.url }
       : empty;
   }

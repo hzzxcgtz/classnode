@@ -141,6 +141,22 @@ test('第三方作图文档：只允许 drawing/v1 的四种工具，并限制�
   }), null);
 });
 
+test('★ 作图位图（`drawing.image`）：只认本站上传目录的形状', () => {
+  const withImage = (image: unknown) => findInkValueError({
+    format: 'drawing/v1', canvas: { w: 320, h: 240 }, strokes: [], drawing: { tool: 'flowchart', data: { nodes: [] }, image },
+  });
+  // 上传接口产出的那两个形状都放行（`.png` 是我们自己传的，`.jpeg` 是接口也可能给的）。
+  assert.equal(withImage('/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.png'), null);
+  assert.equal(withImage('/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.jpeg'), null);
+  // 没带就不管（它是**可选**的快照，抓图失败时本来就可能没有）。
+  assert.equal(withImage(undefined), null);
+  // 🔴 这一条是安全判据：这个字符串会被拿去拼**磁盘路径**（导出/分析读图）。
+  for (const bad of ['/etc/passwd', '../../server/prisma/dev.db', '/uploads/avatars/a.svg',
+    'https://example.com/x.png', '/uploads/chat/not-a-uuid.png', 42]) {
+    assert.notEqual(withImage(bad), null, `放行了不该放行的位图路径：${String(bad)}`);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // 形状 —— 认得出是 ink 之后才看这些
 // ---------------------------------------------------------------------------

@@ -554,7 +554,24 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
             onNotice={onNotice}
           />
         </div>
-
+        {/*
+          ★ 2026-10-06（教师）：「判断题的答案设置移到上面题干的后面」。
+          ⊘ 它原来在**最下面**（自动评分、分值设置之后）—— 判分相关的设置都堆在那里，
+            而「对还是错」是这道题的**答案**，与题干是同一件事的两半 ⇒ 摆回题干后面。
+          ⊘ 填空题**没有**这一块（教师 2026-10-05 裁定 A）：每个空的答案住在「填空与作答设置」
+            的卡片里。两个入口编辑同一份数据就是本仓最防的那种分叉。
+        */}
+        {node.type === 'true-false' && (
+          <div className="worksheet-editor-block">
+            <div className="worksheet-editor-block-head">
+              <div>
+                <h4>标准答案</h4>
+                <p>这道题的标准答案是「正确」还是「错误」。</p>
+              </div>
+            </div>
+            <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer />
+          </div>
+        )}
         {answerBlock && (
           <div className="worksheet-editor-block">
             <div className="worksheet-editor-block-head">
@@ -931,22 +948,7 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                  这一次他看到的是「调顺序时两个列表要并排着看」。两次都照做。
               ⚠️ 于是这张卡对排序题只剩下面那两块（开关 + 分值 + 容错档），不再是空壳。 */}
 
-          {/* 「标准答案」—— 判断题的那一块。
-              ⊘ ★ 2026-10-05（教师裁定 A）：填空题**不再有这一块** —— 每个空的答案搬进了
-              「填空与作答设置」的卡片（作答方式行右侧）。两个入口编辑同一份数据就是本仓最防的
-              那种分叉；而且那一块住在 `{gradedOn && …}` 里，**只有打开自动评分才看得见**，
-              关掉它答案就消失了 —— 而每个空都能选「AI 评分」，那种情况恰恰最需要改答案。 */}
-          {node.type === 'true-false' && (
-            <div className="worksheet-editor-block">
-              <div className="worksheet-editor-block-head">
-                <div>
-                  <h4>标准答案</h4>
-                  <p>这道题的标准答案是「正确」还是「错误」。</p>
-                </div>
-              </div>
-              <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer />
-            </div>
-          )}
+
           </>)}
         </section>
       )}

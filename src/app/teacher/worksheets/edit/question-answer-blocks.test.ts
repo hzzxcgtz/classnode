@@ -302,3 +302,19 @@ test('★ 选项行：答案设置（圆点/勾选框）在**行尾**，字母�
     '表头那条空白丢了 `flex: 1` —— 表头会跟左边对齐，而不是跟答案那一列',
   );
 });
+
+test('★ 2026-10-06（教师）：判断题的标准答案摆在**题干后面**（不再压在最下面）', () => {
+  const live = stripImports(stripComments(CARD));
+  // ⚠️ 判据用**这一块的标题**，不要用 `node.type === 'true-false'`：那个条件在卡片靠上处
+  //    （摘要/只读预览那条路）也出现过，第一次出现的位置比题干还早 ⇒ 拿它当判据会假红。
+  const stem = live.indexOf('<h4>题干</h4>');
+  const answer = live.indexOf('<h4>标准答案</h4>');
+  assert.ok(stem !== -1 && answer !== -1, '题干或判断题的标准答案块不见了');
+  assert.ok(answer > stem, '判断题的标准答案没有排在题干之后');
+  // 而且必须在**判分设置**之前 —— 不许又被挪回最下面。
+  // ⚠️ 同样别用「AI 评分」当判据：它在卡片靠上处的题型说明里也出现过。
+  const grader = live.indexOf('评分方式');
+  assert.ok(grader !== -1 && answer < grader, '判断题的标准答案又跑到判分设置后面去了');
+  // 搬动最怕留下两份：两份都会渲染、都不报错。
+  assert.equal((live.match(/<h4>标准答案<\/h4>/g) ?? []).length, 1, '「标准答案」块不止一处');
+});

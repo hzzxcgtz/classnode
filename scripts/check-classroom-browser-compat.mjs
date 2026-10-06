@@ -152,7 +152,100 @@ function checkBundleLookbehinds() {
     if (pattern) boundaryHits.push({ source, pattern });
   }
 
-  return { failures, scriptCount: scriptPaths.length, toleratedHits, boundaryHits };
+  return { failures, scriptCount: scriptPaths.length, toleratedHits, boundaryHits, scriptPaths };
+}
+
+// ===========================================================================
+// Part A2：产物级 —— 「Safari 15 之后才有」的那一族 API（★ 2026-10-06）
+// ===========================================================================
+// 为什么 Part B（源码级）不够：这一族最可能的来源是**依赖** —— 教师让 ChatGPT 给绘图题
+// 接进来的 `@xyflow/react` 就是这样：它的 chunk 里有一处**裸调** `structuredClone`
+// （React Flow 的 `Handle` 点击连线那条路：`y = structuredClone(f)`），源码里一个字都没有
+// ⇒ 源码那一轮根本看不见它。这与 Part A 当初把 lookbehind 挪到产物级是同一条理由。
+//
+// 🔴 那为什么以前不做产物级？因为**会永久红**：Next 自己的 polyfills chunk 里就有
+//    `Object.hasOwn` / `Array.prototype.at` 的**定义**，markdown 栈里还有裸用；
+//    「永久红」等于「没人再看它」。所以这里的判据不是「产物里有没有这个标记」，
+//    而是**「有没有人兜住它」**：
+//      · 这一族里**已经兜住**的（产物里能找到那份兜底的签名）⇒ 标记可以出现，只提示；
+//      · **没兜住**的 ⇒ 标记一出现就失败，并说清三条出路（加兜底 / 改成特性检测 /
+//        明确加一条 shim 签名并写理由）。
+//    判据是「签名在不在」，所以它是**可复现、可验证**的：哪天有人把兜底删了，
+//    那些裸用会立刻变红 —— 那正是我们要的信号（与容忍表同一条「容忍 ≠ 静默」原则）。
+//
+// ⚠️ `Array.prototype.at` 在这里写成 `.at(`：与 Part B 同一条标记同一个理由 ——
+//    `format(` 不含 `.at(`，而 `foo.at(` 是真命中。
+const BUNDLE_API_FAMILY = [
+  {
+    token: 'structuredClone',
+    shim: /globalThis\.structuredClone\s*=/,
+    shimWhy: '学生端入口的兜底（src/components/browser-compat-shims.tsx）',
+  },
+  {
+    token: 'Object.hasOwn',
+    shim: /Object\.hasOwn\s*\|\|\s*\(?\s*Object\.hasOwn\s*=/,
+    shimWhy: 'Next 的 polyfills chunk（Object.hasOwn 定义）',
+  },
+  {
+    token: '.at(',
+    shim: /prototype\.at\s*=\s*function/,
+    shimWhy: 'Next 的 polyfills chunk（Array.prototype.at 定义）',
+  },
+  // 下面这几条**没有人兜** ⇒ 一出现就失败（今天实测零命中）。
+  { token: 'findLast', shim: null, shimWhy: null },
+  { token: ':has(', shim: null, shimWhy: null },
+  { token: 'color-mix(', shim: null, shimWhy: null },
+  { token: '@container', shim: null, shimWhy: null },
+  { token: 'content-visibility', shim: null, shimWhy: null },
+];
+
+/**
+ * 扫产物里那一族 API。
+ *
+ * 🔴 `scriptPaths` 与 Part A **同一份清单**（由它交出来），不在这里再写一遍「扫哪些文件」：
+ *    两份清单必然分叉，而分叉的后果是「某条闸门悄悄少扫了一半产物」且**看不出来**。
+ */
+function checkBundleApiTokens(scriptPaths) {
+  const failures = [];
+  const contents = new Map();
+  for (const source of scriptPaths) {
+    const filePath = path.join(root, 'out', source);
+    if (!fs.existsSync(filePath)) continue;
+    contents.set(source, fs.readFileSync(filePath, 'utf8'));
+  }
+
+  // 先找兜底：某个标记的兜底签名出现在**任意一个**在范围内的产物里，就算兜住了。
+  const shims = new Map();
+  for (const [source, content] of contents) {
+    for (const entry of BUNDLE_API_FAMILY) {
+      if (!entry.shim || shims.has(entry.token)) continue;
+      if (entry.shim.test(content)) shims.set(entry.token, { source, why: entry.shimWhy });
+    }
+  }
+
+  const allowedHits = [];
+  for (const [source, content] of contents) {
+    for (const entry of BUNDLE_API_FAMILY) {
+      const count = content.split(entry.token).length - 1;
+      if (count === 0) continue;
+      if (entry.shim && shims.has(entry.token)) {
+        allowedHits.push({ source, token: entry.token, count, shim: shims.get(entry.token) });
+        continue;
+      }
+      failures.push(
+        `${source}: 产物里有 ${count} 处 ${entry.token}（Safari 15 不支持，而产物里没有兜底）\n` +
+        `    它多半是从**依赖**里进来的（源码那一轮看不见）。三条出路，挑一条：\n` +
+        `    · 兜住它：在 src/components/browser-compat-shims.tsx 里加一份带签名的兜底；\n` +
+        `    · 别用它：让那个库改成特性检测 + 回落；\n` +
+        `    · 都不是：在 BUNDLE_API_FAMILY 里给这条标记写一条 shim + 理由（别只把它删掉）。`,
+      );
+    }
+  }
+
+  // 「兜底过期」也要有信号：某个标记的兜底签名今天没命中，说明那份兜底**不在这批产物里**
+  //（被摇掉了、或在别的路由下）。这不是违规，但会让上面那条「允许」暂时没有依据。
+  const shimlessTokens = BUNDLE_API_FAMILY.filter((entry) => entry.shim && !shims.has(entry.token));
+  return { failures, allowedHits, shims, shimlessTokens, fileCount: contents.size };
 }
 
 // ===========================================================================
@@ -429,10 +522,12 @@ function checkSourceTokens() {
 // 汇总：两道检查各跑各的，一次把两边的失败都报出来
 // ===========================================================================
 const bundle = checkBundleLookbehinds();
+const bundleApi = checkBundleApiTokens(bundle.scriptPaths);
 const source = checkSourceTokens();
 
 const sections = [
   ['产物级 lookbehind（扫 out/）', bundle.failures],
+  ['产物级 Safari 15 之后的 API（扫 out/）', bundleApi.failures],
   ['源码级 Safari 15 标记（扫 src/）', source.failures],
 ].filter(([, list]) => list.length > 0);
 
@@ -486,8 +581,25 @@ for (const hit of bundle.boundaryHits) {
   );
 }
 
+// 已兜住的那一族：**提示**，不失败。要打印「谁兜的」，否则将来没人知道它是怎么被放行的。
+for (const [token, shim] of bundleApi.shims) {
+  const hits = bundleApi.allowedHits.filter((hit) => hit.token === token);
+  if (hits.length === 0) continue;
+  const total = hits.reduce((sum, hit) => sum + hit.count, 0);
+  console.log(
+    `[browser-compat] 产物里有 ${total} 处 ${token}（分布在 ${hits.length} 个脚本）——` +
+    `已由 ${shim.source} 兜住（${shim.why}）。`,
+  );
+}
+if (bundleApi.shimlessTokens.length > 0) {
+  console.warn(
+    `⚠️  [browser-compat] 这几条标记的兜底今天**不在产物里**（不是违规，是那条「允许」暂时没有依据）:\n` +
+    bundleApi.shimlessTokens.map((entry) => `⚠️    - ${entry.token}（期望签名来自 ${entry.shimWhy}）`).join('\n'),
+  );
+}
+
 console.log(
-  `[browser-compat] 产物 ${bundle.scriptCount} 个脚本（lookbehind）` +
+  `[browser-compat] 产物 ${bundle.scriptCount} 个脚本（lookbehind）+ ${bundleApi.fileCount} 个脚本（API 族）` +
   ` + 源码 ${source.fileCount} 个文件通过 Safari 15 检查` +
   `（豁免 ${Object.keys(ALLOWED).length} 个文件的既有降级用法）`,
 );

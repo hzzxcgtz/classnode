@@ -2369,6 +2369,13 @@
 .thirdPartySurface { background: #fff; }
 /* ★ 2026-10-06：流程图的浮层（选中连线的删除按钮、双击连线的就地输入框）摆在这个舞台上。 */
 .flowStage { position: relative; }
+/*
+  ★ 2026-10-06（教师）：「出现的删除图标**太大**」。
+
+  🔴 44×44 是**命中区**（老 iPad 的手指下限），而且 `worksheet-tap-targets.test.ts` 会逐个量
+     ⇒ **不能缩**。能缩的只有**看得见的那个东西** ⇒ 本体整个透明，白底与描边挪到里面那个小圆上。
+  ⇒ 看起来从 44 变成 24，手指摸到的仍然是 44。
+*/
 .flowEdgeFloat {
   position: absolute;
   width: 44px;
@@ -2376,15 +2383,34 @@
   transform: translate(-50%, -50%);
   display: grid;
   place-items: center;
-  border: 1px solid #e7c9a9;
-  border-radius: 12px;
-  background: #fff;
+  padding: 0;
+  border: 0;
+  background: transparent; /* ★ 见上：白底挪到里面那个小圆 */
   color: #b45309;
   cursor: pointer;
-  box-shadow: 0 3px 10px rgba(16, 42, 67, .18);
+  box-shadow: none;
   z-index: 6;
 }
 .flowEdgeFloat:disabled { cursor: default; opacity: .55; }
+/*
+  看得见的那个小圆：24px，白底 + 淡边 + 轻阴影。
+  ⚠️ 画布是**浅色点阵**，纯图标（没有底）会看不清 —— 这也是原来那个白底的唯一用处，
+     现在把它缩小、挪到里面来。
+  ⚠️ 图标用 `stroke` 画（叉叉是小笔画，不是填充形状）⇒ `fill: none` 在组件那边给。
+*/
+.flowEdgeFloat > svg {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  box-sizing: border-box;
+  border: 1px solid #e7c9a9;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(16, 42, 67, .18);
+}
+/* 悬停 / 按下给一点反馈（触屏没有 hover ⇒ 按下那条才是学生能感知到的那个）。 */
+.flowEdgeFloat:hover > svg { background: #fff7ed; }
+.flowEdgeFloat:active > svg { background: #ffedd5; }
 /*
  * ⊘ 2026-10-06（教师：「全回原版」）：这里原有 `.flowEdgeRouteHandle` 那三块样式 ——
  *   它是「拖动线中圆点调走向」那颗浮层圆点。教师定了「全回原版」之后，那颗圆点连同它的

@@ -601,7 +601,9 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   const css = stripComments(CSS);
   // ① 四个加节点按钮 + 恢复初始图都要有**形状图标**（画的正是它会放下的那个节点）。
   assert.match(live, /FLOW_ICONS: Record<FlowKind/, '没有图标表');
-  for (const key of ['terminator', 'process', 'decision', 'io', 'restore', 'trash']) {
+  // ⚠️ 最后那个键 2026-10-06 从 `trash` 改成了 `close`（教师：「可以换成一个小叉叉图标」）
+  //    —— 删除按钮的图标不再是垃圾桶。判据跟着改，键名对不上会当场红。
+  for (const key of ['terminator', 'process', 'decision', 'io', 'restore', 'close']) {
     assert.ok(live.includes(`${key}:`), `图标表里少了 ${key}`);
     assert.ok(live.includes(`FLOW_ICONS.${key}`), `${key} 的图标没有挂到按钮上`);
   }
@@ -652,7 +654,7 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
     const next = live.indexOf('\n  const ', at + 1);
     return next === -1 ? live.slice(at) : live.slice(at, next);
   };
-  const endBody = bodyOf('edgeEndAnchor');
+  const endBody = bodyOf('edgeStartAnchor');
   const midBody = bodyOf('edgeMidAnchor');
   assert.ok(endBody.length > 40 && midBody.length > 40, '两个锚点函数没抠出来 —— 先修这条判据，别让它在空串上全绿');
   // 删除按钮 → 往 source 退 `EDGE_FLOAT_BACK`（**不许**退回「起点→终点」直线近似那种偏移）。
@@ -664,10 +666,14 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   //    改后 = 标签点本身），所以判据盯的是「这一块里没有偏移」而不是某个函数名。
   assert.ok(!/offsetAlong|EDGE_FLOAT_BACK|clampOffset/.test(midBody),
     '中点浮层又被推离了标签点（就地输入框会与它要改的那个字分家）');
-  // ★ 删除按钮的退向必须是**目标句柄轴**（`backX/backY` = smoothstep 末段方向），**不许**退回
-  //   「起点→终点」直线近似 —— 直线近似在拐弯的边上会偏出线外 ~21px（见 `backAxis` 的注释）。
-  //   轴映射本身另有**几何用例**（backAxis 四个方位 + 短边 clamp）。
-  assert.match(endBody, /backX|backY/, '删除按钮没有沿目标句柄轴退（拐弯的边上会偏出线外）');
+  /*
+   * ★ 删除按钮的方向必须是**起点句柄轴**（`outX/outY` = `smoothstep` 首段方向），**不许**退回
+   *   「起点→终点」直线近似 —— 直线近似在拐弯的边上会偏出线外 ~21px（见 `handleOutwardAxis` 的注释）。
+   * ⊘ 2026-10-06（**教师改主意**）：这一条原来盯的是**目标句柄轴**（`backX/backY`，按钮在**终点**侧）。
+   *   教师要求把按钮挪到**起点那一侧**（「压在靠近起点的线上」）⇒ 方向随之换成起点轴。
+   *   轴映射本身另有**几何用例**（`handleOutwardAxis` 四个方位 + 短边 clamp）。
+   */
+  assert.match(endBody, /outX|outY/, '删除按钮没有沿起点句柄轴走（拐弯的边上会偏出线外）');
   // 距离必须过**上限**（否则极短边上会越过中点）。clamp 的数值行为由下面的几何用例喂短边验算。
   assert.match(endBody, /clampOffset\(/, '删除按钮的偏移没有上限（极短边上会越过中点）');
   // 退的方向/长度都取自锚点表：起点锚点算段长 + 目标句柄轴定方向。
@@ -1519,14 +1525,14 @@ test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就�
   assert.match(anchorsBody, new RegExp(`fromX: ${startPoint[1]}\\.x`), '锚点表没有给出起点 fromX（删除按钮没法往 source 退）');
   assert.match(anchorsBody, new RegExp(`fromY: ${startPoint[1]}\\.y`), '锚点表没有给出起点 fromY（删除按钮没法往 source 退）');
   // ★ 2026-10-06：删除按钮的退向改成**目标句柄轴** ⇒ 锚点表还必须吐这条轴，且它必须由
-  //   `targetPosition` 决定（线从哪一侧进目标，就往那一侧退）。轴的具体方位由几何用例（backAxis）守。
-  const backVec = anchorsBody.match(/const (\w+) = backAxis\(targetPosition\)/) || [];
+  //   `targetPosition` 决定（线从哪一侧进目标，就往那一侧退）。轴的具体方位由几何用例（handleOutwardAxis）守。
+  const backVec = anchorsBody.match(/const (\w+) = handleOutwardAxis\(targetPosition\)/) || [];
   assert.ok(backVec[1], '删除按钮的退向不是由 targetPosition（目标句柄轴）决定的');
   assert.match(anchorsBody, new RegExp(`backX: ${backVec[1]}\\.x`), '锚点表没有给出目标句柄轴 backX');
   assert.match(anchorsBody, new RegExp(`backY: ${backVec[1]}\\.y`), '锚点表没有给出目标句柄轴 backY');
   // ⚠️ 按语义判（在函数体里查两轴），不逐字钉返回语句 —— 只同步 x 轴、y 轴没同步就是自己把自己判红 ✗。
   //    格式一变就红的断言本身就是负担。
-  const endFn = blockAfter(live, 'const edgeEndAnchor = ', '\n  const ');
+  const endFn = blockAfter(live, 'const edgeStartAnchor = ', '\n  const ');
   assert.ok(endFn.length > 40, '终点锚点没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.ok(/viewport\.x \+ [\w.]+ \* viewport\.zoom/.test(endFn) && /viewport\.y \+ [\w.]+ \* viewport\.zoom/.test(endFn),
     '终点锚点没有做视口换算（浮层会飘）');
@@ -1536,20 +1542,20 @@ test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就�
   assert.ok(selectedAnchorBody.length > 40, '锚点解析没抠出来 —— 先修这条判据，别让它在空串上全绿');
   const edgeUsesEndAnchor = (source: string): boolean => {
     const body = selectedAnchorSource(source);
-    return /kind === 'edge'/.test(body) && /edgeEndAnchor\(/.test(body) && !/edgeMidAnchor\(/.test(body);
+    return /kind === 'edge'/.test(body) && /edgeStartAnchor\(/.test(body) && !/edgeMidAnchor\(/.test(body);
   };
   assert.ok(edgeUsesEndAnchor(live), '选中连线时的浮层没有落在终点锚点（教师要求它贴在箭头那一端）');
   // ⚠️ 反面对照：把线那一支换成**中点**锚点 ⇒ 必须判违规（这条判据不是恒真的）。
-  const midInstead = live.replace(/(const selectedAnchor = [\s\S]{0,400}?)edgeEndAnchor\(/, '$1edgeMidAnchor(');
+  const midInstead = live.replace(/(const selectedAnchor = [\s\S]{0,400}?)edgeStartAnchor\(/, '$1edgeMidAnchor(');
   assert.notEqual(midInstead, live, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.ok(!edgeUsesEndAnchor(midInstead), '反面对照没被抓住 —— 这条判据是恒真的');
   // 就地输入框那一块（`overlay` 的 label 形态）⇒ 只能用中点锚点（标签画在中点，就地编辑才顺手）。
   const overlayBody = overlaySource(live);
   assert.ok(overlayBody.length > 80, '浮层描述式没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.match(overlayBody, /edgeMidAnchor\(labelingEdge\)/, '就地输入框没有用中点锚点（与它要改的那个标签分家）');
-  assert.ok(!/edgeEndAnchor/.test(overlayBody), '就地输入框被挪到了终点（与它要改的那个标签分家）');
+  assert.ok(!/edgeStartAnchor/.test(overlayBody), '就地输入框被挪到了终点（与它要改的那个标签分家）');
   // ⚠️ 反面对照：把就地输入框挪到终点锚点 ⇒ 必须判违规。
-  const labelAtEnd = overlayBody.replace('edgeMidAnchor(labelingEdge)', 'edgeEndAnchor(labelingEdge)');
+  const labelAtEnd = overlayBody.replace('edgeMidAnchor(labelingEdge)', 'edgeStartAnchor(labelingEdge)');
   assert.notEqual(labelAtEnd, overlayBody, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.ok(!/edgeMidAnchor\(labelingEdge\)/.test(labelAtEnd), '反面对照没被抓住 —— 这条判据是恒真的');
 });
@@ -1568,7 +1574,7 @@ test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就�
  *    测的就是生产代码真正在用的那个数。
  * ⊘ 2026-10-06：`offsetAlong` 与它服务的 `HANDLE_GAP`、以及那条「句柄脱开 Y/N 标签」的像素规则
  *    （从 JSX 读 `<rect height={22}>` + 从 CSS 读句柄 width）**随自定义边一起删掉**了 ——
- *    句柄不存在，就没有「脱开它」这件事。`clampOffset` + `backAxis` 的验算一条没少。
+ *    句柄不存在，就没有「脱开它」这件事。`clampOffset` + `handleOutwardAxis` 的验算一条没少。
  * ⚠️ 反面对照（变异测试，见本轮报告）：把 clamp 去掉、或把某个方位的轴写反 ⇒ 下面这几条必须红。
  */
 test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂一条短边验算（几何函数级）', () => {
@@ -1599,13 +1605,13 @@ test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂�
   assert.ok(EDGE_FLOAT_BACK > 0, '偏移常量 EDGE_FLOAT_BACK 必须是正数');
   // ⚠️ 规则里那句「永不压住句柄」的数值落点：按钮要以自己中心定位，所以往上至少要半个按钮。
   assert.ok(NODE_FLOAT_GAP >= FLOAT_SIZE / 2, `删除图形的按钮会压住节点上边缘（NODE_FLOAT_GAP=${NODE_FLOAT_GAP} < 半个按钮 ${FLOAT_SIZE / 2}）`);
-  const code = ['clampOffset', 'backAxis'].map((name) => `const ${name} = ${grab(name)}`).join('\n');
-  // ⚠️ 只喂给 `backAxis`：它内部拿 `Position.某` 做比较，所以给一份**同一个对象**即可（具体值不重要）。
+  const code = ['clampOffset', 'handleOutwardAxis'].map((name) => `const ${name} = ${grab(name)}`).join('\n');
+  // ⚠️ 只喂给 `handleOutwardAxis`：它内部拿 `Position.某` 做比较，所以给一份**同一个对象**即可（具体值不重要）。
   const Position = { Top: 'top', Bottom: 'bottom', Left: 'left', Right: 'right' } as const;
-  const makeGeometry = new Function('Position', `${code}\nreturn { clampOffset, backAxis };`);
+  const makeGeometry = new Function('Position', `${code}\nreturn { clampOffset, handleOutwardAxis };`);
   const geom = makeGeometry(Position) as {
     clampOffset: (distance: number, span: number) => number;
-    backAxis: (position: string) => { x: number; y: number };
+    handleOutwardAxis: (position: string) => { x: number; y: number };
   };
 
   // ① 上限：**不超过段长的一半**（这正是不越过中点的理由），常见边长下不许打折。
@@ -1617,18 +1623,18 @@ test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂�
   // ② 短边上的**删除按钮**：end=(0,200)、source=(0,180)（段长只有 20px）⇒ 必须仍落在**靠终点这一侧**。
   const endPt = { x: 0, y: 200 };
   const fromPt = { x: 0, y: 180 };
-  const back = geom.backAxis(Position.Top);
+  const back = geom.handleOutwardAxis(Position.Top);
   const step = geom.clampOffset(EDGE_FLOAT_BACK, Math.hypot(endPt.x - fromPt.x, endPt.y - fromPt.y));
   const movedEnd = { x: endPt.x + back.x * step, y: endPt.y + back.y * step };
   assert.ok(movedEnd.y < endPt.y, '删除按钮没有往 source 退（方向反了）');
   assert.ok(movedEnd.y > (endPt.y + fromPt.y) / 2, '短边上删除按钮退过了中点（44px 的它会盖住另一半线）');
 
   // ③ **目标句柄轴**：四个方位各退到**远离目标节点**的一侧 —— 写反一个，删除按钮就压在箭头上。
-  assert.deepEqual(geom.backAxis(Position.Top), { x: 0, y: -1 }, 'Top 的退向不对（线从上方进 ⇒ 该往 -y 退）');
-  assert.deepEqual(geom.backAxis(Position.Bottom), { x: 0, y: 1 }, 'Bottom 的退向不对（该往 +y 退）');
-  assert.deepEqual(geom.backAxis(Position.Left), { x: -1, y: 0 }, 'Left 的退向不对（该往 -x 退）');
-  assert.deepEqual(geom.backAxis(Position.Right), { x: 1, y: 0 }, 'Right 的退向不对（该往 +x 退）');
-  const axes = [Position.Top, Position.Bottom, Position.Left, Position.Right].map((p) => JSON.stringify(geom.backAxis(p)));
+  assert.deepEqual(geom.handleOutwardAxis(Position.Top), { x: 0, y: -1 }, 'Top 的退向不对（线从上方进 ⇒ 该往 -y 退）');
+  assert.deepEqual(geom.handleOutwardAxis(Position.Bottom), { x: 0, y: 1 }, 'Bottom 的退向不对（该往 +y 退）');
+  assert.deepEqual(geom.handleOutwardAxis(Position.Left), { x: -1, y: 0 }, 'Left 的退向不对（该往 -x 退）');
+  assert.deepEqual(geom.handleOutwardAxis(Position.Right), { x: 1, y: 0 }, 'Right 的退向不对（该往 +x 退）');
+  const axes = [Position.Top, Position.Bottom, Position.Left, Position.Right].map((p) => JSON.stringify(geom.handleOutwardAxis(p)));
   assert.equal(new Set(axes).size, 4, '四个方位的退向有重复（有方位没被区分开）');
 });
 

@@ -80,7 +80,7 @@ type FlowData = { label: string; kind: FlowKind; locked?: boolean };
  * ⚠️ `junction` 那一项是**凑键用的**：连接点是「连」出来的、工具栏上没有它的按钮
  *    （`FlowKind` 里加了它，这张表就少一个键 —— 少一个键 TS 会当场报错）。
  */
-const FLOW_ICONS: Record<FlowKind | 'restore' | 'tidy' | 'trash', string> = {
+const FLOW_ICONS: Record<FlowKind | 'restore' | 'tidy' | 'close', string> = {
   terminator: 'M7 5.5h10a4.5 4.5 0 0 1 0 9H7a4.5 4.5 0 0 1 0-9Z',
   process: 'M4 6.5h16v11H4Z',
   decision: 'M12 3.6 20.4 12 12 20.4 3.6 12Z',
@@ -88,7 +88,9 @@ const FLOW_ICONS: Record<FlowKind | 'restore' | 'tidy' | 'trash', string> = {
   junction: 'M12 6.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z',
   restore: 'M19 12a7 7 0 1 1-2.1-5M19 4.5V9h-4.5',
   tidy: 'M4 6h5M15 6h5M9 3v6M4 18h5M15 18h5M15 15v6M7 12h10',
-  trash: 'M5 7.5h14M9.5 7.5V5.5h5v2M7 7.5l1 11h8l1-11M10.5 10.5v5M13.5 10.5v5',
+  /* ★ 2026-10-06（教师）：「可以换成一个小叉叉图标」—— 原来这里是垃圾桶（`trash`）。
+     ⚠️ 键名与 path 一起改的：名字留 `trash` 会骗下一个人以为还是垃圾桶。 */
+  close: 'M7 7l10 10M17 7L7 17',
 };
 export type FlowIconKey = keyof typeof FLOW_ICONS;
 type FlowNode = Node<FlowData>;
@@ -205,6 +207,12 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
           value={draft}
           style={{ width: `${textWidth}em` }}
           onChange={(event) => setDraft(event.target.value)}
+          /* ★ 2026-10-06（教师）：「双击一个图形框，默认**全选**里面的文字，方便修改」。
+             input 只在编辑态存在（渲染条件是 `editing && …`）⇒ 这个 focus **就是**「刚进入编辑」
+             那一次，一句 `select()` 就够，不必额外记「是不是刚进来」。
+             ⚠️ 别改到别处去（比如往 input 外面挂监听、每次都全选）—— 那会让**在框里点一下
+             就全选掉**，学生想放光标到中间改一个字都做不到。 */
+          onFocus={(event) => event.currentTarget.select()}
           onBlur={commitLabel}
           onKeyDown={(event) => {
             /* ⚠️ 输入法组合中：Enter 是「上屏候选词」、Escape 是「取消组合」，两个键都归输入法用，
@@ -442,22 +450,25 @@ const clampOffset: (distance: number, span: number) => number = (distance, span)
 /*
   ⊘ 2026-10-06：这里原有 `offsetAlong`（把锚点沿「point → toward」推开一段，给中点句柄与就地输入框
     用的那套偏移）。它只剩**一个**调用点（`edgeMidAnchor`），而中点那句现在回到裸标签点
-    ⇒ 函数本身变成死代码，一并删除。`clampOffset` 留着 —— 删除按钮（`edgeEndAnchor`）还在用它。
+    ⇒ 函数本身变成死代码，一并删除。`clampOffset` 留着 —— 删除按钮（`edgeStartAnchor`）还在用它。
 */
 
 /**
- * **目标句柄轴的外法线**（单位向量）＝ 删除按钮「往 source 退」的方向。
+ * **句柄轴的外法线**（单位向量）—— 从某个句柄出发、**离开它所属那个节点**的方向。
  *
- * 🔴 为什么不用「起点→终点」直线近似：`smoothstep` 的**末段一定沿目标句柄轴**进入目标
- *    ⇒ 沿这条轴退才是严格的「沿线」。直线近似在**拐弯的边**上（目标句柄不在 source 的正对面、
- *    或节点横向错开很大）能与真实末段差 ~75° —— 按 dx=200 / dy=146 那种拐角算，26px 会变成
- *    「偏离线 ~21px、只沿线退 ~15px」，按钮就横在线旁边了。
- *    方位对应：目标句柄在 Top ⇒ 线从**上方**进目标 ⇒ 往回退就是 **-y**；Bottom / Left / Right 同理。
+ * 🔴 为什么不用「起点→终点」直线近似：`smoothstep` 的**首段一定沿起点句柄轴出来**、
+ *    **末段一定沿目标句柄轴进去** ⇒ 只有沿这两条轴走才是严格的「压在线上」。
+ *    直线近似在**拐弯的边**上能与真实的那一段差 ~75° —— 按 dx=200 / dy=146 那种拐角算，
+ *    26px 会变成「偏离线 ~21px、只沿线走 ~15px」，按钮就横在线旁边了。
+ *    方位对应：句柄在 Top ⇒ 线从**上方**进出 ⇒ 往外走就是 **-y**；Bottom / Left / Right 同理。
+ *
+ * ⚠️ 名字里**不许**再带「back」—— 它两头都用（起点侧算「往终点方向走」、目标侧算「往 source 退」），
+ *    叫 back 会让下一个人以为只能喂 `targetPosition`（改名前就叫这个，2026-10-06 改掉）。
  */
-const backAxis: (targetPosition: Position) => FlowPoint = (targetPosition) => {
-  if (targetPosition === Position.Top) return { x: 0, y: -1 };
-  if (targetPosition === Position.Bottom) return { x: 0, y: 1 };
-  if (targetPosition === Position.Left) return { x: -1, y: 0 };
+const handleOutwardAxis: (handlePosition: Position) => FlowPoint = (handlePosition) => {
+  if (handlePosition === Position.Top) return { x: 0, y: -1 };
+  if (handlePosition === Position.Bottom) return { x: 0, y: 1 };
+  if (handlePosition === Position.Left) return { x: -1, y: 0 };
   return { x: 1, y: 0 };
 };
 
@@ -849,8 +860,11 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     // ⚠️ 这个 `to` 就是**终点锚点**：箭头落在目标节点的这一侧句柄上。
     const to = handleFlowPoint(target, edge.targetHandle, Position.Top);
     /* ★ 删除按钮「往 source 退」的方向 = **目标句柄轴的外法线**（末段方向），不是「起点→终点」直线。
-       ⚠️ 由 `targetPosition` 决定 —— 线从哪一侧进目标，就往那一侧退（见 `backAxis`）。 */
-    const back = backAxis(targetPosition);
+       ⚠️ 由 `targetPosition` 决定 —— 线从哪一侧进目标，就往那一侧退（见 `handleOutwardAxis`）。 */
+    const back = handleOutwardAxis(targetPosition);
+    /* ★ 2026-10-06（教师改主意）：删除按钮挪到**起点那一侧** ⇒ 还需要一个「从起点往外」的方向。
+       同一张表，只是喂 `sourcePosition`（`smoothstep` 的首段一定沿它出来）。 */
+    const out = handleOutwardAxis(sourcePosition);
     /*
      * ⚠️ 这里**不再**把 `data.routeX/routeY` 传给 `centerX/centerY`：教师定了「全回原版」之后，
      * 边就是库内置的 `smoothstep`（它压根不认 `centerX/centerY`，见 `FLOW_EDGE_TYPE` 的注释），
@@ -864,6 +878,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     return {
       midX: labelX, midY: labelY, endX: to.x, endY: to.y, fromX: from.x, fromY: from.y,
       backX: back.x, backY: back.y,
+      outX: out.x, outY: out.y,
     };
   }, [edges, nodes]);
 
@@ -883,26 +898,25 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   };
 
   /**
-   * ★ 2026-10-06（教师截图）：「删除图标移到这条连线的**终点**」——
-   *   原来它和就地输入框一样压在中点，正好把线上的字糊住。
-   * ⚠️ 终点 = **箭头落下的那一端**（目标节点那侧），**不是**起点（source 那端）。
-   * ⚠️ 两个浮层从此用**两个不同的锚点**（删除按钮 → 终点；就地输入框 → 中点），别合并。
+   * ★ 2026-10-06（**教师改主意了**）：「可以换成一个小叉叉图标，然后**压在靠近起点的线上**」。
+   *
+   * ⊘ 这推翻了上一版那条规矩。原话是「删除图标移到这条连线的**终点**」（动机：别和就地输入框
+   *   一起压在中点、把线上的字糊住），那一版还刻意**向侧边让开 34px** 去躲线。
+   *   现在教师要求挪到**起点那一侧**，而且要**压在线上**（不再让开）⇒ 两条都按新的来。
+   *
+   * ✅ 方向取**起点句柄轴的外法线**（`handleOutwardAxis(sourcePosition)`）——
+   *   `smoothstep` 的**首段一定沿起点句柄轴出来** ⇒ 沿这条轴走才是严格的「压在线上」；
+   *   用「起点→终点」直线近似在拐弯的边上会横到线旁边去（见那张表的注释）。
+   * ✅ 距离过 `clampOffset`，上限取**半长**：起点往外走最多到中点，不会顶到终点那头。
+   * ⚠️ 与 `edgeMidAnchor`（就地输入框，仍在中点）**仍然是两个锚点**，别合并。
    */
-  const edgeEndAnchor = (edgeId: string | null) => {
+  const edgeStartAnchor = (edgeId: string | null) => {
     const anchors = edgeFlowAnchors(edgeId);
     if (!anchors) return null;
-    const { endX, endY, fromX, fromY, backX, backY } = anchors;
-    /* ★ 往 source 退 `EDGE_FLOAT_BACK`：44px 的删除按钮不许盖住箭头、最后那段线，以及目标侧的连接点。
-       ✅ 方向取**目标句柄轴**（`backX/backY` = 末段方向）⇒ 拐弯的边上也真的贴线；
-          「起点→终点」直线近似在那种边上能偏出线外 ~21px（见 `backAxis` 的注释）。
-       ✅ 距离过 `clampOffset`：短边上退不到 `EDGE_FLOAT_BACK` 就停住，不会越过中点 / source 端。 */
-    const step = clampOffset(EDGE_FLOAT_BACK, Math.hypot(endX - fromX, endY - fromY));
-    // 删除按钮在箭头端附近，但向末段侧边让出一格，避免压住线中间的路径调整圆点。
-    const shiftedEnd = {
-      x: endX + backX * step + (backY !== 0 ? 34 : 0),
-      y: endY + backY * step + (backX !== 0 ? 34 : 0),
-    };
-    return { x: viewport.x + shiftedEnd.x * viewport.zoom, y: viewport.y + shiftedEnd.y * viewport.zoom };
+    const { endX, endY, fromX, fromY, outX, outY } = anchors;
+    const step = clampOffset(EDGE_FLOAT_BACK, Math.hypot(endX - fromX, endY - fromY) / 2);
+    const point = { x: fromX + outX * step, y: fromY + outY * step };
+    return { x: viewport.x + point.x * viewport.zoom, y: viewport.y + point.y * viewport.zoom };
   };
 
   const addNode = (kind: FlowKind, label: string) => {
@@ -1270,7 +1284,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    */
   const selectedAnchor = (() => {
     if (!selected) return null;
-    return selected.kind === 'edge' ? edgeEndAnchor(selected.id) : nodeFloatAnchor(selected.id);
+    return selected.kind === 'edge' ? edgeStartAnchor(selected.id) : nodeFloatAnchor(selected.id);
   })();
 
   /**
@@ -1519,7 +1533,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
             style={{ left: overlay.anchor.x, top: overlay.anchor.y }}
             onClick={removeSelected}
           >
-            <svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.trash} /></svg>
+            {/* ★ 2026-10-06（教师）：「改成一个小叉叉」—— 原来是垃圾桶。小圆的样式由
+                `.flowEdgeFloat > svg` 那条规则给（命中区仍是 44px，见那里的注释）。 */}
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.close} fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
           </button>
         ))}
       </div>

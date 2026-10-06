@@ -70,6 +70,26 @@ test('连线标签的 Enter/Escape 同样要先排除输入法组合态', () => 
   );
 });
 
+/*
+  ★ 2026-10-06（教师）：「**双击一个图形框，默认全选里面的文字**，方便修改」。
+
+  现在的行为是：双击 → 进编辑 → 光标落在文字**末尾**（`autoFocus` 只负责聚焦、不负责选中）
+  ⇒ 想改内容得先自己全选一次。
+  ✅ 加一句 `select()`：input 只在编辑态存在（渲染条件是 `editing && …`）⇒ `onFocus` 一次
+     **就是**「刚进入编辑」那一次，不必额外记「是不是刚进来」。
+  ⚠️ 别改成「每次 focus 都全选」那种写法（比如往 input 外面挂监听）—— 那会让**在框里点一下
+     就全选掉**，学生想放光标到中间改一个字都做不到。这里的写法天然只有一次。
+*/
+test('双击进入编辑时全选文字 —— 直接开打就是替换，不用先自己全选', () => {
+  const block = blockBetween(SOURCE, 'aria-label="节点文字"', '<span');
+  assert.ok(block.length > 200, `切片太短（${block.length}），判据可能在空串上假绿`);
+  assert.match(
+    block,
+    /onFocus=\{\(event\) => event\.currentTarget\.select\(\)\}/,
+    '进入编辑时要把文字全选上',
+  );
+});
+
 test('连线标签的输入框保持非受控 —— 它是「中文能打」的对照物', () => {
   const block = edgeLabelInputSource(SOURCE);
   assert.ok(block.length > 100, `连线标签输入框的切片太短（${block.length} 字符），判据可能在空串上假绿`);

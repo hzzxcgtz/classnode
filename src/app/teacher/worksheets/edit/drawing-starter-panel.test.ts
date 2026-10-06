@@ -13,6 +13,14 @@ import path from 'node:path';
 
 const FILE = path.resolve(import.meta.dirname, 'bodies', 'drawing-settings.tsx');
 const source = fs.readFileSync(FILE, 'utf8');
+/**
+ * 与 `surface-lifecycle.test.ts` 同一份剥注释规则（本仓的注释都写在整行上）。
+ * ⚠️ 「这一档已经删掉」这件事**写在注释里**（给下一个人看的历史），所以那几条「不许存在」的
+ *    判据必须在**剥掉注释之后**判 —— 否则守的就变成「注释里也不许提这个词」，那是钉格式。
+ */
+function stripComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+}
 
 test('阳性对照：这份源码确实读到了（否则下面几条在空串上永远绿）', () => {
   assert.ok(source.length > 500, 'drawing-settings.tsx 没读到');
@@ -34,36 +42,34 @@ test('★ 底稿面板：用学生的画板、写回带 tool 的 drawingStarter�
   assert.match(source, /初始图目前只支持/, '非流程图档没有说明');
 });
 
-test('★ 2026-10-06（教师）：「锁定初始图」开关 —— 默认锁、只在有初始图时出现、写回 drawingStarterLocked', () => {
+test('★ 2026-10-06（教师最终拍板）：「锁定初始图」开关**不许存在**（连同它的副说明）', () => {
   /*
-    🔴 信息科技课作业的常态是「老师给一半，学生只补连线，不许动老师的框」⇒ 默认就是**锁**：
-      题目数据上那个字段**缺席 = 锁定**，教师**取消锁定**时才写 `false`。
-    ⚠️ 字段名 / 有没有写反**不在这里验**（源码正则猜不出数据语义）—— 那两条由
-      `src/lib/worksheet-drawing-starter.test.ts` 里那条**真调用**的往返用例守
-      （`drawingStarterLockPatch(false)` ⇒ `{ drawingStarterLocked: false }` ⇒ 读回来 locked === false）。
-      这里只守**接线**：这个开关接到了那个纯函数上、默认值取自 `starter.locked`、没有初始图就没有它。
+    🔴 教师原话：「我觉得教师把初始图锁定也不对，这样学生端很多操作都无法进行了，我觉得还是不要
+       锁定，因为学生端已经有恢复初始图功能了。」
+    ⇒ 面板上**没有**这个开关、也没有那句副说明；写回那个字段的纯函数也不再被引用。
+    ⚠️ 这条判据是**单档语义**里教师端那一半，不是「删空」：它同时要求「初始图」那块**还在**
+      （`{starter ? (` 那段必须在、画板必须在），只是不再有锁这一档。
+    ⚠️ 反面对照见本轮报告的变异测试（把开关加回来 ⇒ 必须红）。
   */
-  // 出现条件：这段必须落在 `{starter ? ( … ) : null}` 里（没有初始图就没什么可锁的）。
-  const lockSwitchInStarterBranch = (src: string): boolean => /\{starter \? \([\s\S]{0,700}?锁定初始图/.test(src);
-  assert.ok(lockSwitchInStarterBranch(source), '「锁定初始图」不在「这一题有初始图」的分支里 —— 没有初始图也会出现');
-  // ⚠️ 反面对照：把出现条件换成恒真 ⇒ 必须判违规（证明这条判据守的正是那个分支）。
-  const alwaysShown = source.replace('{starter ? (', '{true ? (');
-  assert.notEqual(alwaysShown, source, '反面对照没造出来 —— 这条判据会变成恒真');
-  assert.ok(!lockSwitchInStarterBranch(alwaysShown), '反面对照没被抓住 —— 这条判据是恒真的');
-  const blockMatch = source.match(/\{starter \? \([\s\S]{0,700}?锁定初始图[\s\S]{0,400}/);
-  assert.ok(blockMatch, '「锁定初始图」的开关块没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  const block = blockMatch[0];
-  // ① 是**开关**不是复选框（教师澄清 3）：`role="switch"`，外观复用既有那套轨道。
-  assert.match(block, /role="switch"/, '「锁定初始图」不是开关（缺 role="switch"）');
-  assert.match(block, /className="worksheet-editor-drawing-switch"/, '「锁定初始图」没有复用既有的开关样式（那条轨道是自绘的）');
-  // ② 默认 = **锁定**：勾选状态读的是 `starter.locked`（`readDrawingStarter` 给的，缺席 = true）。
-  //    ⚠️ 取反（`!starter.locked`）会红 —— 那正是「默认锁」被写反的样子。
-  assert.match(block, /checked=\{\s*starter\.locked\s*\}/, '「锁定初始图」的勾选状态不是取自 starter.locked（缺席 = 锁定）');
-  // ③ 写回：走那个纯函数（它只在**取消锁定**时写 false，与「缺席 = 锁定」配套）。
-  assert.match(block, /drawingStarterLockPatch\(\s*event\.target\.checked\s*\)/,
-    '开关没有把「当前是否锁定」交给 drawingStarterLockPatch 写回题目数据');
-  // ④ 副说明一句话讲清后果（教师原话：「学生只能添加，不能修改或删除你给的框与连线」）。
-  assert.match(block, /学生只能添加，不能修改或删除你给的框与连线/, '开关没有一句话讲清「锁了会怎么样」');
+  // ① 面板上不许再出现「锁定初始图」这个词、那个写回函数、以及那个字段名（**剥掉注释之后**判：
+  //    「这一档已经删掉」这句话本身写在注释里）。
+  const code = stripComments(source);
+  assert.ok(!/锁定初始图/.test(code), '「锁定初始图」开关（或它的副说明）又回来了 —— 教师已经拍板撤掉这一档');
+  assert.ok(!/drawingStarterLockPatch/.test(code), '还在用 `drawingStarterLockPatch` 往题目上写「锁定」那个字段');
+  assert.ok(!/drawingStarterLocked/.test(code), '还在读/写题目上那个历史的「锁定」字段（学生端一律忽略它，教师端更不该碰）');
+  // ② 副说明那句具体的话也不许留（它讲的是「锁了会怎么样」，现在没有那一档了）。
+  assert.ok(!/学生只能添加，不能修改或删除你给的框与连线/.test(code), '锁定那一档的副说明还留着（面板上会讲一件不存在的事）');
+  // ③ 「要不要设底稿」那个开关**必须还在**（撤的是「锁定」，不是初始图本身）。
+  assert.match(code, /checked=\{!!starter\}/, '「要不要设底稿」那个开关被误删了');
+  assert.match(code, /\{starter \? \(/, '「这一题有初始图」那一支被误删了（初始图面板整块没了）');
+  assert.match(code, /drawingStarter: \{ tool: 'flowchart', data: next \}/, '写回底稿的接线被误删了');
+  // ⚠️ 反面对照：把那个开关块塞回去 ⇒ 上面那条必须红（证明它不是恒真）。
+  const switchBack = code.replace(
+    '{starter ? (\n          tool === \'flowchart\' ? (',
+    '{starter ? (\n          <label className="worksheet-editor-drawing-switch"><input type="checkbox" role="switch" checked={starter.locked} /><span>锁定初始图</span></label>\n          tool === \'flowchart\' ? (',
+  );
+  assert.notEqual(switchBack, code, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(/锁定初始图/.test(switchBack), '反面对照没被抓住 —— 这条判据是恒真的');
 });
 
 test('★ 2026-10-06（教师）：照片上传时整块隐藏；两个区域改成紧凑样式', () => {

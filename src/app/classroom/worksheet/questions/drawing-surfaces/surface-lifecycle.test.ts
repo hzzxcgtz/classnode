@@ -98,15 +98,19 @@ const splitterDecls = (source: string) => (source.match(/const splitEdgeAt = use
 const removeSelectedSource = (source: string) => blockAfter(source, 'const removeSelected = ', '\n  const ');
 
 /**
- * ★ 2026-10-06（教师）：「锁定初始图」—— 工具条上「恢复初始图」那颗按钮的 JSX 块
- * （从它**出现条件**那句 `{starter …&& (` 一路取到按钮文字）。
- * ⚠️ 判据是「出现条件里有没有一个**取反的**锁标记」，不是逐字钉变量名（`starterLocked` / `starter.locked`
- *    都认）；把闸整个拿掉、或者忘了取反（`starter.locked &&`），它都必须判红。
+ * ★ 2026-10-06（教师最终拍板）：「恢复初始图」那颗按钮 —— 它的**出现条件**必须只认
+ * 「这一题有没有初始图」，**不许**再出现任何锁标记（教师：「还是不要锁定，因为学生端已经有
+ * 恢复初始图功能了」）。把闸整个拿掉、或者又加回 `!starterLocked` / `starter.locked`，都必须判红。
+ * ⚠️ 判据不逐字钉写法：从「恢复初始图」那几个字**往前**找到最近的一句 `{starter…` 门（`&&` / `?`
+ *    都认），再看这一段里有没有 `locked` 这样的词。
  */
-const RESTORE_GATE = /\{starter[^}]*&&\s*\(\s*<button[\s\S]{0,400}?恢复初始图/;
-const restoreShownWhenUnlocked = (source: string): boolean => {
-  const gate = source.match(RESTORE_GATE);
-  return !!gate && /!\s*[\w.]*[Ll]ocked\b/.test(gate[0]);
+const restoreShownWheneverStarter = (source: string): boolean => {
+  const at = source.indexOf('恢复初始图');
+  if (at === -1) return false;
+  const before = source.slice(Math.max(0, at - 500), at);
+  const gateAt = before.lastIndexOf('{starter');
+  if (gateAt === -1) return false;
+  return !/[Ll]ocked/.test(before.slice(gateAt));
 };
 
 function stripComments(source: string): string {
@@ -240,25 +244,29 @@ test('🔴 流程图三问（2026-10-06）：看图柄、箭头、判断框', ()
   assert.match(css, /\.flowNode input \{ position: relative; z-index: 1; \}/, '菱形里的输入框没有抬到 SVG 之上（文字会被白底盖住）');
 });
 
-test('★ 2026-10-06（教师）：判断框出来的两条线默认 Y / N，线上可以写字，且字要活下来', () => {
+test('★ 2026-10-06（教师）：判断框出来的两条线带上默认标注，线上可以写字，且字要活下来', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   const svg = stripComments(fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', '..', 'lib', 'worksheet-flowchart-svg.ts'), 'utf8'));
-  // ① 判断框的出边自动 Y / N（其它节点不自动给字 —— 每条线都塞字是噪音）。
+  // ① 判断框的出边自动带默认标注（其它节点不自动给字 —— 每条线都塞字是噪音）。
+  //    ★ 2026-10-06（教师拍板）：默认值从 `Y / N` 换成「是 / 否」—— 数值行为由下面那条
+  //    「是 / 否」的用例**真调用**验；这里只钉「判断框那一支确实把计数交给它了」。
   assert.match(live, /source\?\.data\.kind === 'decision'/, '没有「从判断框出来」这条判据');
-  assert.match(live, /used === 0 \? 'Y' : used === 1 \? 'N'/, '判断框的出边没有 Y / N 的默认值');
+  assert.match(live, /decisionBranchLabel\(used\)/, '判断框的出边没有走那个默认标注的映射（或计数没有交给它）');
   // ② 交出去的数据必须带上 label（漏了它 = 线上写的字一刷新就没了，而屏幕上不报错）。
   assert.match(live, /\.\.\.\(label \? \{ label \} : \{\}\)/, 'toFlowPayload 把线上的字丢了');
   // ③ 线上能写字：点线之后工具条出现 Y / N / 是 / 否 / 清空。
   assert.match(live, /onEdgeClick=/, '点线没有反应 —— 学生没法给线标注');
   assert.match(live, /\['Y', 'N', '是', '否'\]\.map/, '线标注那一组按钮不见了');
   // ★ 2026-10-06（教师）：「加上去的字变成了小黑块」——根因是只引了 `base.css`（没有颜色），
-  //   边的标签背景矩形拿不到 `fill` ⇒ SVG 默认黑填充。两条判据：① 引带主题的那份样式表；
+  //   边的标签拿不到 `fill` ⇒ SVG 默认黑填充。两条判据：① 引带主题的那份样式表；
   //   ② 我们自己的 CSS 再把标签颜色钉一遍（换主题也不会变成读不出来的颜色）。
+  //   ★ 2026-10-06（教师上传的标准流程图）：标签改由我们那份**只管标签**的自定义边摆位
+  //     ⇒ 白底框（`.react-flow__edge-textbg`）整个去掉（它唯一的作用是「压线也读得清」）。
   assert.match(live, /@xyflow\/react\/dist\/style\.css/, '还在用没有颜色的 base.css —— 线标签会渲染成小黑块');
   assert.ok(!/@xyflow\/react\/dist\/base\.css/.test(live), 'base.css 还留着（两份样式表会打架）');
   const flowCss = stripComments(CSS);
-  assert.match(flowCss, /\.react-flow__edge-textbg\) \{ fill: #ffffff; \}/, '线标签的背景没有钉成白色');
-  assert.match(flowCss, /\.react-flow__edge-text\) \{[\s\S]{0,120}?fill: #263b53;/, '线标签的文字颜色没有钉住');
+  assert.match(flowCss, /\.flowEdgeLabel \{[\s\S]{0,220}?fill: #263b53;/, '线标签的文字颜色没有钉住');
+  assert.ok(!/\.react-flow__edge-textbg/.test(flowCss), '白底框那条规则又回来了（标签已经不压线，白方块只会盖住旁边的线/网格）');
   // 老师问「可不可以用户加自定义的字？」⇒ 那一组里必须有一个自由输入框（受控）。
   assert.match(live, /aria-label="这条线上的自定义文字"/, '没有自定义文字输入框');
   assert.match(live, /value=\{editingLabel\}/, '输入框不是受控的（切走线会残留上一条的字）');
@@ -447,101 +455,117 @@ test('★ 2026-10-06：库自带的**悬停信息框**必须关掉（`showInfobo
   assert.ok(!turnsInfoboxOff(dropped), '反面对照（整句删掉）没被抓住 —— 这条判据是恒真的');
 });
 
-test('★ 2026-10-06（教师）：底稿（A 不算学生作答 / B 锁定初始图 / 先做流程图）', async () => {
+test('★ 2026-10-06（教师）：底稿（A 不算学生作答 / B 初始图永远可改可删 / 先做流程图）', async () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   const body = stripComments(fs.readFileSync(path.resolve(HERE, '..', 'drawing-tool-body.tsx'), 'utf8'));
   // ① 学生端拿得到底稿，并交给画板。
   assert.match(body, /starter=\{readDrawingStarter\(node\)\}/, '学生端没有把底稿交给画板');
-  // ② 读的时候合并（底稿 + 学生画的）—— ★ 必须把「锁定初始图」这一档**交给合并**；
-  //    写的时候剔除（A：底稿不算他的作答）。
-  assert.match(live, /const starterLocked = /, '学生端没有读「锁定初始图」这一档');
-  assert.match(live, /mergeFlowchart\(starterPayload, readFlowchartPayload\(readFlowData\(data\)\), starterLocked\)/,
-    '没有把「锁定初始图」交给合并 —— 两档会不分（要么全锁、要么老师取消了也还锁着）');
+  // ② 读的时候合并（底稿 + 学生画的）；写的时候剔除（A：底稿不算他的作答）。
+  assert.match(live, /mergeFlowchart\(starterPayload, readFlowchartPayload\(readFlowData\(data\)\)\)/,
+    '没有把「底稿 + 学生画的」交给合并');
   assert.match(live, /onChange\(subtractFlowchart\(payload, starterPayload\)/, '交上去的作答没有剔除底稿（A）');
   // ③ 快照仍按**全部**画（教师预览/AI/报告要看到完整那张图）。
   assert.match(live, /lastFlow\.current = payload;/, '快照用的不是完整那份（教师/AI 会看到缺了底稿的图）');
-  // ④ ★ B 现在是**条件性**的（「锁定初始图」一个开关）：
-  //    · 未锁 ⇒ 「恢复初始图」必须出现（那是**唯一**的回退路径）；
-  //    · 锁定 ⇒ 它必须**不**出现（学生动不了老师的东西，恢复只会误删他自己的补充）。
-  assert.match(live, /restoreFlowchart\(starterPayload, starterLocked\)/, '没有「恢复初始图」的实现（或没认那一档开关）');
-  assert.ok(restoreShownWhenUnlocked(live), '「恢复初始图」没有按「未锁」显示 —— 锁定的题也会给学生一颗恢复按钮');
-  // ⚠️ 反面对照：把出现条件里那个取反去掉（回到「有初始图就显示」）⇒ 必须判违规。
-  const restoreGate = live.match(RESTORE_GATE);
-  assert.ok(restoreGate, '「恢复初始图」的按钮块没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  const withoutGate = live.replace(restoreGate[0], restoreGate[0].replace(/!\s*[\w.]*[Ll]ocked\s*&&\s*/, ''));
-  assert.notEqual(withoutGate, live, '反面对照没造出来 —— 这条判据会变成恒真');
-  assert.ok(!restoreShownWhenUnlocked(withoutGate), '反面对照没被抓住 —— 这条判据是恒真的');
-  // ⑤ 「打不打锁」这件事本身必须**真能分档** —— 这里真调一次纯函数（不猜实现写法；`locked` 必填）。
-  //    ⚠️ 这也正是上一版那句「源码里不许出现 draggable: false」换来的东西：那时它守的是
-  //    「底稿又被无条件锁住了」，现在换成**行为**判据 —— 未锁一个标记都不许有、锁定必须都带锁。
-  const { mergeFlowchart } = await import('../../../../../lib/worksheet-drawing-starter.ts');
-  const starter = { nodes: [{ id: 't1', data: { label: '开始' } }], edges: [{ id: 'e1', source: 't1', target: 't1' }] };
-  const openGraph = mergeFlowchart(starter, { nodes: [], edges: [] }, false);
-  assert.equal(openGraph.nodes[0].draggable, undefined, '未锁时底稿还被锁着不能拖（教师取消锁定后学生应当可以改）');
-  assert.equal(openGraph.edges[0].deletable, undefined, '未锁时底稿的连线还被锁着不能删');
-  const lockedGraph = mergeFlowchart(starter, { nodes: [], edges: [] }, true);
-  assert.equal(lockedGraph.nodes[0].draggable, false, '锁定时底稿的框还能拖');
-  assert.equal(lockedGraph.nodes[0].deletable, false, '锁定时底稿的框还能删');
-  assert.equal(lockedGraph.edges[0].deletable, false, '锁定时底稿的连线还能删');
+  // ④ ★ B（教师最终拍板）：「锁定初始图」撤掉 ⇒ 回退**只靠**「恢复初始图」，它**无条件出现**
+  //    （只要这一题有初始图）。出现条件里**不许**再出现任何锁标记。
+  assert.match(live, /restoreFlowchart\(starterPayload\)/, '没有「恢复初始图」的实现');
+  assert.ok(restoreShownWheneverStarter(live), '「恢复初始图」的出现条件里又出现了锁标记（或者那颗按钮整块没了）');
+  // ⚠️ 反面对照：把出现条件加回一个锁标记 ⇒ 必须判违规（证明这条判据不是恒真的）。
+  const gatedAgain = live.replace('{starter && (', '{starter && !starterLocked && (');
+  assert.notEqual(gatedAgain, live, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!restoreShownWheneverStarter(gatedAgain), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⑤ 「初始图永远可改可删」这件事必须**真调纯函数**验（不猜实现写法）：
+  //    · 旧字段 `drawingStarterLocked: true` 一个字都不读（读出来的形状里没有 locked）；
+  //    · 合并之后底稿的每一件都不带任何锁标记。
+  //    ⚠️ 这也正是上一版那句「源码里不许出现 draggable: false」换来的东西：现在换成**行为**判据。
+  const { mergeFlowchart, readDrawingStarter, readFlowchartPayload } = await import('../../../../../lib/worksheet-drawing-starter.ts');
+  const payload = { nodes: [{ id: 't1', data: { label: '开始' } }], edges: [{ id: 'e1', source: 't1', target: 't1' }] };
+  const starter = readDrawingStarter({
+    type: 'drawing', data: { drawingStarter: { tool: 'flowchart', data: payload }, drawingStarterLocked: true },
+  });
+  assert.ok(starter, '带 `drawingStarterLocked: true` 的题读不出底稿了');
+  assert.deepEqual(starter, { tool: 'flowchart', data: payload },
+    '读底稿时又消费了 `drawingStarterLocked` —— 旧字段必须被忽略（不迁移、不写回、不报错）');
+  const graph = mergeFlowchart(readFlowchartPayload(starter.data), { nodes: [], edges: [] });
+  assert.equal(graph.nodes[0].draggable, undefined, '旧字段 `drawingStarterLocked: true` 让底稿的框变成不可编辑（不能拖）');
+  assert.equal(graph.nodes[0].deletable, undefined, '旧字段 `drawingStarterLocked: true` 让底稿的框变成不可删的');
+  assert.equal(graph.edges[0].deletable, undefined, '旧字段 `drawingStarterLocked: true` 让底稿的连线变成不可删的');
 });
 
-test('★ 2026-10-06（教师）：「锁定初始图」= 老师的不可动、学生自己的可动（判据按 id）', () => {
+test('★ 2026-10-06（教师最终拍板）：「锁定初始图」撤干净 —— 学生端不再消费任何锁标记（四条路全开）', async () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   /*
-    🔴 判据**按 id**：初始图里出现过的 id 就是「老师的」（`starterNodeIds` / `starterEdgeIds`）。
-      这正是「连到线中点」拆线后**头段沿用原 id** 的原因之一 —— 拆出来的头段仍是老师的，
-      而尾段、交点，以及学生新拉的那根线都是他自己的（照旧随便改）。
+    🔴 教师原话（逐字）：「我觉得教师把初始图锁定也不对，这样学生端很多操作都无法进行了，我觉得
+       还是不要锁定，因为学生端已经有恢复初始图功能了。」
+    ⇒ 底稿的框**可以拖 / 可以删 / 文字可改**，底稿的连线**可以删 / 可以改标注**；
+      「判据按 id 认老师的东西」那两个判断（`isStarterNode` / `isStarterEdge`）随这一档一起删了。
     ⚠️ 这一条盯的是**学生能碰到老师东西的四条路**（源码级：本仓没有 jsdom）：
       ① 框的文字输入框；② 改线的文字（双击 / 工具条标注那一组 / 唯一的写入出口）；
-      ③ 唯一的删除出口；④ 浮层那颗删除按钮。
-    ⚠️ 「拖动 + 键盘 Delete」不在这里 —— 那两条由 `mergeFlowchart` 打上的 `draggable/deletable`
-      交给库自己认，上面那条用例已经**真调**过纯函数验算了。
+      ③ 唯一的删除出口；④ 浮层那颗删除按钮 —— 一个都不许再按 id 拦「老师的」。
+    ⚠️ 「拖动 + 键盘 Delete」由 `mergeFlowchart`（不再打 `draggable/deletable`）保证，上面那条
+      用例已经**真调**过纯函数验算了。
+    ⚠️ 判据**不是「删空」**：四条路各自既有「不许再拦老师的东西」的反面，也有「这条路本身还在」
+      的正面（下面 ③ 那一组）—— 把整块删掉会当场红。
   */
-  /** 「是不是老师的」那两个判断：必须**锁定 + id 在初始图里**，少一半都错。 */
-  const judgeOf = (name: string, ids: string, source: string): void => {
-    const body = blockAfter(source, `const ${name} = `, ';');
-    assert.ok(body.length > 20, `${name} 没抠出来 —— 先修这条判据，别让它在空串上全绿`);
-    assert.match(body, /starterLocked/, `${name} 没看「锁定初始图」这一档（教师取消锁定后它照样把老师的东西锁着）`);
-    assert.match(body, new RegExp(`${ids}\\.has\\(`), `${name} 没有按 id 判（初始图里出现过的 id 就是老师的）`);
-  };
-  judgeOf('isStarterNode', 'starterNodeIds', live);
-  judgeOf('isStarterEdge', 'starterEdgeIds', live);
-  // ⚠️ 反面对照：把「锁定」那一半去掉 ⇒ 判据必须红（证明它不是恒真的）。
-  const noSwitch = live.replace('starterLocked && starterNodeIds.has(id)', 'starterNodeIds.has(id)');
-  assert.notEqual(noSwitch, live, '反面对照没造出来 —— 这条判据会变成恒真');
-  assert.ok(!/const isStarterNode = [^;]*starterLocked/.test(blockAfter(noSwitch, 'const isStarterNode = ', ';')),
+  // ① 全文件审计：锁标记一个都不许再被消费（`starterLocked` / `drawingStarterLocked` / `starter.locked`）。
+  const lockRefs = live.match(/starterLocked|drawingStarterLocked|starter\s*\.\s*locked/g) ?? [];
+  assert.deepEqual(lockRefs, [], `学生端又在消费锁标记：${lockRefs.join('、')}（「锁定初始图」已经撤掉了）`);
+  // ⚠️ 反面对照：塞一个回去 ⇒ 必须判违规（证明这条审计不是恒真的）。
+  const withLockBack = live.replace('const selectedEdgeId =', 'const starterLocked = starter?.locked === true;\n  const selectedEdgeId =');
+  assert.notEqual(withLockBack, live, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok((withLockBack.match(/starterLocked|drawingStarterLocked|starter\s*\.\s*locked/g) ?? []).length > 0,
     '反面对照没被抓住 —— 这条判据是恒真的');
 
-  /** 这一段里有没有「按 id 拦住老师的线」那道闸。 */
-  const locksTeacherEdge = (snippet: string): boolean => /isStarterEdge\(/.test(snippet);
+  // ② ★ 旧字段 `drawingStarterLocked: true` **一个字都不读** —— 真调纯函数走一遍「读 + 合并」。
+  const { mergeFlowchart, readDrawingStarter, readFlowchartPayload } = await import('../../../../../lib/worksheet-drawing-starter.ts');
+  const payload = { nodes: [{ id: 't1', data: { label: '过程' } }], edges: [{ id: 'e1', source: 't1', target: 't1' }] };
+  const starter = readDrawingStarter({
+    type: 'drawing', data: { drawingStarter: { tool: 'flowchart', data: payload }, drawingStarterLocked: true },
+  });
+  assert.ok(starter, '带 `drawingStarterLocked: true` 的题读不出底稿了');
+  assert.deepEqual(starter, { tool: 'flowchart', data: payload },
+    '读底稿时又消费了 `drawingStarterLocked` —— 老题目里那个字段必须被忽略');
+  const graph = mergeFlowchart(readFlowchartPayload(starter.data), { nodes: [], edges: [] });
+  for (const item of graph.nodes) {
+    assert.equal(item.draggable, undefined, '旧字段 `drawingStarterLocked: true` 让底稿的框变成不可编辑（不能拖）');
+    assert.equal(item.deletable, undefined, '旧字段 `drawingStarterLocked: true` 让底稿的框变成不可删');
+    assert.equal((item.data as Record<string, unknown>)?.locked, undefined, '旧字段 `drawingStarterLocked: true` 让底稿的文字只读');
+  }
+  assert.equal(graph.edges[0].deletable, undefined, '旧字段 `drawingStarterLocked: true` 让底稿的连线变成不可删');
 
-  // ① 框的文字：`visibleNodes` 里按 id 挂上 `locked`（输入框的 disabled 认它），且不许弄丢 `disabled`。
+  /** 这一段里有没有「按 id 拦住老师的东西」那道闸（块切不出来时必须红）。 */
+  const blocksTeacher = (snippet: string): boolean => /isStarterNode\(|isStarterEdge\(/.test(snippet);
+
+  // ③ 框的文字：`visibleNodes` 里只由 `disabled` 决定只读，**不许**再按 id 判。
   const visibleBody = blockAfter(live, 'const visibleNodes = useMemo', '\n  const ');
   assert.ok(visibleBody.length > 40, 'visibleNodes 没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  assert.match(visibleBody, /starterNodeIds\.has\(node\.id\)/, '锁定时老师的框文字没有变只读（`visibleNodes` 里没按 id 判）');
+  assert.ok(!/starterNodeIds\.has\(node\.id\)/.test(visibleBody), '底稿的框文字又变回只读了（`visibleNodes` 里又按 id 判了）');
   assert.match(visibleBody, /disabled/, '「只读展示」那一档（disabled）被弄丢了');
-  // ② 线的文字：双击不进就地输入框 + 工具条那一组只给学生的线 + 唯一的写入出口自己拦截。
+  // ④ 线的文字：双击进就地输入框 + 工具条那一组 + 唯一的写入出口，三处都不许再拦底稿的线。
   const dblBody = blockAfter(live, 'onEdgeDoubleClick={', 'onMove={');
   assert.ok(dblBody.includes('setLabelingEdge'), 'onEdgeDoubleClick 没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  assert.ok(locksTeacherEdge(dblBody), '锁定时双击老师的线仍然进就地输入框（能改它的文字）');
-  assert.ok(locksTeacherEdge(blockAfter(live, 'const labelableEdgeId = ', ';')),
-    '锁定时工具条仍然给老师的线「标注」那一组（能改它的文字）');
-  assert.ok(locksTeacherEdge(blockAfter(live, 'const setEdgeLabel = ', '};')),
-    '改标注的唯一出口没有拦住老师的线（工具条/就地输入框之外还能改）');
-  // ③④ 删除：唯一的删除出口有第二道闸；浮层不为老师的东西画删除按钮。
+  assert.ok(!blocksTeacher(dblBody), '双击底稿的线又进不了就地输入框（改不了它的文字）');
+  const labelableBody = blockAfter(live, 'const labelableEdgeId = ', ';');
+  assert.ok(!blocksTeacher(labelableBody), '工具条又不给底稿的线「标注」那一组（改不了它的文字）');
+  const setLabelBody = blockAfter(live, 'const setEdgeLabel = ', '};');
+  assert.ok(setLabelBody.length > 40, 'setEdgeLabel 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(!blocksTeacher(setLabelBody), '改标注的唯一出口又拦住了底稿的线（工具条/就地输入框之外还能改）');
+  // ⑤ 删除：唯一的删除出口 + 浮层，都不许再拦底稿的框/线。
   const removeBody = removeSelectedSource(live);
-  assert.ok(/isStarterNode\(/.test(removeBody) && /isStarterEdge\(/.test(removeBody),
-    '唯一的删除出口没有「老师的东西不放行」那道闸（选中的是线那一支是我们自己 filter 的，库的 deletable 管不着）');
-  assert.ok(locksTeacherEdge(overlaySource(live)) && /isStarterNode\(/.test(overlaySource(live)),
-    '锁定时选中老师的框/线仍然浮出删除按钮（点了也删不掉，学生只会以为坏了）');
-  // ⚠️ 反面对照：把「改标注的唯一出口」那道闸拿掉 ⇒ 判据必须红（证明切片不是恒真的）。
-  const noLabelGuard = live.replace('if (isStarterEdge(id)) return;', '');
-  assert.notEqual(noLabelGuard, live, '反面对照没造出来 —— 这条判据会变成恒真');
-  assert.ok(!locksTeacherEdge(blockAfter(noLabelGuard, 'const setEdgeLabel = ', '};')), '反面对照没被抓住 —— 这条判据是恒真的');
-  // ⚠️ 再加一条反面对照：双击那道闸拿掉 ⇒ 也必须红。
-  const noDblGuard = live.replace('if (!isStarterEdge(edge.id)) setLabelingEdge(edge.id);', 'setLabelingEdge(edge.id);');
-  assert.notEqual(noDblGuard, live, '反面对照没造出来 —— 这条判据会变成恒真');
-  assert.ok(!locksTeacherEdge(blockAfter(noDblGuard, 'onEdgeDoubleClick={', 'onMove={')), '反面对照没被抓住 —— 这条判据是恒真的');
+  assert.ok(removeBody.length > 40, '唯一的删除出口没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(!blocksTeacher(removeBody), '唯一的删除出口又把底稿的框/线拦住了（教师给的也能删）');
+  const overlayBody = overlaySource(live);
+  assert.ok(overlayBody.length > 80, '浮层描述式没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(!blocksTeacher(overlayBody), '浮层又不为底稿的框/线画删除按钮（教师给的也能删）');
+
+  // ⑥ ★ 正面：这四条路**一条都没被删掉**（判据不是「把拦人的代码删空」就算过）。
+  assert.match(dblBody, /setLabelingEdge\(edge\.id\)/, '双击进就地输入框这条交互被删掉了（线文字改不了）');
+  assert.match(labelableBody, /selectedEdgeId/, '工具条「这条线标注」那一组被删掉了');
+  assert.match(setLabelBody, /setEdges\(/, '改标注的唯一写入出口被删掉了');
+  assert.match(removeBody, /deleteElements\(/, '删图形那条路被删掉了（相连的线不会跟着没）');
+  assert.match(removeBody, /kind === 'edge'/, '删连线那一支被删掉了');
+  assert.match(overlayBody, /mode: 'delete'/, '浮层那颗删除按钮被删掉了');
+  assert.ok((live.match(/\{starter && \(/g) ?? []).length >= 1, '「恢复初始图」那颗按钮整块没了');
 });
 
 test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出图标删除；双击线改文字', () => {
@@ -643,7 +667,9 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   //   于是「造不出反面对照」自己先红 —— 那是判据写错，不是实现坏。
   // ⚠️ 毒药从 `offsetAlong`（已随自定义边删掉、现在是死符号）换成**还活着**的 `clampOffset`：
   //    这样反面对照证明的仍是「这一块里不许出现偏移」这条真判据，而不是「一个字面量不在」。
-  const poisonedConnect = splitBody.replace('const junctionHalf = 6;', 'const junctionHalf = clampOffset(6, 100);');
+  // ⚠️ 靶子那句**用正则**（`const junctionHalf = 4 + 2;` 那种也能当靶子），不逐字钉那个数 ——
+  //    本轮尺寸从 12 改成 8（`junctionHalf` 6 ⇒ 4）时，钉数字的写法自己先红了。
+  const poisonedConnect = splitBody.replace(/const junctionHalf = (\d+);/, 'const junctionHalf = clampOffset($1, 100);');
   assert.notEqual(poisonedConnect, splitBody, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.ok(/offsetAlong|clampOffset/.test(poisonedConnect), '反面对照没造出来 —— 这条判据会变成恒真');
 
@@ -682,23 +708,45 @@ test('★ 2026-10-06：连到线中点 —— **自定义边 / 中点句柄已�
   assert.ok(!/FlowEdgeLine|EdgeLabelRenderer|edge-mid\b/.test(live),
     '自定义边 / 中点句柄又回来了（它们是库的结构限制：「只能接不能起」+ 吞掉中点单击，见上面那段）');
   assert.ok(!/'data-nodeid': edgeId/.test(live), '中点句柄那颗 `data-nodeid = 边 id` 的补丁又回来了（它是已删机制的唯一凭据）');
-  assert.ok(!/edgeTypes/.test(live), '又把自定义边类型注册回 `<ReactFlow>` 了（库内置边已经够用：标签与箭头都由库画）');
   assert.ok(!/\bHANDLE_GAP\b/.test(live), '`HANDLE_GAP` 又回来了 —— 它的唯一用途就是避让那颗已删的中点句柄');
-  // ① 边改回**库内置**的类型，而且**旧数据里那个自定义类型记号要被换掉**。
-  //    🔴 库的 `EdgeWrapper` 对未知类型 `onError('011')` 并退回 `default`（贝塞尔）：
-  //    老作答 / 老底稿里全是 `type: 'flow'` ⇒ 不换的话线会由折线变弯线 + 控制台每条刷一次警告。
-  const builtinType = live.match(/const FLOW_EDGE_TYPE = '([^']+)'/);
-  assert.ok(builtinType, '没有命名常量 FLOW_EDGE_TYPE（边该用哪种内置类型会变成散落的字面量）');
-  assert.ok(['smoothstep', 'default', 'step', 'straight', 'simplebezier'].includes(builtinType[1]),
-    `FLOW_EDGE_TYPE=${builtinType[1]} 不是库的内置边类型 —— 库会 onError('011') 并退回 default`);
-  assert.match(live, /const LEGACY_EDGE_TYPE = 'flow'/, '没有命名常量 LEGACY_EDGE_TYPE（旧数据里那个自定义类型记号没有名字）');
-  assert.match(live, /edge\.type === LEGACY_EDGE_TYPE \? \{ \.\.\.edge, type: FLOW_EDGE_TYPE \}/,
-    "旧数据里的 `type: 'flow'` 没有被规范化成库认识的类型 —— 老作答的线会变成贝塞尔、控制台还会每条刷一次 error#011");
+  // ★ 2026-10-06（教师上传的标准流程图）：**允许**（且必须有）一份「只管标签」的自定义边，
+  //    但那一套带句柄的东西永远不许回来 —— 判据按**语义**分两条：
+  //    ① 自定义边那一份实现里**不许**出现 `Handle` / `useNodeId` / `EdgeLabelRenderer`
+  //      （那颗句柄的三个凭据：接不了、起不了、还得补 `data-nodeid`）；
+  //    ② 它必须**真的**在画线 + 摆标签（`BaseEdge` + 标签元素），而不是把整条边接过去。
+  const edgeComponentAt = live.indexOf('function FlowLabelEdge');
+  assert.notEqual(edgeComponentAt, -1, '那份只管标签的自定义边（`FlowLabelEdge`）没了 —— 标签又会回到「压线」的摆法');
+  const edgeComponent = blockAfter(live, 'function FlowLabelEdge', '\n}\n');
+  assert.ok(edgeComponent.length > 200, '`FlowLabelEdge` 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(!/Handle|useNodeId|EdgeLabelRenderer|data-nodeid/.test(edgeComponent),
+    '自定义边里又长出句柄那一套了（`Handle` / `useNodeId` / `EdgeLabelRenderer` / `data-nodeid`）—— 那是库的结构限制：只能接不能起、还吞掉中点单击');
+  assert.ok(!/edge-mid\b/.test(live), '中点句柄的记号 `edge-mid` 又回来了');
+  assert.match(edgeComponent, /BaseEdge/, '自定义边没有用 `BaseEdge` 画线（高亮与箭头都挂在它给的那条路径上）');
+  // ① `FLOW_EDGE_TYPE` 是我们注册的那份自定义边；`edgeTypes` 必须把它注册进 `<ReactFlow>`。
+  const edgeTypeName = (live.match(/const FLOW_EDGE_TYPE = '([^']+)'/) ?? [])[1];
+  assert.ok(edgeTypeName, '没有命名常量 FLOW_EDGE_TYPE');
+  assert.ok(!['smoothstep', 'default', 'step', 'straight', 'simplebezier'].includes(edgeTypeName),
+    `FLOW_EDGE_TYPE=${edgeTypeName} 还是**库内置**类型 —— 内置边的标签是「居中压线」的，教师要求挪到线旁`);
+  assert.match(live, /const edgeTypes = useMemo\(\(\) => \(\{ \[FLOW_EDGE_TYPE\]: FlowLabelEdge \}\), \[\]\)/,
+    '那份自定义边没有注册进 `<ReactFlow edgeTypes={…}>`（注册不了 ⇒ 库退回 default 边、标签又压线）');
+  assert.match(live, /edgeTypes=\{edgeTypes\}/, '`<ReactFlow>` 没有接上 edgeTypes');
+  // ② 旧类型记号**全部**规范化成它（只换 `'flow'` 不够：上一版把 `'smoothstep'` 写进了作答）。
+  const normalizesAll = (source: string): boolean => {
+    const body = blockAfter(source, 'const visibleEdges = useMemo', '[edges, snapCandidateId]');
+    return /edge\.type === FLOW_EDGE_TYPE \? edge : \{ \.\.\.edge, type: FLOW_EDGE_TYPE \}/.test(body);
+  };
+  assert.ok(normalizesAll(live), '`visibleEdges` 没有把所有非本类型的边规范化 —— 老作答里的内置类型会让标签继续压线');
   assert.ok(!/\.map\(\(edge\) => \(\{ \.\.\.edge, type: 'flow' \}\)\)/.test(live),
     "`visibleEdges` 又给每条边强制 `type: 'flow'` 了（那是已删的自定义边记号）");
-  // ② 线上的字由**库自己**渲染 ⇒ 配色必须继续写在库那两个类名上（删了标签会变成黑块）。
-  assert.match(css, /\.react-flow__edge-textbg\) \{ fill: #ffffff; \}/, '线标签的背景没有钉成白色（库自己渲染时它是那个背景矩形）');
-  assert.match(css, /\.react-flow__edge-text\) \{[\s\S]{0,120}?fill: #263b53;/, '线标签的文字颜色没有钉住');
+  // ⚠️ 反面对照：只换 `'flow'`（回到旧写法）⇒ 上面那条必须红。
+  const legacyOnly = live.replace('edge.type === FLOW_EDGE_TYPE ? edge : { ...edge, type: FLOW_EDGE_TYPE }',
+    "edge.type === 'flow' ? { ...edge, type: FLOW_EDGE_TYPE } : edge");
+  assert.notEqual(legacyOnly, live, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!normalizesAll(legacyOnly), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ③ 线上的字**由我们自己**那份边摆 ⇒ 配色写在 `.flowEdgeLabel` 上（删/改名 = 又变黑块）。
+  assert.match(css, /\.flowEdgeLabel \{[\s\S]{0,220}?fill: #263b53;/, '线标签的文字颜色没有钉住（会渲染成小黑块）');
+  assert.ok(!/\.react-flow__edge-textbg/.test(css),
+    '白底框那条规则又回来了 —— 标签现在偏在线外、不压线，白方块只会把旁边的线/网格盖掉');
   // ③ 拆线只留**一份实现**：声明恰好一处、而且吸附那一路真的调用它（它现在也是唯一一条入口）。
   const splitBody = splitEdgeSource(live);
   assert.ok(splitBody.length > 400, '拆线的那一份实现没抠出来 —— 先修这条判据，别让它在空串上全绿');
@@ -720,9 +768,36 @@ test('★ 2026-10-06：连到线中点 —— **自定义边 / 中点句柄已�
   assert.ok(onConnectBody.length > 200, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.ok(!/hitEdge/.test(onConnectBody), '`onConnect` 又在认「落点是边」了 —— 自定义边删掉之后没有任何句柄会回一个边 id');
   assert.match(onConnectBody, /addEdge\(\{[\s\S]{0,40}\.\.\.connection/, '「落点是节点」那一支没有把 connection 交给库的 addEdge（最基本的「框 → 框」连线会断）');
-  // ⑤ 交点画成小圆点（不承袭 .flowNode 的 150×54），而且**没有**文字输入框。
-  assert.match(css, /\.flowNode_junction \{[\s\S]{0,200}?min-width: 12px;[\s\S]{0,80}?min-height: 12px;/, '交点没有自己的尺寸（会承袭 .flowNode 的 150×54）');
-  assert.match(css, /\.flowNode_junction \{[\s\S]{0,260}?border-radius: 50%/, '交点不是圆点');
+  // ⑤ 交点画成**小圆点**（不承袭 .flowNode 的 150×54），而且**没有**文字输入框。
+  //    ★ 2026-10-06（教师截图）：「**大大的圆点其实是不需要的**」⇒ 从 12×12 的实心深色点
+  //      改成 8×8 的**描边空心小环**。判据按语义：
+  //      ① 尺寸**读 CSS 里那个数**（不逐字钉 8）；② 组件里那个 `junctionHalf` 必须正好是它的一半
+  //      （节点 position 是左上角，对不上线就会岔开）—— 这条把两份常量对起来；
+  //      ③ 尺寸明显**变小**了；④ 不再是「实心深色」。
+  const junctionRuleAt = css.indexOf('.flowNode_junction {');
+  assert.notEqual(junctionRuleAt, -1, '样式表里没有 `.flowNode_junction` 那条规则 —— 先修这条判据');
+  const junctionRule = css.slice(junctionRuleAt, css.indexOf('}', junctionRuleAt) + 1);
+  assert.ok(junctionRule.length > 40, '`.flowNode_junction` 那条规则没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  // ⚠️ `[^-]width:` 才不会命中 `min-width:`（`box-sizing: border-box` 下宽高含描边 ⇒ 这就是外框）。
+  const junctionSize = Number((junctionRule.match(/[^-]width:\s*(\d+)px/) ?? [])[1]);
+  assert.ok(Number.isFinite(junctionSize) && junctionSize > 0, `没有读到交点的尺寸（读到 ${junctionSize}）`);
+  const junctionHalfRaw = Number((live.match(/const junctionHalf = (\d+);/) ?? [])[1]);
+  assert.ok(Number.isFinite(junctionHalfRaw), '没有读到拆线里那个 `junctionHalf` 常量');
+  assert.equal(junctionHalfRaw * 2, junctionSize,
+    `交点半径常量（${junctionHalfRaw}）与 CSS 里的尺寸（${junctionSize}px）对不上 —— 圆点会偏离精确中点`);
+  // ⚠️ `min-width/min-height` 也必须写死成同一个数：少了它们，交点会承袭 `.flowNode` 的 150×54。
+  const junctionMin = Number((junctionRule.match(/min-width:\s*(\d+)px/) ?? [])[1]);
+  assert.equal(junctionMin, junctionSize, '交点的 min-width 没跟着尺寸走（会承袭 .flowNode 的 150×54）');
+  assert.ok(junctionSize <= 10, `交点圆点还是太大（${junctionSize}px）—— 教师：「大大的圆点其实是不需要的」`);
+  assert.match(junctionRule, /border-radius: 50%/, '交点不是圆点');
+  // 减淡：不许再是「实心深色大圆」⇒ 要么空心（白底 + 描边），要么至少不再是原来那个深色实心。
+  const hollow = /background:\s*#fff/i.test(junctionRule) && /border:\s*[^;]*solid/i.test(junctionRule);
+  assert.ok(hollow, '交点又变回实心点了（教师要求「缩小/减淡」—— 空心环 + 描边才对得上参考图里的干净线条）');
+  assert.ok(!/background:\s*#365b82/.test(junctionRule), '交点的填充还是原来那个深色实心（教师截图里那个大圆点）');
+  // ⚠️ 反面对照：把尺寸改回 12×12 的实心深色 ⇒ 上面那三条必须红（证明判据不是恒真的）。
+  const bigBack = junctionRule.replace(/width:\s*\d+px/, 'width: 12px').replace(/background:\s*#fff/i, 'background: #365b82').replace(/border:\s*2px solid #6b86a5/, 'border: 0');
+  assert.notEqual(bigBack, junctionRule, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!(/background:\s*#fff/i.test(bigBack) && /border:\s*[^;]*solid/i.test(bigBack)), '反面对照没被抓住 —— 这条判据是恒真的');
   const editorBody = editorBodyOf(live);
   assert.ok(editorBody.length > 400, '节点编辑器没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.match(editorBody, /const isJunction = data\.kind === 'junction'/, '没有认出 junction 这一档');
@@ -730,6 +805,65 @@ test('★ 2026-10-06：连到线中点 —— **自定义边 / 中点句柄已�
   // ⑥ 死 CSS / 死类名都不许留在样式表或组件里。
   assert.ok(!/flowEdgeHandle/.test(css), '`.flowEdgeHandle`（中点句柄的样式）还留在样式表里 —— 那是已删机制的类');
   assert.ok(!/flowEdgeHandle/.test(live), '组件还在挂中点句柄的类名');
+});
+
+test('★ 2026-10-06（教师上传的标准流程图）：线标签摆在**线的旁边**（竖线 ⇒ 右侧 / 横线 ⇒ 上方），不压线', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  const css = stripComments(CSS);
+  /*
+    🔴 教师给了一张**标准流程图**当对齐目标，里面判断框分出的两条线把「是」「否」写在
+       **竖线的右侧 / 横线的上方** —— 文字紧贴但完全不压线，线本身是干净的。
+       我们的现状（库内置边）是「标签居中压在中点正上方 + 白底框盖住那一小段」⇒ 不是标准样子。
+    ⇒ 本轮加了一份**只管标签**的自定义边（`FlowLabelEdge`）。这条用例钉四件事：
+      ① 偏的方向由 `targetPosition` 决定（CSS 拿不到方向 ⇒ 必须写在组件里）；
+      ② 竖线分支：`x = labelX + GAP` **且左对齐**（这样多长的标签左边缘都贴在线右侧，不压线）；
+      ③ 横线分支：`y = labelY - GAP`（基线抬到线上方）+ 水平居中；
+      ④ 箭头（`markerEnd`）转交给 `BaseEdge`；高亮选择器仍打在 `.react-flow__edge-path` 上。
+    📏 实测（CDP 真组件）：竖线的字左边缘离线 ~10 屏幕 px、横线的字底边离线 ~11 屏幕 px，
+      两处都不压线（数字见报告）。
+  */
+  const edgeComponent = blockAfter(live, 'function FlowLabelEdge', '\n}\n');
+  assert.ok(edgeComponent.length > 200, '`FlowLabelEdge` 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const gapRaw = (live.match(/const EDGE_LABEL_GAP = ([^;]+);/) ?? [])[1];
+  assert.ok(gapRaw !== undefined, '没有命名常量 EDGE_LABEL_GAP（偏移量会变成魔法数）');
+  const gap = Number(new Function(`return (${gapRaw});`)());
+  assert.ok(Number.isFinite(gap) && gap > 0, `EDGE_LABEL_GAP 不是正数（读到 ${gapRaw}）`);
+  // ① 方向：按「线**进目标那一侧**」判竖/横（进上/下 ⇒ 末段竖直）。
+  assert.match(edgeComponent, /targetPosition === Position\.Top \|\| targetPosition === Position\.Bottom/,
+    '没有按 targetPosition 判断这一段是竖直还是水平 —— 标签会被摆到线的一侧以外的地方');
+  // ② 竖直段 ⇒ 右侧：`x = labelX + GAP` + **左对齐**（与标签长度无关）。
+  const biasesRight = (source: string): boolean => /vertical \? \([\s\S]{0,400}?x=\{labelX \+ EDGE_LABEL_GAP\}[\s\S]{0,200}?textAnchor="start"/.test(source);
+  assert.ok(biasesRight(edgeComponent), '竖直段上的标签没有摆到线的**右侧**（左对齐 + x 偏出 GAP）—— 教师那张标准图就是这么摆的');
+  // ③ 水平段 ⇒ 上方：`y = labelY - GAP` + 水平居中。
+  const biasesAbove = (source: string): boolean => /\) : \([\s\S]{0,400}?y=\{labelY - EDGE_LABEL_GAP\}[\s\S]{0,200}?textAnchor="middle"/.test(source);
+  assert.ok(biasesAbove(edgeComponent), '水平段上的标签没有摆到线的**上方**（y 抬出 GAP）');
+  // ⚠️ 反面对照 1：把竖直段的偏移去掉（标签又压回线上）⇒ 必须判违规。
+  const pressedOnLine = edgeComponent.replace('x={labelX + EDGE_LABEL_GAP}', 'x={labelX}');
+  assert.notEqual(pressedOnLine, edgeComponent, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!biasesRight(pressedOnLine), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⚠️ 反面对照 2：把水平段的偏移去掉 ⇒ 也必须判违规。
+  const pressedOnLine2 = edgeComponent.replace('y={labelY - EDGE_LABEL_GAP}', 'y={labelY}');
+  assert.notEqual(pressedOnLine2, edgeComponent, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!biasesAbove(pressedOnLine2), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ④ 箭头：库把 `markerEnd` 算成 `url('#…')` 交进来，自定义边必须原样转交（忘了 = 箭头没了）。
+  assert.match(edgeComponent, /markerEnd=\{markerEnd\}/, '自定义边没有把 markerEnd 转交给 BaseEdge —— 箭头会消失');
+  assert.match(edgeComponent, /<BaseEdge path=\{edgePath\}/, '自定义边没有用 BaseEdge 画那条路径');
+  // ⚠️ 反面对照 3：把 markerEnd 拿掉 ⇒ 必须判违规。
+  const noArrow = edgeComponent.replace(' markerEnd={markerEnd}', '');
+  assert.notEqual(noArrow, edgeComponent, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!/markerEnd=\{markerEnd\}/.test(noArrow), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⑤ 拖动中高亮：类挂在库那层 `<g class="react-flow__edge">` 上，而**宽度规则必须打在
+  //    `.react-flow__edge-path`** —— `BaseEdge` 给的正是这个类名，换了边也不能失效。
+  assert.match(live, /<BaseEdge/, '自定义边没有走 BaseEdge（它给的那条路径才带 `react-flow__edge-path`）');
+  const snapRuleAt = css.indexOf('.flowEdgeSnap');
+  assert.notEqual(snapRuleAt, -1, '样式表里没有高亮那条规则');
+  const snapRule = css.slice(snapRuleAt, css.indexOf('}', snapRuleAt) + 1);
+  assert.match(snapRule, /react-flow__edge-path/, '高亮没有打在 `.react-flow__edge-path` 上 —— 换了自定义边之后这条选择器会落空');
+  // ⑥ 标签必须**能点到**（双击进就地输入框）：`pointer-events` 不许是 none。
+  const labelRule = css.slice(css.indexOf('.flowEdgeLabel {'), css.indexOf('}', css.indexOf('.flowEdgeLabel {')) + 1);
+  assert.ok(labelRule.length > 30, '`.flowEdgeLabel` 那条规则没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(labelRule, /pointer-events:\s*all/, '标签接不到指针事件 —— 「双击标签改文字」会变成「点到空白」');
+  assert.ok(!/pointer-events:\s*none/.test(labelRule), '标签被设成 pointer-events: none（双击标签改文字会失效）');
 });
 
 test('★ 2026-10-06（教师报「连线加不上」）：连到线中点时，**学生拉的那根线本身**必须真的接上', () => {
@@ -876,6 +1010,152 @@ test('★ 2026-10-06（教师：「拖到线附近松手也要能连上」）：
   const hlBody = highlightEffectSource(live);
   assert.ok(hlBody.length > 200, '拖动中高亮那段 effect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.match(hlBody, /nearestEdgeAt\(/, '拖动中高亮没有用与吸附同一份 `nearestEdgeAt`（会高亮到另一条线）');
+});
+
+test('★ 2026-10-06（教师拍板）：四个工具按钮用**教材名称**，而「放到画布上的默认文字」一个字不动', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  /*
+    ★ 教师 2026-10-06（截图圈了那四颗按钮 + 「这些文字都没有改」）拍板：按钮上用**信息科技课
+      教材的名称** —— 起止框 / 处理框 / 判断框 / 输入输出框。
+    🔴 **按钮文字 ≠ 节点默认文字**，这是两件事，别统一回去：
+      · 按钮文字 = **形状的名字**（教材术语，学生按课本找得到）；
+      · `addNode(kind, '…')` 的第二个参数 = 放到画布上以后**框里默认写的内容**
+        （「开始/结束」「处理过程」「判断条件」「输入/输出」）。
+    ⇒ 这条用例**两边一起钉**：可见文字必须是教材名称，默认标签必须仍是内容。
+    ⚠️ 判据从 JSX 里**按结构抠**（`addNode('kind', '默认文字')…</svg>可见文字</button>`），
+      不逐字钉整行 —— 改 className / 图标不会红，改文字才会。
+  */
+  const toolbar = blockAfter(live, 'role="toolbar" aria-label="流程图工具"', '</div>');
+  assert.ok(toolbar.length > 500, '工具条没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  /** 四颗加节点按钮：`addNode('kind', '默认文字')` 后面紧跟的可见文字。 */
+  const buttonsOf = (source: string) => [...source.matchAll(/addNode\('(\w+)',\s*'([^']*)'\)[\s\S]{0,260}?<\/svg>([^<]*)<\/button>/g)]
+    .map((match) => ({ kind: match[1], defaultLabel: match[2], text: match[3] }));
+  const kinds = ['terminator', 'process', 'decision', 'io'];
+  const buttons = buttonsOf(toolbar);
+  assert.equal(buttons.length, 4, `四颗加节点按钮没抠出来（抠到 ${buttons.length} 颗）—— 先修这条判据，别让它在空串上全绿`);
+  const byKind = new Map(buttons.map((button) => [button.kind, button]));
+  for (const kind of kinds) assert.ok(byKind.has(kind), `工具条里少了 ${kind} 那一颗按钮`);
+  // ① 可见文字 = 教材名称。
+  assert.deepEqual(kinds.map((kind) => byKind.get(kind)?.text),
+    ['起止框', '处理框', '判断框', '输入输出框'],
+    '四颗按钮的可见文字不是教材名称（起止框 / 处理框 / 判断框 / 输入输出框）');
+  // ② 而 `addNode` 的**默认标签**（放到画布上以后框里写什么）必须仍是「内容」。
+  assert.deepEqual(kinds.map((kind) => byKind.get(kind)?.defaultLabel),
+    ['开始/结束', '处理过程', '判断条件', '输入/输出'],
+    '节点默认文字被一起改了 —— 按钮文字是**形状名**，节点默认文字是**框里的内容**，两件事不许统一');
+  // ⚠️ 反面对照 1：把按钮文字改回旧写法（内容）⇒ 必须判违规。
+  const oldButtonText = toolbar.replace('</svg>起止框</button>', '</svg>开始/结束</button>');
+  assert.notEqual(oldButtonText, toolbar, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.notDeepEqual(kinds.map((kind) => buttonsOf(oldButtonText).find((b) => b.kind === kind)?.text),
+    ['起止框', '处理框', '判断框', '输入输出框'], '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⚠️ 反面对照 2：把**默认标签**也改成教材名称 ⇒ 必须判违规（证明两件事是分开钉的）。
+  const wrongDefault = toolbar.replace("addNode('terminator', '开始/结束')", "addNode('terminator', '起止框')");
+  assert.notEqual(wrongDefault, toolbar, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.notDeepEqual(kinds.map((kind) => buttonsOf(wrongDefault).find((b) => b.kind === kind)?.defaultLabel),
+    ['开始/结束', '处理过程', '判断条件', '输入/输出'], '反面对照没被抓住 —— 默认标签那条判据是恒真的');
+});
+
+test('★ 2026-10-06（教师拍板 + 参考图）：判断框出边的**默认**标注是「是 / 否」（工具条那五个快按钮不动）', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  /*
+    ★ 教师 2026-10-06（回话）：「判断框默认标注改成『是 / 否』」（与参考图一致）。
+    🔴 **只改默认值**：已经存在的作答 / 底稿里那条 `label: 'Y'` **不许迁移**（照原样渲染）——
+      数据不动、不做兼容层（`toFlowPayload` / `readFlowchartPayload` 都不碰 `label`）。
+    🔴 计数逻辑一个字不动：0 条已标注的出边 ⇒ 第一个、1 条 ⇒ 第二个、**再多不猜**。
+    ⚠️ 判据是**真调用**那个纯函数（喂 0/1/2/3），不是在源码里猜三元表达式的写法。
+  */
+  // ① 命名常量：默认标注必须是「是 / 否」。
+  const labelsRaw = (live.match(/const DECISION_BRANCH_LABELS = (\[[^\]]*\])(?:\s+as const)?;/) ?? [])[1];
+  assert.ok(labelsRaw, '没有命名常量 DECISION_BRANCH_LABELS（默认标注会变成散落的字面量）');
+  const labels = new Function(`return (${labelsRaw});`)() as string[];
+  assert.deepEqual(labels, ['是', '否'], '判断框出边的默认标注不是「是 / 否」（教师已拍板，参考图也是汉字）');
+  // ② 计数语义：把那个纯函数**抠出来真跑**（0 ⇒ 是、1 ⇒ 否、更多 ⇒ 不给）。
+  const decl = live.indexOf('const decisionBranchLabel: ');
+  assert.notEqual(decl, -1, '没有模块级的 `decisionBranchLabel` 纯函数（计数语义没法真调用验）');
+  const arrow = live.indexOf('= (', decl);
+  const end = arrow === -1 ? -1 : live.indexOf('\n};', arrow);
+  assert.ok(arrow !== -1 && end !== -1, '`decisionBranchLabel` 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const body = live.slice(arrow + 2, end + 3);
+  const build = (source: string) => new Function(
+    `const DECISION_BRANCH_LABELS = ${labelsRaw};\nconst decisionBranchLabel = ${source}\nreturn decisionBranchLabel;`,
+  )() as (used: number) => string | undefined;
+  const decisionBranchLabel = build(body);
+  assert.equal(decisionBranchLabel(0), '是', '第一条出边的默认标注不是「是」');
+  assert.equal(decisionBranchLabel(1), '否', '第二条出边的默认标注不是「否」');
+  assert.equal(decisionBranchLabel(2), undefined, '第三条出边也硬凑了一个字 —— 计数逻辑要求「再多就不猜」');
+  assert.equal(decisionBranchLabel(3), undefined, '第四条出边也硬凑了一个字 —— 计数逻辑要求「再多就不猜」');
+  // ⚠️ 反面对照：把计数改成「恒定给第一个」⇒ 上面那条必须被抓住（证明判据不是恒真的）。
+  const alwaysFirst = body.replace(/DECISION_BRANCH_LABELS\[used\]/, 'DECISION_BRANCH_LABELS[0]');
+  assert.notEqual(alwaysFirst, body, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.notEqual(build(alwaysFirst)(1), '否', '反面对照没被抓住 —— 「0→第一个 / 1→第二个」这条计数判据是恒真的');
+  // ③ 接线：`onConnect` 里判断框那一支必须走它（计数仍然按「这个判断框已有几条带标注的出边」）。
+  const onConnectBody = onConnectSource(live);
+  assert.match(onConnectBody, /decisionBranchLabel\(used\)/, '判断框的出边没有走那个默认标注的映射');
+  assert.match(onConnectBody, /filter\(\(edge\) => edge\.source === connection\.source && edge\.label\)\.length/,
+    '计数不再是「这个判断框已有几条带标注的出边」');
+  // ④ 工具条那五个**快按钮**一个字都不动（学生想用字母随时点）。
+  assert.match(live, /\['Y', 'N', '是', '否'\]\.map/, '工具条那五个快按钮（Y / N / 是 / 否 / 清空）被改了');
+  // ⑤ 不做数据迁移：`label` 读写两条路都不许被碰。
+  assert.ok(!/'Y'/.test(live.replace(/\['Y', 'N', '是', '否'\]/, '')), "代码里又在写死一个 'Y'（老数据不许迁移，新默认值也不该是字母）");
+});
+
+test('★ 2026-10-06（教师截图）：**框的句柄优先** —— 落点附近有节点句柄就让位给库（不再吸到框下那条竖线上）', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  /*
+    🔴 教师截图里那个病（逐字）：「一条从右侧绕回来的线，本来应该直接以一个向左的箭头进入
+       『处理过程』框的右侧；实际却吸附到框下方那条竖线上、把竖线拆成了两段并留下一个交点」
+       ⇒ 画面上多出一个大大的圆点，箭头也变成从上往下进框底。
+    根因：兜底原来**只**看「落点正下方压着 `.react-flow__handle`」—— 学生拖到框**附近**时
+      落点没压住那颗 10px 的句柄，于是照旧按距离去吸线下那条竖线。
+    ⇒ 判据改成**句柄优先**：落点 ≤ `NODE_HANDLE_PRIORITY_RADIUS`（比 `EDGE_SNAP_RADIUS` 大）内有
+      **某个节点句柄** ⇒ 整段兜底不做（让库自己去连那个框）。
+    ⚠️ 这一条**不逐字钉写法**：只认「吸附那一路里有一句『附近有句柄就 return』」这件事，
+      以及「那个半径是命名常量、比吸附半径大、而且与库的 `connectionRadius` 是同一个值」。
+    📏 实测数字（无头 Chrome + CDP，真组件）：离右侧句柄 10/20/30/40px ⇒ 连框；拖到线中点附近
+      （离任何句柄都很远）⇒ 仍走 22px 吸附、连线上。
+  */
+  const endBody = onConnectEndSource(live);
+  assert.ok(endBody.length > 400, '落点吸附那段没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  // ① 半径是**命名常量**，而且**比吸附半径大**（否则「框的句柄优先」只是把吸附半径再缩一圈）。
+  const rawPriority = (live.match(/const NODE_HANDLE_PRIORITY_RADIUS = ([^;]+);/) ?? [])[1];
+  assert.ok(rawPriority !== undefined, '没有命名常量 NODE_HANDLE_PRIORITY_RADIUS（节点优先半径会变成魔法数）');
+  const priority = Number(new Function(`return (${rawPriority});`)());
+  const snapRadius = Number(new Function(`return (${(live.match(/const EDGE_SNAP_RADIUS = ([^;]+);/) ?? [])[1]});`)());
+  assert.ok(priority > 0 && Number.isFinite(priority), `NODE_HANDLE_PRIORITY_RADIUS 不是正数（读到 ${rawPriority}）`);
+  assert.ok(priority > snapRadius, `节点优先半径（${priority}）没有比吸附半径（${snapRadius}）大 —— 「拖到框附近连框」不会发生`);
+  // ② 「附近有没有句柄」是**独立的一份距离算法**，用的是那四个句柄（不是节点中心）。
+  const handleBody = blockAfter(live, 'const nearestHandleAt = useCallback(', '\n  }, [');
+  assert.ok(handleBody.length > 150, '「落点附近有没有句柄」那一份实现没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(handleBody, /NODE_HANDLE_PRIORITY_RADIUS/, '句柄距离没有用命名常量 NODE_HANDLE_PRIORITY_RADIUS');
+  assert.match(handleBody, /FLOW_HANDLE_IDS/, '句柄距离不是按四个句柄逐个算的（只算节点中心会误判「离框近」）');
+  assert.match(handleBody, /handleFlowPoint\(/, '句柄的屏幕坐标没有走既有的 `handleFlowPoint`（两份算法必然分叉）');
+  // ⚠️ 必须**排除这一拖的起点句柄本身**（与库 `getClosestHandle` 跳过 `fromHandle` 一致）。
+  assert.match(handleBody, /handleId === origin\.handleId/, '没有排除「这一拖的起点句柄」—— 从那颗句柄拖出去一点点会被自己挡住');
+  // ③ 接线：吸附那一路先问「附近有没有句柄」，有就整段走人；而且这一句必须排在拆线调用**之前**。
+  const bailsOnNearbyHandle = (body: string) => /nearestHandleAt\(/.test(body) && /nearestHandleAt\([^;]*\)\s*\)\s*return;/.test(body);
+  assert.ok(bailsOnNearbyHandle(endBody), '吸附那一路没有「落点附近有句柄就让位」这道闸（教师截图那一格会继续吸到竖线上）');
+  const bailAt = endBody.indexOf('nearestHandleAt(');
+  const splitAt = endBody.indexOf('splitEdgeAt(');
+  assert.ok(bailAt !== -1 && splitAt !== -1 && bailAt < splitAt, '「让位」那句排在了拆线之后 —— 等于没让位');
+  // ⚠️ 反面对照：把让位那句拿掉 ⇒ 必须判违规（证明这条判据不是恒真的）。
+  const noBail = endBody.replace(/if \(nearestHandleAt\([^;]*\)\) return;/, '');
+  assert.notEqual(noBail, endBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!bailsOnNearbyHandle(noBail), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ④ 库那边必须落在**同一个屏幕半径**上：`connectionRadius` 比的是**流坐标**（`getClosestHandle`
+  //    + `pointToRendererPoint` 两端都是流坐标）⇒ 必须把让位半径除以 zoom 再传进去。
+  //    ⚠️ 直接传 `NODE_HANDLE_PRIORITY_RADIUS`（当成流单位）会让库那边的屏幕半径变成 40×zoom
+  //      —— zoom>1 时那一圈里「库连了框」与「兜底吸了线」会**同时**发生（实测 zoom=1.42 时是 57px）。
+  const sameScreenRadius = (source: string): boolean => /connectionRadius=\{NODE_HANDLE_PRIORITY_RADIUS \/ viewport\.zoom\}/.test(source);
+  assert.ok(sameScreenRadius(live),
+    '`<ReactFlow>` 的 connectionRadius 没有换算成屏幕半径（`NODE_HANDLE_PRIORITY_RADIUS / viewport.zoom`）—— 库与兜底的半径会错位成一圈环');
+  assert.match(live, /connectionRadius=\{NODE_HANDLE_PRIORITY_RADIUS \/ viewport\.zoom\}/, '同上：接的必须是命名常量除以 zoom，不是别的写法');
+  // ⚠️ 反面对照：把单位错误的那一版塞回去（当成流单位直接传）⇒ 必须判违规。
+  const wrongUnit = live.replace('connectionRadius={NODE_HANDLE_PRIORITY_RADIUS / viewport.zoom}', 'connectionRadius={NODE_HANDLE_PRIORITY_RADIUS}');
+  assert.notEqual(wrongUnit, live, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!sameScreenRadius(wrongUnit), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⑤ 既有行为不许被这次改动弄坏：22px 的吸附半径、拖到空白不插交点、精确命中中点仍能连。
+  assert.match(live, /const EDGE_SNAP_RADIUS = 22;/, '22px 的吸附半径被改了（既有行为）');
+  assert.match(endBody, /if \(!nearest\) return;/, '「拿到没有候选就走人」（拖到空白不插交点）被弄丢了');
 });
 
 test('★ 2026-10-06（可发现性补偿）：拖动连线**过程中**高亮「松手会吸上去的那条边」', () => {

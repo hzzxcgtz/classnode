@@ -2555,33 +2555,55 @@
 .flowNode_decision[data-selected='1'] .flowNodeShape polygon { stroke: #365f88; stroke-width: 3; }
 /*
   ★ 2026-10-06（教师，A 方案）：**交点** —— 连到线上时插进那条线里的小圆点（`kind: 'junction'`）。
-  ⚠️ 这一档**不承袭** `.flowNode` 的 150×54：它就该是一颗 12×12 的点（宽高与组件里那个
-     `junctionHalf = 6` 是同一对数，位置才对得上）。
+  ★ 2026-10-06（教师截图）：「**大大的圆点其实是不需要的**」⇒ 从 12×12 的**实心深色**点
+    改成 **8×8 的描边空心小环**（白底 + 2px 描边），理由：
+      · 教师给的标准流程图里那个位置本来什么都没有，这颗点只因为数据模型需要「可连的节点」
+        才存在 ⇒ 它的视觉权重应当**最小**；
+      · 空心环 + 白底 = 与四个句柄（本来就是「白底 + 2px 描边」的小圆）**同一族**，
+        读起来是「连接点」而不是一滴墨；实心深色点在细线上明显更抢眼；
+      · 描边色取 `#6b86a5`（与线的箭头 `FLOW_ARROW` 同色）⇒ 它是线的一部分，不是另一样东西。
+  ⚠️ 尺寸变了 ⇒ 组件里那个 `junctionHalf` 必须跟着变（节点 `position` 说的是**左上角**，
+     要减掉半个宽度才能让圆点正落在精确中点上）。两处**必须一致**，`surface-lifecycle.test.ts`
+     会把它们对起来（读 CSS 那个尺寸 × 2 == `junctionHalf` × 2）。
+  ⚠️ 这一档**不承袭** `.flowNode` 的 150×54：`min-width/min-height` 也得跟着写死。
   ⚠️ 四个句柄照旧留着（`.flowNode :global(.react-flow__handle)` 那套）：线要接在它的上/下。
   ⚠️ 它下面**没有**输入框（`FlowNodeEditor` 里跳过）⇒ 不必管文字尺寸。
+  ⚠️ 快照（`src/lib/worksheet-flowchart-svg.ts`，**禁改**）画的仍是 `r="5"` 的实心圆（直径 10px）
+     ⇒ 画板（8px 空心环）与快照（10px 实心点）现在**尺寸/样式不再一致**，只差 2px 且同为小圆点，
+     视觉上同一处、同一量级。这条差异在报告里如实说明。
 */
 .flowNode_junction {
-  width: 12px;
-  height: 12px;
-  min-width: 12px;
-  min-height: 12px;
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  min-height: 8px;
   padding: 0;
-  border: 0;
+  border: 2px solid #6b86a5;
   border-radius: 50%;
-  background: #365b82;
+  background: #fff;
   box-shadow: none;
 }
 /*
   ★ 2026-10-06（教师）：「加上去的字变成了小黑块」。
-  🔴 那个黑块是**边的标签**：React Flow 的标签由「一个背景矩形 + 一段文字」组成，
-     而样式表里没给它 `fill` 时，SVG 的默认填充是**黑色**。我们已经在组件里换成带主题的
-     `style.css`，这里再**钉一遍**（两处都写是有意的：主题换了也不会变成读不出来的颜色）。
+  🔴 那个黑块是**边的标签**：SVG 默认填充是**黑色**，样式表里没给 `fill` 就会渲染成黑块。
+  ★ 2026-10-06（教师上传的标准流程图）：标签改由**我们自己**那份只管标签的自定义边
+    （`FlowLabelEdge`）摆位 —— 它偏在线的一侧（竖线 ⇒ 右侧、横线 ⇒ 上方），不再压线
+    ⇒ **白底框（`.react-flow__edge-textbg`）整个去掉了**（它当初唯一的作用就是「压线也读得清」，
+      留着一个白方块反而会把旁边的线/网格盖掉）。所以下面只有 `.flowEdgeLabel` 这一条：
+      · `fill` 深色 —— 与节点文字同一档（`#263b53`）；
+      · `pointer-events: all` —— 🔴 **必须**：库有一条 `.react-flow__edge .react-flow__edge-text
+        { pointer-events: none }`（给「居中压线」的老标签用的），而我们的标签偏在线外、
+        底下没有那条 1.5px 的线可以点 ⇒ 不让它自己接事件的话，「双击标签改文字」会变成
+        「点到空白、取消选中」（实测过）。
+      · `user-select: none` —— 与库的老标签一致，免得拖动时选中文字。
+  ⚠️ 节点文字/判据里的颜色、字号由 `surface-lifecycle.test.ts` 钉住。
 */
-.thirdPartyCanvas :global(.react-flow__edge-textbg) { fill: #ffffff; }
-.thirdPartyCanvas :global(.react-flow__edge-text) {
+.flowEdgeLabel {
   fill: #263b53;
   font-size: 12px;
   font-weight: 650;
+  pointer-events: all;
+  user-select: none;
 }
 /*
   ★ 2026-10-06（可发现性补偿）：「拖到线附近松手就能连」这条交互要**看得见**。

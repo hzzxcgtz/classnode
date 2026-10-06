@@ -5,6 +5,7 @@ import {
   addEdge,
   Background,
   BackgroundVariant,
+  BaseEdge,
   ConnectionMode,
   Controls,
   Handle,
@@ -16,6 +17,7 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
+  type EdgeProps,
   type Node,
   MarkerType,
   getSmoothStepPath,
@@ -73,13 +75,33 @@ export type FlowIconKey = keyof typeof FLOW_ICONS;
 type FlowNode = Node<FlowData>;
 
 /**
- * ★ 2026-10-06：边的**类型**就这两个名字，别在别处再写字面量。
- *   · `FLOW_EDGE_TYPE` —— 库**内置**的 `smoothstep`（自定义边删掉之后，我们的边就是它）；
- *   · `LEGACY_EDGE_TYPE` —— 旧版**自定义边**的记号。老作答 / 老底稿里存着它，而库不认识它
- *     （未知类型会 `onError('011')` 并退回 `default`＝贝塞尔）⇒ 渲染前必须换掉，见 `visibleEdges`。
+ * ★ 2026-10-06：边的**类型**就这一个名字，别在别处再写字面量。
+ *   · `FLOW_EDGE_TYPE` —— **我们注册的那份只管标签的自定义边**（`FlowLabelEdge`，见上）：
+ *     线由 `BaseEdge` 画、标签摆在线的旁边（教师给的标准图）。
+ *   · ⊘ `LEGACY_EDGE_TYPE = 'flow'` 已经删掉：现在**所有**不是这个类型的边都会被换成它
+ *     （见 `visibleEdges`）—— 旧的 `'flow'`、上一版写进作答里的 `'smoothstep'`、
+ *     以及任何手改出来的怪类型，全都一视同仁。
+ *     ⚠️ 必须**全部**换：老作答里存着 `'smoothstep'`（上一版的 `FLOW_EDGE_TYPE`），
+ *     只换 `'flow'` 的话那些线的标签仍然压线，同一个画板上两种摆法并存。
  */
-const FLOW_EDGE_TYPE = 'smoothstep';
-const LEGACY_EDGE_TYPE = 'flow';
+const FLOW_EDGE_TYPE = 'flowLabel';
+
+/**
+ * ★ 2026-10-06（教师拍板 + 参考图）：**判断框出边的默认标注**是「是 / 否」，不是 `Y / N`。
+ *
+ * 🔴 信息科技课教材与教师给的那张标准流程图用的都是汉字 ⇒ 默认值跟着教材走。
+ *    · 第一条出边 ⇒ `是`；第二条 ⇒ `否`；**再多不猜**（返回 `undefined`，不给第三条硬凑一个字）。
+ *    · 工具条里仍然提供 `Y / N / 是 / 否 / 清空` 五个**快按钮**（见下面那组 `['Y','N','是','否'].map`）
+ *      —— 学生想用字母随时点，那一组一个字都不动。
+ * ⊘ ⚠️ **不许迁移已存数据**：老作答 / 老底稿里那条 `label: 'Y'` 照原样渲染（`toFlowPayload` 与
+ *    `readFlowchartPayload` 都不碰 `label`）—— 这是默认值改了，不是数据改了。
+ * ⚠️ 单独抽成常量 + 纯函数（而不是在 `onConnect` 里现写三元）：这样「0 ⇒ 是 / 1 ⇒ 否 / 更多不给」
+ *    这条**计数语义**能用**真调用**验（`surface-lifecycle.test.ts` 会把它抠出来喂 0/1/2/3）。
+ */
+const DECISION_BRANCH_LABELS = ['是', '否'] as const;
+const decisionBranchLabel: (used: number) => string | undefined = (used) => {
+  return DECISION_BRANCH_LABELS[used];
+};
 
 /**
  * ★ 2026-10-06（教师认可的第 1 步整理）：**画布上只有一份「选中」**，而且是单选。
@@ -133,6 +155,61 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
         />
       )}
     </div>
+  );
+}
+
+/*
+  ★ 2026-10-06（教师上传的标准流程图）：**线标签只许那一份自定义边** —— 它除了「把线画出来 +
+    把标签摆到线的旁边」什么都不管。
+  🔴 教师的问题：库内置边把标签画在**路径中点正上方并压住线**（白底框盖住那一小段），
+    而标准流程图里标注是写在**线的旁边**的（判断框分出的两条线：竖线的字在**右侧**、
+    横线的字在**上方**），文字紧贴但完全不压线。
+  🔴 为什么「往哪一侧偏」必须由**方向**决定、纯 CSS 做不到：同一个标签元素，竖线要往 +x 偏、
+    横线要往 -y 偏，而 CSS 拿不到这条路径的方向（`targetPosition` 只有组件里才有）。
+  ⊘⊘ **绝不要**把以前删掉的那套带回来（见下面那段注释）：不要 `Handle`、不要 `data-nodeid`、
+    不要用它来接任何连线 —— 这一份自定义边**只画标签**，连线全靠 `EDGE_SNAP_RADIUS` 那套几何吸附。
+  ⚠️ 标签必须**还在边的 `<g>` 里**（不是 `EdgeLabelRenderer` 那个 portal）：库把
+    `onEdgeDoubleClick` 挂在边外面那层 `<g class="react-flow__edge">` 上，portal 出去之后
+    事件不再冒泡到它 ⇒「双击标签改文字」会变成「点空白、取消选中」（实测过）。
+    在 `<g>` 里画的话标签与线走**同一条**事件路，双击哪一处都进就地输入框。
+  ⚠️ 箭头：`markerEnd` 是库算好的 `url('#…')`，必须原样转交给 `BaseEdge`，否则箭头会没。
+*/
+
+/** 标签离线多远（**流坐标**；屏幕上还要乘 zoom —— 默认视图 zoom≈1.25 ⇒ 约 10 屏幕 px）。 */
+const EDGE_LABEL_GAP = 8;
+
+/**
+ * **只管标签**的自定义边：`BaseEdge` 画线（带箭头）+ 一个自己摆位的 `<text>`。
+ *
+ * 摆位规则（教师给的标准图）：
+ *   · 线**进目标那一侧**是上/下（末段竖直）⇒ 标签在线的**右侧**：`textAnchor="start"` +
+ *     `x = labelX + GAP` ⇒ 不管标签多长，它的**左边缘**都贴在线右侧 `GAP` 处，永不压线；
+ *   · 是左/右（末段水平）⇒ 标签在线的**上方**：`textAnchor="middle"` + `y = labelY - GAP` ⇒
+ *     基线抬到线的上方 `GAP` 处（字形最低点还在基线之上）⇒ 也永不压线。
+ * ⚠️ 「按长度居中再偏移」那套**不行**：`是/否` 两个字与 12 字自定义标注的宽度差十倍，
+ *    居中会让长标签横跨回线上。`textAnchor` 两个方向各取一个，才与长度无关。
+ * ⚠️ 文字颜色/字号在 `worksheet.module.css` 的 `.flowEdgeLabel` 里钉住（深色，无白底框）。
+ */
+function FlowLabelEdge({
+  sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, label, markerEnd, style,
+}: EdgeProps) {
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
+    sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+  });
+  // ⚠️ `<text>` 里只放得了字符串：`Edge.label` 的类型是 `string | ReactNode`（我们只写字符串）。
+  const text = typeof label === 'string' ? label : '';
+  const vertical = targetPosition === Position.Top || targetPosition === Position.Bottom;
+  return (
+    <>
+      {/* ⚠️ `markerEnd` 必须转交给 `BaseEdge` —— 自定义边忘了它 = 箭头没了（教师问过的那件事）。
+          ⚠️ `BaseEdge` **不**接 `label`：库那套标签是「居中压线」的，正是本轮要换掉的东西。 */}
+      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
+      {text ? (vertical ? (
+        <text className={styles.flowEdgeLabel} x={labelX + EDGE_LABEL_GAP} y={labelY} dy="0.35em" textAnchor="start">{text}</text>
+      ) : (
+        <text className={styles.flowEdgeLabel} x={labelX} y={labelY - EDGE_LABEL_GAP} textAnchor="middle">{text}</text>
+      )) : null}
+    </>
   );
 }
 
@@ -205,13 +282,54 @@ const EDGE_FLOAT_BACK = 26;
  *     22 把这条边界推出去 2px，同时 25px 仍然不连（该连的连上、不该连的不连）。
  *   · 单位是**屏幕 px**，不是流坐标：手指的精度发生在屏幕上，画布缩到 0.35 倍时 20 流坐标只有
  *     7 屏幕 px（等于没吸附），放大到 2.2 倍又会吸走老远的边。
- * ⚠️ 与**框的句柄**的竞争：落点若压在框的句柄上（`elementFromPoint` 在节点层拿到它），
- *    库已经形成有效连接 ⇒ 这一路根本不进（`handledRef` 已置位）⇒ **框的句柄赢**。
+ * ⚠️ 与**框的句柄**的竞争：落点**正压**在框的句柄上（`elementFromPoint` 在节点层拿到它）时让位；
+ *    落点在句柄**附近**（≤ `NODE_HANDLE_PRIORITY_RADIUS`）时同样让位 —— 见下面那个常量。
  * ⚠️ 这一路只管「从**节点的句柄**拖出来」那一类（`onConnectStart` 记下的起点）。
  * ⚠️ 拖动**过程中**的「会吸到哪条边」高亮用的是**同一份** `nearestEdgeAt` —— 两份必然分叉，
  *    而分叉的表现是「高亮的是 A、真吸上去的是 B」，屏幕上不报错。
  */
 const EDGE_SNAP_RADIUS = 22;
+
+/**
+ * ★ 2026-10-06（教师截图）：**框的句柄优先半径**（屏幕 px）—— 比 `EDGE_SNAP_RADIUS` 大。
+ *
+ * 🔴 教师截图里那个病：一条**从右侧绕回来**的线，本来该直接以一个向左的箭头进「处理过程」框的
+ *    **右侧**；实际却吸附到框下方那条**竖线**上、把竖线拆成两段并留下一个交点圆点
+ *    （画面上多出一个大圆点，箭头也变成从上往下进框底）。
+ *    根因：兜底原来只看「落点正下方压着 `.react-flow__handle`」—— 学生拖到框**附近**（离右侧句柄
+ *    十几二十 px）时落点并没有压住那颗 10px 的句柄，于是兜底照旧按距离去吸线下那条竖线。
+ *
+ * ✅ 判据改成**句柄优先**：落点附近（≤ 这个半径）存在**某个节点句柄** ⇒ 整段兜底不做，
+ *    让库自己去连那个框（学生想要的就是「拖到框附近就连框」）。
+ *    ⚠️ 排除**这一拖的起点句柄本身**（与库 `getClosestHandle` 里那句跳过 `fromHandle` 一致）：
+ *      否则「从某句柄拖出去一点点」会被自己那颗句柄挡住，连「附近有一条线」也吸不上了。
+ *    ⚠️ 半径必须与库那边**对齐到同一个屏幕半径** —— 那一边才是库判定「落点算不算落在句柄上」
+ *      的半径（`getClosestHandle` 里 `distance > connectionRadius` 就跳过）。
+ *      🔴🔴 **单位不一样**（读 `@xyflow/system@0.0.82` + 实测确认）：
+ *        · 库的 `connectionRadius` 比的是**流坐标**（`getClosestHandle(pointToRendererPoint(…),
+ *          connectionRadius, …)` 两端都是流坐标）⇒ **默认 20 流单位**；
+ *        · 我们这一条比的是**屏幕 px**（与 `EDGE_SNAP_RADIUS` 同一套：手指的精度发生在屏幕上）。
+ *      ⇒ 传进去的必须是 `NODE_HANDLE_PRIORITY_RADIUS / zoom`（见 `<ReactFlow>` 那一行）。
+ *        直接传 `NODE_HANDLE_PRIORITY_RADIUS` 会留下两段环（**实测**：zoom=1.42 时
+ *        库那边的屏幕半径是 40×1.42 ≈ 57px ⇒ 「离句柄 50px 松手」也会连框，
+ *        而我方让位半径只有 40px ⇒ 那一圈里库连框 + 兜底还可能同时吸线）。
+ *      📏 库的默认 `connectionRadius` 是 20 流单位（`@xyflow/react` store 初值）。
+ *    📏 40 的来由：那颗句柄的命中盒只有 10px（CSS `.flowNode :global(.react-flow__handle)`），
+ *      而学生的手指/鼠标精度在 ±20px 上下；40 大致等于「贴着框试」的范围，同时仍远小于常见
+ *      节点间距（150×54 的框、默认间距上百 px）⇒ 不会把「拖到线附近」那一格全吃掉。
+ *      ⚠️ 实测数字（无头 Chrome + CDP，跑本仓真组件，探针只放 /tmp）：
+ *      离右侧句柄 **10 / 20 / 30 / 40 屏幕 px** 松手 ⇒ 连**框**（进右侧句柄、不插交点）；
+ *      **45 / 50px** ⇒ 什么都不做（两边的半径在同一个屏幕上界上收住 ⇒ 没有死环）；
+ *      拖到线中点附近（离任何句柄都很远）⇒ 仍走 22px 的吸附、连**线上**（恰好 1 个交点）。
+ */
+const NODE_HANDLE_PRIORITY_RADIUS = 40;
+
+/**
+ * 节点上四个句柄的 id（与 `FlowNodeEditor` 里那四个 `Handle` 一致：上 / 右 / 下 / 左）。
+ * ⚠️「落点附近有没有句柄」那条判据要按**四个句柄**逐个算距离 —— 它们的屏幕坐标不在节点中心，
+ *    只算节点中心会把「离框很近、但离句柄还远」也误判成命中。
+ */
+const FLOW_HANDLE_IDS = ['top', 'right', 'bottom', 'left'] as const;
 
 /**
  * 拆线时，交点这一侧该接哪个句柄 —— 让两段**接回原来的方向**（竖直流程图走上/下，横向流程图走左/右）。
@@ -375,8 +493,11 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *
    * 🔴 三条决定逐字落地（见 `@/lib/worksheet-drawing-starter.ts` 的注释）：
    *    · A **底稿不算学生的作答** ⇒ 交上去的 `data` = 画板上的全部 − 底稿（`subtractFlowchart`）；
-   *    · B **锁定初始图**（一题一个开关，默认锁）⇒ 读进来时按开关给底稿的节点/边打锁
-   *      （`mergeFlowchart` 的第三个参数）；教师取消锁定那一档一个标记都不加；
+   *    · B **底稿永远可改可删**（教师最终拍板：「还是不要锁定，因为学生端已经有恢复初始图功能了」）
+   *      ⇒ 读进来时底稿与学生自己那份走**同一条**处理（`mergeFlowchart` 剥掉老数据里的锁标记、
+   *      一个标记都不打）：底稿的框可以拖/可以删/文字可改，底稿的连线可以删/可以改标注；
+   *      ⊘ 「锁定初始图」那一档连同它的开关一起删掉了 —— **别**把它加回来；
+   *      回退**只靠**「恢复初始图」（那颗按钮无条件出现，见 `restoreStarter`）。
    *    · 试点就是流程图这一档。
    * ⚠️ 合并是**读的时候**做、剔除是**写的时候**做：画板自己始终拿着「底稿 + 学生画的」这一份，
    *    于是拖拽/连线/标注都不必知道底稿的存在。
@@ -386,29 +507,12 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     [starter],
   );
   /**
-   * ★ 2026-10-06（教师）：「**锁定初始图**」—— 信息科技课的作业常态是「老师给一半，学生只补连线」。
-   *
-   * 🔴 语义（见 `readDrawingStarter`）：题目上**没设过就是锁的**，只有教师主动取消（`false`）才未锁。
-   *    · 锁定 ⇒ 初始图里的东西：框不能拖、不能删、文字只读；线不能删、不能改标注；
-   *    · 未锁 ⇒ 一个锁都不加，回到「学生可以随便改 + 恢复初始图」那一版。
-   * ⚠️ 判据**按 id**（`starterNodeIds` / `starterEdgeIds`）：**初始图里出现过的 id 就是「老师的」**。
-   *    这正是「连到线中点」拆线时头段**沿用原 id** 的原因之一 —— 拆出来的头段仍然是老师的，
-   *    尾段与学生新拉的那根是他自己的。别把判据改成「看标记」（标记只在合并那一刻打上）。
-   */
-  const starterLocked = starter?.tool === 'flowchart' && starter.locked === true;
-  const starterNodeIds = useMemo(() => new Set(starterPayload.nodes.map((item) => item.id)), [starterPayload]);
-  const starterEdgeIds = useMemo(() => new Set(starterPayload.edges.map((item) => item.id)), [starterPayload]);
-  /** 这一件是**老师的**（而且这一题锁了）吗 —— 全组件只有这两个判断。纯读，不产生副作用。 */
-  const isStarterNode = (id: string) => starterLocked && starterNodeIds.has(id);
-  const isStarterEdge = (id: string) => starterLocked && starterEdgeIds.has(id);
-  /**
-   * 画板上的那份 = **底稿 + 学生自己画的**（合并只在读的时候做一次），第三个参数就是那一档开关。
+   * 画板上的那份 = **底稿 + 学生自己画的**（合并只在读的时候做一次）。
    * ⚠️ 类型上 `mergeFlowchart` 给的是「带 id 的普通对象」，画板要的是 React Flow 的
-   *    `FlowNode`/`Edge` —— 这里窄化一次（结构本来就一致，多出来的 `draggable`/`deletable`
-   *    正是 React Flow 自己的字段）。
+   *    `FlowNode`/`Edge` —— 这里窄化一次（结构本来就一致）。
    */
   const initial = useRef<{ nodes: FlowNode[]; edges: Edge[] }>(
-    mergeFlowchart(starterPayload, readFlowchartPayload(readFlowData(data)), starterLocked) as unknown as { nodes: FlowNode[]; edges: Edge[] },
+    mergeFlowchart(starterPayload, readFlowchartPayload(readFlowData(data))) as unknown as { nodes: FlowNode[]; edges: Edge[] },
   );
   /**
    * 最近一次交出去的流程数据 —— 快照按它画。
@@ -449,8 +553,14 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    */
   const { flowToScreenPosition } = useReactFlow<FlowNode, Edge>();
   const nodeTypes = useMemo(() => ({ flow: FlowNodeEditor }), []);
-  /* ⊘ 2026-10-06：这里原来还有 `const edgeTypes = useMemo(() => ({ flow: FlowEdgeLine }), [])`
-     （给自定义边注册类型）—— 随自定义边一起删掉，`<ReactFlow>` 现在用**库内置**的 `smoothstep` 边。 */
+  /**
+   * ★ 2026-10-06（教师上传的标准流程图）：注册那份**只管标签**的自定义边。
+   * ⊘ 旧版这里注册的是带**中点句柄**的那套 `FlowEdgeLine` —— 那一套永远不许回来（理由见上面）。
+   * ✅ 这一份只做两件事：`BaseEdge` 画线（含箭头）+ 把标签摆到线的旁边；它**没有** `Handle`、
+   *    没有 `data-nodeid`、也不参与任何连线判定。
+   * ⚠️ 必须是**稳定的**引用（`useMemo([])`）：每次渲染新建一个对象会让所有边重新挂载。
+   */
+  const edgeTypes = useMemo(() => ({ [FLOW_EDGE_TYPE]: FlowLabelEdge }), []);
   /** 位图快照：自己吐一份纯 SVG 再栅格化（**不用 `foreignObject`**，老 iPad 上那条路可能出空白图）。 */
   const scheduleRaster = useDrawingRaster({
     capture: async () => {
@@ -481,19 +591,25 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    * ⚠️ 只补**缺**的（`?? ARROW`）：学生（或将来）自己配过 markerEnd 的边不被覆盖。
    * ⚠️ 第一条 `map` **逐字保持原样**（用例里钉着那一句：只补缺的、老作答也算）。
    *
-   * ★ 2026-10-06：**自定义边删掉之后**，库不认识 `type: 'flow'`（那是我们旧版自定义边的记号，
-   *   老作答与老底稿里都存着它）—— 库的 `EdgeWrapper` 遇到未知类型会 `onError('011')`
-   *   （`ReactFlowProvider` 在开发模式下把它变成 console.warn）并退回 `default`（**贝塞尔**）：
-   *   线会从折线变成弯线，控制台还会每条刷一次警告。⇒ 读到就换成库自己的 `smoothstep`
-   *   （正是它们当初画出来的那个形状）。⚠️ 这是**兼容旧数据**，不是「给边指定类型」。
+   * ★ 2026-10-06：边的类型**全部**规范化成本轮那份「只管标签」的自定义边（`FLOW_EDGE_TYPE`）。
+   *   为什么是**全部**、而不是只换旧的 `'flow'`：
+   *     · 旧版自定义边的记号 `'flow'` —— 库不认识它，`EdgeWrapper` 会 `onError('011')`
+   *       并退回 `default`（**贝塞尔**）；
+   *     · 上一版把 `'smoothstep'`（库内置）写进了学生作答 ⇒ 只换 `'flow'` 的话，那些线的标签
+   *       仍然是由**库**摆的「居中压线」，与这一轮的新摆法在同一个画板上并存；
+   *     · 任何手改出来的怪类型同理。
+   *   ⚠️ 这是**兼容旧数据 + 统一摆法**，不是「给边指定任意类型」—— 只有这一个目标类型。
    *
    * ★ 2026-10-06（可发现性补偿）：拖动连线**过程中**把「松手会吸上去的那条边」先高亮出来
    *   （`snapCandidateId` ⇒ 逐边 `className`）。⚠️ 只有真的有候选时才挂类 ——
    *   拖到空白、或离最近那条线还在 `EDGE_SNAP_RADIUS` 之外时，一个类都不挂。
+   *   ⚠️ 那个类落在边外面那层 `<g class="react-flow__edge …">` 上（库自己加的），
+   *   而高亮的宽度规则打在 `.react-flow__edge-path` 上 ⇒ 自定义边也必须用 `BaseEdge`
+   *   画那条路径（`BaseEdge` 给的正是 `react-flow__edge-path`）。
    */
   const visibleEdges = useMemo(
     () => edges.map((edge) => (edge.markerEnd ? edge : { ...edge, markerEnd: FLOW_ARROW }))
-      .map((edge) => (edge.type === LEGACY_EDGE_TYPE ? { ...edge, type: FLOW_EDGE_TYPE } : edge))
+      .map((edge) => (edge.type === FLOW_EDGE_TYPE ? edge : { ...edge, type: FLOW_EDGE_TYPE }))
       .map((edge) => (edge.id === snapCandidateId ? { ...edge, className: styles.flowEdgeSnap } : edge)),
     [edges, snapCandidateId],
   );
@@ -501,13 +617,13 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   /**
    * 「恢复初始图」（教师澄清 2：「学生可以修改底稿，但是可以提供一个『恢复底稿』的按钮」）。
    *
-   * 🔴 这是**未锁**那一档唯一的回退路径：流程图这一档的工具条只有「加节点」与「线上标注」，
+   * 🔴 这是**唯一**的回退路径：流程图这一档的工具条只有「加节点」与「线上标注」，
    *    没有撤销、也没有清空 —— 学生把教师给的图改乱了，只能靠这颗按钮回去。
-   * ⚠️ 只在**这一题有初始图、而且未锁**时才出现：锁定时学生动不了老师的东西，恢复只会误删
-   *    他自己的补充（那颗按钮的出现条件因此是 `starter && !starterLocked`）。
+   * ★ 2026-10-06（教师最终拍板）：「锁定初始图」撤掉之后，这颗按钮**无条件出现**
+   *    （只要这一题有初始图）—— 它的出现条件里**不许**再有任何锁标记（见下面那段注释）。
    */
   const restoreStarter = () => {
-    const base = restoreFlowchart(starterPayload, starterLocked);
+    const base = restoreFlowchart(starterPayload);
     setNodes(base.nodes as unknown as FlowNode[]);
     setEdges(base.edges as unknown as Edge[]);
   };
@@ -618,9 +734,12 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     const anchors = edgeFlowAnchors(hitEdgeId);
     if (!anchors) return;
     const junctionId = `junction-${Date.now()}-${nodes.length}`;
-    /* ⚠️ 12 与 CSS 里 `.flowNode_junction` 的 12×12 是同一个数：节点 `position` 说的是
-       **左上角**，各减一半才能让那颗圆点正落在标签点上（不这么减，线会岔开 6px）。 */
-    const junctionHalf = 6;
+    /* ⚠️ 4 = CSS 里 `.flowNode_junction` 的 8×8 的一半（`box-sizing: border-box` ⇒ 宽高含描边）。
+       节点 `position` 说的是**左上角**，各减一半才能让那颗圆点正落在精确中点上
+       （不这么减，线会与圆点岔开 4px）。⚠️ 改了 CSS 那个尺寸，这里必须跟着改 ——
+       `surface-lifecycle.test.ts` 会把两处对起来。
+       ★ 2026-10-06（教师截图）：「大大的圆点其实是不需要的」⇒ 12×12 实心点缩成 8×8 空心环。 */
+    const junctionHalf = 4;
     /* 🔴 `handledRef` 在**这里**置位（唯一入口也走这一句）：「同一次拖拽只能生效一次」是
        **结构性**的 —— 谁进来都先看它，绝不重复拆同一条线。 */
     handledRef.current = true;
@@ -685,9 +804,12 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   }, [nodes.length, edgeFlowAnchors, setEdges, setNodes]);
 
   /**
-   * ★ 2026-10-06（教师）：「判断框出来的两条线默认应该是一条上面是 Y，一条上面是 N」。
-   * ⇒ 从**判断框**拉出来的线自动带上 Y / N（按这个判断框已有几条带标注的出边排：0→Y、1→N、再多就不猜）。
-   * ⚠️ 其它节点拉出来的线**不自动给字**：给每条线都塞一个 Y 是噪音，而且会让「线上一片字」。
+   * ★ 2026-10-06（教师）：「判断框出来的两条线默认应该是一条上面是 Y，一条上面是 N」
+   *   ⊘ 2026-10-06（教师拍板 + 参考图）：**默认标注改成「是 / 否」**（见 `DECISION_BRANCH_LABELS`）。
+   * ⇒ 从**判断框**拉出来的线自动带上默认标注（按这个判断框已有几条带标注的出边排：
+   *   0 ⇒ 第一条、1 ⇒ 第二条、**再多就不猜**）。⚠️ 计数逻辑一个字没动，只换了那两个字。
+   * ⚠️ 其它节点拉出来的线**不自动给字**：给每条线都塞一个字是噪音，而且会让「线上一片字」。
+   * ⚠️ **不迁移已存数据**：老作答里那条 `label: 'Y'` 照原样渲染。
    *
    * ★ 2026-10-06（教师）：连到**线上**不再走库自己的连接判定（那颗中点句柄已随自定义边删掉）
    * ⇒ 这个回调现在**只**处理「落点是节点」；「落点是线」由 `onConnectEnd` 的几何吸附负责
@@ -699,7 +821,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
       let label: string | undefined;
       if (source?.data.kind === 'decision') {
         const used = current.filter((edge) => edge.source === connection.source && edge.label).length;
-        label = used === 0 ? 'Y' : used === 1 ? 'N' : undefined;
+        label = decisionBranchLabel(used);
       }
       return addEdge({ ...connection, type: FLOW_EDGE_TYPE, ...(label ? { label } : {}) }, current);
     });
@@ -728,6 +850,37 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     }
     return nearest;
   }, [edges, edgeFlowAnchors, flowToScreenPosition]);
+
+  /**
+   * ★ 2026-10-06（教师截图）：落点附近**有没有节点句柄** —— 有就让位给库（连框），兜底整段不做。
+   *
+   * 🔴 **唯一一份**「句柄距离」算法：`onConnectEnd` 的兜底靠它决定让不让位。
+   * ⚠️ 逐个算**四个句柄**的屏幕坐标（不是节点中心）：句柄在节点四条边的中点上，只算中心会让
+   *    「离框很近、但离句柄还远」也误判成命中（那会把本来该吸线的落点白白让给库、什么都不发生）。
+   * ⚠️ 排除**这一拖的起点句柄本身**（`node.id + handleId` 同时相等）—— 与库 `getClosestHandle`
+   *    里那句跳过 `fromHandle` 的写法一致；不排除的话「从某句柄拖出去一点点」会被自己挡住。
+   * ⚠️ 与库那边**同一个屏幕半径**（见 `<ReactFlow connectionRadius={NODE_HANDLE_PRIORITY_RADIUS
+   *    / viewport.zoom}>`）：库按这个半径认「落点落在句柄上」，兜底按这个半径让位 —— 两个半径
+   *    必须落在同一套单位上（库那份是**流坐标**，所以要除以 zoom），否则中间会留下环。
+   *    见那个常量的注释。
+   */
+  const nearestHandleAt = useCallback((
+    clientX: number,
+    clientY: number,
+    origin: { nodeId: string; handleId: string | null },
+  ) => {
+    let nearest: { distance: number } | null = null;
+    for (const node of nodes) {
+      for (const handleId of FLOW_HANDLE_IDS) {
+        if (node.id === origin.nodeId && handleId === origin.handleId) continue;
+        const handle = flowToScreenPosition(handleFlowPoint(node, handleId, Position.Top));
+        const distance = Math.hypot(clientX - handle.x, clientY - handle.y);
+        if (distance > NODE_HANDLE_PRIORITY_RADIUS) continue;
+        if (!nearest || distance < nearest.distance) nearest = { distance };
+      }
+    }
+    return nearest;
+  }, [nodes, flowToScreenPosition]);
 
   /**
    * ★ 2026-10-06（可发现性补偿）：拖动**过程中**跟踪指针，把「松手会吸上去的那条边」标出来。
@@ -775,6 +928,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *    · `onConnectStart` 记下「这一拖是从哪个句柄出发的」（`dragOriginRef`）；
    *    · `handledRef` 已置位 ⇒ 这一拖**已经生效过** ⇒ 整段不进（不许重复插交点）；
    *    · 松手点压着**任何**句柄 ⇒ 也不进（库已经处理过了，或者库已经明确拒绝）；
+   *    · ★ **落点附近（≤ `NODE_HANDLE_PRIORITY_RADIUS`）有节点句柄 ⇒ 也不进** ——
+   *      让库自己去连那个框。这是教师截图那一格（拖到框右侧附近却被吸到框下那条竖线上）的解药：
+   *      见 `NODE_HANDLE_PRIORITY_RADIUS` 的注释；
    *    · 指针离最近那条线的**中点** ≤ `EDGE_SNAP_RADIUS` ⇒ 走 `splitEdgeAt`。
    *    ⚠️ 这里**不做**「落点是不是边」的判断 —— 那条判据（`connection.target === 边 id`）
    *      随句柄一起删掉了：库再也不可能回一个「边 id」当落点。
@@ -798,6 +954,10 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     //    ⇒ 让位。这条同时挡住「从 source 柄拖出去几像素又放回来」那种误插。
     const hit = document.elementFromPoint(clientX, clientY);
     if (hit instanceof Element && hit.closest('.react-flow__handle')) return;
+    // ★ 2026-10-06（教师截图）：**框的句柄优先** —— 落点**附近**（不是正压着）有节点句柄时
+    //    整段兜底不做，让库自己去连那个框。半径与库的 `connectionRadius` 是同一个数，
+    //    所以「库会连上」与「兜底让位」两件事严格同时发生（不会留下谁都不管的环）。
+    if (nearestHandleAt(clientX, clientY, origin)) return;
     const originNode = nodes.find((node) => node.id === origin.nodeId);
     if (!originNode) return;
     // 起点句柄的**屏幕**坐标：落点比它还近 ⇒ 这次拖拽等于没动，别当成「连到线上」。
@@ -811,7 +971,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     /* ⚠️ 方向：句柄**类型**说了算 —— 从 source 柄拉 ⇒ 学生那一端是**源**（X → 交点）；
        从 target 柄拉 ⇒ 反过来（交点 → X）。 */
     splitEdgeAt(nearest.id, origin.nodeId, origin.handleId, origin.handleType === 'target');
-  }, [nodes, nearestEdgeAt, splitEdgeAt, flowToScreenPosition]);
+  }, [nodes, nearestEdgeAt, nearestHandleAt, splitEdgeAt, flowToScreenPosition]);
 
   /**
    * ★ 2026-10-06（教师认可的第 1 步整理）：**一个选中模型** —— 单选，`null` = 什么都没选。
@@ -824,11 +984,12 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   /** 选中的是**线**时，工具条上出现「这条线标注」那一组（Y / N / 清空 / 自由文字）。 */
   const selectedEdgeId = selected?.kind === 'edge' ? selected.id : null;
   /**
-   * ★ 2026-10-06（教师）：「锁定初始图」⇒ **老师的线不许改文字**。
-   * ⇒ 工具条那一组标注只在「选中的是线，**而且那根线是学生自己的**」时出现。
-   *   （判据按 id：初始图里出现过的 id 就是老师的。）
+   * ★ 2026-10-06（教师最终拍板）：「锁定初始图」撤掉 ⇒ 选中的线**一律可以改文字**
+   *   （初始图的线也一样 —— 教师：「学生端很多操作都无法进行了，我觉得还是不要锁定」）。
+   * ⊘ 这里原来还有一道 `&& !isStarterEdge(selectedEdgeId)` 的闸（判据按 id 认「老师的线」）——
+   *   随那一档一起删掉，**别**加回来。
    */
-  const labelableEdgeId = selectedEdgeId && !isStarterEdge(selectedEdgeId) ? selectedEdgeId : null;
+  const labelableEdgeId = selectedEdgeId;
   /**
    * 视口（`onMove` 给的 `{x, y, zoom}`）。
    * 🔴 用它把**流坐标**换算成容器内坐标：`local = viewport.x + flowX * zoom`。
@@ -849,10 +1010,10 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *    它删完是走 `triggerNodeChanges/triggerEdgeChanges`，也就是**回到我们传进去的
    *    `onNodesChange`/`onEdgesChange`** ⇒ 受控数据流不被绕开，`useNodesState/useEdgesState`
    *    照常更新（自写 filter 反而多一份「哪些边算相连」的判据要与库对齐）。
-   * ⚠️ 取舍：它是 `async`（这里不关心返回的 `deletedNodes/deletedEdges`，`void` 掉）；
-   *    它**认 `deletable: false`** —— 锁定那一档初始图的框/线正是带着这个标记进来的
-   *    （`mergeFlowchart`），所以键盘 Delete / 选中删除都碰不到老师的东西；未锁那一档
-   *    一个标记都没有（老数据里那份「锁定」已由 `withoutLegacyLocks` 剥掉）⇒ 学生随便删。
+   * ⚠️ 取舍：它是 `async`（这里不关心返回的 `deletedNodes/deletedEdges`，`void` 掉）。
+   * ⊘ ★ 2026-10-06：「锁定初始图」撤掉之后，底稿的框/线**不再带 `deletable: false`**
+   *    （`mergeFlowchart` 现在只剥标记、一个都不打）⇒ 键盘 Delete 与选中删除对学生画的、
+   *    教师给的**一视同仁**。
    */
   const { deleteElements } = useReactFlow<FlowNode, Edge>();
 
@@ -860,17 +1021,14 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    * ★ 2026-10-06（教师认可的第 1 步整理）：删掉**当前选中的那一件** —— 画布上唯一的删除出口。
    *   · 选中的是**线** ⇒ 从 `edges` 里摘掉这一条；
    *   · 选中的是**框** ⇒ 交给库的 `deleteElements`（「与它相连的线」是库自己算的，理由见上）。
-   * ⚠️ 交点**不做特例**：它也是一颗框，走的正是下面同一句 `deleteElements`（删它、连着它的线一起没，
-   *    教师没有对交点提任何要求）。
-   * 🔴 ★ 锁定初始图：**老师给的框/线这一条出口一律不放行**（判据按 id —— 初始图里出现过的 id
-   *    就是老师的）。浮层那颗按钮在锁定 + 选中老师的东西时**根本不画**（见 `overlay`），这里是
-   *    第二道闸：底稿的 `deletable:false` 只管得住库自己的删除路，而「选中的是线」那一支是我们
-   *    自己 `filter` 的（库那道闸管不着它）。
+   * ⚠️ 交点**不做特例**：它也是一颗框，走的正是下面同一句 `deleteElements`。
+   * ⊘ ★ 2026-10-06：「锁定初始图」撤掉 ⇒ 这里原来那道「老师给的框/线不放行」的闸
+   *   （判据按 id）整个删掉 —— 教师给的框/线**同样可以删**（教师原话：「初始图永远可改可删，
+   *   回退只靠『恢复初始图』」）。**别**把它加回来。
    */
   const removeSelected = () => {
     const target = selected;
     if (!target) return;
-    if (target.kind === 'node' ? isStarterNode(target.id) : isStarterEdge(target.id)) return;
     setSelected(null);
     setLabelingEdge(null);
     if (target.kind === 'edge') {
@@ -910,8 +1068,8 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *   · `delete` —— 选中框 / 线后的**图标删除按钮**（框 ⇒ 连带删相连的线；线 ⇒ 删这条线）。
    * 🔴 `label` 优先：双击连线必然先触发一次单击 ⇒ 两个形态**结构性互斥**（不再靠两处状态互相当心清），
    *    否则那颗 44px 的按钮会压在这个输入框上。
-   * 🔴 ★ 锁定初始图：选中的是**老师给的**框/线（判据按 id）⇒ **不浮删除按钮**。它点了也删不掉
-   *    （`removeSelected` 里还有第二道闸），画出来只会让学生以为「能删但坏了」。
+   * ⊘ ★ 2026-10-06：「锁定初始图」撤掉 ⇒ 这里原来那句「选中的是**老师给的**框/线就不浮删除按钮」
+   *   整个删掉 —— 教师给的框/线同样能删（`removeSelected` 也不再拦）。
    */
   const overlay = (() => {
     if (labelingEdge) {
@@ -919,7 +1077,6 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
       return anchor ? { mode: 'label' as const, edgeId: labelingEdge, anchor } : null;
     }
     if (!selected) return null;
-    if (selected.kind === 'node' ? isStarterNode(selected.id) : isStarterEdge(selected.id)) return null;
     const anchor = selectedAnchor;
     if (!anchor) return null;
     return {
@@ -931,12 +1088,10 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
 
   /**
    * 改一条线的标注 —— **唯一**的写入出口（工具条那组 Y/N/自由文字、就地输入框都走它）。
-   * 🔴 ★ 锁定初始图：老师给的线**不许改文字** ⇒ 在这里拦住（判据按 id）。工具条那一组与
-   *    就地输入框本来就不会为老师的线出现（见 `labelableEdgeId` / `onEdgeDoubleClick`），
-   *    这一句是让「唯一的写入出口」自己也是安全的。
+   * ⊘ ★ 2026-10-06：「锁定初始图」撤掉 ⇒ 这里原来那句「老师给的线不许改文字」的闸（判据按 id）
+   *   整个删掉 —— 初始图里的线**同样可以改标注**。**别**把它加回来（加了就是「半套行为」）。
    */
   const setEdgeLabel = (id: string, label: string) => {
-    if (isStarterEdge(id)) return;
     setEdges((current) => current.map((edge) => (edge.id === id ? { ...edge, label: label || undefined } : edge)));
   };
   /**
@@ -951,27 +1106,40 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   })();
   const visibleNodes = useMemo(() => nodes.map((node) => ({
     ...node,
-    // ★ 锁定初始图：老师的框**文字只读**（判据按 id —— 初始图里出现过的 id 就是老师的）；
-    //   未锁那一档这一条不生效（`starterLocked` 为假时整句退化成原来的「只读展示」）。
-    // ⊘ 2026-10-06 第三版曾经无条件解锁 —— 现在是**条件性**的：开关说了算。
-    data: { ...node.data, locked: disabled || (starterLocked && starterNodeIds.has(node.id)) || node.data.locked === true },
-  })), [disabled, nodes, starterLocked, starterNodeIds]);
+    // ★ 「只读展示」那一档（`disabled`，教师预览 / 回顾作答时用）—— 与底稿无关，与过去那个
+    //   「锁定初始图」也无关：底稿的框**不再**因为「它是老师的」而被置只读。
+    // ⚠️ `node.data.locked === true` 只剩**历史数据**这一个来源（合并/恢复时已由
+    //   `withoutLegacyLocks` 剥掉），这里留着只是为了老草稿万一漏网也不至于打不开。
+    data: { ...node.data, locked: disabled || node.data.locked === true },
+  })), [disabled, nodes]);
 
   return (
     <div className={styles.thirdPartySurface}>
       <div className={styles.drawingSurfaceToolbar} role="toolbar" aria-label="流程图工具">
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('terminator', '开始/结束')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.terminator} /></svg>开始/结束</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('process', '处理过程')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.process} /></svg>过程</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('decision', '判断条件')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.decision} /></svg>判断</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('io', '输入/输出')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.io} /></svg>输入/输出</button>
-        {/* ★ 锁定初始图 ⇒ **没有**这颗按钮：学生动不了老师的东西，恢复只会误删他自己的补充
-            （未锁那一档它才是唯一的回退路径，见 `restoreStarter`）。 */}
-        {starter && !starterLocked && (
+        {/*
+          ★ 2026-10-06（教师拍板，截图圈了这四颗按钮 + 「这些文字都没有改」）：按钮上的文字用
+            **信息科技课教材的名称**：起止框 / 处理框 / 判断框 / 输入输出框。
+          🔴 **千万不要**把「按钮文字」与「新节点里默认写什么」统一起来 —— 这是**两件事**：
+            · 按钮文字 = **形状的名字**（教材术语，学生按课本找得到）；
+            · `addNode(kind, …)` 的**第二个参数** = 放到画布上以后**框里默认写的内容**
+              （「开始/结束」「处理过程」「判断条件」「输入/输出」—— 那是**内容**，不是形状名）。
+            ⇒ 把默认标签也改成「起止框」等于在流程图的框里写形状名，学生会把框里的字当成流程内容。
+            ⚠️ 本轮**只改按钮的可见文字**：`addNode(...)` 的默认标签一个字都没动
+              （`surface-lifecycle.test.ts` 两边都会钉住）。
+        */}
+        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('terminator', '开始/结束')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.terminator} /></svg>起止框</button>
+        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('process', '处理过程')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.process} /></svg>处理框</button>
+        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('decision', '判断条件')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.decision} /></svg>判断框</button>
+        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('io', '输入/输出')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.io} /></svg>输入输出框</button>
+        {/* ★ 2026-10-06（教师最终拍板）：「恢复初始图」**无条件出现**（只要这一题有初始图）——
+            它是**唯一**的回退路径（「锁定初始图」那一档撤掉之后，学生把底稿改乱了只能靠它回去）。
+            🔴 出现条件里**不许**再出现任何锁标记（`starter && !starterLocked` 那种写法已经删掉）。 */}
+        {starter && (
           <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={restoreStarter}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.restore} /></svg>恢复初始图</button>
         )}
         <span className={styles.drawingToolbarHint}>
           {selectedEdgeId
-            ? (labelableEdgeId ? '这条线标注：' : '这条线是初始图的一部分，不能修改')
+            ? '这条线标注：'
             : '从圆形连接点拖向另一节点即可连线'}
         </span>
         {labelableEdgeId && (
@@ -1001,6 +1169,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           nodes={visibleNodes}
           edges={visibleEdges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onNodesChange={disabled ? undefined : onNodesChange}
           onEdgesChange={disabled ? undefined : onEdgesChange}
           onConnect={disabled ? undefined : onConnect}
@@ -1032,13 +1201,13 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
             ★ 2026-10-06（教师）：「双击线条可以输入/修改连接线上的文字」。
             双击进入**就地输入框**（就在那条线中点），回车提交、Esc 取消。
             ⚠️ 单击仍是「选中这条线」（浮出删除按钮）—— 两件事分开，不互相抢。
-            🔴 ★ 锁定初始图：**老师给的线不许改文字** ⇒ 双击**不进**就地输入框（照样只是选中它）。
-               判据按 id（初始图里出现过的 id 就是老师的）；学生自己连上去的那些线照旧能改。
+            ⊘ ★ 「锁定初始图」撤掉 ⇒ 这里原来那道「老师给的线不进就地输入框」的闸
+              （`if (!isStarterEdge(edge.id))`）整个删掉 —— 初始图的线**同样可以双击改文字**。
           */
           onEdgeDoubleClick={(event, edge) => {
             event.stopPropagation();
             setSelected({ kind: 'edge', id: edge.id });
-            if (!isStarterEdge(edge.id)) setLabelingEdge(edge.id);
+            setLabelingEdge(edge.id);
           }}
           // 浮层要跟着视口走（平移/缩放都会回调）
           onMove={(_, next) => setViewport(next)}
@@ -1047,6 +1216,17 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           nodesDraggable={!disabled}
           nodesConnectable={!disabled}
           connectionMode={ConnectionMode.Loose}
+          /*
+            ★ 2026-10-06（教师截图）：库判定「落点算不算落在句柄上」的半径 —— 必须与兜底那边
+            让位的**屏幕半径**对齐（`NODE_HANDLE_PRIORITY_RADIUS`），否则中间会留下环：
+              · 传得比让位半径**大**（直接把 40 当流单位传）⇒ 「库连了框、兜底也去吸了线」两件事
+                同时发生（实测 zoom=1.42 时库那边的屏幕半径是 57px）；
+              · 传得比让位半径**小** ⇒ 一圈「库说太远、兜底又让位」的死环（松手什么都不发生）。
+            🔴 库的那个数比的是**流坐标**（`getClosestHandle` + `pointToRendererPoint` 两端都是流
+            坐标）⇒ 这里必须除以 zoom，换算成「同一个屏幕半径」。zoom 由 `onMove` 跟着视口走。
+            库的默认值是 20（流单位）。
+          */
+          connectionRadius={NODE_HANDLE_PRIORITY_RADIUS / viewport.zoom}
           elementsSelectable={!disabled}
           fitView
           minZoom={0.35}

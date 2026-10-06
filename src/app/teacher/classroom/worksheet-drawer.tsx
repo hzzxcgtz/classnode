@@ -358,7 +358,7 @@ function QuestionList({
       <div className={styles.analysisSummary}>
         <div className={styles.analysisMetric}><strong>{worksheet.participants.length}</strong><span>参与者总数</span></div>
         <div className={styles.analysisMetric}><strong>{totalSubmissions}</strong><span>已产生作答</span></div>
-        <div className={styles.analysisMetric}><strong>{automaticCount}</strong><span>可自动判分题</span></div>
+        <div className={styles.analysisMetric}><strong>{automaticCount}</strong><span>可自动评分题</span></div>
         <div className={styles.analysisMetric} data-tone="warning"><strong>{manualCount}</strong><span>主观题</span></div>
       </div>
       <div className={styles.sampleHint}>

@@ -277,7 +277,7 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
                 如果那本来是一个词（例如 <code>New York</code>），请把它改回题干。
               </li>
             )}
-            {isFill && <li>标准答案<strong>不会</strong>从粘贴里识别，请粘完之后自己填。</li>}
+            {isFill && <li>正确答案<strong>不会</strong>从粘贴里识别，请粘完之后自己填。</li>}
           </ul>
         ) : null}
 

@@ -45,9 +45,9 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
     try {
       const result = await api.uploadWorksheetImage(file);
       onDataChange({ drawingBackgroundPreset: 'custom', drawingBackgroundImageUrl: result.url });
-      onNotice('绘图底图已上传', 'success');
+      onNotice('画布底图已上传', 'success');
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : '绘图底图上传失败', 'error');
+      onNotice(error instanceof Error ? error.message : '画布底图上传失败', 'error');
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -77,7 +77,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
 
   const selectedTool = DRAWING_TOOL_OPTIONS.find(option => option.value === tool);
   const selectedBackground = background.preset === 'custom'
-    ? { label: '自定义底图', description: '教师上传的题目专用底图' }
+    ? { label: '自定义底图', description: '教师为这一题上传的专用底图' }
     : DRAWING_BACKGROUND_PRESETS.find(option => option.value === background.preset);
 
   return (
@@ -144,7 +144,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
             data-checked={background.preset === 'custom' ? '1' : '0'}
             aria-pressed={background.preset === 'custom'}
             disabled={uploading}
-            title="上传数轴、示意图或题目专用底图"
+            title="上传数轴、示意图或这一题的专用底图"
             onClick={() => inputRef.current?.click()}
           >
             <span
@@ -206,7 +206,9 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
           tool === 'flowchart' ? (
             <>
               <p className="worksheet-editor-drawing-note">
-                学生在下面这张图上继续画；<b>底稿不能改也不能删</b>，而且<b>不计入他的作答</b>。
+                {/* ★ 2026-10-06：原来这里还有前半句「学生在下面这张图上继续画」——
+                    与上面那个开关标签（「让学生在这张底稿上继续画」）同义 ⇒ 只留后半句。 */}
+                <b>底稿不能改也不能删</b>，而且<b>不计入他的作答</b>。
               </p>
               <div style={{ height: 380, border: '1px solid #e4ecf4', borderRadius: 10, overflow: 'hidden' }}>
                 <FlowchartDrawing

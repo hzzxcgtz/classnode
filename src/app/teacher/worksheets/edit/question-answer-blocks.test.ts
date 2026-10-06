@@ -191,10 +191,11 @@ test('🔴 填空题**没有**「得分方式 + 分值」这两行了（教师 2
   assert.ok(methodAt > 0 && pointsAt > methodAt, '两行本身还在（它们仍服务选择填空）');
   const gate = card.lastIndexOf("node.type === 'choice-blank' && (", methodAt);
   assert.ok(gate > 0 && methodAt - gate < 120, '这两行没有收在选择填空那一支里 —— 填空题又会有整题口径的开关');
-  // ⚠️ 填空题**不能**再出现「得分方式」这个行首标签（它是 `FillScoringMethodRow` 画的那一行）。
+  // ⚠️ 填空题**不能**再出现这一行（它由 `FillScoringMethodRow` 画；★ 2026-10-06 起
+  //    行首标签与逐空那一排同名，都叫「评分方式」）。
   assert.ok(
-    !/worksheet-editor-flat-label">得分方式/.test(card.slice(0, gate)),
-    '填空题那一块里又出现了「得分方式」',
+    !/worksheet-editor-flat-label">评分方式/.test(card.slice(0, gate)),
+    '填空题那一块里又出现了整题口径的「评分方式」行',
   );
   // 「本题满分」徽章仍要在（它现在取逐空合计）。
   assert.match(card, /本题满分/, '满分徽章被一起删掉了 —— 那道题在屏幕上就没有分数了');
@@ -260,8 +261,11 @@ test('★ 选项行：答案设置（圆点/勾选框）在**行尾**，字母�
   assert.ok(choice.includes('worksheet-editor-option-correct is-readonly'), '行首的字母盒（A/B/C/D）不见了');
 
   assert.match(body(CARD), /正确答案点选项右侧的圆点/, '卡片上的提示仍写着「左侧」');
-  assert.match(choice, /请点击选项右侧的圆点/, '「尚未设置正确答案」那句仍写着「左侧」');
-  assert.match(choice, /请勾选选项右侧的方框/, '多选那句仍写着「左侧」');
+  // ★ 2026-10-06：「点右侧圆点 / 方框」这件事**只由卡片那句讲一次**（同一屏里不说两遍）——
+  //    警告条现在只留结论。
+  assert.match(choice, /尚未设置正确答案/, '警告条丢了结论');
+  assert.ok(!choice.includes('请点击选项右侧的圆点'), '警告条又把「点右侧圆点」讲了一遍');
+  assert.ok(!choice.includes('请勾选选项右侧的方框'), '警告条又把「勾右侧方框」讲了一遍');
 
   // 选中态由 React 算类名 —— `:has(input:checked)` 在 globals.css 里被兼容闸门禁用。
   assert.match(choice, /' is-on' : ''/, '选中态类名不见了');
@@ -303,18 +307,18 @@ test('★ 选项行：答案设置（圆点/勾选框）在**行尾**，字母�
   );
 });
 
-test('★ 2026-10-06（教师）：判断题的标准答案摆在**题干后面**（不再压在最下面）', () => {
+test('★ 2026-10-06（教师）：判断题的正确答案块摆在**题干后面**（不再压在最下面）', () => {
   const live = stripImports(stripComments(CARD));
   // ⚠️ 判据用**这一块的标题**，不要用 `node.type === 'true-false'`：那个条件在卡片靠上处
   //    （摘要/只读预览那条路）也出现过，第一次出现的位置比题干还早 ⇒ 拿它当判据会假红。
   const stem = live.indexOf('<h4>题干</h4>');
-  const answer = live.indexOf('<h4>标准答案</h4>');
-  assert.ok(stem !== -1 && answer !== -1, '题干或判断题的标准答案块不见了');
-  assert.ok(answer > stem, '判断题的标准答案没有排在题干之后');
+  const answer = live.indexOf('<h4>正确答案</h4>');
+  assert.ok(stem !== -1 && answer !== -1, '题干或判断题的正确答案块不见了');
+  assert.ok(answer > stem, '判断题的正确答案没有排在题干之后');
   // 而且必须在**判分设置**之前 —— 不许又被挪回最下面。
   // ⚠️ 同样别用「AI 评分」当判据：它在卡片靠上处的题型说明里也出现过。
   const grader = live.indexOf('评分方式');
-  assert.ok(grader !== -1 && answer < grader, '判断题的标准答案又跑到判分设置后面去了');
+  assert.ok(grader !== -1 && answer < grader, '判断题的正确答案又跑到判分设置后面去了');
   // 搬动最怕留下两份：两份都会渲染、都不报错。
-  assert.equal((live.match(/<h4>标准答案<\/h4>/g) ?? []).length, 1, '「标准答案」块不止一处');
+  assert.equal((live.match(/<h4>正确答案<\/h4>/g) ?? []).length, 1, '「正确答案」块不止一处');
 });

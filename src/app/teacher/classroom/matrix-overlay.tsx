@@ -185,7 +185,7 @@ function MatrixBlock({
         <div className={styles.summary} aria-label="学习单概况">
           <span className={styles.metric}><strong>{sheet.participants.length}</strong> 参与者</span>
           <span className={styles.metric}><strong>{totalSubmissions}</strong> 已提交</span>
-          <span className={styles.metric}><strong>{rows.length - manualCount}</strong> 自动判分</span>
+          <span className={styles.metric}><strong>{rows.length - manualCount}</strong> 自动评分</span>
           <span className={styles.metric} data-tone="warning"><strong>{manualCount}</strong> 主观题</span>
         </div>
 

@@ -418,7 +418,10 @@ function LegacyInkBody({ node, draft, onChange, disabled }: InkBodyProps) {
         <div className={styles.inkModeBar} role="tablist" aria-label="绘图方式">
           {modes.map(item => {
             const labels: Record<DrawingMode, string> = {
-              free: '自由绘图', math: '数学作图', 'mind-map': '思维导图', flowchart: '流程图',
+              // ★ 2026-10-06：原来这里写「自由绘图」，而同一档在 `drawing-tool-body.tsx` 与
+              //   常量表（`worksheet-drawing.ts`）里都叫「基础绘图」—— 同一次作答，页签一个名、
+              //    选完工具抬头又一个名。统一到「基础绘图」。
+              free: '基础绘图', math: '数学作图', 'mind-map': '思维导图', flowchart: '流程图',
             };
             return (
               <button key={item} type="button" role="tab" aria-selected={mode === item}

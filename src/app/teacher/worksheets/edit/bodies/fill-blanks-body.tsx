@@ -269,7 +269,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
               </div>
               {settings[index].mode === 'inline' && (
                 <label className="worksheet-editor-field worksheet-editor-inline-word-field">
-                  <span>这一空右侧的词</span>
+                  <span>这一空的待选词</span>
                   <SymbolListInput
                     values={settings[index].choices}
                     split={splitChoiceText}
@@ -307,9 +307,12 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
               {/* 答案/评分标准独占第三行；本空的分值紧跟在这一行末尾，评分方式行只负责选方式。 */}
               {gradingEnabled && <div
                 className="worksheet-editor-fill-answer-field"
+                // ★ 2026-10-06：非 AI 那一档原来还挂着「每个空可以填多个可接受答案；
+                // 学生答出其中一个就算对」—— 与下面那句 `.worksheet-editor-compact-note`
+                // 逐字重复 ⇒ 这里只留 AI 那一档的说明（那句别处没有）。
                 title={gradingModeOf(settings[index]) === 'ai'
                   ? `${slot.label}：这一空交给 AI 评分，这里写的是它评分（以及「发给 AI 分析」）依据的标准。`
-                  : `${slot.label}：每个空可以填多个可接受答案；学生答出其中一个就算对。`}
+                  : undefined}
               >
                 <span>{gradingModeOf(settings[index]) === 'ai' ? '评分标准' : '答案'}</span>
                 <div className="worksheet-editor-fill-answer-editor">
@@ -354,14 +357,18 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
           {gradingEnabled && (<>
             {node.type === 'fill-blank' && explicitGrading && (() => {
               const totals = fillGradingTotals(settings);
-              return <p className="worksheet-editor-fill-score-summary">本题合计 {totals.total} {pointsUnit}：本地评分 {totals.auto} {pointsUnit}，AI 评分 {totals.ai} {pointsUnit}。</p>;
+              // ★ 2026-10-06：「本题合计 N 分」与题目卡右上角那个「本题满分 N 分」
+              // 徽章复述的是同一个总数（同一张卡里说两遍）⇒ 这里只说徽章给不出的那一半
+              // （本地评分与 AI 评分各占多少），总数由徽章说。
+              return <p className="worksheet-editor-fill-score-summary">本题：本地评分 {totals.auto} {pointsUnit}，AI 评分 {totals.ai} {pointsUnit}。</p>;
             })()}
             <p className="worksheet-editor-compact-note">
               每个空可以填多个可接受答案；学生答出其中一个就算对。
             </p>
             {/* ⚠️ 只在**旧口径**下说这句（`!explicitGrading`）：接管逐空之后每个空的分值
                 可能各不相同，而这句话还按题目级分值报「每个空 X × N 空 ⇒ 全对最多 Y」——
-                它会与上面那句「本题合计」在同一张卡里给出两个数。逐空的账由合计那句说。
+                它会与上面那句逐空构成说明、以及题目卡上那个「本题满分」徽章给出不同的数。
+                逐空的账由上面那一行 + 徽章说。
                 🔴 它说的数**与判分逐字一致**：服务端旧口径这一支就是
                 `命中空数 × 题目级满分`（`grade()`），所以它不是复述、是同一个事实。 */}
             {!explicitGrading && node.data.fillScoring === 'per-blank' && fullPoints > 0 && (

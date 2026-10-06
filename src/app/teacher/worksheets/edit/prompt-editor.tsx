@@ -758,10 +758,12 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
                  所以给**选项 / 连线两栏 / 归类条目 / 表格格子 / 参考答案**加公式这条路
                  照旧走得通（复制完到那些输入框里 ⌘V）—— 那才是第二轮改动的目的。
               ⚠️ 用 `onMouseDown` + `preventDefault` 与旁边那几个按钮同一条理由：
-                 点按钮会把输入框的焦点与选区一起拿走。 */}
+                 点按钮会把输入框的焦点与选区一起拿走。
+              ★ 2026-10-06：这个 `title` 原来还写着「写好后点复制，到任何输入框里粘贴」——
+                 弹窗里那句 `<p>` 逐字说着同一件事（而且更全）⇒ 悬停提示只留按钮名。 */}
           <button
             type="button"
-            title="插入数学公式（写好后点复制，到任何输入框里粘贴）"
+            title="插入数学公式"
             aria-label="数学公式"
             onMouseDown={(event) => { event.preventDefault(); setMathOpen(true); }}
           >

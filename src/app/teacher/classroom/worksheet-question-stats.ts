@@ -450,7 +450,7 @@ function buildInsights(input: {
     });
   } else if (noVerdict > 0) {
     // 主观题 / 关闭自动判分 —— **不许**编一个百分比出来。
-    out.push({ level: 'info', text: `已交 ${submitted} 人；这道题没有自动判分，不统计正确率。` });
+    out.push({ level: 'info', text: `已交 ${submitted} 人；这道题没有自动评分，不统计正确率。` });
   }
   if (node.type === 'short-answer' || node.type === 'drawing') {
     out.push({ level: 'info', text: '这道题的答案需要人来读 —— 下面可以交给智能体分析。' });

@@ -117,7 +117,7 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   { value: 'order', label: '排序题', nickname: '顺序高手', hint: '把打乱的条目排成正确顺序', graded: true },
   { value: 'match', label: '连线题', nickname: '巧手连线', hint: '把左栏与右栏一一连起来', graded: true },
   { value: 'categorize', label: '归类题', nickname: '分类达人', hint: '把若干条目拖到对应的框里', graded: true },
-  { value: 'short-answer', label: '问答题', nickname: '妙语问答', hint: '主观题，不自动判分', graded: false },
+  { value: 'short-answer', label: '问答题', nickname: '妙语问答', hint: '主观题，不自动评分', graded: false },
   // ★ M4b：`drawing` 这个题型名是**本计划的裁定**（规格没有给）—— 见 `QuestionType` 的注释。
   // `graded: false` **是有意的决定，不是补测试**：手写 / 绘图不参与自动判分（规格 §12 裁定 3）。
   // 服务端那一侧有**两条**闸（B1，提交 `e1ff80c`）：`JUDGES.drawing` 恒回 `null`；
@@ -126,7 +126,7 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   // 而是规格 §12 裁定 3 本身 + `worksheet-answer-value.ts` 里那段「`format` 在服务端只被读两处、
   // 两处都不拿它当判据」（现在在 `:48-71`）—— B1 之前它写的是「`format` 服务端一个字节都不读」。
   // 这一格是 false ⇒ 看板抽屉里只统计作答进度、不画 ✓/½/✗（`GRADED_QUESTION_TYPES` 从这一格派生）。
-  { value: 'drawing', label: '绘图题', nickname: '创意画板', hint: '学生可用画板绘制或拍照上传，不自动判分', graded: false },
+  { value: 'drawing', label: '绘图题', nickname: '创意画板', hint: '学生可用画板绘制或拍照上传，不自动评分', graded: false },
 ];
 
 /**

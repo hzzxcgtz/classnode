@@ -783,7 +783,9 @@ function AddQuestionPicker({ onPick, onClose }: {
         {/* ★ 2026-09-25：这句话原来写的是「题目会加到这份学习单的最后」—— 现在**加到
             你点的那个任务里**（`pickerFor.parentId`），▲▼ 也只在**同层内**换位。
             一句说错的帮助文字比没有更糟：教师会按它去找一个不存在的行为。 */}
-        <p className="worksheet-editor-dialog-note">选择一种作答方式。添加后可从左侧抓住拖动把手调整顺序。</p>
+        {/* ★ 2026-10-06：「选择一种作答方式」改成「选择题型」—— 题卡里的「作答方式」
+            指的是键盘 / 手写 / 拍照，两处撞词（教师在这里选的是**题型**）。 */}
+        <p className="worksheet-editor-dialog-note">选择题型。添加后可从左侧抓住拖动把手调整顺序。</p>
         <div className="worksheet-editor-type-list">
           {QUESTION_TYPE_OPTIONS.filter(option => option.value !== 'choice-blank' && option.value !== 'multi-choice').map(option => (
             <button key={option.value} type="button" className="worksheet-editor-type-option" onClick={() => onPick(option.value)}>
@@ -804,7 +806,7 @@ function AddQuestionPicker({ onPick, onClose }: {
 /**
  * 「设置」面板（规格 §6.3）。装的是**这一张单**的设置：
  *   · 题目开放方式（`answerMode`）
- *   · 自动判分（学习单级开关，规格 §3-L）
+ *   · 自动评分（学习单级开关，规格 §3-L）
  *   · 提交后可否修改（`allowResubmit`，规格 §8.4）
  *   · 分析型智能体（课堂分析，M7b）
  *   · 学生奖励：奖励形式（十一种卡通奖励 / 分数）（规格 §9.2 与 §12 裁定 3 ——
@@ -998,7 +1000,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
             作答规则 → 学生奖励 → 课堂分析 → 学生端主题背景 → 卡片透度
 
           · 作答规则排第一：它是这张单最常改、也最影响课堂的一件（开放方式 / 判分 / 能否重交）；
-          · 学生奖励紧跟着它：**关掉自动判分就没有奖励**，两段挨着才看得出这层依赖
+          · 学生奖励紧跟着它：**关掉自动评分就没有奖励**，两段挨着才看得出这层依赖
             （原注释就是这么写的，本次只是把这条关系从「隔了三段」变回「挨着」）；
           · 外观两段（背景 → 透度）挪到最后，且**背景收成了一行摘要**：它一张单只定一次，
             而它原来占掉整整一屏（13 张卡 × 2 列）。透度必须贴着背景（它只对背景图有意义）。
@@ -1042,16 +1044,16 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
               <p>分步模式只提示“后面还有内容”，不会提前显示后续任务名称和题目。</p>
             </fieldset>
             {/* ⚠️ 上面那 3 张卡 + 下面 2 个开关是这一段的主体；顺序不许再动 ——
-                开关紧跟在「开放方式」后面，因为「自动判分」与「提交后可以修改」
+                开关紧跟在「开放方式」后面，因为「自动评分」与「提交后可以修改」
                 都是**提交之后**才起作用的两条规则。 */}
             <label className="worksheet-settings-switch">
               <span className="worksheet-settings-switch-icon" aria-hidden="true">✓</span>
               <span className="worksheet-settings-switch-copy">
-                <strong>自动判分</strong>
+                <strong>自动评分</strong>
                 <em>{settings.autoGrade ? '已开启：看板显示对错与正确率。' : '已关闭：只统计作答进度，不显示正确率。'}</em>
               </span>
               <span className="worksheet-editor-autograde-control">
-                <input type="checkbox" checked={settings.autoGrade} onChange={event => onSettingsChange({ autoGrade: event.target.checked })} aria-label="自动判分" />
+                <input type="checkbox" checked={settings.autoGrade} onChange={event => onSettingsChange({ autoGrade: event.target.checked })} aria-label="自动评分" />
                 <span aria-hidden="true" />
               </span>
             </label>
@@ -1070,7 +1072,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
           </section>
         {/* 奖励形式（规格 §9.2）。🔴 它是**这一张单**的配置，不是全局设置 ——
             用户 2026-09-23 的裁定：「教师在编辑学习单时可以选择得分制还是奖励小花、五角星」。
-            放在「自动判分」下面也是刻意的：关掉自动判分就没有判分，也就没有奖励
+            放在「自动评分」下面也是刻意的：关掉自动评分就没有判分，也就没有奖励
             （规格 §9.3），两行挨着才看得出这层依赖。 */}
         {/* `fieldset` + `legend` 而不是「一段标签 + 一排按钮」：这是一组单选，读屏要能
             念出「奖励形式」这个组名。每个选项都是 `label`，所以点文字或图标都能选中。 */}
@@ -1098,7 +1100,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
             </fieldset>
 
             <p className="worksheet-settings-notice">
-              奖励显示在学生每道题旁和顶部累计处。关闭自动判分后不发奖励；问答、绘图等主观题也不自动发放。
+              奖励显示在学生每道题旁和顶部累计处。关闭自动评分后不发奖励；问答、绘图等主观题也不自动发放。
             </p>
           </section>
         {/* ★ M7b：分析型智能体（学习单级 —— 用户 2026-09-25 裁定 4）。

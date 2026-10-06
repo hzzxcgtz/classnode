@@ -208,7 +208,7 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
         const setting = settings[index];
         if (setting?.mode !== 'inline') return null;
         return (
-          <span className={styles.inlineChoices} aria-label={`第 ${index + 1} 空的候选词`}>
+          <span className={styles.inlineChoices} aria-label={`第 ${index + 1} 空的待选词`}>
             （{setting.choices.map((word, choiceIndex) => (
               // ★ 2026-09-29（教师）：「箭头所指的位置我之前就提过要加一个**分隔符号**，
               // 比如说**斜杠**，用来表示两个选项之间的分隔」⇒ 词与词之间加一个 `/`。

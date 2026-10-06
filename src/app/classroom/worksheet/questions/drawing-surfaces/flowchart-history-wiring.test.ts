@@ -64,3 +64,11 @@ test('两颗按钮的禁用态跟着 canUndo / canRedo', () => {
   assert.match(SOURCE, /disabled=\{disabled \|\| !canUndo\(historyRef\.current\)\}/, '撤销按钮的禁用态不对');
   assert.match(SOURCE, /disabled=\{disabled \|\| !canRedo\(historyRef\.current\)\}/, '重做按钮的禁用态不对');
 });
+
+test('快捷键在输入框里让位给浏览器原生撤销', () => {
+  const block = blockBetween(SOURCE, 'const onKeyDown = (event: KeyboardEvent)', 'window.addEventListener');
+  assert.ok(block.length > 100, `快捷键处理器的切片太短（${block.length}）`);
+  assert.match(block, /INPUT/, '要认 INPUT');
+  assert.match(block, /TEXTAREA/, '要认 TEXTAREA');
+  assert.match(block, /isContentEditable/, '要认 contentEditable');
+});

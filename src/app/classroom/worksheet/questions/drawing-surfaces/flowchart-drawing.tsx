@@ -775,6 +775,28 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   }, [nodes, edges, setNodes, setEdges]);
 
   /**
+   * ★ 2026-10-06：`Cmd/Ctrl+Z` 撤销、加 `Shift` 重做。
+   *
+   * 🔴 **焦点在输入框里时一律不管** —— 框内文字（节点里那个 input）与线上标注（就地输入框）里，
+   *    `Cmd+Z` 该走**浏览器原生的「撤销打字」**。抢过来会让学生在自己刚打的字里没法撤销，
+   *    而那是所有人对 `Cmd+Z` 的第一预期。
+   * ⚠️ `disabled`（回顾态）时整条不挂 —— 与两颗按钮的禁用态同一个口径。
+   * ⚠️ `preventDefault` 只在**真要撤销画布**时才调：在输入框里我们要让浏览器自己处理。
+   */
+  useEffect(() => {
+    if (disabled) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      event.preventDefault();
+      if (event.shiftKey) redo(); else undo();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [disabled, undo, redo]);
+
+  /**
    * 一条线在**流坐标**（`position` 用的那套）里的两个锚点：
    *   · `midX/midY` —— **中点**：库 `getSmoothStepPath` 回的**标签点**（`labelX/labelY`）。
    *     线上的字就画在这儿 ⇒ 就地输入框、以及连出来的**交点节点**都摆这一点；

@@ -2,8 +2,6 @@
 
 import type { TileAnswer, WorksheetCellStatus, WorksheetTileState } from './worksheet-tile-state';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
-import { RewardIcon } from '@/components/worksheet-reward-icon';
-import { rewardAmountLabel, type RewardStyle } from '@/lib/worksheet-reward';
 import { TileAnswerBody } from './tile-answer';
 
 /**
@@ -83,29 +81,13 @@ function stateTone(state: WorksheetTileState): { background: string; border: str
   return { background: '#f8fafc', border: '1px solid #eef2f6', color: '#1e293b' };
 }
 
-export function WorksheetTileContent({ state, answer, reward, compact }: {
+export function WorksheetTileContent({ state, answer, compact }: {
   state: WorksheetTileState;
   /**
    * ★ 2026-09-28：下方那一块要显示的那一题（教师：「留出下方最大的空间用来显示
    * 当天学生正在答题的详细动态情况」）。`null` = 挑不出是哪一题 ⇒ 不画那一块。
    */
   answer?: TileAnswer | null;
-  /**
-   * ★ 2026-09-29（教师）：「这个面板里显示的是学生学习单的监控情况，还缺少一个**非常重要**
-   * 的信息，就是学生目前所获得的**奖励个数**」。
-   *
-   * 由调用方从 `participantOverview` 取（个数）+ `resolveRewardScale`（哪一档）——
-   * 判据在 `worksheet-drawer-state.ts` / `worksheet-reward.ts`（纯函数、有用例），
-   * **这一层只画**。
-   *
-   * 🔴 ★ 2026-09-29 同日第二轮（教师）：「箭头所指的地方要用**图标**，『×3』字要小一点」。
-   * ⇒ 这里**收的是档位与个数**，不是一句拼好的文字。原来收 `rewardText`（形如 `箭×3`）——
-   * 那是**文字符号**（`rewardSymbol`），而这一格要画的是**那个卡通图标**（`RewardIcon`，
-   * 与学生端、顶栏累计是同一套图）。收字符串的话这里就画不出图标了。
-   * ⚠️ `null` = **不知道**（那份学习单的 settings 还没到）⇒ 什么都不画，
-   * 而不是画一个 `×0` —— 「不知道」与「零个」在屏幕上是两句不同的话。
-   */
-  reward?: { style: RewardStyle; amount: number } | null;
   /** 全屏网格里格子更小、字更小 —— 与 `renderTileContent` 的同一个旋钮同义。 */
   compact: boolean;
 }) {
@@ -157,39 +139,13 @@ export function WorksheetTileContent({ state, answer, reward, compact }: {
                   background: CELL_STYLE[status].background, border: `1px solid ${CELL_STYLE[status].border}`,
                 }} />
             ))}
-            {/* ★ 2026-09-29：这一行的**右端**住着奖励那一枚。
-                🔴 **位置是算过的，不是随手放的**：教师报过「记号一出现，监控内容就上下跳」——
-                它原来住在下面预览块的表头行里，而那一行在 working / stuck 两态下没有文字、
-                高度是 **0** ⇒ 记号一来整行长高。这一行的高度由方格决定（14px），
-                而这一枚 12 + 上下各 1px 内边距 = 14 ⇒ **同一行内不改变高度**。
-                ⚠️ 格子很窄（214px）时它可能被挤到下一行 —— 那会多 14px，但**奖励档在一节课里
-                不会变**，所以不会来回跳。
-                ⚠️ 也**不压任何文字**：方格阵通常填不满一行，右端本来就是空的。
-                ⚠️ `marginLeft: 'auto'` 给**这一枚**（不再是外面一层包裹）：原来它与「正在写」
-                包在一起，是因为两个 auto 会被 flex 把剩余空间平分；现在只剩这一枚。
-                ⊘ ★ 2026-09-29（教师）：「这个监控面板里经常会出现的『正在写』，我觉得**意义不大**，
-                索性去掉吧。」⇒ 那一枚删掉了（它每 1.5 秒随保存抖动一次，是噪音）。
-                连带的清理：`TileAnswer.fromDraft` 随之没有消费者 ⇒ 一起删（见那个文件）。 */}
-            {reward && (
-              <span title="这一份学习单上他目前获得的奖励（各题得分之和）" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                <span
-                  // ★ 2026-09-29（教师）：「火箭乘三这个区域**不需要底纹和边框线**。」
-                  // ⇒ 去掉底纹与边框。🔴 顺带消掉一处 2px 的跳动：原来 12(图标) + 上下各 1px
-                  // 内边距 + 上下各 1px 边框 = **16px**，而这一行的高度由方格（14px）决定
-                  // ⇒ 奖励一出现整行长高 2px。现在 12 + 2 = 14，与方格同高。
-                  // 🔴 图标走 `RewardIcon` 卡通图，不是 `rewardSymbol` 那个文字符号（教师：「要用图标」）。
-                  // ★ 2026-09-29 同日第三轮（教师）：「**火箭可以大一点**」⇒ 12px → 16px。
-                  // ⚠️ 这一档**会让这一行变高**（16 + 上下各 1px = 18px > 方格的 14px），
-                  //    与上面那段「12px 是算过的」正好相反 —— 那一条的**理由**是「不许上下跳」，
-                  //    而这次放大不违反它：跳的根因是它**每 1.5 秒随保存抖一次**（「正在写」那份旧账），
-                  //    而这枚奖励**加载后就在、一节课不动** ⇒ 多出来的 4px 是**一次性**的布局变化，
-                  //    不是来回跳。代价如实说：下方作答区少了 4px。
-                  style={{ padding: '1px 4px', color: '#b45309', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 1, whiteSpace: 'nowrap' }}>
-                  <RewardIcon kind={reward.style} state="earned" size={16} />
-                  <span style={{ fontSize: '0.563rem' }}>{rewardAmountLabel(reward.style, reward.amount)}</span>
-                </span>
-              </span>
-            )}
+            {/* ⊘ 2026-10-06（教师截图批注）：「奖励移到上面去」——这一枚原来住在这一行的**右端**
+                （下面那整段「位置是算过的」的来历随之作废，见 git 历史）。
+                ⇒ 现在画在**卡片最上面那一行**（名字右侧、与「在线 / 学」同排），
+                由 `page.tsx` 的 `tileRewardOf` + 卡头那两处 JSX 负责 —— 这一格
+                **不再接收 `reward` 这个 prop**（少一条会漂移的输入）。
+                ⚠️ 顺手消掉的老问题：窄格子时它会被挤到**第二行**（多 14px）—— 那正是
+                教师这次截图里看到的形状；挪到卡头之后这一格只剩方格阵。 */}
           </div>
           </div>
           {/* ★ 下方：**他此刻正在做的那一题**的实时作答（逐题型换画法，见 `tile-answer.tsx`）。

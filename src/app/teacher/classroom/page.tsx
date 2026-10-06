@@ -19,7 +19,8 @@ import { MatrixOverlay } from './matrix-overlay';
 import { AnalysisOverlay } from './analysis-overlay';
 import { QuestionStatsOverlay } from './question-stats-overlay';
 import { clearConfirmText, participantOverview } from './worksheet-drawer-state';
-import { resolveRewardScale } from '@/lib/worksheet-reward';
+import { resolveRewardScale, rewardAmountLabel } from '@/lib/worksheet-reward';
+import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { activeAnswer, moduleCountUnit, stateHasCells, tileBadgeText, tileShowsWorksheetClear, worksheetTileState, type TileBadge } from './worksheet-tile-state';
 import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } from './worksheet-drawer';
 import { useWorksheetBoard } from './use-worksheet-board';
@@ -1905,6 +1906,35 @@ function ClassroomBoardContent() {
     effectiveGroupWorksheet(classroom, { groupId: participant?.groupId ?? null });
 
   /**
+   * 这一格该显示的奖励（`null` = 不知道 / 没有这份学习单 / 不是学习单这一格）。
+   *
+   * ★ 2026-10-06（教师截图批注）：「奖励移到上面去」。
+   *   它原来画在**方格阵那一行的右端**（`worksheet-tiles.tsx`，那里还留着一大段
+   *   「位置是算过的」的来历）。教师要求挪到**卡片最上面那一行**（名字右侧、与「在线 / 学」同排）。
+   *
+   * 🔴 提成组件级闭包而不是让卡头自己去算：这份计算原来住在 `renderTileContent` 的
+   *   `case 'worksheet'` 里，而卡头在它**外面** —— 两处各算一份正是本仓反复被咬的
+   *   「同一格上写了两个不同的数」。取数口径与 `handleClearAnswers` 同一套
+   *   （题目树 + 这个人的全部作答行 + 那份学习单的奖励档 ⇒ `participantOverview`）。
+   */
+  const tileRewardOf = (
+    participant: ClassroomCardStudent | null,
+    worksheet: WorksheetMaterialSummary | null,
+  ): { style: Parameters<typeof rewardAmountLabel>[0]; amount: number } | null => {
+    if (!participant || !worksheet) return null;
+    const settings = wb.settingsByWorksheet[worksheet.id];
+    const scale = settings ? resolveRewardScale(settings) : null;
+    if (!scale) return null;
+    const nodes = wb.nodesByWorksheet[worksheet.id] ?? [];
+    // ⚠️ `answerRows` 与格子正文**同一条路径**（`wb.board` 里那一行的 `answerRows`）——
+    //    另取一份的表现是「同一格上写了两个数」，而屏幕上不报错。
+    const rows = wb.board?.worksheets.filter((item) => item.id === worksheet.id)[0]
+      ?.participants.filter((item) => item.participantId === participant.id)[0]?.answerRows ?? [];
+    const overview = participantOverview(nodes, rows, scale);
+    return overview ? { style: scale.style, amount: overview.reward } : null;
+  };
+
+  /**
    * 徽章行里那个**模块相关**的徽章的文字（`null` = 这一格不该有它）。
    *
    * 🔴 用户 2026-09-23（截图批注）：「这个『几轮』只在智能学伴里有」。在此之前这一行
@@ -2367,11 +2397,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           ? (wb.board?.worksheets.filter((item) => item.id === worksheet.id)[0]
             ?.participants.filter((item) => item.participantId === participant.id)[0]?.answerRows) ?? []
           : [];
-        const tileSettings = worksheet ? wb.settingsByWorksheet[worksheet.id] : undefined;
-        const tileScale = tileSettings ? resolveRewardScale(tileSettings) : null;
-        const overview = participant && worksheet
-          ? participantOverview(tileNodes, tileRows, tileScale)
-          : null;
         return (
           <WorksheetTileContent
             state={state}
@@ -2391,11 +2416,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 draft,
               )
               : null}
-            // ★ 2026-09-29 第二轮（教师）：「那个地方要用**图标**，『×3』字要小一点」
-            // ⇒ 传**档位 + 个数**（不是拼好的文字）—— 文字符号画不出那个卡通图标。
-            // ⚠️ `null` = 那份学习单的 settings 还没到 ⇒ 格子不画奖励，**不是**画一个 `×0`
-            //（「不知道」与「零个」是两句不同的话，`participantOverview` 那半边分得清）。
-            reward={overview && tileScale ? { style: tileScale.style, amount: overview.reward } : null}
             compact={compact}
           />
         );
@@ -2877,6 +2897,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 // ⚠️ 在线状态传**这一格真实的那一个**（不是常量）：徽章里那个数走的是
                 // 与格子正文同一个 `worksheetTileState`，传假的就会算出另一个数。
                 const moduleBadge = tileModuleBadge(tileModule, isGroup ? item.members : [cs], rounds);
+                // ★ 2026-10-06（教师）：「奖励移到上面去」⇒ 奖励在**卡头这一行**显示。
+                // ⚠️ 只在**这一格正在显示学习单**时给（与原来那条判据一致：它属于学习单那一格）。
+                const tileReward = tileModule === 'worksheet'
+                  ? tileRewardOf(isGroup ? item.members[0] ?? null : cs, tileWorksheetOf(isGroup ? item.members[0] ?? null : cs))
+                  : null;
                 return (
                   <div key={isGroup ? item.group?.id : cs.id}
                     onClick={() => {
@@ -3059,6 +3084,14 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                             );
                           })()}
                           <ModuleInitialChip module={tileModule} />
+                          {tileReward && (
+                            <div
+                              title="这一份学习单上他目前获得的奖励（各题得分之和）"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: '0.625rem', fontWeight: 700, background: '#faf4eb', color: '#b45309', whiteSpace: 'nowrap' }}>
+                              <RewardIcon kind={tileReward.style} state="earned" size={14} />
+                              {rewardAmountLabel(tileReward.style, tileReward.amount)}
+                            </div>
+                          )}
                           {moduleBadge && <TileBadgeChip badge={moduleBadge} />}
                           {student.avatarChangeTokens > 0 && (
                             <div title="奖励次数" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: "0.625rem", fontWeight: 700, background: '#faf4eb', color: '#956834', whiteSpace: 'nowrap' }}>
@@ -3649,6 +3682,10 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   // 而这里从来就没写死过 `assignModule`。仍然走同一个 `renderTileContent`，
                   // 不另写一份「全屏专用」的渲染。
                   const tileModule = isGroup ? resolveGroupTileModule(item.members) : resolveTileModule(sid);
+                  // ★ 2026-10-06：与主看板**同一个** `tileRewardOf`（全屏不另写一份判据）。
+                  const tileReward = tileModule === 'worksheet'
+                    ? tileRewardOf(isGroup ? item.members[0] ?? null : cs, tileWorksheetOf(isGroup ? item.members[0] ?? null : cs))
+                    : null;
                   const showClear = tileShowsClear(tileModule, isGroup ? item.members : [cs]);
                   const showWorksheetClear = tileShowsWorksheetClear(
                     tileModule, (isGroup ? item.members : [cs]).map((member) => resolveTileModule(member.id)));
@@ -3795,6 +3832,14 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                               {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
                             </div>
                             <ModuleInitialChip module={tileModule} compact />
+                            {tileReward && (
+                              <div
+                                title="这一份学习单上他目前获得的奖励（各题得分之和）"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: '0 5px', borderRadius: 4, fontSize: 8, fontWeight: 700, background: '#faf4eb', color: '#b45309', whiteSpace: 'nowrap' }}>
+                                <RewardIcon kind={tileReward.style} state="earned" size={12} />
+                                {rewardAmountLabel(tileReward.style, tileReward.amount)}
+                              </div>
+                            )}
                             {moduleBadge && <TileBadgeChip badge={moduleBadge} compact />}
                             {student.avatarChangeTokens > 0 && (
                               <div title="奖励次数" style={{ display: 'inline-flex', alignItems: 'center', gap: compact ? 2 : 3, padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: compact ? 8 : 10, fontWeight: 700, background: '#faf4eb', color: '#956834', whiteSpace: 'nowrap' }}>

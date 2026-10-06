@@ -38,3 +38,29 @@ test('拖动合并的两个钩子挂在 ReactFlow 上', () => {
   assert.match(SOURCE, /onNodeDragStart=/, '缺 onNodeDragStart');
   assert.match(SOURCE, /onNodeDragStop=/, '缺 onNodeDragStop');
 });
+
+/*
+  ⚠️ 下面这三条测的是 Task 3 才写出来的 `undo` / 两颗按钮。
+  第四条（「撤销后必须同步指纹」）原属 Task 2 的 brief，施工时挪到了这里 —— 原因见
+  `.superpowers/sdd/…-plan/progress.md` 的 pre-flight 裁定：它引用 `const undo = `，
+  而 `undo` 要到 Task 3 才存在，留在 Task 2 会让那个任务结束时必红。
+*/
+const undoSourced = (s: string) => blockBetween(s, 'const undo = ', 'setHistoryVersion');
+
+test('撤销后必须同步指纹 —— 否则那条 effect 会把撤销当成新操作（死循环）', () => {
+  const block = undoSourced(SOURCE);
+  assert.ok(block.length > 100, `撤销函数的切片太短（${block.length}）`);
+  assert.match(block, /lastSigRef\.current\s*=/, '撤销后不同步 lastSigRef ⇒ 撤销一下、图又弹回去');
+});
+
+test('撤销会清掉选中态 —— 被撤掉的那个框不该还「选中着」', () => {
+  const block = undoSourced(SOURCE);
+  assert.ok(block.length > 100, `撤销函数的切片太短（${block.length}）`);
+  assert.match(block, /setSelected\(null\)/, '撤销后选择态要清掉');
+  assert.match(block, /setLabelingEdge\(null\)/, '撤销后「正在改标注」也要清掉');
+});
+
+test('两颗按钮的禁用态跟着 canUndo / canRedo', () => {
+  assert.match(SOURCE, /disabled=\{disabled \|\| !canUndo\(historyRef\.current\)\}/, '撤销按钮的禁用态不对');
+  assert.match(SOURCE, /disabled=\{disabled \|\| !canRedo\(historyRef\.current\)\}/, '重做按钮的禁用态不对');
+});

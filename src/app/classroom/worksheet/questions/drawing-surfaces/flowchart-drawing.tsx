@@ -32,9 +32,13 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import {
+  canRedo,
+  canUndo,
   emptyHistory,
   flowchartSignature,
   pushHistory,
+  redoHistory,
+  undoHistory,
   type FlowHistory,
   type FlowSnapshot,
 } from '@/lib/worksheet-flowchart-history.ts';
@@ -734,6 +738,43 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   };
 
   /**
+   * ★ 2026-10-06：**撤销**（教师：「流程图要提供撤销/重做功能」）。
+   *
+   * 🔴 最后那三行**不能省**：`setNodes/setEdges` 会让 Task 2 那条变化检测 effect 再跑一次，
+   *    而它比的是 `lastSigRef`。不同步的话它会把「撤销」本身当成一次**新操作** ⇒ 压栈 ⇒
+   *    再触发 ⇒ **死循环**，现象是「撤销一下、图又自己弹回去」。
+   * ⚠️ 选择态要清：撤销后原来选中的那个框可能已经不存在了，留着会让浮层悬在空处。
+   */
+  const undo = useCallback(() => {
+    const step = undoHistory(historyRef.current, { nodes, edges });
+    if (!step) return; // 栈底：什么都不做（按钮此时也是灰的）
+    historyRef.current = step.history;
+    const snap = step.snapshot;
+    setNodes(snap.nodes);
+    setEdges(snap.edges);
+    setSelected(null);
+    setLabelingEdge(null);
+    lastSnapshotRef.current = snap;
+    lastSigRef.current = flowchartSignature(snap.nodes, snap.edges);
+    setHistoryVersion((v) => v + 1);
+  }, [nodes, edges, setNodes, setEdges]);
+
+  /** ★ 2026-10-06：**重做** —— 与 `undo` 逐字对称，只有 `redoHistory` 与 `future` 的方向不同。 */
+  const redo = useCallback(() => {
+    const step = redoHistory(historyRef.current, { nodes, edges });
+    if (!step) return;
+    historyRef.current = step.history;
+    const snap = step.snapshot;
+    setNodes(snap.nodes);
+    setEdges(snap.edges);
+    setSelected(null);
+    setLabelingEdge(null);
+    lastSnapshotRef.current = snap;
+    lastSigRef.current = flowchartSignature(snap.nodes, snap.edges);
+    setHistoryVersion((v) => v + 1);
+  }, [nodes, edges, setNodes, setEdges]);
+
+  /**
    * 一条线在**流坐标**（`position` 用的那套）里的两个锚点：
    *   · `midX/midY` —— **中点**：库 `getSmoothStepPath` 回的**标签点**（`labelX/labelY`）。
    *     线上的字就画在这儿 ⇒ 就地输入框、以及连出来的**交点节点**都摆这一点；
@@ -1279,6 +1320,14 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
         {starter && (
           <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={restoreStarter}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.restore} /></svg>恢复初始图</button>
         )}
+        {/*
+          ★ 2026-10-06（教师：「流程图要提供撤销/重做功能」）：两颗按钮**不带图标、只有文字** ——
+          与思维导图那两颗（`mindmap-drawing.tsx:351-352`）逐字同形，四个画板里两个已经这样了。
+          ⚠️ 禁用态读的是 `historyRef.current`（ref 不触发渲染）⇒ 靠 `historyVersion` 那个
+          自增计数器把这次渲染带出来。`disabled`（回顾态）时无条件禁用。
+        */}
+        <button className={styles.drawingToolbarButton} type="button" disabled={disabled || !canUndo(historyRef.current)} onClick={undo}>撤销</button>
+        <button className={styles.drawingToolbarButton} type="button" disabled={disabled || !canRedo(historyRef.current)} onClick={redo}>重做</button>
         <span className={styles.drawingToolbarHint}>
           {selectedEdgeId
             ? '拖动线中圆点调整走向；拖动两端可重新连接'

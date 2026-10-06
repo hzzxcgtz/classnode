@@ -461,7 +461,7 @@ test('★ 2026-10-06（教师）：底稿（A 不算学生作答 / B 初始图�
   // ① 学生端拿得到底稿，并交给画板。
   assert.match(body, /starter=\{readDrawingStarter\(node\)\}/, '学生端没有把底稿交给画板');
   // ② 读的时候合并（底稿 + 学生画的）；写的时候剔除（A：底稿不算他的作答）。
-  assert.match(live, /mergeFlowchart\(starterPayload, readFlowchartPayload\(readFlowData\(data\)\)\)/,
+  assert.match(live, /mergeFlowchart\(starterPayload, readFlowchartPayload\(data\)\)/,
     '没有把「底稿 + 学生画的」交给合并');
   assert.match(live, /onChange\(subtractFlowchart\(payload, starterPayload\)/, '交上去的作答没有剔除底稿（A）');
   // ③ 快照仍按**全部**画（教师预览/AI/报告要看到完整那张图）。
@@ -566,6 +566,31 @@ test('★ 2026-10-06（教师最终拍板）：「锁定初始图」撤干净 �
   assert.match(removeBody, /kind === 'edge'/, '删连线那一支被删掉了');
   assert.match(overlayBody, /mode: 'delete'/, '浮层那颗删除按钮被删掉了');
   assert.ok((live.match(/\{starter && \(/g) ?? []).length >= 1, '「恢复初始图」那颗按钮整块没了');
+});
+
+test('★ 初始流程图可编辑：移动/改字/删除在重新进入后仍保留', async () => {
+  const { mergeFlowchart, subtractFlowchart } = await import('../../../../../lib/worksheet-drawing-starter.ts');
+  const starter = {
+    nodes: [
+      { id: 'start', type: 'flow', position: { x: 0, y: 0 }, data: { kind: 'terminator', label: '开始' } },
+      { id: 'work', type: 'flow', position: { x: 0, y: 100 }, data: { kind: 'process', label: '处理' } },
+    ],
+    edges: [{ id: 'e1', source: 'start', target: 'work', sourceHandle: 'bottom', targetHandle: 'top', type: 'flowLabel' }],
+  };
+  const editedAll = {
+    nodes: [
+      { ...starter.nodes[0], position: { x: 40, y: 20 }, data: { kind: 'terminator', label: '新的开始' } },
+      starter.nodes[1],
+    ],
+    edges: [],
+  };
+  const answer = subtractFlowchart(editedAll, starter);
+  assert.deepEqual(answer.nodes.map((node) => node.id), ['start'], '修改过的底稿节点被当成未修改底稿剔除了');
+  assert.deepEqual(answer.deletedEdgeIds, ['e1'], '删除底稿连线没有留下删除标记');
+  const reopened = mergeFlowchart(starter, answer);
+  assert.deepEqual(reopened.nodes.find((node) => node.id === 'start')?.position, { x: 40, y: 20 }, '重进后节点位置没有保留');
+  assert.equal((reopened.nodes.find((node) => node.id === 'start')?.data as Record<string, unknown>).label, '新的开始', '重进后文字修改没有保留');
+  assert.equal(reopened.edges.length, 0, '重进后已删除的底稿连线又复活了');
 });
 
 test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出图标删除；双击线改文字', () => {
@@ -801,7 +826,7 @@ test('★ 2026-10-06：连到线中点 —— **自定义边 / 中点句柄已�
   const editorBody = editorBodyOf(live);
   assert.ok(editorBody.length > 400, '节点编辑器没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.match(editorBody, /const isJunction = data\.kind === 'junction'/, '没有认出 junction 这一档');
-  assert.match(editorBody, /\{!isJunction && \(\s*<input[\s\S]{0,240}?aria-label="节点文字"/, '交点也会渲染「节点文字」输入框（图上会多一个空框）');
+  assert.match(editorBody, /\{!isJunction && \(editing && !data\.locked \? \(\s*<input[\s\S]{0,240}?aria-label="节点文字"/, '交点也会渲染「节点文字」输入框（图上会多一个空框）');
   // ⑥ 死 CSS / 死类名都不许留在样式表或组件里。
   assert.ok(!/flowEdgeHandle/.test(css), '`.flowEdgeHandle`（中点句柄的样式）还留在样式表里 —— 那是已删机制的类');
   assert.ok(!/flowEdgeHandle/.test(live), '组件还在挂中点句柄的类名');
@@ -1478,7 +1503,7 @@ test('★ 2026-10-06（教师，A 方案）：快照要认「交点」——一�
   assert.ok(!/<rect[^>]*rx="8"/.test(out.svg), '交点被画成了默认矩形（AI 看到的图上会凭空多一个空框）');
 });
 
-test('★ 2026-10-06（教师）：「选中一个图形准备移动时，后面的图形都一起移动」——节点里的输入框不许再挂 nodrag', () => {
+test('★ 流程图节点：平时整框可拖，双击文字才进入 nodrag 编辑态', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   /*
     🔴 根因（已核实，不是猜的）：React Flow 的节点拖动过滤器里有一句
@@ -1493,11 +1518,9 @@ test('★ 2026-10-06（教师）：「选中一个图形准备移动时，后面
   */
   const editorBody = editorBodyOf(live);
   assert.ok(editorBody.includes('aria-label="节点文字"'), '节点编辑器没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  assert.ok(!/nodrag/.test(editorBody), '节点里的输入框又挂上了 nodrag —— 「拖框」会变成「拖画布」（教师 2026-10-06 报的就是它）');
-  // 反面对照：把那个类名塞回同一个函数体 ⇒ 上面那句必须红（这条判据不是恒真的）。
-  const withNodrag = editorBody.replace('aria-label="节点文字"', 'className="nodrag"\n          aria-label="节点文字"');
-  assert.notEqual(withNodrag, editorBody, '反面对照没造出来 —— 这条判据会变成恒真');
-  assert.ok(/nodrag/.test(withNodrag), '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.match(editorBody, /editing && !data\.locked/, '节点没有区分“拖动”与“文字编辑”状态');
+  assert.match(editorBody, /<span[\s\S]{0,260}?onDoubleClick=/, '平时没有用可拖动文字层，或不能双击进入编辑');
+  assert.match(editorBody, /<input[\s\S]{0,100}?className="nodrag"/, '编辑文字时输入框还会触发节点拖动，无法稳定输入/选择文字');
 });
 
 test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就地输入框仍用**中点**锚点', () => {
@@ -1668,4 +1691,3 @@ test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂�
 //   `edgeAnchor` / `selectedNodeAnchor` / `removeNode` 这些旧结构（它们已经被合并掉了），
 //   改成切出「选中模型 / 浮层描述式 / 锚点解析 / 删除出口」这四块，再按语义判 ——
 //   守的东西一条没少（单选、出现条件、连带删边、锚点各就各位、交点不开特例）。
-

@@ -20,6 +20,7 @@ import {
   type EdgeProps,
   type Node,
   MarkerType,
+  reconnectEdge,
   getSmoothStepPath,
   type NodeProps,
 } from '@xyflow/react';
@@ -38,7 +39,6 @@ import {
   restoreFlowchart,
   readFlowchartPayload,
   subtractFlowchart,
-  type DrawingStarter,
 } from '@/lib/worksheet-drawing-starter.ts';
 
 import type { DrawingSurfaceProps } from './types';
@@ -53,6 +53,7 @@ import styles from '../../worksheet.module.css';
  */
 type FlowKind = 'terminator' | 'process' | 'decision' | 'io' | 'junction';
 type FlowData = { label: string; kind: FlowKind; locked?: boolean };
+type FlowEdgeData = { routeX?: number; routeY?: number };
 
 /**
  * 工具按钮上的**形状图标**（★ 2026-10-06 教师：「分别加上一个形象的图形表示」）。
@@ -62,13 +63,14 @@ type FlowData = { label: string; kind: FlowKind; locked?: boolean };
  * ⚠️ `junction` 那一项是**凑键用的**：连接点是「连」出来的、工具栏上没有它的按钮
  *    （`FlowKind` 里加了它，这张表就少一个键 —— 少一个键 TS 会当场报错）。
  */
-const FLOW_ICONS: Record<FlowKind | 'restore' | 'trash', string> = {
+const FLOW_ICONS: Record<FlowKind | 'restore' | 'tidy' | 'trash', string> = {
   terminator: 'M7 5.5h10a4.5 4.5 0 0 1 0 9H7a4.5 4.5 0 0 1 0-9Z',
   process: 'M4 6.5h16v11H4Z',
   decision: 'M12 3.6 20.4 12 12 20.4 3.6 12Z',
   io: 'M8 6.5h12l-4 11H4Z',
   junction: 'M12 6.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z',
   restore: 'M19 12a7 7 0 1 1-2.1-5M19 4.5V9h-4.5',
+  tidy: 'M4 6h5M15 6h5M9 3v6M4 18h5M15 18h5M15 15v6M7 12h10',
   trash: 'M5 7.5h14M9.5 7.5V5.5h5v2M7 7.5l1 11h8l1-11M10.5 10.5v5M13.5 10.5v5',
 };
 export type FlowIconKey = keyof typeof FLOW_ICONS;
@@ -120,6 +122,7 @@ type FlowSelection = { kind: 'node' | 'edge'; id: string };
 
 function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
   const instance = useReactFlow<FlowNode, Edge>();
+  const [editing, setEditing] = useState(false);
   const textWidth = Math.min(30, Math.max(10, Array.from(data.label).length + 2));
   /** ★ 连接点是**一个小圆点**、没有文字 ⇒ 它不能有那个可编辑文字输入框（否则图上多一个空框）。 */
   const isJunction = data.kind === 'junction';
@@ -133,10 +136,11 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
         </svg>
       )}
       {/* ⚠️ 交点也要**四个句柄照旧**：它的上/下就是那两段线接上去的地方。 */}
-      <Handle type="target" position={Position.Top} id="top" />
+      {/* 四个点都使用 source + Loose 模式：这样任意两侧都能互连，包括“左点 → 上点”。 */}
+      <Handle type="source" position={Position.Top} id="top" />
       <Handle type="source" position={Position.Right} id="right" />
       <Handle type="source" position={Position.Bottom} id="bottom" />
-      <Handle type="target" position={Position.Left} id="left" />
+      <Handle type="source" position={Position.Left} id="left" />
       {/* ★ 2026-10-06（教师）：「选中一个图形准备移动时，后面的图形都一起移动」——
           根因是这一格原来挂着 `className="nodrag"`：React Flow 的节点拖动过滤器里那句
           `hasSelector(target, '.nodrag', domNode)` 命中 ⇒ **这一格上按下拖动不拖节点**，
@@ -145,15 +149,26 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
           按下拖动 = 拖动这个框；而**单击**仍然会聚焦输入框（浏览器在 mousedown 的默认行为里聚焦），
           代价只是「在输入框里按住拖来选中文字」会变成拖框 —— 对一个短标签可以接受，也更符合直觉。
           ⚠️ 全文件只有这一处挂过 `nodrag`，别的元素没有。 */}
-      {!isJunction && (
+      {!isJunction && (editing && !data.locked ? (
         <input
+          className="nodrag"
           aria-label="节点文字"
+          autoFocus
           value={data.label}
-          disabled={data.locked}
           style={{ width: `${textWidth}em` }}
           onChange={(event) => instance.updateNodeData(id, { label: event.target.value })}
+          onBlur={() => setEditing(false)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === 'Escape') event.currentTarget.blur();
+          }}
         />
-      )}
+      ) : (
+        <span
+          className={styles.flowNodeLabel}
+          title={data.locked ? undefined : '双击修改文字'}
+          onDoubleClick={(event) => { event.stopPropagation(); setEditing(true); }}
+        >{data.label}</span>
+      ))}
     </div>
   );
 }
@@ -191,10 +206,14 @@ const EDGE_LABEL_GAP = 8;
  * ⚠️ 文字颜色/字号在 `worksheet.module.css` 的 `.flowEdgeLabel` 里钉住（深色，无白底框）。
  */
 function FlowLabelEdge({
-  sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, label, markerEnd, style,
+  sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, label, markerEnd, style, data,
 }: EdgeProps) {
+  const route = data as FlowEdgeData | undefined;
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+    ...(Number.isFinite(route?.routeX) && Number.isFinite(route?.routeY)
+      ? { centerX: route!.routeX, centerY: route!.routeY }
+      : {}),
   });
   // ⚠️ `<text>` 里只放得了字符串：`Edge.label` 的类型是 `string | ReactNode`（我们只写字符串）。
   const text = typeof label === 'string' ? label : '';
@@ -457,15 +476,6 @@ const backAxis: (targetPosition: Position) => FlowPoint = (targetPosition) => {
     见 `visibleEdges` 里那条**规范化**。
 */
 
-function readFlowData(raw: unknown): { nodes: FlowNode[]; edges: Edge[] } {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { nodes: [], edges: [] };
-  const row = raw as Record<string, unknown>;
-  return {
-    nodes: Array.isArray(row.nodes) ? row.nodes as FlowNode[] : [],
-    edges: Array.isArray(row.edges) ? row.edges as Edge[] : [],
-  };
-}
-
 /**
  * 交出去的那份流程数据（作答的真源）。
  *
@@ -483,8 +493,95 @@ function toFlowPayload(nodes: FlowNode[], edges: Edge[]) {
       data: { label: nodeData.label, kind: nodeData.kind },
     })),
     // ⚠️ `label` 必须一起带走：漏了它 = 「线上写的字一刷新就没了」，而屏幕上不报错。
-    edges: edges.map(({ id, source, target, sourceHandle, targetHandle, type, label }) => ({ id, source, target, sourceHandle, targetHandle, type, ...(label ? { label } : {}) })),
+    edges: edges.map(({ id, source, target, sourceHandle, targetHandle, type, label, data: edgeData }) => ({
+      id, source, target, sourceHandle, targetHandle, type,
+      ...(label ? { label } : {}),
+      ...(edgeData ? { data: edgeData } : {}),
+    })),
   };
+}
+
+/**
+ * 轻量的分层排版。流程图课堂题通常是自上而下的有向图；这里按拓扑层级放置，
+ * 对循环边保留一个兜底层，不因学生画出回路而卡死。无需把浏览器端画板绑到额外布局运行时。
+ */
+function layoutFlowchart(nodes: FlowNode[], edges: Edge[]): { nodes: FlowNode[]; edges: Edge[] } {
+  if (nodes.length === 0) return { nodes, edges };
+  const ids = new Set(nodes.map((node) => node.id));
+  const outgoing = new Map(nodes.map((node) => [node.id, [] as string[]]));
+  const incoming = new Map(nodes.map((node) => [node.id, 0]));
+  for (const edge of edges) {
+    if (!ids.has(edge.source) || !ids.has(edge.target) || edge.source === edge.target) continue;
+    outgoing.get(edge.source)?.push(edge.target);
+    incoming.set(edge.target, (incoming.get(edge.target) ?? 0) + 1);
+  }
+  const level = new Map<string, number>();
+  const queue = nodes.filter((node) => incoming.get(node.id) === 0).map((node) => node.id);
+  if (queue.length === 0) queue.push(nodes[0].id);
+  const spread = (baseLevel: number) => {
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      const id = queue[cursor];
+      for (const target of outgoing.get(id) ?? []) {
+        if (level.has(target)) continue; // 已访问边视为回边，避免循环把层级无限拉长。
+        level.set(target, (level.get(id) ?? baseLevel) + 1);
+        queue.push(target);
+      }
+    }
+  };
+  for (const id of queue) level.set(id, 0);
+  spread(0);
+  let fallbackLevel = Math.max(0, ...level.values()) + 1;
+  for (const node of nodes) {
+    if (level.has(node.id)) continue;
+    queue.length = 0;
+    queue.push(node.id);
+    level.set(node.id, fallbackLevel);
+    spread(fallbackLevel);
+    fallbackLevel = Math.max(...level.values()) + 1;
+  }
+  const layers = new Map<number, FlowNode[]>();
+  for (const node of nodes) {
+    const row = level.get(node.id) ?? 0;
+    layers.set(row, [...(layers.get(row) ?? []), node]);
+  }
+  const widthOf = (node: FlowNode) => node.measured?.width ?? (node.data.kind === 'junction' ? 8 : 150);
+  const heightOf = (node: FlowNode) => node.measured?.height ?? (node.data.kind === 'decision' ? 84 : node.data.kind === 'junction' ? 8 : 54);
+  const H_GAP = 64;
+  const V_GAP = 58;
+  const MARGIN = 44;
+  const orderedLayers = [...layers.entries()].sort(([a], [b]) => a - b);
+  const widest = Math.max(...orderedLayers.map(([, row]) => row.reduce((sum, node) => sum + widthOf(node), 0) + Math.max(0, row.length - 1) * H_GAP));
+  let y = MARGIN;
+  const positioned = new Map<string, FlowNode>();
+  for (const [, row] of orderedLayers) {
+    row.sort((a, b) => a.position.x - b.position.x);
+    const rowWidth = row.reduce((sum, node) => sum + widthOf(node), 0) + Math.max(0, row.length - 1) * H_GAP;
+    let x = MARGIN + (widest - rowWidth) / 2;
+    let rowHeight = 0;
+    for (const node of row) {
+      positioned.set(node.id, { ...node, position: { x, y } });
+      x += widthOf(node) + H_GAP;
+      rowHeight = Math.max(rowHeight, heightOf(node));
+    }
+    y += rowHeight + V_GAP;
+  }
+  const nextNodes = nodes.map((node) => positioned.get(node.id) ?? node);
+  const byId = new Map(nextNodes.map((node) => [node.id, node]));
+  const nextEdges = edges.map((edge) => {
+    const source = byId.get(edge.source);
+    const target = byId.get(edge.target);
+    if (!source || !target) return edge;
+    const sourceCenter = source.position.x + widthOf(source) / 2;
+    const targetCenter = target.position.x + widthOf(target) / 2;
+    const sameLayer = level.get(source.id) === level.get(target.id);
+    return {
+      ...edge,
+      sourceHandle: sameLayer ? (targetCenter >= sourceCenter ? 'right' : 'left') : 'bottom',
+      targetHandle: sameLayer ? (targetCenter >= sourceCenter ? 'left' : 'right') : 'top',
+      data: undefined,
+    };
+  });
+  return { nodes: nextNodes, edges: nextEdges };
 }
 
 function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, starter }: DrawingSurfaceProps) {
@@ -512,7 +609,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *    `FlowNode`/`Edge` —— 这里窄化一次（结构本来就一致）。
    */
   const initial = useRef<{ nodes: FlowNode[]; edges: Edge[] }>(
-    mergeFlowchart(starterPayload, readFlowchartPayload(readFlowData(data))) as unknown as { nodes: FlowNode[]; edges: Edge[] },
+    mergeFlowchart(starterPayload, readFlowchartPayload(data)) as unknown as { nodes: FlowNode[]; edges: Edge[] },
   );
   /**
    * 最近一次交出去的流程数据 —— 快照按它画。
@@ -551,7 +648,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *    用库自己的换算而不是自己乘 `viewport`：那是**页面**坐标（含容器 rect 与页面滚动），
    *    而 `viewport.x + flowX * zoom` 只对「浮层住在 `.flowStage` 里」成立。
    */
-  const { flowToScreenPosition } = useReactFlow<FlowNode, Edge>();
+  const { fitView, flowToScreenPosition, screenToFlowPosition } = useReactFlow<FlowNode, Edge>();
   const nodeTypes = useMemo(() => ({ flow: FlowNodeEditor }), []);
   /**
    * ★ 2026-10-06（教师上传的标准流程图）：注册那份**只管标签**的自定义边。
@@ -581,7 +678,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
       scheduleRaster();
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [nodes, edges, onChange, scheduleRaster]);
+  }, [nodes, edges, onChange, scheduleRaster, starterPayload]);
 
   /**
    * ★ 2026-10-06（教师）：「连接线默认没箭头的吗？」
@@ -628,6 +725,15 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     setEdges(base.edges as unknown as Edge[]);
   };
 
+  const tidyLayout = () => {
+    const arranged = layoutFlowchart(nodes, edges);
+    setNodes(arranged.nodes);
+    setEdges(arranged.edges);
+    setSelected(null);
+    setLabelingEdge(null);
+    window.setTimeout(() => { void fitView({ padding: 0.12, duration: 280 }); }, 60);
+  };
+
   /**
    * 一条线在**流坐标**（`position` 用的那套）里的两个锚点：
    *   · `midX/midY` —— **中点**：库 `getSmoothStepPath` 回的**标签点**（`labelX/labelY`）。
@@ -657,9 +763,13 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     /* ★ 删除按钮「往 source 退」的方向 = **目标句柄轴的外法线**（末段方向），不是「起点→终点」直线。
        ⚠️ 由 `targetPosition` 决定 —— 线从哪一侧进目标，就往那一侧退（见 `backAxis`）。 */
     const back = backAxis(targetPosition);
+    const route = edge.data as FlowEdgeData | undefined;
     const [, labelX, labelY] = getSmoothStepPath({
       sourceX: from.x, sourceY: from.y, sourcePosition,
       targetX: to.x, targetY: to.y, targetPosition,
+      ...(Number.isFinite(route?.routeX) && Number.isFinite(route?.routeY)
+        ? { centerX: route!.routeX, centerY: route!.routeY }
+        : {}),
     });
     return {
       midX: labelX, midY: labelY, endX: to.x, endY: to.y, fromX: from.x, fromY: from.y,
@@ -697,7 +807,11 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           「起点→终点」直线近似在那种边上能偏出线外 ~21px（见 `backAxis` 的注释）。
        ✅ 距离过 `clampOffset`：短边上退不到 `EDGE_FLOAT_BACK` 就停住，不会越过中点 / source 端。 */
     const step = clampOffset(EDGE_FLOAT_BACK, Math.hypot(endX - fromX, endY - fromY));
-    const shiftedEnd = { x: endX + backX * step, y: endY + backY * step };
+    // 删除按钮在箭头端附近，但向末段侧边让出一格，避免压住线中间的路径调整圆点。
+    const shiftedEnd = {
+      x: endX + backX * step + (backY !== 0 ? 34 : 0),
+      y: endY + backY * step + (backX !== 0 ? 34 : 0),
+    };
     return { x: viewport.x + shiftedEnd.x * viewport.zoom, y: viewport.y + shiftedEnd.y * viewport.zoom };
   };
 
@@ -709,6 +823,27 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
       position: { x: 80 + offset, y: 70 + offset },
       data: { label, kind },
     }]);
+  };
+
+  const moveSelectedEdgeRoute = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!selectedEdgeId || disabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const edgeId = selectedEdgeId;
+    const move = (pointer: PointerEvent) => {
+      const point = screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY });
+      setEdges((current) => current.map((edge) => edge.id === edgeId
+        ? { ...edge, data: { ...(edge.data as FlowEdgeData | undefined), routeX: point.x, routeY: point.y } }
+        : edge));
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop, { once: true });
+    window.addEventListener('pointercancel', stop, { once: true });
   };
   /**
    * 🔴 **拆线的唯一实现**（「插交点 + 拆原线 + 接上学生这一拖」）——**唯一**那条入口用它：
@@ -826,6 +961,12 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
       return addEdge({ ...connection, type: FLOW_EDGE_TYPE, ...(label ? { label } : {}) }, current);
     });
   }, [nodes, setEdges]);
+
+  const onReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
+    setEdges((current) => reconnectEdge(oldEdge, connection, current).map((edge) => edge.id === oldEdge.id
+      ? { ...edge, data: undefined }
+      : edge));
+  }, [setEdges]);
 
   /**
    * 离指针最近、且在 `EDGE_SNAP_RADIUS` 之内的那条边（比的是**各边中点**在屏幕上的位置）。
@@ -1061,6 +1202,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     if (!selected) return null;
     return selected.kind === 'edge' ? edgeEndAnchor(selected.id) : nodeFloatAnchor(selected.id);
   })();
+  const routeAnchor = selectedEdgeId && !labelingEdge ? edgeMidAnchor(selectedEdgeId) : null;
 
   /**
    * ★ 第 1 步整理：**一处渲染** —— 舞台里只有这一个浮层，两种形态：
@@ -1131,6 +1273,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('process', '处理过程')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.process} /></svg>处理框</button>
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('decision', '判断条件')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.decision} /></svg>判断框</button>
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('io', '输入/输出')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.io} /></svg>输入输出框</button>
+        <button className={styles.drawingToolbarButton} type="button" disabled={disabled || nodes.length === 0} onClick={tidyLayout}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.tidy} /></svg>一键整理</button>
         {/* ★ 2026-10-06（教师最终拍板）：「恢复初始图」**无条件出现**（只要这一题有初始图）——
             它是**唯一**的回退路径（「锁定初始图」那一档撤掉之后，学生把底稿改乱了只能靠它回去）。
             🔴 出现条件里**不许**再出现任何锁标记（`starter && !starterLocked` 那种写法已经删掉）。 */}
@@ -1139,8 +1282,8 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
         )}
         <span className={styles.drawingToolbarHint}>
           {selectedEdgeId
-            ? '这条线标注：'
-            : '从圆形连接点拖向另一节点即可连线'}
+            ? '拖动线中圆点调整走向；拖动两端可重新连接'
+            : '拖动图形；从任意连接点连线；双击文字修改'}
         </span>
         {labelableEdgeId && (
           <>
@@ -1173,6 +1316,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           onNodesChange={disabled ? undefined : onNodesChange}
           onEdgesChange={disabled ? undefined : onEdgesChange}
           onConnect={disabled ? undefined : onConnect}
+          onReconnect={disabled ? undefined : onReconnect}
+          edgesReconnectable={!disabled}
+          reconnectRadius={28}
           /*
             ★ 2026-10-06（教师：「拖到线附近松手要能连上」）——**落点吸附**的三个钩子。
             🔴 它是「连到线上」唯一的路：那颗中点句柄已随自定义边删掉，库的 `connectionRadius`
@@ -1215,6 +1361,8 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           onPaneClick={() => { setSelected(null); setLabelingEdge(null); }}
           nodesDraggable={!disabled}
           nodesConnectable={!disabled}
+          nodeDragThreshold={3}
+          connectionDragThreshold={3}
           connectionMode={ConnectionMode.Loose}
           /*
             ★ 2026-10-06（教师截图）：库判定「落点算不算落在句柄上」的半径 —— 必须与兜底那边
@@ -1236,6 +1384,18 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           {!backgroundUrl && <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#cbd7e5" />}
           <Controls showInteractive={false} />
         </ReactFlow>
+        {routeAnchor && (
+          <button
+            className={styles.flowEdgeRouteHandle}
+            type="button"
+            aria-label="拖动调整连线路径"
+            title="拖动调整连线路径"
+            style={{ left: routeAnchor.x, top: routeAnchor.y }}
+            onPointerDown={moveSelectedEdgeRoute}
+          >
+            <span aria-hidden="true" />
+          </button>
+        )}
         {/*
           ★ 2026-10-06（教师认可的第 1 步整理）：**画布上只有这一处浮层** —— 三套（线的删除按钮、
           就地输入框、图形的删除按钮）合并成同一个 `overlay` 描述式的两个形态，位置都来自同一处

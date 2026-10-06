@@ -23,6 +23,8 @@ import type { DrawingMode } from './worksheet-drawing.ts';
 export interface FlowchartPayload {
   nodes: Array<Record<string, unknown> & { id: string }>;
   edges: Array<Record<string, unknown> & { id: string }>;
+  deletedNodeIds?: string[];
+  deletedEdgeIds?: string[];
 }
 
 export interface DrawingStarter {
@@ -59,6 +61,8 @@ export function readFlowchartPayload(raw: unknown): FlowchartPayload {
   return {
     nodes: Array.isArray(row.nodes) ? row.nodes.filter(withId) : [],
     edges: Array.isArray(row.edges) ? row.edges.filter(withId) : [],
+    ...(Array.isArray(row.deletedNodeIds) ? { deletedNodeIds: row.deletedNodeIds.filter((id): id is string => typeof id === 'string') } : {}),
+    ...(Array.isArray(row.deletedEdgeIds) ? { deletedEdgeIds: row.deletedEdgeIds.filter((id): id is string => typeof id === 'string') } : {}),
   };
 }
 
@@ -102,16 +106,21 @@ function withoutLegacyLocks<T extends Record<string, unknown>>(item: T): T {
  *      「有的东西学生改不了」，而回退只有「恢复初始图」一条路（见下）。
  */
 export function mergeFlowchart(starter: FlowchartPayload, mine: FlowchartPayload): FlowchartPayload {
+  const clean = (item: Record<string, unknown> & { id: string }) => withoutLegacyLocks(item);
+  const mineNodes = new Map(mine.nodes.map((node) => [node.id, clean(node)]));
+  const mineEdges = new Map(mine.edges.map((edge) => [edge.id, clean(edge)]));
+  const deletedNodeIds = new Set(mine.deletedNodeIds ?? []);
+  const deletedEdgeIds = new Set(mine.deletedEdgeIds ?? []);
   const starterNodeIds = new Set(starter.nodes.map((node) => node.id));
   const starterEdgeIds = new Set(starter.edges.map((edge) => edge.id));
-  const clean = (item: Record<string, unknown> & { id: string }) => withoutLegacyLocks(item);
   return {
     nodes: [
-      ...starter.nodes.map(clean),
+      ...starter.nodes.filter((node) => !deletedNodeIds.has(node.id)).map((node) => mineNodes.get(node.id) ?? clean(node)),
       ...mine.nodes.map(clean).filter((node) => !starterNodeIds.has(node.id)),
     ],
     edges: [
-      ...starter.edges.map(clean),
+      ...starter.edges.filter((edge) => !deletedEdgeIds.has(edge.id) && !deletedNodeIds.has(String(edge.source)) && !deletedNodeIds.has(String(edge.target)))
+        .map((edge) => mineEdges.get(edge.id) ?? clean(edge)),
       ...mine.edges.map(clean).filter((edge) => !starterEdgeIds.has(edge.id)),
     ],
   };
@@ -132,10 +141,28 @@ export function restoreFlowchart(starter: FlowchartPayload): FlowchartPayload {
 }
 
 export function subtractFlowchart(all: FlowchartPayload, starter: FlowchartPayload): FlowchartPayload {
-  const starterNodeIds = new Set(starter.nodes.map((node) => node.id));
-  const starterEdgeIds = new Set(starter.edges.map((edge) => edge.id));
+  const starterNodes = new Map(starter.nodes.map((node) => [node.id, node]));
+  const starterEdges = new Map(starter.edges.map((edge) => [edge.id, edge]));
+  const allNodeIds = new Set(all.nodes.map((node) => node.id));
+  const allEdgeIds = new Set(all.edges.map((edge) => edge.id));
+  const comparable = (item: Record<string, unknown>, kind: 'node' | 'edge') => {
+    const keys = kind === 'node'
+      ? ['id', 'type', 'position', 'data']
+      : ['id', 'source', 'target', 'sourceHandle', 'targetHandle', 'type', 'label', 'data'];
+    return JSON.stringify(Object.fromEntries(keys.map((key) => [key, item[key] ?? null])));
+  };
+  const deletedNodeIds = [...starterNodes.keys()].filter((id) => !allNodeIds.has(id));
+  const deletedEdgeIds = [...starterEdges.keys()].filter((id) => !allEdgeIds.has(id));
   return {
-    nodes: all.nodes.filter((node) => !starterNodeIds.has(node.id)),
-    edges: all.edges.filter((edge) => !starterEdgeIds.has(edge.id)),
+    nodes: all.nodes.filter((node) => {
+      const base = starterNodes.get(node.id);
+      return !base || comparable(node, 'node') !== comparable(base, 'node');
+    }),
+    edges: all.edges.filter((edge) => {
+      const base = starterEdges.get(edge.id);
+      return !base || comparable(edge, 'edge') !== comparable(base, 'edge');
+    }),
+    ...(deletedNodeIds.length > 0 ? { deletedNodeIds } : {}),
+    ...(deletedEdgeIds.length > 0 ? { deletedEdgeIds } : {}),
   };
 }

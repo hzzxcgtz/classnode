@@ -70,6 +70,8 @@ export interface FlowRasterEdge {
   targetHandle: string | null;
   /** ★ 2026-10-06：线上的文字（判断框分出来的 Y / N）。**必须画进快照**。 */
   label: string;
+  routeX: number | null;
+  routeY: number | null;
 }
 
 /** XML 文本转义 —— 学生写的东西会原样进 SVG。 */
@@ -131,12 +133,15 @@ export function readFlowRaster(raw: unknown): { nodes: FlowRasterNode[]; edges: 
   for (const item of rawEdges) {
     const edge = asRecord(item);
     if (!edge || typeof edge.source !== 'string' || typeof edge.target !== 'string') continue;
+    const edgeData = asRecord(edge.data);
     edges.push({
       source: edge.source,
       target: edge.target,
       sourceHandle: typeof edge.sourceHandle === 'string' ? edge.sourceHandle : null,
       targetHandle: typeof edge.targetHandle === 'string' ? edge.targetHandle : null,
       label: typeof edge.label === 'string' ? edge.label : '',
+      routeX: typeof edgeData?.routeX === 'number' && Number.isFinite(edgeData.routeX) ? edgeData.routeX : null,
+      routeY: typeof edgeData?.routeY === 'number' && Number.isFinite(edgeData.routeY) ? edgeData.routeY : null,
     });
   }
   return { nodes, edges };
@@ -218,8 +223,12 @@ export function flowchartSvg(raw: unknown): { svg: string; width: number; height
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const maxX = Math.max(...nodes.map((node) => node.position.x + node.width));
   const maxY = Math.max(...nodes.map((node) => node.position.y + node.height));
-  const width = Math.ceil(maxX + PADDING * 2);
-  const height = Math.ceil(maxY + PADDING * 2);
+  const routeXs = edges.map((edge) => edge.routeX).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const routeYs = edges.map((edge) => edge.routeY).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const minX = Math.min(0, ...nodes.map((node) => node.position.x), ...routeXs);
+  const minY = Math.min(0, ...nodes.map((node) => node.position.y), ...routeYs);
+  const width = Math.ceil(Math.max(maxX, ...routeXs) - minX + PADDING * 2);
+  const height = Math.ceil(Math.max(maxY, ...routeYs) - minY + PADDING * 2);
 
   const parts: string[] = [];
   for (const edge of edges) {
@@ -228,8 +237,20 @@ export function flowchartSvg(raw: unknown): { svg: string; width: number; height
     if (!source || !target) continue;
     const [x1, y1] = anchorOf(source, edge.sourceHandle, target);
     const [x2, y2] = anchorOf(target, edge.targetHandle, source);
-    parts.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COLORS.edge}" `
-      + `stroke-width="1.8" marker-end="url(#flow-arrow)"/>`);
+    const hasRoute = Number.isFinite(edge.routeX) && Number.isFinite(edge.routeY);
+    const routeX = hasRoute ? edge.routeX as number : (x1 + x2) / 2;
+    const routeY = hasRoute ? edge.routeY as number : (y1 + y2) / 2;
+    if (hasRoute) {
+      const sourceVertical = edge.sourceHandle === 'top' || edge.sourceHandle === 'bottom';
+      const targetVertical = edge.targetHandle === 'top' || edge.targetHandle === 'bottom';
+      const first: [number, number] = sourceVertical ? [x1, routeY] : [routeX, y1];
+      const second: [number, number] = targetVertical ? [x2, routeY] : [routeX, y2];
+      parts.push(`<path d="M ${x1} ${y1} L ${first[0]} ${first[1]} L ${second[0]} ${second[1]} L ${x2} ${y2}" `
+        + `fill="none" stroke="${COLORS.edge}" stroke-width="1.8" marker-end="url(#flow-arrow)"/>`);
+    } else {
+      parts.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COLORS.edge}" `
+        + `stroke-width="1.8" marker-end="url(#flow-arrow)"/>`);
+    }
     /*
       ★ 2026-10-06（教师上传的标准流程图）：线上的字画在**线的旁边**，不压线 ——
         与画板 `FlowLabelEdge` **同一条规则**（同一个判据来源：`targetHandle` 的方位）：
@@ -245,8 +266,8 @@ export function flowchartSvg(raw: unknown): { svg: string; width: number; height
          横线那一支靠 `y` 抬到线的上方，字形整体在线之上，不依赖任何基线属性。
     */
     if (edge.label) {
-      const midX = (x1 + x2) / 2;
-      const midY = (y1 + y2) / 2;
+      const midX = routeX;
+      const midY = routeY;
       const vertical = edge.targetHandle === 'top' || edge.targetHandle === 'bottom';
       const anchor = vertical ? 'start' : 'middle';
       const tx = vertical ? midX + FLOW_LABEL_OFFSET : midX;
@@ -262,7 +283,7 @@ export function flowchartSvg(raw: unknown): { svg: string; width: number; height
     + `<defs><marker id="flow-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">`
     + `<path d="M 0 0 L 10 5 L 0 10 z" fill="${COLORS.edge}"/></marker></defs>`
     + `<rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>`
-    + `<g transform="translate(${PADDING}, ${PADDING})">${parts.join('')}</g>`
+    + `<g transform="translate(${PADDING - minX}, ${PADDING - minY})">${parts.join('')}</g>`
     + `</svg>`;
   return { svg, width, height };
 }

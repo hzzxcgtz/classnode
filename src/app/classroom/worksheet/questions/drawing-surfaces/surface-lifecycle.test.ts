@@ -59,6 +59,18 @@ const selectedAnchorSource = (source: string) => blockAfter(source, 'const selec
 /** 唯一的删除出口：`const removeSelected = () => { … };`（切到下一个顶层 `const` 为止）。 */
 const removeSelectedSource = (source: string) => blockAfter(source, 'const removeSelected = ', '\n  const ');
 
+/**
+ * ★ 2026-10-06（教师）：「锁定初始图」—— 工具条上「恢复初始图」那颗按钮的 JSX 块
+ * （从它**出现条件**那句 `{starter …&& (` 一路取到按钮文字）。
+ * ⚠️ 判据是「出现条件里有没有一个**取反的**锁标记」，不是逐字钉变量名（`starterLocked` / `starter.locked`
+ *    都认）；把闸整个拿掉、或者忘了取反（`starter.locked &&`），它都必须判红。
+ */
+const RESTORE_GATE = /\{starter[^}]*&&\s*\(\s*<button[\s\S]{0,400}?恢复初始图/;
+const restoreShownWhenUnlocked = (source: string): boolean => {
+  const gate = source.match(RESTORE_GATE);
+  return !!gate && /!\s*[\w.]*[Ll]ocked\b/.test(gate[0]);
+};
+
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
@@ -373,22 +385,101 @@ test('★ 2026-10-06（教师截图）：库自带那条导航条换掉，改成
   assert.match(live, /pan: \{ enabled: !disabled, needTwoFingers: true \}/, '单指还在平移画布 —— 会把「点一下」和「挪一下」混在一起');
 });
 
-test('★ 2026-10-06（教师）：底稿（A 不算学生作答 / B 不能改删 / 先做流程图）', () => {
+test('★ 2026-10-06（教师）：底稿（A 不算学生作答 / B 锁定初始图 / 先做流程图）', async () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   const body = stripComments(fs.readFileSync(path.resolve(HERE, '..', 'drawing-tool-body.tsx'), 'utf8'));
   // ① 学生端拿得到底稿，并交给画板。
   assert.match(body, /starter=\{readDrawingStarter\(node\)\}/, '学生端没有把底稿交给画板');
-  // ② 读的时候合并（底稿 + 学生画的），写的时候剔除（A：底稿不算他的作答）。
-  assert.match(live, /mergeFlowchart\(starterPayload, readFlowchartPayload\(readFlowData\(data\)\)\)/, '没有把底稿合并进画板');
+  // ② 读的时候合并（底稿 + 学生画的）—— ★ 必须把「锁定初始图」这一档**交给合并**；
+  //    写的时候剔除（A：底稿不算他的作答）。
+  assert.match(live, /const starterLocked = /, '学生端没有读「锁定初始图」这一档');
+  assert.match(live, /mergeFlowchart\(starterPayload, readFlowchartPayload\(readFlowData\(data\)\), starterLocked\)/,
+    '没有把「锁定初始图」交给合并 —— 两档会不分（要么全锁、要么老师取消了也还锁着）');
   assert.match(live, /onChange\(subtractFlowchart\(payload, starterPayload\)/, '交上去的作答没有剔除底稿（A）');
   // ③ 快照仍按**全部**画（教师预览/AI/报告要看到完整那张图）。
   assert.match(live, /lastFlow\.current = payload;/, '快照用的不是完整那份（教师/AI 会看到缺了底稿的图）');
-  // ④ B：底稿的节点是锁的，而且**不会**被 `disabled` 反向解锁。
-  // ⊘ 2026-10-06 第三版：底稿**不再锁**（教师澄清 2「学生可以修改底稿」），
-  //   改成「可恢复」⇒ 学生端必须有一颗「恢复初始图」按钮（那是唯一的回退路径）。
-  assert.match(live, /restoreFlowchart\(starterPayload\)/, '没有「恢复初始图」的实现');
-  assert.match(live, /\{starter && \(/, '「恢复初始图」没有按「这一题有没有初始图」显示');
-  assert.ok(!/draggable: false/.test(stripComments(fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', '..', 'lib', 'worksheet-drawing-starter.ts'), 'utf8'))), '底稿又被锁住了（学生应当可以修改）');
+  // ④ ★ B 现在是**条件性**的（「锁定初始图」一个开关）：
+  //    · 未锁 ⇒ 「恢复初始图」必须出现（那是**唯一**的回退路径）；
+  //    · 锁定 ⇒ 它必须**不**出现（学生动不了老师的东西，恢复只会误删他自己的补充）。
+  assert.match(live, /restoreFlowchart\(starterPayload, starterLocked\)/, '没有「恢复初始图」的实现（或没认那一档开关）');
+  assert.ok(restoreShownWhenUnlocked(live), '「恢复初始图」没有按「未锁」显示 —— 锁定的题也会给学生一颗恢复按钮');
+  // ⚠️ 反面对照：把出现条件里那个取反去掉（回到「有初始图就显示」）⇒ 必须判违规。
+  const restoreGate = live.match(RESTORE_GATE);
+  assert.ok(restoreGate, '「恢复初始图」的按钮块没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const withoutGate = live.replace(restoreGate[0], restoreGate[0].replace(/!\s*[\w.]*[Ll]ocked\s*&&\s*/, ''));
+  assert.notEqual(withoutGate, live, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!restoreShownWhenUnlocked(withoutGate), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⑤ 「打不打锁」这件事本身必须**真能分档** —— 这里真调一次纯函数（不猜实现写法；`locked` 必填）。
+  //    ⚠️ 这也正是上一版那句「源码里不许出现 draggable: false」换来的东西：那时它守的是
+  //    「底稿又被无条件锁住了」，现在换成**行为**判据 —— 未锁一个标记都不许有、锁定必须都带锁。
+  const { mergeFlowchart } = await import('../../../../../lib/worksheet-drawing-starter.ts');
+  const starter = { nodes: [{ id: 't1', data: { label: '开始' } }], edges: [{ id: 'e1', source: 't1', target: 't1' }] };
+  const openGraph = mergeFlowchart(starter, { nodes: [], edges: [] }, false);
+  assert.equal(openGraph.nodes[0].draggable, undefined, '未锁时底稿还被锁着不能拖（教师取消锁定后学生应当可以改）');
+  assert.equal(openGraph.edges[0].deletable, undefined, '未锁时底稿的连线还被锁着不能删');
+  const lockedGraph = mergeFlowchart(starter, { nodes: [], edges: [] }, true);
+  assert.equal(lockedGraph.nodes[0].draggable, false, '锁定时底稿的框还能拖');
+  assert.equal(lockedGraph.nodes[0].deletable, false, '锁定时底稿的框还能删');
+  assert.equal(lockedGraph.edges[0].deletable, false, '锁定时底稿的连线还能删');
+});
+
+test('★ 2026-10-06（教师）：「锁定初始图」= 老师的不可动、学生自己的可动（判据按 id）', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  /*
+    🔴 判据**按 id**：初始图里出现过的 id 就是「老师的」（`starterNodeIds` / `starterEdgeIds`）。
+      这正是「连到线中点」拆线后**头段沿用原 id** 的原因之一 —— 拆出来的头段仍是老师的，
+      而尾段、交点，以及学生新拉的那根线都是他自己的（照旧随便改）。
+    ⚠️ 这一条盯的是**学生能碰到老师东西的四条路**（源码级：本仓没有 jsdom）：
+      ① 框的文字输入框；② 改线的文字（双击 / 工具条标注那一组 / 唯一的写入出口）；
+      ③ 唯一的删除出口；④ 浮层那颗删除按钮。
+    ⚠️ 「拖动 + 键盘 Delete」不在这里 —— 那两条由 `mergeFlowchart` 打上的 `draggable/deletable`
+      交给库自己认，上面那条用例已经**真调**过纯函数验算了。
+  */
+  /** 「是不是老师的」那两个判断：必须**锁定 + id 在初始图里**，少一半都错。 */
+  const judgeOf = (name: string, ids: string, source: string): void => {
+    const body = blockAfter(source, `const ${name} = `, ';');
+    assert.ok(body.length > 20, `${name} 没抠出来 —— 先修这条判据，别让它在空串上全绿`);
+    assert.match(body, /starterLocked/, `${name} 没看「锁定初始图」这一档（教师取消锁定后它照样把老师的东西锁着）`);
+    assert.match(body, new RegExp(`${ids}\\.has\\(`), `${name} 没有按 id 判（初始图里出现过的 id 就是老师的）`);
+  };
+  judgeOf('isStarterNode', 'starterNodeIds', live);
+  judgeOf('isStarterEdge', 'starterEdgeIds', live);
+  // ⚠️ 反面对照：把「锁定」那一半去掉 ⇒ 判据必须红（证明它不是恒真的）。
+  const noSwitch = live.replace('starterLocked && starterNodeIds.has(id)', 'starterNodeIds.has(id)');
+  assert.notEqual(noSwitch, live, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!/const isStarterNode = [^;]*starterLocked/.test(blockAfter(noSwitch, 'const isStarterNode = ', ';')),
+    '反面对照没被抓住 —— 这条判据是恒真的');
+
+  /** 这一段里有没有「按 id 拦住老师的线」那道闸。 */
+  const locksTeacherEdge = (snippet: string): boolean => /isStarterEdge\(/.test(snippet);
+
+  // ① 框的文字：`visibleNodes` 里按 id 挂上 `locked`（输入框的 disabled 认它），且不许弄丢 `disabled`。
+  const visibleBody = blockAfter(live, 'const visibleNodes = useMemo', '\n  const ');
+  assert.ok(visibleBody.length > 40, 'visibleNodes 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(visibleBody, /starterNodeIds\.has\(node\.id\)/, '锁定时老师的框文字没有变只读（`visibleNodes` 里没按 id 判）');
+  assert.match(visibleBody, /disabled/, '「只读展示」那一档（disabled）被弄丢了');
+  // ② 线的文字：双击不进就地输入框 + 工具条那一组只给学生的线 + 唯一的写入出口自己拦截。
+  const dblBody = blockAfter(live, 'onEdgeDoubleClick={', 'onMove={');
+  assert.ok(dblBody.includes('setLabelingEdge'), 'onEdgeDoubleClick 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(locksTeacherEdge(dblBody), '锁定时双击老师的线仍然进就地输入框（能改它的文字）');
+  assert.ok(locksTeacherEdge(blockAfter(live, 'const labelableEdgeId = ', ';')),
+    '锁定时工具条仍然给老师的线「标注」那一组（能改它的文字）');
+  assert.ok(locksTeacherEdge(blockAfter(live, 'const setEdgeLabel = ', '};')),
+    '改标注的唯一出口没有拦住老师的线（工具条/就地输入框之外还能改）');
+  // ③④ 删除：唯一的删除出口有第二道闸；浮层不为老师的东西画删除按钮。
+  const removeBody = removeSelectedSource(live);
+  assert.ok(/isStarterNode\(/.test(removeBody) && /isStarterEdge\(/.test(removeBody),
+    '唯一的删除出口没有「老师的东西不放行」那道闸（选中的是线那一支是我们自己 filter 的，库的 deletable 管不着）');
+  assert.ok(locksTeacherEdge(overlaySource(live)) && /isStarterNode\(/.test(overlaySource(live)),
+    '锁定时选中老师的框/线仍然浮出删除按钮（点了也删不掉，学生只会以为坏了）');
+  // ⚠️ 反面对照：把「改标注的唯一出口」那道闸拿掉 ⇒ 判据必须红（证明切片不是恒真的）。
+  const noLabelGuard = live.replace('if (isStarterEdge(id)) return;', '');
+  assert.notEqual(noLabelGuard, live, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!locksTeacherEdge(blockAfter(noLabelGuard, 'const setEdgeLabel = ', '};')), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⚠️ 再加一条反面对照：双击那道闸拿掉 ⇒ 也必须红。
+  const noDblGuard = live.replace('if (!isStarterEdge(edge.id)) setLabelingEdge(edge.id);', 'setLabelingEdge(edge.id);');
+  assert.notEqual(noDblGuard, live, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!locksTeacherEdge(blockAfter(noDblGuard, 'onEdgeDoubleClick={', 'onMove={')), '反面对照没被抓住 —— 这条判据是恒真的');
 });
 
 test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出图标删除；双击线改文字', () => {

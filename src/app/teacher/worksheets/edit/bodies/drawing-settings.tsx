@@ -12,7 +12,7 @@ import {
   readDrawingTool,
   type DrawingMode,
 } from '@/lib/worksheet-drawing';
-import { readDrawingStarter } from '@/lib/worksheet-drawing-starter';
+import { readDrawingStarter, drawingStarterLockPatch } from '@/lib/worksheet-drawing-starter';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { EditorIcon } from '../editor-icons';
@@ -204,6 +204,30 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
             <span>让学生从这张初始图开始画</span>
           </label>
         </div>
+        {/*
+          ★ 2026-10-06（教师）：「**锁定初始图**」—— 信息科技课作业的常态是
+            「老师给一半，要求学生**只补连线/填自己那部分，不许动老师的框**」。
+          🔴 默认 = **锁定**：题目上那个字段**缺席就是锁**（`readDrawingStarter` 的语义），
+             教师**取消锁定**时才写 `false`（写回的语义收在 `drawingStarterLockPatch` 这个纯函数里，
+             往返用例在 `src/lib/worksheet-drawing-starter.test.ts` —— 字段名/写反都验在那儿）。
+          ⚠️ 只在**这一题有初始图**时出现（没有初始图就没什么可锁的）。
+          ⚠️ 仍是开关不是复选框（教师澄清 3）：`role="switch"` + `.worksheet-editor-drawing-switch`
+             那套自绘轨道（与上面那个「要不要设底稿」的开关同一份样式，不新增 CSS）。
+        */}
+        {starter ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
+            <label className="worksheet-editor-drawing-switch">
+              <input
+                type="checkbox"
+                role="switch"
+                checked={starter.locked}
+                onChange={(event) => onDataChange(drawingStarterLockPatch(event.target.checked))}
+              />
+              <span>锁定初始图</span>
+            </label>
+            <p className="worksheet-editor-drawing-note">学生只能添加，不能修改或删除你给的框与连线。</p>
+          </div>
+        ) : null}
         {starter ? (
           tool === 'flowchart' ? (
             <>

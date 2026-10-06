@@ -376,20 +376,40 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *
    * 🔴 三条决定逐字落地（见 `@/lib/worksheet-drawing-starter.ts` 的注释）：
    *    · A **底稿不算学生的作答** ⇒ 交上去的 `data` = 画板上的全部 − 底稿（`subtractFlowchart`）；
-   *    · B **学生不能改/删底稿** ⇒ 读进来时给底稿的节点/边打上锁（`mergeFlowchart`）；
+   *    · B **锁定初始图**（一题一个开关，默认锁）⇒ 读进来时按开关给底稿的节点/边打锁
+   *      （`mergeFlowchart` 的第三个参数）；教师取消锁定那一档一个标记都不加；
    *    · 试点就是流程图这一档。
    * ⚠️ 合并是**读的时候**做、剔除是**写的时候**做：画板自己始终拿着「底稿 + 学生画的」这一份，
    *    于是拖拽/连线/标注都不必知道底稿的存在。
    */
-  const starterPayload = starter?.tool === 'flowchart' ? readFlowchartPayload(starter.data) : readFlowchartPayload(null);
+  const starterPayload = useMemo(
+    () => (starter?.tool === 'flowchart' ? readFlowchartPayload(starter.data) : readFlowchartPayload(null)),
+    [starter],
+  );
   /**
-   * 画板上的那份 = **底稿 + 学生自己画的**（合并只在读的时候做一次）。
+   * ★ 2026-10-06（教师）：「**锁定初始图**」—— 信息科技课的作业常态是「老师给一半，学生只补连线」。
+   *
+   * 🔴 语义（见 `readDrawingStarter`）：题目上**没设过就是锁的**，只有教师主动取消（`false`）才未锁。
+   *    · 锁定 ⇒ 初始图里的东西：框不能拖、不能删、文字只读；线不能删、不能改标注；
+   *    · 未锁 ⇒ 一个锁都不加，回到「学生可以随便改 + 恢复初始图」那一版。
+   * ⚠️ 判据**按 id**（`starterNodeIds` / `starterEdgeIds`）：**初始图里出现过的 id 就是「老师的」**。
+   *    这正是「连到线中点」拆线时头段**沿用原 id** 的原因之一 —— 拆出来的头段仍然是老师的，
+   *    尾段与学生新拉的那根是他自己的。别把判据改成「看标记」（标记只在合并那一刻打上）。
+   */
+  const starterLocked = starter?.tool === 'flowchart' && starter.locked === true;
+  const starterNodeIds = useMemo(() => new Set(starterPayload.nodes.map((item) => item.id)), [starterPayload]);
+  const starterEdgeIds = useMemo(() => new Set(starterPayload.edges.map((item) => item.id)), [starterPayload]);
+  /** 这一件是**老师的**（而且这一题锁了）吗 —— 全组件只有这两个判断。纯读，不产生副作用。 */
+  const isStarterNode = (id: string) => starterLocked && starterNodeIds.has(id);
+  const isStarterEdge = (id: string) => starterLocked && starterEdgeIds.has(id);
+  /**
+   * 画板上的那份 = **底稿 + 学生自己画的**（合并只在读的时候做一次），第三个参数就是那一档开关。
    * ⚠️ 类型上 `mergeFlowchart` 给的是「带 id 的普通对象」，画板要的是 React Flow 的
    *    `FlowNode`/`Edge` —— 这里窄化一次（结构本来就一致，多出来的 `draggable`/`deletable`
    *    正是 React Flow 自己的字段）。
    */
   const initial = useRef<{ nodes: FlowNode[]; edges: Edge[] }>(
-    mergeFlowchart(starterPayload, readFlowchartPayload(readFlowData(data))) as unknown as { nodes: FlowNode[]; edges: Edge[] },
+    mergeFlowchart(starterPayload, readFlowchartPayload(readFlowData(data)), starterLocked) as unknown as { nodes: FlowNode[]; edges: Edge[] },
   );
   /**
    * 最近一次交出去的流程数据 —— 快照按它画。
@@ -449,12 +469,13 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   /**
    * 「恢复初始图」（教师澄清 2：「学生可以修改底稿，但是可以提供一个『恢复底稿』的按钮」）。
    *
-   * 🔴 这是**唯一**的回退路径：流程图这一档的工具条只有「加节点」与「线上标注」，
+   * 🔴 这是**未锁**那一档唯一的回退路径：流程图这一档的工具条只有「加节点」与「线上标注」，
    *    没有撤销、也没有清空 —— 学生把教师给的图改乱了，只能靠这颗按钮回去。
-   * ⚠️ 只在**这一题有初始图**时才出现（没有初始图就没什么可恢复的，多一颗按钮只是噪音）。
+   * ⚠️ 只在**这一题有初始图、而且未锁**时才出现：锁定时学生动不了老师的东西，恢复只会误删
+   *    他自己的补充（那颗按钮的出现条件因此是 `starter && !starterLocked`）。
    */
   const restoreStarter = () => {
-    const base = restoreFlowchart(starterPayload);
+    const base = restoreFlowchart(starterPayload, starterLocked);
     setNodes(base.nodes as unknown as FlowNode[]);
     setEdges(base.edges as unknown as Edge[]);
   };
@@ -662,6 +683,12 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   /** 选中的是**线**时，工具条上出现「这条线标注」那一组（Y / N / 清空 / 自由文字）。 */
   const selectedEdgeId = selected?.kind === 'edge' ? selected.id : null;
   /**
+   * ★ 2026-10-06（教师）：「锁定初始图」⇒ **老师的线不许改文字**。
+   * ⇒ 工具条那一组标注只在「选中的是线，**而且那根线是学生自己的**」时出现。
+   *   （判据按 id：初始图里出现过的 id 就是老师的。）
+   */
+  const labelableEdgeId = selectedEdgeId && !isStarterEdge(selectedEdgeId) ? selectedEdgeId : null;
+  /**
    * 视口（`onMove` 给的 `{x, y, zoom}`）。
    * 🔴 用它把**流坐标**换算成容器内坐标：`local = viewport.x + flowX * zoom`。
    *    刻意不用 `useReactFlow().flowToScreenPosition` 来摆浮层：那个给的是**屏幕**坐标
@@ -682,8 +709,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *    `onNodesChange`/`onEdgesChange`** ⇒ 受控数据流不被绕开，`useNodesState/useEdgesState`
    *    照常更新（自写 filter 反而多一份「哪些边算相连」的判据要与库对齐）。
    * ⚠️ 取舍：它是 `async`（这里不关心返回的 `deletedNodes/deletedEdges`，`void` 掉）；
-   *    它**认 `deletable: false`** —— 本仓所有节点/边都没有这个字段（老数据里那份「锁定」标记
-   *    已在 `withoutLegacyLocks` 剥掉）⇒ 底稿的框同样删得掉，与「学生可以修改底稿」一致。
+   *    它**认 `deletable: false`** —— 锁定那一档初始图的框/线正是带着这个标记进来的
+   *    （`mergeFlowchart`），所以键盘 Delete / 选中删除都碰不到老师的东西；未锁那一档
+   *    一个标记都没有（老数据里那份「锁定」已由 `withoutLegacyLocks` 剥掉）⇒ 学生随便删。
    */
   const { deleteElements } = useReactFlow<FlowNode, Edge>();
 
@@ -693,10 +721,15 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *   · 选中的是**框** ⇒ 交给库的 `deleteElements`（「与它相连的线」是库自己算的，理由见上）。
    * ⚠️ 交点**不做特例**：它也是一颗框，走的正是下面同一句 `deleteElements`（删它、连着它的线一起没，
    *    教师没有对交点提任何要求）。
+   * 🔴 ★ 锁定初始图：**老师给的框/线这一条出口一律不放行**（判据按 id —— 初始图里出现过的 id
+   *    就是老师的）。浮层那颗按钮在锁定 + 选中老师的东西时**根本不画**（见 `overlay`），这里是
+   *    第二道闸：底稿的 `deletable:false` 只管得住库自己的删除路，而「选中的是线」那一支是我们
+   *    自己 `filter` 的（库那道闸管不着它）。
    */
   const removeSelected = () => {
     const target = selected;
     if (!target) return;
+    if (target.kind === 'node' ? isStarterNode(target.id) : isStarterEdge(target.id)) return;
     setSelected(null);
     setLabelingEdge(null);
     if (target.kind === 'edge') {
@@ -736,6 +769,8 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *   · `delete` —— 选中框 / 线后的**图标删除按钮**（框 ⇒ 连带删相连的线；线 ⇒ 删这条线）。
    * 🔴 `label` 优先：双击连线必然先触发一次单击 ⇒ 两个形态**结构性互斥**（不再靠两处状态互相当心清），
    *    否则那颗 44px 的按钮会压在这个输入框上。
+   * 🔴 ★ 锁定初始图：选中的是**老师给的**框/线（判据按 id）⇒ **不浮删除按钮**。它点了也删不掉
+   *    （`removeSelected` 里还有第二道闸），画出来只会让学生以为「能删但坏了」。
    */
   const overlay = (() => {
     if (labelingEdge) {
@@ -743,6 +778,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
       return anchor ? { mode: 'label' as const, edgeId: labelingEdge, anchor } : null;
     }
     if (!selected) return null;
+    if (selected.kind === 'node' ? isStarterNode(selected.id) : isStarterEdge(selected.id)) return null;
     const anchor = selectedAnchor;
     if (!anchor) return null;
     return {
@@ -752,7 +788,14 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     };
   })();
 
+  /**
+   * 改一条线的标注 —— **唯一**的写入出口（工具条那组 Y/N/自由文字、就地输入框都走它）。
+   * 🔴 ★ 锁定初始图：老师给的线**不许改文字** ⇒ 在这里拦住（判据按 id）。工具条那一组与
+   *    就地输入框本来就不会为老师的线出现（见 `labelableEdgeId` / `onEdgeDoubleClick`），
+   *    这一句是让「唯一的写入出口」自己也是安全的。
+   */
   const setEdgeLabel = (id: string, label: string) => {
+    if (isStarterEdge(id)) return;
     setEdges((current) => current.map((edge) => (edge.id === id ? { ...edge, label: label || undefined } : edge)));
   };
   /**
@@ -762,14 +805,16 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *    等于把这条判据关掉。非字符串（理论上有）就当空。
    */
   const editingLabel = (() => {
-    const label = edges.find((edge) => edge.id === selectedEdgeId)?.label;
+    const label = edges.find((edge) => edge.id === labelableEdgeId)?.label;
     return typeof label === 'string' ? label : '';
   })();
   const visibleNodes = useMemo(() => nodes.map((node) => ({
     ...node,
-    // ⊘ 2026-10-06 第三版：底稿**不再锁**（学生可以改），所以这里只看「只读展示」这一条。
-    data: { ...node.data, locked: disabled || node.data.locked === true },
-  })), [disabled, nodes]);
+    // ★ 锁定初始图：老师的框**文字只读**（判据按 id —— 初始图里出现过的 id 就是老师的）；
+    //   未锁那一档这一条不生效（`starterLocked` 为假时整句退化成原来的「只读展示」）。
+    // ⊘ 2026-10-06 第三版曾经无条件解锁 —— 现在是**条件性**的：开关说了算。
+    data: { ...node.data, locked: disabled || (starterLocked && starterNodeIds.has(node.id)) || node.data.locked === true },
+  })), [disabled, nodes, starterLocked, starterNodeIds]);
 
   return (
     <div className={styles.thirdPartySurface}>
@@ -778,14 +823,20 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('process', '处理过程')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.process} /></svg>过程</button>
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('decision', '判断条件')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.decision} /></svg>判断</button>
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('io', '输入/输出')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.io} /></svg>输入/输出</button>
-        {starter && (
+        {/* ★ 锁定初始图 ⇒ **没有**这颗按钮：学生动不了老师的东西，恢复只会误删他自己的补充
+            （未锁那一档它才是唯一的回退路径，见 `restoreStarter`）。 */}
+        {starter && !starterLocked && (
           <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={restoreStarter}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.restore} /></svg>恢复初始图</button>
         )}
-        <span className={styles.drawingToolbarHint}>{selectedEdgeId ? '这条线标注：' : '从圆形连接点拖向另一节点即可连线'}</span>
-        {selectedEdgeId && (
+        <span className={styles.drawingToolbarHint}>
+          {selectedEdgeId
+            ? (labelableEdgeId ? '这条线标注：' : '这条线是初始图的一部分，不能修改')
+            : '从圆形连接点拖向另一节点即可连线'}
+        </span>
+        {labelableEdgeId && (
           <>
             {['Y', 'N', '是', '否'].map((value) => (
-              <button className={styles.drawingToolbarButton} key={value} type="button" disabled={disabled} onClick={() => setEdgeLabel(selectedEdgeId, value)}>{value}</button>
+              <button className={styles.drawingToolbarButton} key={value} type="button" disabled={disabled} onClick={() => setEdgeLabel(labelableEdgeId, value)}>{value}</button>
             ))}
             {/* ★ 2026-10-06（教师）：「可不可以用户加自定义的字？」——可以，直接在这一格里打。
                 ⚠️ 它是**受控**的：值来自那条边自己（`edges.find`），所以切换线、清空、撤销
@@ -798,9 +849,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
               aria-label="这条线上的自定义文字"
               placeholder="自定义"
               value={editingLabel}
-              onChange={(event) => setEdgeLabel(selectedEdgeId, event.target.value)}
+              onChange={(event) => setEdgeLabel(labelableEdgeId, event.target.value)}
             />
-            <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => { setEdgeLabel(selectedEdgeId, ''); setSelected(null); }}>清空</button>
+            <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => { setEdgeLabel(labelableEdgeId, ''); setSelected(null); }}>清空</button>
           </>
         )}
       </div>
@@ -821,8 +872,14 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
             ★ 2026-10-06（教师）：「双击线条可以输入/修改连接线上的文字」。
             双击进入**就地输入框**（就在那条线中点），回车提交、Esc 取消。
             ⚠️ 单击仍是「选中这条线」（浮出删除按钮）—— 两件事分开，不互相抢。
+            🔴 ★ 锁定初始图：**老师给的线不许改文字** ⇒ 双击**不进**就地输入框（照样只是选中它）。
+               判据按 id（初始图里出现过的 id 就是老师的）；学生自己连上去的那些线照旧能改。
           */
-          onEdgeDoubleClick={(event, edge) => { event.stopPropagation(); setSelected({ kind: 'edge', id: edge.id }); setLabelingEdge(edge.id); }}
+          onEdgeDoubleClick={(event, edge) => {
+            event.stopPropagation();
+            setSelected({ kind: 'edge', id: edge.id });
+            if (!isStarterEdge(edge.id)) setLabelingEdge(edge.id);
+          }}
           // 浮层要跟着视口走（平移/缩放都会回调）
           onMove={(_, next) => setViewport(next)}
           // 点空白 ⇒ 选中清掉（「选中」是单选，点空就是没有选中），就地输入框也一起退掉。

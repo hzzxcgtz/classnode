@@ -386,6 +386,14 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   assert.match(live, /aria-label="这条连线上的文字"/, '没有就地输入框');
   assert.match(live, /event\.key === 'Enter'/, '回车没有提交');
   assert.match(live, /event\.key === 'Escape'/, 'Esc 没有取消');
+  // ④ 🔴 浮层必须**落在画布舞台里面**：教师 2026-10-06 实测「删除图标在最上面」——
+  //   当时浮层被插到了舞台**外面**，于是按外层卡片定位，y 差了「卡片头 + 工具条」那约 280px。
+  //   这条判据用**位置关系**钉死它（顺序错了就红，不必靠真机截图才发现）。
+  const stageAt = live.indexOf('styles.flowStage');
+  const reactFlowAt = live.indexOf('</ReactFlow>');
+  const floatAt = live.indexOf('styles.flowEdgeFloat');
+  assert.ok(stageAt !== -1 && reactFlowAt !== -1 && floatAt !== -1, '舞台/ReactFlow/浮层有缺失');
+  assert.ok(stageAt < reactFlowAt && reactFlowAt < floatAt, '浮层没有落在画布舞台里（会在卡片上乱飘）');
   // ④ 浮层靠**视口换算**跟随（不引 Provider、也不复刻折线算法）。
   assert.match(live, /onMove=\{\(_, next\) => setViewport\(next\)\}/, '没有跟视口');
   assert.match(live, /viewport\.x \+ labelX \* viewport\.zoom/, '坐标换算不对（浮层会飘）');

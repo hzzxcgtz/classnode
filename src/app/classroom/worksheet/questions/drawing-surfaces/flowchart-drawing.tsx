@@ -342,7 +342,40 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
               value={editingLabel}
               onChange={(event) => setEdgeLabel(editingEdge, event.target.value)}
             />
-
+            <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => { setEdgeLabel(editingEdge, ''); setEditingEdge(null); }}>清空</button>
+          </>
+        )}
+      </div>
+      <div className={`${styles.thirdPartyCanvas} ${styles.flowStage}`} style={backgroundUrl ? { backgroundImage: `url(${backgroundUrl})` } : undefined}>
+        <ReactFlow
+          nodes={visibleNodes}
+          edges={visibleEdges}
+          nodeTypes={nodeTypes}
+          onNodesChange={disabled ? undefined : onNodesChange}
+          onEdgesChange={disabled ? undefined : onEdgesChange}
+          onConnect={disabled ? undefined : onConnect}
+          onEdgeClick={(event, edge) => { event.stopPropagation(); setEditingEdge(edge.id); setLabelingEdge(null); }}
+          /*
+            ★ 2026-10-06（教师）：「双击线条可以输入/修改连接线上的文字」。
+            双击进入**就地输入框**（就在那条线中点），回车提交、Esc 取消。
+            ⚠️ 单击仍是「选中这条线」（浮出删除按钮）—— 两件事分开，不互相抢。
+          */
+          onEdgeDoubleClick={(event, edge) => { event.stopPropagation(); setEditingEdge(edge.id); setLabelingEdge(edge.id); }}
+          // 浮层要跟着视口走（平移/缩放都会回调）
+          onMove={(_, next) => setViewport(next)}
+          onPaneClick={() => setEditingEdge(null)}
+          nodesDraggable={!disabled}
+          nodesConnectable={!disabled}
+          connectionMode={ConnectionMode.Loose}
+          elementsSelectable={!disabled}
+          fitView
+          minZoom={0.35}
+          maxZoom={2.2}
+          deleteKeyCode={disabled ? null : ['Backspace', 'Delete']}
+        >
+          {!backgroundUrl && <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#cbd7e5" />}
+          <Controls showInteractive={false} />
+        </ReactFlow>
         {/*
           ★ 2026-10-06（教师）：「要求点击可以选中连接线，会跳出一个图标型的删除按钮，可删除连接线；
           双击线条可以输入/修改连接线上的文字。」
@@ -386,40 +419,6 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
             }}
           />
         )}
-            <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => { setEdgeLabel(editingEdge, ''); setEditingEdge(null); }}>清空</button>
-          </>
-        )}
-      </div>
-      <div className={`${styles.thirdPartyCanvas} ${styles.flowStage}`} style={backgroundUrl ? { backgroundImage: `url(${backgroundUrl})` } : undefined}>
-        <ReactFlow
-          nodes={visibleNodes}
-          edges={visibleEdges}
-          nodeTypes={nodeTypes}
-          onNodesChange={disabled ? undefined : onNodesChange}
-          onEdgesChange={disabled ? undefined : onEdgesChange}
-          onConnect={disabled ? undefined : onConnect}
-          onEdgeClick={(event, edge) => { event.stopPropagation(); setEditingEdge(edge.id); setLabelingEdge(null); }}
-          /*
-            ★ 2026-10-06（教师）：「双击线条可以输入/修改连接线上的文字」。
-            双击进入**就地输入框**（就在那条线中点），回车提交、Esc 取消。
-            ⚠️ 单击仍是「选中这条线」（浮出删除按钮）—— 两件事分开，不互相抢。
-          */
-          onEdgeDoubleClick={(event, edge) => { event.stopPropagation(); setEditingEdge(edge.id); setLabelingEdge(edge.id); }}
-          // 浮层要跟着视口走（平移/缩放都会回调）
-          onMove={(_, next) => setViewport(next)}
-          onPaneClick={() => setEditingEdge(null)}
-          nodesDraggable={!disabled}
-          nodesConnectable={!disabled}
-          connectionMode={ConnectionMode.Loose}
-          elementsSelectable={!disabled}
-          fitView
-          minZoom={0.35}
-          maxZoom={2.2}
-          deleteKeyCode={disabled ? null : ['Backspace', 'Delete']}
-        >
-          {!backgroundUrl && <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#cbd7e5" />}
-          <Controls showInteractive={false} />
-        </ReactFlow>
       </div>
     </div>
   );

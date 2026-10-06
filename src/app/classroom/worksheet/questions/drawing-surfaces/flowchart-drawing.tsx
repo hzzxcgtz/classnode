@@ -1,12 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   addEdge,
   Background,
   BackgroundVariant,
+  BaseEdge,
   ConnectionMode,
   Controls,
+  EdgeLabelRenderer,
   Handle,
   Position,
   ReactFlow,
@@ -16,6 +18,7 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
+  type EdgeProps,
   type Node,
   MarkerType,
   getSmoothStepPath,
@@ -42,7 +45,13 @@ import {
 import type { DrawingSurfaceProps } from './types';
 import styles from '../../worksheet.module.css';
 
-type FlowKind = 'terminator' | 'process' | 'decision' | 'io';
+/**
+ * 节点种类。
+ * ★ 2026-10-06（教师，A 方案）：「新建的连接线可以连在另一根连接线的中点上」——
+ *   `junction`（交点）就是那颗**小圆点**：它不是从工具栏放下来的，而是「连到线上」时
+ *   由 `onConnect` 现场插进那条线里、并把原线拆成两段的那个节点。
+ */
+type FlowKind = 'terminator' | 'process' | 'decision' | 'io' | 'junction';
 type FlowData = { label: string; kind: FlowKind; locked?: boolean };
 
 /**
@@ -50,12 +59,15 @@ type FlowData = { label: string; kind: FlowKind; locked?: boolean };
  * 画的正是这个按钮会放下的那个节点形状 —— 学生看一眼就知道按下去会得到什么，
  * 不必先读「平行四边形」这四个字。
  * ⚠️ 与 `worksheet-flowchart-svg.ts`（快照）里那几种形状**同源**：胶囊 / 矩形 / 菱形 / 平行四边形。
+ * ⚠️ `junction` 那一项是**凑键用的**：交点是「连」出来的、工具栏上没有它的按钮
+ *    （`FlowKind` 里加了它，这张表就少一个键 —— 少一个键 TS 会当场报错）。
  */
 const FLOW_ICONS: Record<FlowKind | 'restore' | 'trash', string> = {
   terminator: 'M7 5.5h10a4.5 4.5 0 0 1 0 9H7a4.5 4.5 0 0 1 0-9Z',
   process: 'M4 6.5h16v11H4Z',
   decision: 'M12 3.6 20.4 12 12 20.4 3.6 12Z',
   io: 'M8 6.5h12l-4 11H4Z',
+  junction: 'M12 6.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z',
   restore: 'M19 12a7 7 0 1 1-2.1-5M19 4.5V9h-4.5',
   trash: 'M5 7.5h14M9.5 7.5V5.5h5v2M7 7.5l1 11h8l1-11M10.5 10.5v5M13.5 10.5v5',
 };
@@ -67,6 +79,8 @@ type FlowNode = Node<FlowData>;
 function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
   const instance = useReactFlow<FlowNode, Edge>();
   const textWidth = Math.min(30, Math.max(10, Array.from(data.label).length + 2));
+  /** ★ 交点是**一个小圆点**、没有文字 ⇒ 它不能有那个可编辑文字输入框（否则图上多一个空框）。 */
+  const isJunction = data.kind === 'junction';
   return (
     <div className={`${styles.flowNode} ${styles[`flowNode_${data.kind}`]}`} data-selected={selected ? '1' : '0'}>
       {/* ★ 2026-10-06（教师）：「判断框怎么这个形状？」——菱形改成**画出来的**（原来是旋转 45° 的方块）。
@@ -76,19 +90,131 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
           <polygon points="50,1.5 98.5,50 50,98.5 1.5,50" fill="#fff" stroke="#7895b3" strokeWidth="3" vectorEffect="non-scaling-stroke" />
         </svg>
       )}
+      {/* ⚠️ 交点也要**四个句柄照旧**：它的上/下就是那两段线接上去的地方。 */}
       <Handle type="target" position={Position.Top} id="top" />
       <Handle type="source" position={Position.Right} id="right" />
       <Handle type="source" position={Position.Bottom} id="bottom" />
       <Handle type="target" position={Position.Left} id="left" />
-      <input
-        className="nodrag"
-        aria-label="节点文字"
-        value={data.label}
-        disabled={data.locked}
-        style={{ width: `${textWidth}em` }}
-        onChange={(event) => instance.updateNodeData(id, { label: event.target.value })}
-      />
+      {/* ★ 2026-10-06（教师）：「选中一个图形准备移动时，后面的图形都一起移动」——
+          根因是这一格原来挂着 `className="nodrag"`：React Flow 的节点拖动过滤器里那句
+          `hasSelector(target, '.nodrag', domNode)` 命中 ⇒ **这一格上按下拖动不拖节点**，
+          事件穿透到画布 ⇒ 变成整块画布平移（只有从边框那几像素起拖才拖得动框）。
+          🔴 实测（无头 Chrome 154 + 本仓 React Flow 12.11.6）：去掉它之后，从框中间（文字上）
+          按下拖动 = 拖动这个框；而**单击**仍然会聚焦输入框（浏览器在 mousedown 的默认行为里聚焦），
+          代价只是「在输入框里按住拖来选中文字」会变成拖框 —— 对一个短标签可以接受，也更符合直觉。
+          ⚠️ 全文件只有这一处挂过 `nodrag`，别的元素没有。 */}
+      {!isJunction && (
+        <input
+          aria-label="节点文字"
+          value={data.label}
+          disabled={data.locked}
+          style={{ width: `${textWidth}em` }}
+          onChange={(event) => instance.updateNodeData(id, { label: event.target.value })}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * ★ 2026-10-06（教师，A 方案）：「新建的连接线可以连在另一根连接线的中点上」。
+ *
+ * 做法是 React Flow 官方的「insert node on edge」：**自定义边**在它的**标签点**上挂一颗 `Handle`，
+ * 学生从任意节点的连接点拖到这颗句柄上松手 ⇒ `onConnect` 收到的 `connection.target` 就是
+ * **这条边的 id** ⇒ 我们把原边拆成两段、中间插一个 `kind: 'junction'` 的小圆点节点。
+ *
+ * 🔴 三个**实测**得来的要点（无头 Chrome 154 真拖过 + 本仓的 React Flow 12.11.6 源码），别想当然：
+ *   ① 句柄必须住在 `EdgeLabelRenderer` 里。边是 SVG（`<g class="react-flow__edge">`），
+ *      直接往里面塞 `<div>` 根本渲染不出来（HTML 元素不进 SVG 的渲染树）。
+ *   ② 必须自己把 `data-nodeid` 补成**这条边的 id**。库的 `Handle` 用 `useNodeId()` 取 node id，
+ *      而边不是节点 ⇒ 取到 null ⇒ 渲染出来的句柄**没有 `data-nodeid`**；
+ *      而 `isValidHandle()` 读到空值就当场判定「这次连接无效」。实测：往这种句柄上拖，
+ *      `onConnect` **一次都不响**（只有 `onConnectEnd`），控制台另报 `error#010`。
+ *      ✅ 能补上是因为库把 `...rest` 摊在自己那句 `"data-nodeid": nodeId` **之后**（`Handle` 的 render）。
+ *      ⚠️ 补的值就是边 id —— 这正是 `onConnect` 认「连到线上」的**唯一凭据**。
+ *   ③ 标签得自己画：自定义边不再享受内置边那份 `label` 渲染，而我们的配色 CSS
+ *      （`worksheet.module.css` 里的 `.react-flow__edge-textbg` / `.react-flow__edge-text`）
+ *      正是按**库自己那两个类名**写的 ⇒ 换类名等于把配色关掉。所以那两个类名必须逐字保留。
+ */
+const edgeHandleNodeId = (edgeId: string): Partial<ComponentProps<typeof Handle>> => (
+  // ⚠️ 这一颗 `data-nodeid` 在库的 props 类型里**不存在**（它只在运行时被摊开），
+  //    所以这里只能断言一次 —— 注释写清楚它是为什么，不要当成随手一写的 any。
+  { 'data-nodeid': edgeId } as unknown as Partial<ComponentProps<typeof Handle>>
+);
+
+/** 标签白底的宽度：库量的是文字真实宽度（`EdgeText` 里 `getBBox`），我们按字数估（快照里也是这么估的）。 */
+const edgeLabelWidth = (label: string) => Math.max(22, Array.from(label).length * 8 + 14);
+
+/**
+ * 拆线时，交点这一侧该接哪个句柄 —— 让两段**接回原来的方向**（竖直流程图走上/下，横向流程图走左/右）。
+ *
+ * 🔴 实测（无头 Chrome 154 + 本仓 React Flow 12.11.6）：句柄留空时库取的是**交点的第一个句柄**
+ *    —— target 取 `top`、source 取 `right`（我们在 `FlowNodeEditor` 里就是按 上/右/下/左 这个 DOM 顺序
+ *    摆的四个 `Handle`）。于是竖直流程图上第二段会从圆点**右侧**拐出去，实测路径是
+ *    `M145 189.5 L160,189.5 Q… L135 297`：先向右 30px、再往下、再向左 30px 回到目标框，
+ *    看起来像线在交点处打了个弯（第一条缝在快照里也一样难看）。
+ *    ⇒ 按原边那两个句柄的方位取，两段才会与原来那条线**重合**。
+ * ⚠️ 交点的**上/左是 target、右/下是 source**（`FlowNodeEditor` 里那四个 Handle 的类型是钉死的）
+ *    ⇒ 下面两张表各自只落在**自己那一类**句柄里，不靠 `ConnectionMode.Loose` 兜着。
+ * ⚠️ 剩下那两种方位（从左边/下边出发的线）没有对应的同类句柄，退回竖直那一套（上/下）。
+ */
+const junctionInHandle = (sourcePosition: Position) => (sourcePosition === Position.Right ? 'left' : 'top');
+const junctionOutHandle = (targetPosition: Position) => (targetPosition === Position.Left ? 'right' : 'bottom');
+
+/** 句柄 id → 库的站位（我们的节点固定用 top/right/bottom/left 这四个 id）。纯函数，放模块级。 */
+const positionOfHandle = (id: unknown, fallback: Position): Position => (
+  id === 'top' ? Position.Top : id === 'left' ? Position.Left
+    : id === 'right' ? Position.Right : id === 'bottom' ? Position.Bottom : fallback
+);
+
+function FlowEdgeLine({
+  id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
+  selected, markerEnd, style, label,
+}: EdgeProps) {
+  const [path, labelX, labelY] = getSmoothStepPath({
+    sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+  });
+  /** 线上的字（判断框分出来的 Y / N 或学生自己写的）—— 只认字符串，节点式标签我们不用。 */
+  const text = typeof label === 'string' ? label : '';
+  const textWidth = text ? edgeLabelWidth(text) : 0;
+  return (
+    <>
+      {/* `selected` 一起递给路径：选中那条线要看得出来（边的 `<g>` 上库还会自己挂 `.selected`）。 */}
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} className={selected ? 'selected' : undefined} />
+      {text && (
+        <g>
+          <rect
+            className="react-flow__edge-textbg"
+            x={labelX - textWidth / 2}
+            y={labelY - 11}
+            width={textWidth}
+            height={22}
+            rx={6}
+          />
+          <text
+            className="react-flow__edge-text"
+            x={labelX}
+            y={labelY}
+            textAnchor="middle"
+            dominantBaseline="central"
+          >
+            {text}
+          </text>
+        </g>
+      )}
+      {/* ⚠️ 这颗句柄与上面的标签**同一个点**（都是 `labelX/labelY`）；它住在 `EdgeLabelRenderer`
+          那一层，DOM 上排在所有边之后 ⇒ 画在标签之上、也先拿到指针事件（标签压不住它）。 */}
+      <EdgeLabelRenderer>
+        <Handle
+          type="target"
+          position={Position.Top}
+          id="edge-mid"
+          className={`${styles.flowEdgeHandle}${selected ? ` ${styles.flowEdgeHandleOn}` : ''}`}
+          style={{ left: labelX, top: labelY }}
+          {...edgeHandleNodeId(id)}
+        />
+      </EdgeLabelRenderer>
+    </>
   );
 }
 
@@ -152,6 +278,12 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.current.edges);
   const initialized = useRef(false);
   const nodeTypes = useMemo(() => ({ flow: FlowNodeEditor }), []);
+  /**
+   * ★ 2026-10-06（教师，A 方案）：线的中点那颗句柄住在**自定义边**里
+   * ⇒ 必须在这里注册，否则 `<ReactFlow>` 不认识 `type: 'flow'` 的边
+   *（老作答里存的 `'smoothstep'` 也会落到这里 —— 见下面 `visibleEdges` 的强制那一步）。
+   */
+  const edgeTypes = useMemo(() => ({ flow: FlowEdgeLine }), []);
   /** 位图快照：自己吐一份纯 SVG 再栅格化（**不用 `foreignObject`**，老 iPad 上那条路可能出空白图）。 */
   const scheduleRaster = useDrawingRaster({
     capture: async () => {
@@ -180,9 +312,15 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    * **存量作答**（已经存进 `drawing.data.edges` 的那些）也要补：它们同样没有 `markerEnd`，
    * 不补的话「老作答一打开还是没有箭头」，而教师根本分不出这两种情况。
    * ⚠️ 只补**缺**的（`?? ARROW`）：学生（或将来）自己配过 markerEnd 的边不被覆盖。
+   * ⚠️ 两次 `map` **是有意分开的**（不是图省事）：第一条 `map` 是上面那条判据的落点，
+   *    用例里逐字钉着那一句；第二条才是这次新加的。
+   * ★ 2026-10-06（教师，A 方案）：每条边都强制成我们自己的 `flow` 边 ——
+   *   老作答里存的 `'smoothstep'` 不强制的话**老图就没有中点句柄**（新画的能连、老的连不上，
+   *   而屏幕上一点区别都看不出来）。
    */
   const visibleEdges = useMemo(
-    () => edges.map((edge) => (edge.markerEnd ? edge : { ...edge, markerEnd: FLOW_ARROW })),
+    () => edges.map((edge) => (edge.markerEnd ? edge : { ...edge, markerEnd: FLOW_ARROW }))
+      .map((edge) => ({ ...edge, type: 'flow' })),
     [edges],
   );
 
@@ -200,26 +338,21 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   };
 
   /**
-   * 选中/双击那条线的中点，换算成**容器内**坐标（浮层按钮与就地输入框都摆在这儿）。
-   * ⚠️ 取的是**两个节点中心的中点**，不是折线的真实中点 —— 浮层只需要「落在这条线附近」，
-   *    而折线的真实中点要复刻 `smoothstep` 的路径算法（多一份真源，迟早跟库的算法分叉）。
-   */
-  /** 句柄 id → 库的站位（我们的节点固定用 top/right/bottom/left 这四个 id）。 */
-  const positionOfHandle = (id: unknown, fallback: Position): Position => (
-    id === 'top' ? Position.Top : id === 'left' ? Position.Left
-      : id === 'right' ? Position.Right : id === 'bottom' ? Position.Bottom : fallback
-  );
-
-  /**
-   * 选中/双击那条线**在路径上**的位置（换算成容器内坐标）—— 浮层按钮与就地输入框都摆这儿。
+   * 一条线在**流坐标**（`position` 用的那套）里的两个锚点：
+   *   · `midX/midY` —— **中点**：库 `getSmoothStepPath` 回的**标签点**（`labelX/labelY`）。
+   *     线上的字就画在这儿 ⇒ 就地输入框、以及连出来的**交点节点**都摆这一点；
+   *   · `endX/endY` —— **终点**：目标节点那一侧的句柄点（`to`），也就是**箭头真正落下的地方**。
+   *     ★ 2026-10-06（教师截图）：选中后浮出的删除图标挪到这一端。
    *
    * 🔴 第一版用「两个节点中心的中点」，实测**离那条线很远**（教师 2026-10-06：「距离太远，
    *    应该就在那根连接线上」）—— `smoothstep` 是**折线**，两个中心的连线中点经常根本不在路径上。
    * ✅ 现在用库自己的 `getSmoothStepPath` 取它返回的**标签点**（`labelX/labelY`）：
    *    这正是库给边缘标签用的位置 ⇒ 一定落在折线上，也不必我们复刻路径算法。
    * ⚠️ 起止点按「句柄在节点边上居中」算（句柄确实居中于那一侧），所以与库画出来的路径点一致。
+   * ⚠️ 包成 `useCallback`（依赖就是它读的那两份 state）：`onConnect` 里也要用它，
+   *    不然 `react-hooks/exhaustive-deps` 会多出一条「缺依赖」的警告。
    */
-  const edgeAnchor = (edgeId: string | null) => {
+  const edgeFlowAnchors = useCallback((edgeId: string | null) => {
     if (!edgeId) return null;
     const edge = edges.find((item) => item.id === edgeId);
     const source = nodes.find((item) => item.id === edge?.source);
@@ -240,12 +373,36 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     const sourcePosition = positionOfHandle(edge.sourceHandle, Position.Bottom);
     const targetPosition = positionOfHandle(edge.targetHandle, Position.Top);
     const from = handlePoint(boxOf(source), sourcePosition);
+    // ⚠️ 这个 `to` 就是**终点锚点**：箭头落在目标节点的这一侧句柄上。
     const to = handlePoint(boxOf(target), targetPosition);
     const [, labelX, labelY] = getSmoothStepPath({
       sourceX: from.x, sourceY: from.y, sourcePosition,
       targetX: to.x, targetY: to.y, targetPosition,
     });
+    return { midX: labelX, midY: labelY, endX: to.x, endY: to.y };
+  }, [edges, nodes]);
+
+  /**
+   * **中点**锚点 → 容器内坐标。就地文字输入框用它（标签就画在中点，就地编辑才顺手），
+   * 连到线上时插的那个交点节点也用它算**流坐标**。
+   */
+  const edgeAnchor = (edgeId: string | null) => {
+    const anchors = edgeFlowAnchors(edgeId);
+    if (!anchors) return null;
+    const { midX: labelX, midY: labelY } = anchors;
     return { x: viewport.x + labelX * viewport.zoom, y: viewport.y + labelY * viewport.zoom };
+  };
+
+  /**
+   * ★ 2026-10-06（教师截图）：「删除图标移到这条连线的**终点**」——
+   *   原来它和就地输入框一样压在中点，正好把线上的字糊住。
+   * ⚠️ 终点 = **箭头落下的那一端**（目标节点那侧），**不是**起点（source 那端）。
+   * ⚠️ 两个浮层从此用**两个不同的锚点**（删除按钮 → 终点；就地输入框 → 中点），别合并。
+   */
+  const edgeEndAnchor = (edgeId: string | null) => {
+    const anchors = edgeFlowAnchors(edgeId);
+    if (!anchors) return null;
+    return { x: viewport.x + anchors.endX * viewport.zoom, y: viewport.y + anchors.endY * viewport.zoom };
   };
 
   const addNode = (kind: FlowKind, label: string) => {
@@ -261,8 +418,55 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    * ★ 2026-10-06（教师）：「判断框出来的两条线默认应该是一条上面是 Y，一条上面是 N」。
    * ⇒ 从**判断框**拉出来的线自动带上 Y / N（按这个判断框已有几条带标注的出边排：0→Y、1→N、再多就不猜）。
    * ⚠️ 其它节点拉出来的线**不自动给字**：给每条线都塞一个 Y 是噪音，而且会让「线上一片字」。
+   *
+   * ★ 2026-10-06（教师，A 方案）：「新建的连接线可以连在另一根连接线的中点上」。
+   * ⇒ 连到**线上的中点句柄**时，`connection.target` 就是那条**边的 id**（凭据怎么来的见
+   *   `FlowEdgeLine` 上面那段注释）⇒ 在这里把原边拆成两段、中间插一个交点小圆点。
    */
   const onConnect = useCallback((connection: Connection) => {
+    // ── ① 落点是**一条边**（连线中点那颗句柄）⇒ 插交点 + 把原边拆成两段 ──────────────
+    const hitEdge = connection.target ? edges.find((edge) => edge.id === connection.target) : undefined;
+    if (hitEdge) {
+      const anchors = edgeFlowAnchors(hitEdge.id);
+      if (!anchors) return;
+      const junctionId = `junction-${Date.now()}-${nodes.length}`;
+      /* ⚠️ 12 与 CSS 里 `.flowNode_junction` 的 12×12 是同一个数：节点 `position` 说的是
+         **左上角**，各减一半才能让那颗圆点正落在标签点上（不这么减，线会岔开 6px）。 */
+      const junctionHalf = 6;
+      setNodes((current) => [...current, {
+        id: junctionId,
+        type: 'flow',
+        // 🔴 **流坐标**（`position` 用的那套），刻意不碰 `viewport` —— 那是给浮层用的屏幕坐标。
+        position: { x: anchors.midX - junctionHalf, y: anchors.midY - junctionHalf },
+        data: { label: '', kind: 'junction' },
+      }]);
+      setEdges((current) => {
+        const original = current.find((edge) => edge.id === hitEdge.id);
+        if (!original) return current;
+        // ⚠️ 交点那两个句柄的方位取自**原边**（它原来从 source 的哪一侧出去、进 target 的哪一侧）
+        //    ⇒ 两段接回去以后与原来那条线重合。见 `junctionInHandle` 上面那段实测。
+        const inHandle = junctionInHandle(positionOfHandle(original.sourceHandle, Position.Bottom));
+        const outHandle = junctionOutHandle(positionOfHandle(original.targetHandle, Position.Top));
+        // ①原边的 source → **交点**：label / sourceHandle / markerEnd……全部保留，
+        //   只把 `targetHandle` 换成交点上的那一颗（原来那个是**上一个**目标节点的句柄，
+        //   直接留着才是真错 —— 那句「断开 targetHandle」的意思正是别把它带过来）。
+        const head: Edge = { ...original, target: junctionId, targetHandle: inHandle, type: 'flow' };
+        // ②**交点** → 原来那个目标节点（用 addEdge 走一次库自己的加边，id 由它给）。
+        const tail: Edge = {
+          id: `${junctionId}-tail`,
+          source: junctionId,
+          sourceHandle: outHandle,
+          target: original.target,
+          targetHandle: original.targetHandle ?? null,
+          type: 'flow',
+        };
+        // ⚠️ 顺序：先摘掉原边 → 把 `tail` 交给 addEdge → 把 `head`（**沿用原边 id**）放回去。
+        //    沿用 id 是有意的：`editingEdge`/`labelingEdge` 那些状态还指着它，拆线不该凭空多出悬空 id。
+        return [...addEdge(tail, current.filter((edge) => edge.id !== original.id)), head];
+      });
+      return;
+    }
+    // ── ② 落点是**节点** ⇒ 保持原有行为（外加判断框出边默认 Y / N）──────────────────
     setEdges((current) => {
       const source = nodes.find((node) => node.id === connection.source);
       let label: string | undefined;
@@ -270,9 +474,10 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
         const used = current.filter((edge) => edge.source === connection.source && edge.label).length;
         label = used === 0 ? 'Y' : used === 1 ? 'N' : undefined;
       }
+      // ⚠️ 这里仍然存 `'smoothstep'`（保持原有行为）；渲染时 `visibleEdges` 会把每条边强制成 `'flow'`。
       return addEdge({ ...connection, type: 'smoothstep', ...(label ? { label } : {}) }, current);
     });
-  }, [nodes, setEdges]);
+  }, [nodes, edges, edgeFlowAnchors, setEdges, setNodes]);
 
   /** 学生点了某条线 ⇒ 工具条上出现「这条线标注」那一组（Y / N / 清空 / 自由文字）。 */
   const [editingEdge, setEditingEdge] = useState<string | null>(null);
@@ -351,6 +556,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           nodes={visibleNodes}
           edges={visibleEdges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onNodesChange={disabled ? undefined : onNodesChange}
           onEdgesChange={disabled ? undefined : onEdgesChange}
           onConnect={disabled ? undefined : onConnect}
@@ -379,17 +585,20 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
         {/*
           ★ 2026-10-06（教师）：「要求点击可以选中连接线，会跳出一个图标型的删除按钮，可删除连接线；
           双击线条可以输入/修改连接线上的文字。」
-          ⚠️ 两个浮层都用 `edgeAnchor()` 换算成**容器内坐标**（视口由 `onMove` 跟）。
+          ★ 2026-10-06（教师截图）：「删除图标移到这条连线的**终点**」⇒ 删除按钮改用
+          `edgeEndAnchor()`（目标节点那一侧的句柄点 = 箭头落点）；**就地输入框仍用中点**
+          `edgeAnchor()`（标签画在中点，就地编辑才顺手）—— 两个浮层两个锚点，别合并。
+          ⚠️ 两个浮层都用视口换算成**容器内坐标**（视口由 `onMove` 跟）。
           ⚠️ 正在改文字时**不显示**删除按钮：双击必然先触发一次单击，两个浮层叠在一起会互相压住。
         */}
-        {editingEdge && !labelingEdge && edgeAnchor(editingEdge) && (
+        {editingEdge && !labelingEdge && edgeEndAnchor(editingEdge) && (
           <button
             className={styles.flowEdgeFloat}
             type="button"
             disabled={disabled}
             aria-label="删除这条连线"
             title="删除这条连线"
-            style={{ left: edgeAnchor(editingEdge)!.x, top: edgeAnchor(editingEdge)!.y }}
+            style={{ left: edgeEndAnchor(editingEdge)!.x, top: edgeEndAnchor(editingEdge)!.y }}
             onClick={() => removeEdge(editingEdge)}
           >
             <svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.trash} /></svg>

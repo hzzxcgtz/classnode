@@ -382,7 +382,9 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   assert.match(live, /onClick=\{\(\) => removeEdge\(editingEdge\)\}/, '浮层删除按钮没接上删除');
   // ③ 双击 ⇒ 就地输入框（回车提交 / Esc 取消），且改文字时不显示删除按钮（双击必然先触发一次单击）。
   assert.match(live, /onEdgeDoubleClick=/, '双击连线没有接');
-  assert.match(live, /editingEdge && !labelingEdge && edgeAnchor\(editingEdge\)/, '两个浮层会同时出现（叠在一起互相压）');
+  // ★ 2026-10-06（教师截图）：删除按钮改用**终点**锚点 ⇒ 这条判据跟着改成 `edgeEndAnchor`
+  //   （它要守的是「两个浮层不同时出现」，与用哪个锚点无关；锚点本身由下面那条新判据守）。
+  assert.match(live, /editingEdge && !labelingEdge && edgeEndAnchor\(editingEdge\)/, '两个浮层会同时出现（叠在一起互相压）');
   assert.match(live, /aria-label="这条连线上的文字"/, '没有就地输入框');
   assert.match(live, /event\.key === 'Enter'/, '回车没有提交');
   assert.match(live, /event\.key === 'Escape'/, 'Esc 没有取消');
@@ -404,4 +406,128 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   // ⑤ 两个浮层都要 44px 命中区（那条用例逐个 <button> 量）。
   assert.match(css, /\.flowEdgeFloat \{[\s\S]{0,200}?width: 44px;/, '浮层删除按钮的命中区小于 44px');
   assert.match(css, /\.flowEdgeInput \{[\s\S]{0,260}?min-height: 44px;/, '就地输入框太矮');
+});
+
+test('★ 2026-10-06（教师，A 方案）：连接线中点可以连 —— 中点句柄 + 插交点 + 拆线', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  const css = stripComments(CSS);
+  /*
+    ⚠️ 这一条盯的是**机制**（每一句都能在实现被改坏时变红），不是手感。
+    🔴 下面这两件事是**实测**出来的（无头 Chrome 154 + 本仓 React Flow 12.11.6，用合成鼠标事件真拖过）：
+       · 句柄必须住在 `EdgeLabelRenderer` 里 —— 边是 SVG，直接往里塞 `<div>` 渲染不出来；
+       · 还必须自己补 `data-nodeid` = **边 id**（库的 `Handle` 在边里 `useNodeId()` 拿到 null）
+         —— 不补的话拖上去 `onConnect` **一次都不响**（只有 onConnectEnd），控制台报 error#010。
+  */
+  assert.match(live, /function FlowEdgeLine\(/, '没有自定义边组件');
+  assert.match(live, /const \[path, labelX, labelY\] = getSmoothStepPath\(\{/, '自定义边没有用库的路径函数取标签点');
+  // ① 句柄：住在 EdgeLabelRenderer 里、是 target/Top/edge-mid、位置取自标签点。
+  const labelRendererAt = live.indexOf('<EdgeLabelRenderer>');
+  const midHandleAt = live.indexOf('id="edge-mid"');
+  assert.ok(labelRendererAt !== -1 && midHandleAt !== -1 && labelRendererAt < midHandleAt, '中点句柄没有住在 EdgeLabelRenderer 里（边是 SVG，<div> 塞进去渲染不出来）');
+  assert.match(live, /type="target"/, '中点句柄不是 target');
+  assert.match(live, /position=\{Position\.Top\}/, '中点句柄没有用 Position.Top');
+  assert.match(live, /style=\{\{ left: labelX, top: labelY \}\}/, '中点句柄没有落在 getSmoothStepPath 的标签点上');
+  assert.match(live, /'data-nodeid': edgeId/, '句柄没有补 data-nodeid（没补 ⇒ 库在边里取不到 node id，拖上去 onConnect 不响）');
+  // ② 线上的字自己画，且类名与库**逐字相同**（我们的配色 CSS 就是按这两个类写的）。
+  assert.match(live, /className="react-flow__edge-textbg"/, '边的标签白底没有用库那个类名（配色会失效）');
+  assert.match(live, /className="react-flow__edge-text"/, '边的标签文字没有用库那个类名（配色会失效）');
+  // ③ 注册自定义边 + 每条边强制 type: 'flow'（老作答存的是 'smoothstep'，不强制老图就没有中点句柄）。
+  assert.match(live, /const edgeTypes = useMemo\(\(\) => \(\{ flow: FlowEdgeLine \}\), \[\]\)/, '自定义边没有注册');
+  assert.match(live, /edgeTypes=\{edgeTypes\}/, 'ReactFlow 没有用上自定义边');
+  assert.match(live, /\.map\(\(edge\) => \(\{ \.\.\.edge, type: 'flow' \}\)\)/, "visibleEdges 没有给每条边强制 type: 'flow'（老作答的 'smoothstep' 就没有中点句柄）");
+  // ④ onConnect：target 是**已存在的边 id** ⇒ 插一个交点 + 把原边拆成两段。
+  // ⚠️ 切片的**结束标记必须是代码**（`const [editingEdge, …`）：注释早就被 `stripComments` 剥掉了，
+  //    拿注释当标记会切出一个空串或者切到文件末尾（那会让下面几条在错误的范围上"全绿"）。
+  const onConnectBody = live.slice(live.indexOf('const onConnect = useCallback'), live.indexOf('const [editingEdge, setEditingEdge]'));
+  assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(onConnectBody, /edges\.find\(\(edge\) => edge\.id === connection\.target\)/, '没有判「target 是已存在的边 id」');
+  assert.match(onConnectBody, /kind: 'junction'/, '没有插 junction 节点');
+  assert.match(onConnectBody, /position: \{ x: anchors\.midX - junctionHalf, y: anchors\.midY - junctionHalf \}/, '交点没有落在库算出来的标签点上（流坐标）');
+  assert.ok(!/viewport/.test(onConnectBody), '交点的位置用了视口/屏幕坐标（画布一动就飘）');
+  // 拆线的两步：① 原边变「原 source → 交点」；② 交点 → 原 target（过一次 addEdge）。
+  assert.match(onConnectBody, /const head: Edge = \{ \.\.\.original, target: junctionId/, '原边没有被改成「原 source → 交点」那一段');
+  assert.match(onConnectBody, /addEdge\(tail, current\.filter\(\(edge\) => edge\.id !== original\.id\)\)/, '没有把原边摘掉、再用 addEdge 接上第二段');
+  // ⑤ 交点画成小圆点（不承袭 .flowNode 的 150×54），而且**没有**文字输入框。
+  assert.match(css, /\.flowNode_junction \{[\s\S]{0,200}?min-width: 12px;[\s\S]{0,80}?min-height: 12px;/, '交点没有自己的尺寸（会承袭 .flowNode 的 150×54）');
+  assert.match(css, /\.flowNode_junction \{[\s\S]{0,260}?border-radius: 50%/, '交点不是圆点');
+  const editorBody = live.slice(live.indexOf('function FlowNodeEditor'), live.indexOf('const edgeHandleNodeId'));
+  assert.ok(editorBody.length > 400, '节点编辑器没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(editorBody, /const isJunction = data\.kind === 'junction'/, '没有认出 junction 这一档');
+  assert.match(editorBody, /\{!isJunction && \(\s*<input[\s\S]{0,240}?aria-label="节点文字"/, '交点也会渲染「节点文字」输入框（图上会多一个空框）');
+  // ⑥ 中点句柄的可见性：常显但很轻 + 悬停变实；选中那一档由组件按 `selected` 挂类。
+  assert.match(css, /\.thirdPartyCanvas \.flowEdgeHandle \{[\s\S]{0,240}?opacity: \.35;/, '中点句柄没有「常显但很轻」那一档');
+  assert.match(css, /\.thirdPartyCanvas \.flowEdgeHandle:hover \{[\s\S]{0,140}?opacity: 1;/, '悬停中点句柄时没有变实');
+  assert.match(live, /flowEdgeHandleOn/, '选中那条边时中点句柄没有变实（组件没有按 selected 挂类）');
+});
+
+test('★ 2026-10-06（教师，A 方案）：快照要认「交点」——一颗小圆点，不能落进默认的空矩形', async () => {
+  const svg = stripComments(fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', '..', 'lib', 'worksheet-flowchart-svg.ts'), 'utf8'));
+  // ① 源码级：junction 那一支必须**排在默认矩形之前**（排在后面 = 永远走不到）。
+  const junctionAt = svg.indexOf("if (node.kind === 'junction') {");
+  const defaultRectAt = svg.indexOf('rx="8" ry="8"');
+  assert.ok(junctionAt !== -1, '快照没有 junction 这一支');
+  assert.ok(defaultRectAt !== -1 && junctionAt < defaultRectAt, 'junction 那一支必须排在默认矩形之前（否则交点被画成一个空矩形）');
+  // ② 运行时：真喂一份带交点的数据进去 —— 图里要有实心小圆、且**没有**那个默认矩形。
+  const { flowchartSvg } = await import('../../../../../lib/worksheet-flowchart-svg.ts');
+  const out = flowchartSvg({
+    nodes: [
+      { id: 'a', position: { x: 0, y: 0 }, measured: { width: 120, height: 44 }, data: { label: '开始', kind: 'terminator' } },
+      { id: 'j', position: { x: 54, y: 100 }, data: { label: '', kind: 'junction' } },
+    ],
+    edges: [{ id: 'e1', source: 'a', target: 'j', sourceHandle: 'bottom', targetHandle: 'top' }],
+  });
+  assert.ok(out, '带交点的数据应当画得出图');
+  assert.match(out.svg, /<circle[^>]*r="5"[^>]*fill="#527198"/, '交点没有画成一个实心小圆点');
+  assert.ok(!/<rect[^>]*rx="8"/.test(out.svg), '交点被画成了默认矩形（AI 看到的图上会凭空多一个空框）');
+});
+
+test('★ 2026-10-06（教师）：「选中一个图形准备移动时，后面的图形都一起移动」——节点里的输入框不许再挂 nodrag', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  /*
+    🔴 根因（已核实，不是猜的）：React Flow 的节点拖动过滤器里有一句
+      `!hasSelector(target, `.nodrag`, domNode)`（`@xyflow/system` 的 `XYDrag` `.filter(...)`）
+      ⇒ 在 `.nodrag` 元素上按下拖动**不拖那个节点**，事件穿透到画布 ⇒ 变成整块画布平移
+      （教师的感受就是「选中一个图形准备移动时，后面的图形都一起移动」）。
+    🔴 实测（无头 Chrome 154 + 本仓 React Flow 12.11.6，合成鼠标事件真拖过同一段距离）：
+      · 输入框**不带** nodrag ⇒ 节点从 (40,40) 走到 (77.5,77.5)；
+      · 输入框**带** nodrag   ⇒ 节点纹丝不动（画布在平移）。
+    ⚠️ 判据只盯**节点编辑器里那一格**：将来别处若合法地需要 `.nodrag`（按钮/工具条之类），
+      不该被这条判据误伤 —— 所以先抠出 `FlowNodeEditor` 的函数体再断言。
+  */
+  const editorBody = live.slice(live.indexOf('function FlowNodeEditor'), live.indexOf('const edgeHandleNodeId'));
+  assert.ok(editorBody.includes('aria-label="节点文字"'), '节点编辑器没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(!/nodrag/.test(editorBody), '节点里的输入框又挂上了 nodrag —— 「拖框」会变成「拖画布」（教师 2026-10-06 报的就是它）');
+  // 反面对照：把那个类名塞回同一个函数体 ⇒ 上面那句必须红（这条判据不是恒真的）。
+  const withNodrag = editorBody.replace('aria-label="节点文字"', 'className="nodrag"\n          aria-label="节点文字"');
+  assert.notEqual(withNodrag, editorBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(/nodrag/.test(withNodrag), '反面对照没造出来 —— 这条判据会变成恒真');
+});
+
+test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就地输入框仍用**中点**锚点', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  /*
+    ⚠️ 两个锚点必须**分开存在**、且分别被引用 —— 谁把它们换回来都要变红：
+      · 中点（`midX/midY`）＝ `getSmoothStepPath` 回的**标签点**（线上的字就画在那儿）⇒ 就地输入框；
+      · 终点（`endX/endY`）＝ **目标节点那一侧**的句柄点（`to`）＝ 箭头落点 ⇒ 选中后浮出的删除图标。
+    ⚠️ 别拿起点（source 那端）当终点：教师指的是**箭头**落下的那一端。
+  */
+  assert.match(live, /const \{ midX: labelX, midY: labelY \} = anchors;/, '中点锚点没有取自 getSmoothStepPath 的标签点');
+  assert.match(live, /const to = handlePoint\(boxOf\(target\), targetPosition\);/, '终点锚点不是「目标节点那一侧的句柄点」');
+  assert.match(live, /return \{ midX: labelX, midY: labelY, endX: to\.x, endY: to\.y \};/, '两个锚点没有从中点/终点分别给出');
+  assert.match(live, /return \{ x: viewport\.x \+ anchors\.endX \* viewport\.zoom, y: viewport\.y \+ anchors\.endY \* viewport\.zoom \};/, '终点锚点没有做视口换算');
+  // 删除浮层那一块 ⇒ 只能用终点锚点。
+  const floatAt = live.indexOf('styles.flowEdgeFloat');
+  const inputAt = live.indexOf('styles.flowEdgeInput');
+  assert.ok(floatAt !== -1 && inputAt !== -1 && floatAt < inputAt, '两个浮层没抠出来 —— 先修这条判据');
+  const floatBlock = live.slice(live.lastIndexOf('{editingEdge && !labelingEdge', floatAt), inputAt);
+  assert.match(floatBlock, /edgeEndAnchor\(editingEdge\)/, '删除浮层没有用终点锚点（教师要求它落在箭头那一端）');
+  assert.ok(!/edgeAnchor\(editingEdge\)/.test(floatBlock), '删除浮层用回了中点锚点');
+  // 就地输入框那一块 ⇒ 只能用中点锚点（标签画在中点，就地编辑才顺手）。
+  const inputBlock = live.slice(inputAt, live.indexOf('</div>', inputAt));
+  assert.match(inputBlock, /edgeAnchor\(labelingEdge\)/, '就地输入框没有用中点锚点');
+  assert.ok(!/edgeEndAnchor/.test(inputBlock), '就地输入框被挪到了终点（与它要改的那个标签分家）');
+  // 反面对照：把两个锚点**换回来**（删除浮层改用中点）⇒ 上面那条必须红。
+  const swapped = live.replaceAll('edgeEndAnchor(editingEdge)', 'edgeAnchor(editingEdge)');
+  const swappedFloat = swapped.slice(swapped.lastIndexOf('{editingEdge && !labelingEdge', floatAt), inputAt);
+  assert.ok(!/edgeEndAnchor\(editingEdge\)/.test(swappedFloat), '反面对照没造出来 —— 这条判据会变成恒真');
 });

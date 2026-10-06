@@ -82,14 +82,21 @@ export function readFlowRaster(raw: unknown): { nodes: FlowRasterNode[]; edges: 
     const measured = asRecord(node.measured);
     const label = typeof data?.label === 'string' ? data.label : '';
     const kind = typeof data?.kind === 'string' ? data.kind : 'process';
+    /**
+     * ★ 2026-10-06（教师，A 方案）：**交点**（`kind === 'junction'`）不许走下面那两条兜底下限。
+     *   它的真实尺寸就是 12×12（`.flowNode_junction`），而 `Math.max(24, …)` / `Math.max(20, …)`
+     *   是给**文字框**兜底的（React Flow 首帧常常量出 0）—— 套在交点上会把节点盒子撑到 24×20，
+     *   于是那颗圆点与两段线的落点会整体偏出真正的交点（快照看起来像没连上）。
+     */
+    const isJunction = kind === 'junction';
     nodes.push({
       id: node.id,
       position: { x: finite(position?.x, 0), y: finite(position?.y, 0) },
       label,
       kind,
       // ⚠️ 下限兜住「测出来是 0」那一帧（React Flow 首帧常常 width=0）——否形会画成一条线。
-      width: Math.max(24, finite(measured?.width, estimateWidth(label))),
-      height: Math.max(20, finite(measured?.height, 44)),
+      width: isJunction ? 12 : Math.max(24, finite(measured?.width, estimateWidth(label))),
+      height: isJunction ? 12 : Math.max(20, finite(measured?.height, 44)),
     });
   }
   const edges: FlowRasterEdge[] = [];
@@ -147,6 +154,15 @@ function nodeShape(node: FlowRasterNode): string {
   if (node.kind === 'io') {
     const skew = Math.min(18, w / 5);
     return `<polygon points="${x + skew},${y} ${x + w},${y} ${x + w - skew},${y + h} ${x},${y + h}" ${common}/>`;
+  }
+  if (node.kind === 'junction') {
+    /*
+      ★ 2026-10-06（教师，A 方案）：**交点** —— 连到线上时插进那条线里的小圆点。
+      ⚠️ 它必须在这一支里 return：落进下面那个默认分支就会被画成一个**空矩形**
+         （AI / 教师 / Word 报告里凭空多出一个框，而编辑器里根本没有那个框）。
+      ⚠️ 用该文件既有的描边色常量做实心填充，与编辑器里那颗 `#365b82` 的点同色系。
+    */
+    return `<circle cx="${x + w / 2}" cy="${y + h / 2}" r="5" fill="${COLORS.stroke}" stroke="${COLORS.stroke}" stroke-width="1"/>`;
   }
   return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" ry="8" ${common}/>`;
 }

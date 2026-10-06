@@ -2554,6 +2554,24 @@
 .flowNode_decision[data-selected='1'] { box-shadow: none; }
 .flowNode_decision[data-selected='1'] .flowNodeShape polygon { stroke: #365f88; stroke-width: 3; }
 /*
+  ★ 2026-10-06（教师，A 方案）：**交点** —— 连到线上时插进那条线里的小圆点（`kind: 'junction'`）。
+  ⚠️ 这一档**不承袭** `.flowNode` 的 150×54：它就该是一颗 12×12 的点（宽高与组件里那个
+     `junctionHalf = 6` 是同一对数，位置才对得上）。
+  ⚠️ 四个句柄照旧留着（`.flowNode :global(.react-flow__handle)` 那套）：线要接在它的上/下。
+  ⚠️ 它下面**没有**输入框（`FlowNodeEditor` 里跳过）⇒ 不必管文字尺寸。
+*/
+.flowNode_junction {
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  min-height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #365b82;
+  box-shadow: none;
+}
+/*
   ★ 2026-10-06（教师）：「加上去的字变成了小黑块」。
   🔴 那个黑块是**边的标签**：React Flow 的标签由「一个背景矩形 + 一段文字」组成，
      而样式表里没给它 `fill` 时，SVG 的默认填充是**黑色**。我们已经在组件里换成带主题的
@@ -2565,6 +2583,33 @@
   font-size: 12px;
   font-weight: 650;
 }
+/*
+  ★ 2026-10-06（教师，A 方案）：「新建的连接线可以连在另一根连接线的中点上」——
+  这是那条线**中点**上那颗句柄（从别的节点拖到它上面松手 ⇒ 就地插一个交点小圆点、把线拆成两段）。
+  ⚠️ 它要**常显但很轻**（学生得瞄得准在哪儿），悬停或选中那条边时才变实。
+  🔴 「悬停那条边时变实」**不能**写成 `.react-flow__edge:hover .flowEdgeHandle`：这颗句柄住在
+     `.react-flow__edgelabel-renderer` 里，DOM 上**不是**那条边 `<g class="react-flow__edge">` 的后代
+     （实测：那条选择器一个都选不中）；`~` / `:has()` 又要 Safari 15.4+，而学生端是 Safari 15
+     ⇒ 「悬停」落在句柄**自己**身上，「选中」由组件按 `selected` 挂的 `.flowEdgeHandleOn` 负责。
+  ⚠️ 选择器前面挂上 `.thirdPartyCanvas` 是**故意的**：库的 `.react-flow__handle` 也定了
+     width/height/border/background，同为单类时就看两份样式表谁排在后面 —— 这里多一层保证我们赢
+     （与上面那两条 `:global(.react-flow__edge-text*)` 同一个理由）。
+  ⚠️ 它与线上的文字标签**同一个点**（都是 `getSmoothStepPath` 回的标签点），但它那一层排在边之上
+     ⇒ 画在标签上面、也先拿到指针事件（标签压不住它、点得到）。
+*/
+.thirdPartyCanvas .flowEdgeHandle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #527198;
+  background: #fff;
+  opacity: .35;
+  transition: opacity .12s ease, box-shadow .12s ease;
+}
+.thirdPartyCanvas .flowEdgeHandle:hover {
+  opacity: 1;
+  box-shadow: 0 0 0 4px rgb(82 113 152 / .22);
+}
+.thirdPartyCanvas .flowEdgeHandleOn { opacity: 1; }
 /* 「这条线标注：」那一组里那个自由文字输入框（与旁边按钮同高）。 */
 .drawingToolbarEdgeLabel {
   min-height: 44px;

@@ -167,6 +167,64 @@ const positionOfHandle = (id: unknown, fallback: Position): Position => (
     : id === 'right' ? Position.Right : id === 'bottom' ? Position.Bottom : fallback
 );
 
+/** 流程图几何里用的一个点（纯函数之间传参用，省得把 `{ x: number; y: number }` 写两遍）。 */
+type FlowPoint = { x: number; y: number };
+
+/**
+ * 偏移量的**上限**：不超过这一段长度的 **40%**。
+ *
+ * 🔴 为什么必须有：26 / 14 是给**常见边长**定的（节点 150×54、默认间距上百 px）。学生把两个框
+ *    拖到几乎贴住时，这一段可能只剩 ~20px —— 26px 会越过中点、极短边上甚至越过 source 端
+ *    ⇒ 浮层（删除按钮 / 中点句柄 / 就地输入框）飞出线外，看着像「按钮丢了」。
+ *    取 **40%（小于一半）** ⇒ 退完一定还在**靠终点这一侧**，不会越过中点。
+ * ⚠️ 纯函数、且放**模块级**：`surface-lifecycle.test.ts` 会把它抠出来喂**短边**验算
+ *    （那一层没有 jsdom，不能 import 这个 'use client' 组件）。参数的**类型写在 `const` 那一侧**
+ *    ⇒ 抠出来的 `(distance, span) => { … }` 本身就是合法 JS。
+ */
+const clampOffset: (distance: number, span: number) => number = (distance, span) => {
+  const maxRatio = 0.4;
+  return Math.min(distance, span * maxRatio);
+};
+
+/**
+ * 把锚点沿「point → toward」方向推开 `distance`（★ 2026-10-06 教师认可的两条偏移）。
+ *
+ * 🔴 为什么必须推开（都是截图暴露的真问题）：
+ *   · **删除按钮**原本正以箭头落点为心 ⇒ 44px 的它把箭头、最后 ~22px 的线、
+ *     以及目标节点那一侧的连接点全盖住（想从那儿拉新线会点到删除按钮）；
+ *   · **中点句柄 / 就地输入框**与线上的 Y/N 标签同点 ⇒ 悬停/选中变实会把字盖住，
+ *     而且正落在中点的单击/双击会被句柄吞掉 ⇒ 往目标端挪 14px。
+ * ⚠️ 方向用「point → toward」的直线方向：**中点那边**（句柄、就地输入框）用它是合适的 ——
+ *    中点处**没有唯一的轴**（末段轴只在中点两侧各自成立）。**终点（删除按钮）不用它**，
+ *    改用 `backAxis` 沿目标句柄轴退，那才是严格的「沿线」（理由见 `backAxis`）。
+ * ⚠️ 距离过 `clampOffset`：极短边上不会越过中点 / 目标端。
+ * ⚠️ **交点节点不用这个偏移** —— 它必须落在**精确中点**上，否则拆出来的两段与原来的线对不上。
+ */
+const offsetAlong: (point: FlowPoint, toward: FlowPoint, distance: number) => FlowPoint = (point, toward, distance) => {
+  const dx = toward.x - point.x;
+  const dy = toward.y - point.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const step = clampOffset(distance, len);
+  return { x: point.x + (dx / len) * step, y: point.y + (dy / len) * step };
+};
+
+/**
+ * **目标句柄轴的外法线**（单位向量）＝ 删除按钮「往 source 退」的方向。
+ *
+ * 🔴 为什么不用「起点→终点」直线近似：`smoothstep` 的**末段一定沿目标句柄轴**进入目标
+ *    ⇒ 沿这条轴退才是严格的「沿线」。直线近似在**拐弯的边**上（目标句柄不在 source 的正对面、
+ *    或节点横向错开很大）能与真实末段差 ~75° —— 按 dx=200 / dy=146 那种拐角算，26px 会变成
+ *    「偏离线 ~21px、只沿线退 ~15px」，按钮就横在线旁边了。
+ *    方位对应：目标句柄在 Top ⇒ 线从**上方**进目标 ⇒ 往回退就是 **-y**；Bottom / Left / Right 同理。
+ * ⚠️ 中点那 14px 仍用 `offsetAlong` 的直线近似（中点处没有唯一的轴）。
+ */
+const backAxis: (targetPosition: Position) => FlowPoint = (targetPosition) => {
+  if (targetPosition === Position.Top) return { x: 0, y: -1 };
+  if (targetPosition === Position.Bottom) return { x: 0, y: 1 };
+  if (targetPosition === Position.Left) return { x: -1, y: 0 };
+  return { x: 1, y: 0 };
+};
+
 function FlowEdgeLine({
   id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
   selected, markerEnd, style, label,
@@ -179,11 +237,11 @@ function FlowEdgeLine({
    * ★ 2026-10-06（教师认可）：**中点句柄**沿「标签点 → 目标端」方向挪 14px。
    * 🔴 上一版把 14px 错加在 `edgeAnchor()` 上（那只服务**双击后的就地输入框**）⇒ 症状没治：
    *    句柄仍与线上的 Y/N 标签同点（悬停/选中变实就盖住那个字），并且**正落在中点的单击/双击被它吞掉**。
+   * ✅ 复用模块级的 `offsetAlong`（与另两处偏移同一套：同一个方向约定 + 同一个上限）——
+   *    极短边上距离同样被压到段长的 40% 以内，不会一路挪进目标节点里。
    * ⚠️ 交点节点用的是 `anchors.midX/midY`（**精确中点**），与此处无关 —— 拆出来的两段必须与原来的线重合。
    */
-  const shiftLen = Math.hypot(targetX - labelX, targetY - labelY) || 1;
-  const handleX = labelX + ((targetX - labelX) / shiftLen) * 14;
-  const handleY = labelY + ((targetY - labelY) / shiftLen) * 14;
+  const midHandle = offsetAlong({ x: labelX, y: labelY }, { x: targetX, y: targetY }, 14);
   const text = typeof label === 'string' ? label : '';
   const textWidth = text ? edgeLabelWidth(text) : 0;
   return (
@@ -211,15 +269,16 @@ function FlowEdgeLine({
           </text>
         </g>
       )}
-      {/* ⚠️ 这颗句柄与上面的标签**同一个点**（都是 `labelX/labelY`）；它住在 `EdgeLabelRenderer`
-          那一层，DOM 上排在所有边之后 ⇒ 画在标签之上、也先拿到指针事件（标签压不住它）。 */}
+      {/* ⚠️ 这颗句柄**不再**与上面的标签同点：`midHandle` 把它沿「标签点 → 目标端」挪了 14px
+          （理由见上面那段注释）。它住在 `EdgeLabelRenderer` 那一层，DOM 上排在所有边之后
+          ⇒ 画在标签之上，也因此必须挪开，否则正落在中点的单击/双击会被它吞掉。 */}
       <EdgeLabelRenderer>
         <Handle
           type="target"
           position={Position.Top}
           id="edge-mid"
           className={`${styles.flowEdgeHandle}${selected ? ` ${styles.flowEdgeHandleOn}` : ''}`}
-          style={{ left: handleX, top: handleY }}
+          style={{ left: midHandle.x, top: midHandle.y }}
           {...edgeHandleNodeId(id)}
         />
       </EdgeLabelRenderer>
@@ -361,25 +420,6 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    * ⚠️ 包成 `useCallback`（依赖就是它读的那两份 state）：`onConnect` 里也要用它，
    *    不然 `react-hooks/exhaustive-deps` 会多出一条「缺依赖」的警告。
    */
-  /**
-   * 把锚点沿「起点 → 终点」方向推开一段（★ 2026-10-06 教师认可的两条偏移）。
-   *
-   * 🔴 为什么必须推开（都是截图暴露的真问题）：
-   *   · **删除按钮**原本正以箭头落点为心 ⇒ 44px 的它把箭头、最后 ~22px 的线、
-   *     以及目标节点那一侧的连接点全盖住（想从那儿拉新线会点到删除按钮）⇒ 往 source 退 26px；
-   *   · **中点句柄**与线上的 Y/N 标签同点 ⇒ 悬停/选中变实会把字盖住，而且正落在中点的
-   *     单击/双击会被句柄吞掉 ⇒ 往目标端挪 14px（一并解决「中点被吞」）。
-   * ⚠️ 方向用「起点→终点」的直线方向近似路径方向：smoothstep 的末段本来就是**沿句柄轴**进来的，
-   *    所以终点处这条近似与真实路径一致；中点处在竖直/水平的常见情形也一致。
-   * ⚠️ **交点节点不用这个偏移** —— 它必须落在**精确中点**上，否则拆出来的两段与原来的线对不上。
-   */
-  const offsetAlong = (point: { x: number; y: number }, toward: { x: number; y: number }, distance: number) => {
-    const dx = toward.x - point.x;
-    const dy = toward.y - point.y;
-    const len = Math.hypot(dx, dy) || 1;
-    return { x: point.x + (dx / len) * distance, y: point.y + (dy / len) * distance };
-  };
-
   const edgeFlowAnchors = useCallback((edgeId: string | null) => {
     if (!edgeId) return null;
     const edge = edges.find((item) => item.id === edgeId);
@@ -403,11 +443,17 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     const from = handlePoint(boxOf(source), sourcePosition);
     // ⚠️ 这个 `to` 就是**终点锚点**：箭头落在目标节点的这一侧句柄上。
     const to = handlePoint(boxOf(target), targetPosition);
+    /* ★ 删除按钮「往 source 退」的方向 = **目标句柄轴的外法线**（末段方向），不是「起点→终点」直线。
+       ⚠️ 由 `targetPosition` 决定 —— 线从哪一侧进目标，就往那一侧退（见 `backAxis`）。 */
+    const back = backAxis(targetPosition);
     const [, labelX, labelY] = getSmoothStepPath({
       sourceX: from.x, sourceY: from.y, sourcePosition,
       targetX: to.x, targetY: to.y, targetPosition,
     });
-    return { midX: labelX, midY: labelY, endX: to.x, endY: to.y, fromX: from.x, fromY: from.y };
+    return {
+      midX: labelX, midY: labelY, endX: to.x, endY: to.y, fromX: from.x, fromY: from.y,
+      backX: back.x, backY: back.y,
+    };
   }, [edges, nodes]);
 
   /**
@@ -432,12 +478,13 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   const edgeEndAnchor = (edgeId: string | null) => {
     const anchors = edgeFlowAnchors(edgeId);
     if (!anchors) return null;
-    // ★ 往 source 退 26px：44px 的删除按钮不许盖住箭头、最后那段线，以及目标侧的连接点。
-    const shiftedEnd = offsetAlong(
-      { x: anchors.endX, y: anchors.endY },
-      { x: anchors.fromX, y: anchors.fromY },
-      26,
-    );
+    const { endX, endY, fromX, fromY, backX, backY } = anchors;
+    /* ★ 往 source 退 26px：44px 的删除按钮不许盖住箭头、最后那段线，以及目标侧的连接点。
+       ✅ 方向取**目标句柄轴**（`backX/backY` = 末段方向）⇒ 拐弯的边上也真的贴线；
+          「起点→终点」直线近似在那种边上能偏出线外 ~21px（见 `backAxis` 的注释）。
+       ✅ 距离过 `clampOffset`：短边上退不到 26px 就停住，不会越过中点 / source 端。 */
+    const step = clampOffset(26, Math.hypot(endX - fromX, endY - fromY));
+    const shiftedEnd = { x: endX + backX * step, y: endY + backY * step };
     return { x: viewport.x + shiftedEnd.x * viewport.zoom, y: viewport.y + shiftedEnd.y * viewport.zoom };
   };
 

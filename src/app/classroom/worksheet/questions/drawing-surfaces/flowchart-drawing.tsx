@@ -29,6 +29,7 @@ import '@xyflow/react/dist/style.css';
 
 import { flowchartSvg } from '@/lib/worksheet-flowchart-svg.ts';
 import { svgToPngBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
+import { normalizePastedText } from '@/lib/worksheet-text-normalize.ts';
 import {
   mergeFlowchart,
   restoreFlowchart,
@@ -42,6 +43,22 @@ import styles from '../../worksheet.module.css';
 
 type FlowKind = 'terminator' | 'process' | 'decision' | 'io';
 type FlowData = { label: string; kind: FlowKind; locked?: boolean };
+
+/**
+ * 工具按钮上的**形状图标**（★ 2026-10-06 教师：「分别加上一个形象的图形表示」）。
+ * 画的正是这个按钮会放下的那个节点形状 —— 学生看一眼就知道按下去会得到什么，
+ * 不必先读「平行四边形」这四个字。
+ * ⚠️ 与 `worksheet-flowchart-svg.ts`（快照）里那几种形状**同源**：胶囊 / 矩形 / 菱形 / 平行四边形。
+ */
+const FLOW_ICONS: Record<FlowKind | 'restore' | 'trash', string> = {
+  terminator: 'M7 5.5h10a4.5 4.5 0 0 1 0 9H7a4.5 4.5 0 0 1 0-9Z',
+  process: 'M4 6.5h16v11H4Z',
+  decision: 'M12 3.6 20.4 12 12 20.4 3.6 12Z',
+  io: 'M8 6.5h12l-4 11H4Z',
+  restore: 'M19 12a7 7 0 1 1-2.1-5M19 4.5V9h-4.5',
+  trash: 'M5 7.5h14M9.5 7.5V5.5h5v2M7 7.5l1 11h8l1-11M10.5 10.5v5M13.5 10.5v5',
+};
+export type FlowIconKey = keyof typeof FLOW_ICONS;
 type FlowNode = Node<FlowData>;
 // ⚠️ 不必自己声明「带 label 的边」类型：React Flow 自带的 `Edge` 就有 `label?: string | ReactNode`
 //    （注释留在这里，免得下一个人又去造一个没用的别名 —— 那会变成一条 unused 警告）。
@@ -181,6 +198,29 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     setEdges(base.edges as unknown as Edge[]);
   };
 
+  /**
+   * 选中/双击那条线的中点，换算成**容器内**坐标（浮层按钮与就地输入框都摆在这儿）。
+   * ⚠️ 取的是**两个节点中心的中点**，不是折线的真实中点 —— 浮层只需要「落在这条线附近」，
+   *    而折线的真实中点要复刻 `smoothstep` 的路径算法（多一份真源，迟早跟库的算法分叉）。
+   */
+  const edgeAnchor = (edgeId: string | null) => {
+    if (!edgeId) return null;
+    const edge = edges.find((item) => item.id === edgeId);
+    const source = nodes.find((item) => item.id === edge?.source);
+    const target = nodes.find((item) => item.id === edge?.target);
+    if (!edge || !source || !target) return null;
+    const centerOf = (node: FlowNode) => {
+      const width = node.measured?.width ?? 150;
+      const height = node.measured?.height ?? 54;
+      return { x: node.position.x + width / 2, y: node.position.y + height / 2 };
+    };
+    const a = centerOf(source);
+    const b = centerOf(target);
+    const flowX = (a.x + b.x) / 2;
+    const flowY = (a.y + b.y) / 2;
+    return { x: viewport.x + flowX * viewport.zoom, y: viewport.y + flowY * viewport.zoom };
+  };
+
   const addNode = (kind: FlowKind, label: string) => {
     const offset = nodes.length * 26;
     setNodes((current) => [...current, {
@@ -209,6 +249,24 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
 
   /** 学生点了某条线 ⇒ 工具条上出现「这条线标注」那一组（Y / N / 清空 / 自由文字）。 */
   const [editingEdge, setEditingEdge] = useState<string | null>(null);
+  /** 正在改文字的那条线（双击进入）—— 它出现一个就地输入框。 */
+  const [labelingEdge, setLabelingEdge] = useState<string | null>(null);
+  /**
+   * 视口（`onMove` 给的 `{x, y, zoom}`）。
+   * 🔴 用它把**流坐标**换算成容器内坐标：`local = viewport.x + flowX * zoom`。
+   *    刻意不用 `useReactFlow().flowToScreenPosition` —— 那个 hook 必须在
+   *    `<ReactFlowProvider>` 之内，而我们这块画板是直接渲染 `<ReactFlow>`（没有外层 provider），
+   *    为它多包一层 Provider 只为了挪一个浮层按钮，不划算。
+   * ⚠️ 初始化成恒等变换；`onMove` 在平移/缩放时都会回调，所以浮层最多在一帧内偏一点。
+   */
+  const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+  /** 删除这条连线（浮层按钮与工具条那条路共用）。 */
+  const removeEdge = (id: string) => {
+    setEdges((current) => current.filter((edge) => edge.id !== id));
+    setEditingEdge(null);
+    setLabelingEdge(null);
+  };
+
   const setEdgeLabel = (id: string, label: string) => {
     setEdges((current) => current.map((edge) => (edge.id === id ? { ...edge, label: label || undefined } : edge)));
   };
@@ -231,12 +289,12 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   return (
     <div className={styles.thirdPartySurface}>
       <div className={styles.drawingSurfaceToolbar} role="toolbar" aria-label="流程图工具">
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('terminator', '开始/结束')}>开始/结束</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('process', '处理过程')}>过程</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('decision', '判断条件')}>判断</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('io', '输入/输出')}>输入/输出</button>
+        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('terminator', '开始/结束')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.terminator} /></svg>开始/结束</button>
+        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('process', '处理过程')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.process} /></svg>过程</button>
+        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('decision', '判断条件')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.decision} /></svg>判断</button>
+        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('io', '输入/输出')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.io} /></svg>输入/输出</button>
         {starter && (
-          <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={restoreStarter}>恢复初始图</button>
+          <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={restoreStarter}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.restore} /></svg>恢复初始图</button>
         )}
         <span className={styles.drawingToolbarHint}>{editingEdge ? '这条线标注：' : '从圆形连接点拖向另一节点即可连线'}</span>
         {editingEdge && (
@@ -257,11 +315,55 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
               value={editingLabel}
               onChange={(event) => setEdgeLabel(editingEdge, event.target.value)}
             />
+
+        {/*
+          ★ 2026-10-06（教师）：「要求点击可以选中连接线，会跳出一个图标型的删除按钮，可删除连接线；
+          双击线条可以输入/修改连接线上的文字。」
+          ⚠️ 两个浮层都用 `edgeAnchor()` 换算成**容器内坐标**（视口由 `onMove` 跟）。
+          ⚠️ 正在改文字时**不显示**删除按钮：双击必然先触发一次单击，两个浮层叠在一起会互相压住。
+        */}
+        {editingEdge && !labelingEdge && edgeAnchor(editingEdge) && (
+          <button
+            className={styles.flowEdgeFloat}
+            type="button"
+            disabled={disabled}
+            aria-label="删除这条连线"
+            title="删除这条连线"
+            style={{ left: edgeAnchor(editingEdge)!.x, top: edgeAnchor(editingEdge)!.y }}
+            onClick={() => removeEdge(editingEdge)}
+          >
+            <svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.trash} /></svg>
+          </button>
+        )}
+        {labelingEdge && edgeAnchor(labelingEdge) && (
+          <input
+            className={styles.flowEdgeInput}
+            style={{ left: edgeAnchor(labelingEdge)!.x, top: edgeAnchor(labelingEdge)!.y }}
+            autoFocus
+            maxLength={12}
+            disabled={disabled}
+            aria-label="这条连线上的文字"
+            placeholder="线上文字"
+            defaultValue={String(edges.find((edge) => edge.id === labelingEdge)?.label ?? '')}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') { setEdgeLabel(labelingEdge, event.currentTarget.value); setLabelingEdge(null); }
+              if (event.key === 'Escape') setLabelingEdge(null);
+            }}
+            onBlur={(event) => { setEdgeLabel(labelingEdge, event.currentTarget.value); setLabelingEdge(null); }}
+            onPaste={(event) => {
+              // 与「评分标准」同一个归一化：从 Word 复制带进来的排版在这里同样是噪音。
+              const raw = event.clipboardData.getData('text/plain');
+              if (!raw) return;
+              event.preventDefault();
+              event.currentTarget.value = normalizePastedText(raw).slice(0, 12);
+            }}
+          />
+        )}
             <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => { setEdgeLabel(editingEdge, ''); setEditingEdge(null); }}>清空</button>
           </>
         )}
       </div>
-      <div className={styles.thirdPartyCanvas} style={backgroundUrl ? { backgroundImage: `url(${backgroundUrl})` } : undefined}>
+      <div className={`${styles.thirdPartyCanvas} ${styles.flowStage}`} style={backgroundUrl ? { backgroundImage: `url(${backgroundUrl})` } : undefined}>
         <ReactFlow
           nodes={visibleNodes}
           edges={visibleEdges}
@@ -269,7 +371,15 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           onNodesChange={disabled ? undefined : onNodesChange}
           onEdgesChange={disabled ? undefined : onEdgesChange}
           onConnect={disabled ? undefined : onConnect}
-          onEdgeClick={(event, edge) => { event.stopPropagation(); setEditingEdge(edge.id); }}
+          onEdgeClick={(event, edge) => { event.stopPropagation(); setEditingEdge(edge.id); setLabelingEdge(null); }}
+          /*
+            ★ 2026-10-06（教师）：「双击线条可以输入/修改连接线上的文字」。
+            双击进入**就地输入框**（就在那条线中点），回车提交、Esc 取消。
+            ⚠️ 单击仍是「选中这条线」（浮出删除按钮）—— 两件事分开，不互相抢。
+          */
+          onEdgeDoubleClick={(event, edge) => { event.stopPropagation(); setEditingEdge(edge.id); setLabelingEdge(edge.id); }}
+          // 浮层要跟着视口走（平移/缩放都会回调）
+          onMove={(_, next) => setViewport(next)}
           onPaneClick={() => setEditingEdge(null)}
           nodesDraggable={!disabled}
           nodesConnectable={!disabled}

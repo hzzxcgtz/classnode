@@ -366,3 +366,30 @@ test('★ 2026-10-06（教师）：底稿（A 不算学生作答 / B 不能改�
   assert.match(live, /\{starter && \(/, '「恢复初始图」没有按「这一题有没有初始图」显示');
   assert.ok(!/draggable: false/.test(stripComments(fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', '..', 'lib', 'worksheet-drawing-starter.ts'), 'utf8'))), '底稿又被锁住了（学生应当可以修改）');
 });
+
+test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出图标删除；双击线改文字', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  const css = stripComments(CSS);
+  // ① 四个加节点按钮 + 恢复初始图都要有**形状图标**（画的正是它会放下的那个节点）。
+  assert.match(live, /FLOW_ICONS: Record<FlowKind/, '没有图标表');
+  for (const key of ['terminator', 'process', 'decision', 'io', 'restore', 'trash']) {
+    assert.ok(live.includes(`${key}:`), `图标表里少了 ${key}`);
+    assert.ok(live.includes(`FLOW_ICONS.${key}`), `${key} 的图标没有挂到按钮上`);
+  }
+  // ② 单击选中 ⇒ 浮出**图标型**删除按钮（不是文字按钮）。
+  assert.match(live, /aria-label="删除这条连线"/, '没有浮层删除按钮');
+  assert.match(live, /className=\{styles\.flowEdgeFloat\}/, '删除按钮没有用浮层样式');
+  assert.match(live, /onClick=\{\(\) => removeEdge\(editingEdge\)\}/, '浮层删除按钮没接上删除');
+  // ③ 双击 ⇒ 就地输入框（回车提交 / Esc 取消），且改文字时不显示删除按钮（双击必然先触发一次单击）。
+  assert.match(live, /onEdgeDoubleClick=/, '双击连线没有接');
+  assert.match(live, /editingEdge && !labelingEdge && edgeAnchor\(editingEdge\)/, '两个浮层会同时出现（叠在一起互相压）');
+  assert.match(live, /aria-label="这条连线上的文字"/, '没有就地输入框');
+  assert.match(live, /event\.key === 'Enter'/, '回车没有提交');
+  assert.match(live, /event\.key === 'Escape'/, 'Esc 没有取消');
+  // ④ 浮层靠**视口换算**跟随（不引 Provider、也不复刻折线算法）。
+  assert.match(live, /onMove=\{\(_, next\) => setViewport\(next\)\}/, '没有跟视口');
+  assert.match(live, /viewport\.x \+ flowX \* viewport\.zoom/, '坐标换算不对（浮层会飘）');
+  // ⑤ 两个浮层都要 44px 命中区（那条用例逐个 <button> 量）。
+  assert.match(css, /\.flowEdgeFloat \{[\s\S]{0,200}?width: 44px;/, '浮层删除按钮的命中区小于 44px');
+  assert.match(css, /\.flowEdgeInput \{[\s\S]{0,260}?min-height: 44px;/, '就地输入框太矮');
+});

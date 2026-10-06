@@ -2367,6 +2367,40 @@
 .drawingSurfaceToolbar button:disabled { cursor: default; opacity: .55; }
 
 .thirdPartySurface { background: #fff; }
+/* ★ 2026-10-06：流程图的浮层（选中连线的删除按钮、双击连线的就地输入框）摆在这个舞台上。 */
+.flowStage { position: relative; }
+.flowEdgeFloat {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  border: 1px solid #e7c9a9;
+  border-radius: 12px;
+  background: #fff;
+  color: #b45309;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(16, 42, 67, .18);
+  z-index: 6;
+}
+.flowEdgeFloat:disabled { cursor: default; opacity: .55; }
+.flowEdgeInput {
+  position: absolute;
+  transform: translate(-50%, -150%);
+  width: 104px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid #7e9fbe;
+  border-radius: 10px;
+  background: #fff;
+  color: #263b53;
+  font: inherit;
+  font-weight: 650;
+  text-align: center;
+  box-shadow: 0 3px 10px rgba(16, 42, 67, .18);
+  z-index: 6;
+}
 .drawingSurfaceToolbar {
   min-height: 54px;
   padding: 7px 10px;

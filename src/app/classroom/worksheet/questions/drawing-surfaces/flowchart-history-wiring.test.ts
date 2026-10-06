@@ -18,8 +18,28 @@ function blockBetween(source: string, startMarker: string, endMarker: string): s
   const at = source.indexOf(startMarker);
   if (at === -1) return '';
   const end = source.indexOf(endMarker, at + startMarker.length);
-  return end === -1 ? source.slice(at) : source.slice(at, end);
+  /*
+   * ★ M3（审查留下的）：**找不到结束标记就返回空串**，不许 `source.slice(at)` 泄漏到文件末尾。
+   * 泄漏出来的切片是一大坨文本 —— 那些「长度 > N」的**下界**断言反而**更容易**通过，
+   * 判据的精度于是**静默下降**（审查实测：给那条 effect 的依赖数组加一项、本该让判据变严，却仍全绿）。
+   * 返回空串 ⇒ 下界断言当场红，问题暴露在现场、而不是三个月后。
+   */
+  return end === -1 ? '' : source.slice(at, end);
 }
+
+/*
+  ★ M3（审查留下的）：切片**找不到结束标记**时不许静默泄漏到文件末尾。
+  原来 `blockBetween` 在 `end === -1` 时返回 `source.slice(at)` —— 切片退化成「从起点到文件结束」，
+  于是那些「长度 > N」的下界断言**反而更容易通过**（一大坨文本当然够长），判据的精度静默下降。
+  审查实测：给那条 effect 的依赖数组加一项（本该让某条判据变严）之后，判据**仍然全绿**。
+  ✅ 改成找不到就返回**空串** ⇒ 立刻被下界断言抓住，红在现场。
+*/
+test('切片找不到结束标记时返回空串 —— 不许静默泄漏到文件末尾把判据泡软', () => {
+  assert.equal(blockBetween('aaa START bbb', 'START', 'NEVER-APPEARS'), '', '找不到结束标记 ⇒ 空串');
+  assert.equal(blockBetween('aaa bbb', 'NOT-THERE', 'x'), '', '找不到起点 ⇒ 也是空串');
+  // 阳性对照：正常情况必须真的切出来（否则上面两条对一个恒返回空串的实现也成立）。
+  assert.equal(blockBetween('aaa START bbb END ccc', 'START', 'END'), 'START bbb ');
+});
 
 /**
  * 变化检测那条 effect 的函数体。
@@ -180,5 +200,31 @@ test('快捷键的作用域收在这台画板里 —— 多道流程图题不会
   const block = blockBetween(SOURCE, 'const onKeyDown = (event: KeyboardEvent)', 'window.addEventListener');
   assert.ok(block.length > 100, `快捷键处理器的切片太短（${block.length}）`);
   assert.match(block, /lastTouchedRef\.current/, '要判定「这台画板是不是最后被碰过的那台」');
-  assert.match(SOURCE, /rootRef/, '要有根元素 ref 供「碰的是不是我」判定');
+  /*
+    ★ M5（审查留下的）：`/rootRef/` 这种判据只要文件里**出现过这个词**就过 —— 声明了却忘了挂、
+      或挂在别的元素上，它都照过。收紧成「有声明 **且** 挂到了根元素上」两问。
+  */
+  assert.match(SOURCE, /const rootRef = useRef/, '要有根元素 ref 的声明');
+  assert.match(SOURCE, /ref=\{rootRef\}/, '而且要真的挂上去 —— 只声明不挂等于没做');
+});
+
+/*
+  ★ M1（审查留下的）：工具条那颗「自定义」标注输入框原本**每敲一个键就压一步**。
+  它是**受控**的（值来自 `edges.find`），`onChange` 直接写 `edges` ⇒ 指纹每键一变。
+  受 `maxLength={12}` 与输入法事件数限制，最多十几步，不致命 —— 但它与**同一批**刚修好的节点文字
+  （本地草稿 + 提交一次 = 一步）口径不一致，撤销时会看到字**一个一个字地退**。
+  ⚠️ **不改成非受控**：那条注释说的理由是对的（受控才能在切换线、清空、撤销后回到正确内容）。
+  改用同一套「先别记历史」的标记：聚焦置位、失焦清位。
+*/
+test('工具条「自定义」标注框打字期间不压栈 —— 否则一个字一步', () => {
+  const block = blockBetween(SOURCE, 'aria-label="这条线上的自定义文字"', '/>');
+  assert.ok(block.length > 50, `切片太短（${block.length}）`);
+  /*
+   * ⚠️ **别只断言「切片里出现过 `typingRef`」**：那个词在别处也有（声明、effect 的条件），
+   * 于是在输入框上**根本没接线**的情况下判据照样全绿 —— 审查对 M5 说的就是这一族问题，
+   * 而我在自己的 M1 判据上又犯了一次（变异实测：删掉 `onFocus` 那一行，那种写法不红）。
+   * ⇒ 两头都钉死，一句一个字。
+   */
+  assert.match(block, /onFocus=\{\(\) => \{ typingRef\.current = true; \}\}/, '聚焦要置位（否则打字仍一字一步）');
+  assert.match(block, /onBlur=\{\(\) => \{ typingRef\.current = false; \}\}/, '失焦要清位（否则此后一直不记历史）');
 });

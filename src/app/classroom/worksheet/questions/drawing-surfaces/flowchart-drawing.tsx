@@ -591,6 +591,14 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   const lastSnapshotRef = useRef<FlowSnapshot<FlowNode, Edge>>({ nodes: initial.current.nodes, edges: initial.current.edges });
   const lastSigRef = useRef<string | null>(null);
   const draggingRef = useRef(false);
+  /**
+   * ★ M1（审查留下的）：工具条那颗「自定义」标注框**打字期间先别记历史**。
+   *
+   * 它**是受控的**（值来自 `edges.find`，这样切换线/清空/撤销都能回到正确内容 —— 那个设计是对的，
+   * 别改成非受控），但每敲一键都会写 `edges` ⇒ 指纹一变就压一步，于是撤销时字**一个一个字地退**。
+   * 聚焦置位、失焦清位 ⇒ 整段打字合成一步（与节点文字那套「本地草稿 + 提交一次」同一个口径）。
+   */
+  const typingRef = useRef(false);
   /** ★ 2026-10-06（审查发现 I2）：这棵画板的根元素 —— 用来判定「这个快捷键该不该由我响应」。 */
   const rootRef = useRef<HTMLDivElement | null>(null);
   /** 最后一次 pointerdown 落在这台画板里吗（见下面那条捕获相监听）。 */
@@ -681,7 +689,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           `updateNodePositions(dragItems, false)` 里会把它置回 false，**abort 路径也走那一句**。
           （★ 审查发现 I1。）
     */
-    if (draggingRef.current || nodes.some((node) => node.dragging)) return;
+    if (draggingRef.current || typingRef.current || nodes.some((node) => node.dragging)) return;
     const sig = flowchartSignature(nodes, edges);
     if (lastSigRef.current === null) { lastSigRef.current = sig; return; } // 首帧：只立基线
     if (lastSigRef.current === sig) return;                                 // 没有实质变化
@@ -1429,7 +1437,10 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
             ))}
             {/* ★ 2026-10-06（教师）：「可不可以用户加自定义的字？」——可以，直接在这一格里打。
                 ⚠️ 它是**受控**的：值来自那条边自己（`edges.find`），所以切换线、清空、撤销
-                都会跟着回到正确的内容，不会残留上一条线的字。 */}
+                都会跟着回到正确的内容，不会残留上一条线的字。
+                ★ M1（审查留下的）：受控 + 每键写 store ⇒ 指纹一变就压一步，撤销时字**一个一个字地退**。
+                ⇒ 打字期间先别记历史（`typingRef`，聚焦置位、失焦清位），整段打字合成一步。
+                ⚠️ 别为了「好撤销」把它改成非受控 —— 上面那条理由（回到正确内容）比这个更重要。 */}
             <input
               className={styles.drawingToolbarEdgeLabel}
               type="text"
@@ -1437,6 +1448,8 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
               disabled={disabled}
               aria-label="这条线上的自定义文字"
               placeholder="自定义"
+              onFocus={() => { typingRef.current = true; }}
+              onBlur={() => { typingRef.current = false; }}
               value={editingLabel}
               onChange={(event) => setEdgeLabel(labelableEdgeId, event.target.value)}
             />

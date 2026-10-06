@@ -56,6 +56,19 @@ const onConnectSource = (source: string) => blockAfter(source, 'const onConnect 
 const overlaySource = (source: string) => blockAfter(source, 'const overlay = ', '})();');
 /** 「一处锚点解析」：`const selectedAnchor = (() => { … })();`。 */
 const selectedAnchorSource = (source: string) => blockAfter(source, 'const selectedAnchor = ', '})();');
+/**
+ * ★ 2026-10-06：**拆线那一份实现**（`const splitEdgeAt = useCallback(`）的函数体 —— 到 deps 那一行为止。
+ * ⚠️ 结束标记用**代码**（`\n  }, [`）：这是本文件惯用的写法，注释早被 `stripComments` 剥掉了。
+ */
+const splitEdgeSource = (source: string) => blockAfter(source, 'const splitEdgeAt = useCallback(', '\n  }, [');
+/** 落点吸附的兜底：`const onConnectEnd = useCallback(` 的函数体。 */
+const onConnectEndSource = (source: string) => blockAfter(source, 'const onConnectEnd = useCallback(', '\n  }, [');
+/**
+ * 「拆线那一份实现」被**几条入口**调用（`splitEdgeAt(` 的出现次数）。
+ * ⚠️ 数的是**调用点**：一处是精确命中（`onConnect`）、一处是落点吸附（`onConnectEnd`）。
+ *    「声明那一处」不算 —— 它写的是 `const splitEdgeAt = useCallback(`，后面没有紧跟 `(`。
+ */
+const splitterCallSites = (source: string) => (source.match(/splitEdgeAt\(/g) ?? []).length;
 /** 唯一的删除出口：`const removeSelected = () => { … };`（切到下一个顶层 `const` 为止）。 */
 const removeSelectedSource = (source: string) => blockAfter(source, 'const removeSelected = ', '\n  const ');
 
@@ -542,7 +555,8 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   const midBody = bodyOf('edgeMidAnchor');
   assert.ok(endBody.length > 40 && midBody.length > 40, '两个锚点函数没抠出来 —— 先修这条判据，别让它在空串上全绿');
   // 删除按钮 → 往 source 退 `EDGE_FLOAT_BACK`；中点浮层 → 往目标端挪 `HANDLE_GAP`。两个距离不许互换。
-  // ⚠️ 数值（26 / 14）**只在组件里声明一次**，锚点函数里认的是**名字** ⇒ 这里也不抄数字；
+  // ⚠️ 数值（`EDGE_FLOAT_BACK` / `HANDLE_GAP` 各是多少）**只在组件里声明一次**，锚点函数里认的是**名字**
+  //    ⇒ 这里也不抄数字（常量的数值行为由下面那条几何用例从源码读出来验算）；
   //    常量的**数值行为**由下面的几何用例（真喂短边）验算。
   assert.ok(/\bEDGE_FLOAT_BACK\b/.test(endBody) && !/\bHANDLE_GAP\b/.test(endBody),
     '删除按钮的距离不是命名常量 EDGE_FLOAT_BACK（或与中点那个互换了）');
@@ -570,11 +584,19 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   //    （距离一变就恒真/恒假）。
   const onConnectBody = onConnectSource(live);
   assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  assert.match(onConnectBody, /position: \{ x: anchors\.midX - junctionHalf, y: anchors\.midY - junctionHalf \}/, '交点没有落在精确中点上');
+  // ★ 2026-10-06：插交点 + 拆线搬进了**共用的那一份实现**（`splitEdgeAt`，两条入口共用）
+  //   ⇒ 「交点落在精确中点」要在**那一份**里判（`onConnect` 现在只负责认出落点是边）。
+  //   下面那条反面对照仍然拿 `onConnect` 当靶子：往它里面塞 offsetAlong 也要红（它自己不许有偏移）。
+  const splitBody = splitEdgeSource(live);
+  assert.ok(splitBody.length > 400, '拆线那一份实现没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(splitBody, /position: \{ x: anchors\.midX - junctionHalf, y: anchors\.midY - junctionHalf \}/, '交点没有落在精确中点上');
+  assert.ok(!/offsetAlong/.test(splitBody), '交点被卷进了浮层偏移（拆出来的两段会与原线对不上）');
   assert.ok(!/offsetAlong/.test(onConnectBody), '交点被卷进了浮层偏移（拆出来的两段会与原线对不上）');
-  // 反面对照：往 onConnect 里塞一句 offsetAlong ⇒ 上面那句必须红（证明它不是恒真）。
-  const poisonedConnect = onConnectBody.replace('const junctionHalf = 6;', 'const junctionHalf = offsetAlong({ x: 1, y: 1 }, { x: 2, y: 2 }, 6);');
-  assert.notEqual(poisonedConnect, onConnectBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  // 反面对照：往拆线那一份实现里塞一句 offsetAlong ⇒ 上面那句必须红（证明它不是恒真）。
+  // ⚠️ 靶子必须选**有那两行**的那一块（`splitBody`）：拿 `onConnect` 当靶子会 replace 不上，
+  //   于是「造不出反面对照」自己先红 —— 那是判据写错，不是实现坏。
+  const poisonedConnect = splitBody.replace('const junctionHalf = 6;', 'const junctionHalf = offsetAlong({ x: 1, y: 1 }, { x: 2, y: 2 }, 6);');
+  assert.notEqual(poisonedConnect, splitBody, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.ok(/offsetAlong/.test(poisonedConnect), '反面对照没造出来 —— 这条判据会变成恒真');
 
   // ⑤ 浮层靠**视口换算**跟随（不引 Provider、也不复刻折线算法）。
@@ -613,7 +635,7 @@ test('★ 2026-10-06（教师，A 方案）：连接线中点可以连 —— �
   assert.match(live, /position=\{Position\.Top\}/, '中点句柄没有用 Position.Top');
   // ★ 教师认可：句柄**不再**停在标签点上，而是沿「标签点 → 目标端」方向挪 `HANDLE_GAP`
   //   （原来与 Y/N 标签同点 ⇒ 悬停变实会盖字，且正落在中点的单击/双击被它吞掉）。
-  // ⚠️ 判据按**语义**判，不逐字钉算术写法（上一版钉的是 `const handleX = labelX + ((targetX - labelX) / shiftLen) * 14`
+  // ⚠️ 判据按**语义**判，不逐字钉算术写法（上一版钉的是 `const handleX = labelX + ((targetX - labelX) / shiftLen) * <那个常量>`
   //    那种整句正则 —— 换个变量名/换成多行就红，正是今天连红五次的那类断言）。这里拆成两条**行为**：
   //    ① 位移必须从**库回的标签点**出发、朝**目标端**、距离取命名常量（来源判据保留，不能因为挪了就丢掉来源）；
   //    ② 样式必须用**位移后**的坐标（不能再是裸的 labelX/labelY）。
@@ -654,14 +676,21 @@ test('★ 2026-10-06（教师，A 方案）：连接线中点可以连 —— �
   assert.ok(hitGuard, 'hitEdge 那一句没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.match(hitGuard[1], /connection\.target/, '没有判「connection 的 target 是已存在的边 id」');
   assert.match(hitGuard[1], /connection\.source/, '没有判「connection 的 source 是已存在的边 id」—— 从节点的 target 句柄（菱形左侧那种）拖到中点那一路会漏（实测：会造出一条 source 是边 id 的悬空边，它渲染不出来、却写进作答）');
-  assert.match(onConnectBody, /kind: 'junction'/, '没有插 junction 节点');
-  assert.match(onConnectBody, /position: \{ x: anchors\.midX - junctionHalf, y: anchors\.midY - junctionHalf \}/, '交点没有落在库算出来的标签点上（流坐标）');
-  assert.ok(!/viewport/.test(onConnectBody), '交点的位置用了视口/屏幕坐标（画布一动就飘）');
+  // ★ 2026-10-06：插交点 + 拆线只留了**一份**实现（`const splitEdgeAt = useCallback(`），
+  //   因为它现在要服务**两条入口**：① 库自己判定的精确命中（`onConnect`）、
+  //   ② 落点吸附的兜底（`onConnectEnd`，见下面那条用例）。留两份必然分叉 ⇒ 这里必须抠出来判。
+  const splitBody = splitEdgeSource(live);
+  assert.ok(splitBody.length > 400, '拆线的那一份实现没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(splitterCallSites(live) >= 2,
+    '拆线还是**多处各写一遍**（或只有一条入口在用）—— 精确命中与吸附松手必须是同一条实现，否则两条路的行为会分叉');
+  assert.match(splitBody, /kind: 'junction'/, '没有插 junction 节点');
+  assert.match(splitBody, /position: \{ x: anchors\.midX - junctionHalf, y: anchors\.midY - junctionHalf \}/, '交点没有落在库算出来的标签点上（流坐标）');
+  assert.ok(!/viewport/.test(splitBody), '交点的位置用了视口/屏幕坐标（画布一动就飘）');
   // 拆线的两步：① 原边变「原 source → 交点」；② 交点 → 原 target（过一次 addEdge）。
-  assert.match(onConnectBody, /const head: Edge = \{ \.\.\.original, target: junctionId/, '原边没有被改成「原 source → 交点」那一段');
+  assert.match(splitBody, /const head: Edge = \{ \.\.\.original, target: junctionId/, '原边没有被改成「原 source → 交点」那一段');
   // ⚠️ 断言到 `filter(...)` 为止，**不钉整句**：这一句后面还要排进学生拉的那根线（见下一条用例），
   //    钉住右括号等于「加了 link 就红」—— 那正是今天红过好几次的那种格式断言。
-  assert.match(onConnectBody, /addEdge\(tail, current\.filter\(\(edge\) => edge\.id !== original\.id\)/, '没有把原边摘掉、再用 addEdge 接上第二段');
+  assert.match(splitBody, /addEdge\(tail, current\.filter\(\(edge\) => edge\.id !== original\.id\)/, '没有把原边摘掉、再用 addEdge 接上第二段');
   // ⑤ 交点画成小圆点（不承袭 .flowNode 的 150×54），而且**没有**文字输入框。
   assert.match(css, /\.flowNode_junction \{[\s\S]{0,200}?min-width: 12px;[\s\S]{0,80}?min-height: 12px;/, '交点没有自己的尺寸（会承袭 .flowNode 的 150×54）');
   assert.match(css, /\.flowNode_junction \{[\s\S]{0,260}?border-radius: 50%/, '交点不是圆点');
@@ -702,28 +731,116 @@ test('★ 2026-10-06（教师报「连线加不上」）：连到线中点时，
   const edgeBranch = onConnectBody.slice(edgeBranchAt, nodeBranchAt);
   assert.match(edgeBranch, /return;/, '边那一支没有提前 return —— 同一拖会被「落点是节点」那一支再走一遍');
   // ② 「学生拉的那根线」接全了吗？（本地判据函数 ⇒ 反面对照能直接复用它。）
+  // ★ 2026-10-06：建 `link` 与「拆线」现在住在**那一份共用实现** `splitEdgeAt` 里（两条入口共用），
+  //   而 `onConnect` 只剩「认出落点是边 + 把两端交给它」。判据因此要**跟到那一份实现里**去 ——
+  //   否则它会在 `onConnect` 里找不到 `const link: Edge` 而**误红**（守的东西一条没少）。
+  //   ⚠️ 仍然按语义判：要同时看到「交点 → 学生拖到的那一端」与「学生拖出的那一端 → 交点」**两向**，
+  //     并且 `link` 必须真的排进 `addEdge` 那句的返回数组里（只声明不排 = 等于没接上）。
+  //     两个方向的**输入名**在共用实现里是 `endpointId` / `endpointDraggedFromEdge`（不再是
+  //     `connection.*`）⇒ 判的是「这一端在不在」，不是某个变量名。
+  const alreadyInBranch = /const link: Edge/.test(edgeBranch);
+  /** 拆线那一份共用实现（`link` 与「拆线」都住在这里）。 */
+  const splitBody = splitEdgeSource(live);
   const missingLink = (branch: string): string[] => {
     const missing: string[] = [];
+    if (!/splitEdgeAt\(/.test(branch)) missing.push('边那一支没有把两端交给共用的拆线实现（splitEdgeAt）');
     const at = branch.indexOf('const link: Edge');
-    if (at === -1) return ['根本没有给学生拉的那根线建边（只拆原线）'];
+    // ⚠️ 找不到那一句时必须把**已经攒下的缺失**一起返回：`return missing`（空数组）会让反面对照恒真
+    //    —— 「拆线那一份里没有 link」这件事就悄悄变成「没有意见」（实测踩过）。
+    if (at === -1) return [...missing, '根本没有给学生拉的那根线建边（只拆原线）'];
     const end = branch.indexOf('addEdge(', at);
     const body = end === -1 ? branch.slice(at) : branch.slice(at, end);
-    if (!/junctionId[\s\S]{0,240}?connection\.target/.test(body)) missing.push('少了「交点 → 学生拖到的那一端」那一向');
-    if (!/connection\.source[\s\S]{0,240}?junctionId/.test(body)) missing.push('少了「学生拖出的那一端 → 交点」那一向');
+    if (!/junctionId[\s\S]{0,240}?(endpointId|connection\.target)/.test(body)) missing.push('少了「交点 → 学生拖到的那一端」那一向');
+    if (!/(endpointId|connection\.source)[\s\S]{0,240}?junctionId/.test(body)) missing.push('少了「学生拖出的那一端 → 交点」那一向');
     const tailAt = branch.indexOf('addEdge(tail,');
     if (tailAt === -1) missing.push('第二段没走 addEdge');
     else if (!/\blink\b/.test(branch.slice(tailAt, branch.indexOf(';', tailAt)))) missing.push('link 只被声明、没排进返回的边数组（等于没接上）');
     return missing;
   };
-  assert.deepEqual(missingLink(edgeBranch), [],
-    `连到线中点时，学生拉的那根线没接上：${missingLink(edgeBranch).join('、')}（教师报的「连线加不上」就是它）`);
+  //   ⚠️ 拼接时只用 `onConnect` 的**边那一支**（`edgeBranch`），不要把整个 `onConnectBody` 接进来：
+  //     那里面还有「落点是节点」那一支的 `setEdges`，会把 `addEdge(tail, …)` 之外的内容一起带进来，
+  //     让反面对照（掐掉共用实现那一次调用）**replace 不干净** ⇒ 判据变成恒真（实测踩过）。
+  const linkRegion = alreadyInBranch ? edgeBranch : edgeBranch + splitBody;
+  assert.deepEqual(missingLink(linkRegion), [],
+    `连到线中点时，学生拉的那根线没接上：${missingLink(linkRegion).join('、')}（教师报的「连线加不上」就是它）`);
   // ⚠️ 反面对照：把「接上学生那一拖」整段拿掉（回到修前那种「只拆不接」）⇒ 必须判违规。
-  const withoutLink = edgeBranch.replace(/const link: Edge[\s\S]*?(?=return \[)/, '');
-  assert.notEqual(withoutLink, edgeBranch, '反面对照没造出来 —— 这条判据会变成恒真');
+  //    判**共用实现那一份**（`splitBody`）—— 掐掉 `onConnect` 里那句调用是没用的：`link` 在共用
+  //    实现里还会被建出来，判据照样给空数组（反面对照恒真，实测踩过）。
+  const linkDecl = /const link: Edge/;
+  const withoutLink = linkDecl.test(splitBody)
+    ? linkRegion.replace(/const link: Edge[\s\S]*?(?=return \[)/, '')
+    : linkRegion.replace(/splitEdgeAt\([\s\S]*?\);/, '');
+  assert.notEqual(withoutLink, linkRegion, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.notDeepEqual(missingLink(withoutLink), [], '反面对照没被抓住 —— 这条判据是恒真的');
   // ⚠️ 反向也要认：`connection.source` 是边 id 时（从节点的 target 句柄拖到中点），
   //    绝不能把那条边的 id 当成 source 节点（实测：那种边渲染不出来，却会写进作答）。
-  assert.ok(!/source: hitEdge\.id/.test(edgeBranch), '把边 id 当成节点用了 —— 那条边渲染不出来（悬空边）');
+  assert.ok(!/source: hitEdge\.id/.test(live), '把边 id 当成节点用了 —— 那条边渲染不出来（悬空边）');
+});
+
+test('★ 2026-10-06（教师：「拖到线附近松手也要能连上」）：落点吸附 —— 几何兜底 + 同一条拆线实现', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  const endBody = onConnectEndSource(live);
+  const splitBody = splitEdgeSource(live);
+  /*
+    🔴 实测事实（无头 Chrome 154 + CDP 真合成鼠标事件，跑本仓真组件；探针只放 /private/tmp）：
+
+      中点那颗句柄住在**自定义边**里、不是节点 ⇒ 它**不在库的 `nodeLookup` 里** ⇒ 库给节点句柄的
+      `connectionRadius`（默认 20px）那套几何吸附**对它完全无效**；库对它的落点判定只剩
+      `isValidHandle()` 里那条 `document.elementFromPoint(x, y)`。于是：
+
+        · 改前（`HANDLE_GAP = 14`、句柄 10px、无兜底）：落点偏句柄圆心 0px ⇒ 连上；
+          **偏 5px 就已经什么都不发生**（落点被边上那条 SVG path 抢走）；偏 15 / 20 / 25px 全落空。
+        · 改后（`EDGE_SNAP_RADIUS = 22` 的几何兜底）：偏 0 / 5 / 15 / 20px ⇒ **都连上**
+          （DOM 边 2→4、节点 3→4，作答里 `junction-…-tail` + `junction-…-link` 都在）；
+          偏 **25 / 30px ⇒ 仍然不连**（该连的连上、不该连的不连）。
+        · 拖到空白（中点下方 260px）⇒ DOM 边 2→2、节点 3→3、作答为空 —— **什么都不做**。
+
+    ⚠️ 也试过「先把句柄自己撑大」那条最便宜的路（36 / 40px 的透明命中层）：连接确实好了，但
+      探针量出来 `elementFromPoint(线上 Y/N 标签中心)` 会返回**句柄** ⇒「双击线上的字改文字」
+      当场坏掉（那个盒子把标签白底框的下半截吃掉了）⇒ 那条路已废弃（CSS 里留了警告）。
+  */
+  assert.ok(endBody.length > 300, '落点吸附那段没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  // ① 半径必须是**命名常量**（数值只在组件里声明一次）。
+  const radiusRaw = (live.match(/const EDGE_SNAP_RADIUS = ([^;]+);/) ?? [])[1];
+  assert.ok(radiusRaw !== undefined, '没有命名常量 EDGE_SNAP_RADIUS（吸附半径会变成散落的魔法数）');
+  const radius = Number(new Function(`return (${radiusRaw});`)());
+  assert.ok(radius > 0, `EDGE_SNAP_RADIUS 不是正数（读到 ${radiusRaw}）`);
+  assert.ok(endBody.includes('EDGE_SNAP_RADIUS'), '兜底没有用命名常量 EDGE_SNAP_RADIUS 做半径');
+  // ② 「同一次拖拽只能生效一次」：`onConnect` 那条路成功时置位、兜底进来先看它。
+  assert.match(live, /handledRef/, '没有「这一拖已经生效过」的记号 —— 同一次拖拽会插两个交点');
+  assert.match(endBody, /handledRef\.current/, '兜底没有先看「已经生效过」这个记号（会与库那一次重复插交点）');
+  assert.match(splitBody, /handledRef\.current = true/, '「已经生效过」的记号没有在**共用的那一份拆线实现**里置位（两条入口都会插交点）');
+  // ⚠️ 反面对照：把兜底那道闸拿掉 ⇒ 上面两条必须红。
+  const headless = endBody.replace('if (handledRef.current) return;', '');
+  assert.notEqual(headless, endBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!/handledRef\.current/.test(headless), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ③ 兜底必须走**同一条**拆线实现（不是自己又写一遍）。
+  const usesSplitter = (body: string) => /splitEdgeAt\(/.test(body);
+  assert.ok(usesSplitter(endBody), '兜底没有走共用的拆线实现（自己又写一遍 = 两条路的拆法必然分叉）');
+  assert.ok(splitterCallSites(live) >= 2, '拆线只有一条入口在调用 —— 精确命中与吸附松手必须共用同一份实现');
+  // ⚠️ 反面对照：把兜底那次调用掐掉 ⇒ 必须判违规。
+  const noApply = endBody.replace(/splitEdgeAt\([^;]*\);/, '');
+  assert.notEqual(noApply, endBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!usesSplitter(noApply), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ④ 🔴 拖到空白**不许**插交点：必须有「最近的一条边」这个筛选，而且**找不到就走人**。
+  const blankDropOk = (body: string): boolean => {
+    const filterAt = body.search(/distance\s*>\s*EDGE_SNAP_RADIUS/);
+    if (filterAt === -1) return false;
+    const after = body.slice(filterAt);
+    return /if \(!nearest\) return;/.test(after) && /nearest\s*=/.test(after);
+  };
+  assert.ok(blankDropOk(endBody), '兜底没有「离最近那条边还在半径外就不做」这道闸 —— 拖到空白也会插一个交点出来');
+  // ⚠️ 反面对照：把半径那道筛选改成恒真（永远「够近」）⇒ 必须判违规。
+  const alwaysNear = endBody.replace(/distance\s*>\s*EDGE_SNAP_RADIUS/, 'false');
+  assert.notEqual(alwaysNear, endBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!blankDropOk(alwaysNear), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⑤ 半径筛的是**到那一段的锚点距离**，不是「指针下有没有边」这种 DOM 猜测。
+  assert.match(endBody, /edgeFlowAnchors\(/, '兜底没有用锚点表算距离（拿不到「这条线在哪」）');
+  assert.match(endBody, /midX|midY/, '兜底没有用库算出来的标签点当中点');
+  // ⑥ 交点仍必须落在**精确中点**（吸附只决定「连哪条线」，不许把浮层那 18px 偏移卷进来）。
+  assert.match(splitBody, /position: \{ x: anchors\.midX - junctionHalf, y: anchors\.midY - junctionHalf \}/,
+    '吸附那条路把交点挪离了精确中点 —— 拆出来的两段会与原线对不上');
+  assert.ok(!/offsetAlong|HANDLE_GAP/.test(splitBody), '拆线里混进了浮层偏移（交点会跟着浮层走）');
 });
 
 test('★ 2026-10-06（教师报「连线加不上」）：落点约定 —— Loose 模式 / 中点句柄是 target / data-nodeid=边 id', () => {
@@ -915,12 +1032,26 @@ test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就�
   const labelPoint = anchorsBody.match(/const \[, (\w+), (\w+)\] = getSmoothStepPath/) || [];
   assert.ok(labelPoint[1] && labelPoint[2], '没有取库回的标签点 labelX/labelY');
   assert.match(anchorsBody, new RegExp(`midX: ${labelPoint[1]}[\\s\\S]{0,80}?midY: ${labelPoint[2]}`), '中点锚点没有取自 getSmoothStepPath 的标签点');
-  const endPoint = anchorsBody.match(/const (\w+) = handlePoint\(boxOf\(target\), targetPosition\)/) || [];
+  // ⚠️ ★ 2026-10-06：「句柄点在节点那一侧的哪儿」抽成了模块级 `handleFlowPoint(node, handleId, fallback)`
+  //    （锚点表与 `onConnectEnd` 的几何兜底共用同一份 —— 两份必然分叉）。判据因此认**语义**：
+  //    端点必须由「**目标**节点 + 那条边的 targetHandle」算出来；变量名/调用形状随便改。
+  const endPoint = anchorsBody.match(/const (\w+) = (\w+)\(target, edge\.targetHandle/) || [];
   assert.ok(endPoint[1], '终点锚点不是「目标节点那一侧的句柄点」');
+  // ⚠️ 认**函数名**（`const X = (node: FlowNode`），不认参数名：`(node: FlowNode, handleId: unknown` 那种
+  //    多参数写法也要过（上一版把参数列表钉成 `(node: FlowNode)` ⇒ 自己把自己判红 ✗）。
+  //    ⚠️ 分两条判**语义**：① 盒子的 y 就是 `node.position.y`；② 下/左/右三侧的句柄点落在
+  //    `box.y + box.height` / `box.x + box.width` 那一族上。上一版把两条揉进一个跨 600 字的窗口正则，
+  //    自己把自己判红（跨行 + 惰性量词的组合又长又脆）—— 拆开就稳。
+  const endFnAt = live.indexOf(`const ${endPoint[2]} = (node: FlowNode`);
+  assert.notEqual(endFnAt, -1, `句柄点函数 ${endPoint[2]} 没找到 —— 先修这条判据`);
+  const endFnBody = live.slice(endFnAt, live.indexOf('\n};', endFnAt));
+  assert.ok(endFnBody.length > 80, `句柄点函数 ${endPoint[2]} 没抠出来 —— 先修这条判据，别让它在空串上全绿`);
+  assert.match(endFnBody, /y: node\.position\.y/, `句柄点函数 ${endPoint[2]} 的盒子不是从 node.position 来的`);
+  assert.match(endFnBody, /box\.y \+ box\.height/, `句柄点函数 ${endPoint[2]} 没有把下侧的句柄点算在节点下边缘上`);
   assert.match(anchorsBody, new RegExp(`endX: ${endPoint[1]}\\.x`), '两个锚点没有从中点/终点分别给出（终点 x）');
   assert.match(anchorsBody, new RegExp(`endY: ${endPoint[1]}\\.y`), '两个锚点没有从中点/终点分别给出（终点 y）');
   // ★ 2026-10-06（教师认可的第一条偏移）：删除按钮要往 **source** 退 ⇒ 锚点表必须多吐起点。
-  const startPoint = anchorsBody.match(/const (\w+) = handlePoint\(boxOf\(source\), sourcePosition\)/) || [];
+  const startPoint = anchorsBody.match(/const (\w+) = (\w+)\(source, edge\.sourceHandle/) || [];
   assert.ok(startPoint[1], '起点句柄点没抠出来 —— 先修这条判据');
   assert.match(anchorsBody, new RegExp(`fromX: ${startPoint[1]}\\.x`), '锚点表没有给出起点 fromX（删除按钮没法往 source 退）');
   assert.match(anchorsBody, new RegExp(`fromY: ${startPoint[1]}\\.y`), '锚点表没有给出起点 fromY（删除按钮没法往 source 退）');
@@ -970,7 +1101,7 @@ test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就�
  * ⚠️ 为什么抠文本求值、而不是 import：这个文件是 `'use client'` 的 React 组件，import 会把
  *    React Flow + React 一起拖进来（本仓没有 jsdom）。下面这三个函数只做加减乘除、不碰
  *    React/state，**类型都写在 `const` 那一侧** ⇒ 抠出来的 `(a, b) => { … }` 本身就是合法 JS。
- * ★ 第 2 步整理：喂进来的距离**从组件源码里读它自己的命名常量**（不在测试里再抄一遍 26 / 14），
+ * ★ 第 2 步整理：喂进来的距离**从组件源码里读它自己的命名常量**（不在测试里再抄一遍 `EDGE_FLOAT_BACK` / `HANDLE_GAP`），
  *    测的就是生产代码真正在用的那个数。
  * ⚠️ 反面对照（变异测试，见本轮报告）：把 clamp 去掉、或把某个方位的轴写反 ⇒ 下面这几条必须红。
  */

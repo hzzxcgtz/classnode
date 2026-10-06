@@ -169,12 +169,21 @@ const edgeLabelWidth = (label: string) => Math.max(22, Array.from(label).length 
  *   · `EDGE_FLOAT_BACK` —— 删除**连线**的按钮：沿**目标句柄轴**（smoothstep 末段方向）往 source 退多少（流坐标）。
  *   · `HANDLE_GAP`      —— **中点浮层**（就地输入框 / 中点句柄）：沿「中点 → 目标端」挪多少（流坐标）。
  *
+ * 🔴 `HANDLE_GAP = 18` 是**按像素算出来**的（教师 2026-10-06 拿 CSS 对过）：
+ *    线上的 Y/N 标签白底框高 **22px**（`<rect height={22}>`，以标签点为中心 ⇒ 上下各 ±11px）；
+ *    中点句柄本体 **10×10**（±5px）。两件事都发生在**竖直方向**上：
+ *      · 竖直边（学生画得最多的一条）：中点句柄只往**下方**挪 ⇒ 句柄上沿离标签点 `d - 5`，
+ *        要脱开白底框下沿的 11px 就得 `d ≥ 16`；**14px 时只有 9px ⇒ 还是压住白底框约 2px**；
+ *      · 斜边 45°：位移的**竖直分量**只有 `d / √2` ⇒ **14px 时约 9.9px**，仍切进白底框里、
+ *        压到那个字；**18px 时约 12.7px > 11px**，也脱开了。
+ *    ⚠️ 所以这不是「随便挪开一点」：18 是「竖直边完全脱开 + 45° 斜边也脱开」这条线的**下限**。
+ *
  * 🔴 `EDGE_FLOAT_BACK` 与 `HANDLE_GAP` **不是同一个数换了个名字**，谁也不许"统一"成对方：
  *    · 26 的起点是**终点**（箭头落点）、方向是**目标句柄轴的外法线** ⇒ 目的是让按钮别盖住箭头、
  *      最后那段线和目标侧的连接点；
- *    · 14 的起点是**中点**（库回的标签点）、方向是「中点 → 目标端」的直线 ⇒ 目的是让开线上的
+ *    · 18 的起点是**中点**（库回的标签点）、方向是「中点 → 目标端」的直线 ⇒ 目的是让开线上的
  *      Y/N 标签，并把正落在中点的单击/双击还给那条线。
- *    起点不同、方向不同、目的不同 —— 把 26 换成 14（或反过来）就是把几何改坏。
+ *    起点不同、方向不同、目的不同 —— 把 26 换成 18（或反过来）就是把几何改坏。
  * ⚠️ `NODE_FLOAT_GAP` 由 `FLOAT_SIZE` 推出来（半个按钮 + 一指宽的缝）：按钮以自己中心定位
  *    （`.flowEdgeFloat` 的 `transform: translate(-50%, -50%)`）⇒ 整颗按钮落在框**外面**
  *    又贴着框，一眼看得出「它属于这个框」。数值仍是 28（几何没动）。
@@ -185,7 +194,38 @@ const edgeLabelWidth = (label: string) => Math.max(22, Array.from(label).length 
 const FLOAT_SIZE = 44;
 const NODE_FLOAT_GAP = FLOAT_SIZE / 2 + 6;
 const EDGE_FLOAT_BACK = 26;
-const HANDLE_GAP = 14;
+const HANDLE_GAP = 18;
+/**
+ * ★ 2026-10-06（教师：「小学课堂上拖到线附近松手要能连上」）：**连到线上的吸附半径**（屏幕 px）。
+ *
+ * 🔴 为什么这里必须自己接管：中点那颗句柄住在自定义边里、**不是节点** ⇒ 它不在库的 `nodeLookup`
+ *    里，于是库给节点句柄的那套 `connectionRadius`（默认 20）的**几何吸附对它完全无效**
+ *    （`getClosestHandle` 只遍历 `nodeLookup`）。库对它的落点判定只剩 `isValidHandle()` 里那条
+ *    `document.elementFromPoint(x, y)` —— **落点必须真的压在那颗句柄的盒子上**。
+ *    实测（无头 Chrome 154 + CDP 真合成鼠标事件）：落点偏句柄圆心 **0px** ⇒ 连上；
+ *    偏 **5px 就已经什么都不发生**（落点被边上那条 SVG path 抢走）—— 教师说的「偏 15px 松手
+ *    什么都不发生」正落在这个区间里。
+ *    ⚠️ 先试过「把句柄自己撑大」（36 / 40px 的透明命中层）：连接是好了，但那个盒子会把线上的
+ *      Y/N 标签白底框的**下半截**吃掉（实测 `elementFromPoint(标签中心)` 返回句柄而不是边），
+ *      「双击线上的字改文字」当场坏掉 —— 那是更常用的交互，不能拿它换。
+ *    ⇒ 最后走**几何兜底**：`onConnectEnd` 在「库没形成有效连接」时按**指针到各边中点的距离**
+ *      找最近的一条边，再走**同一条**拆线路径（`splitEdgeAt`）。句柄的视觉与命中区**一点没动**。
+ *
+ * 📏 22 的来由：
+ *   · 与库自己的 `connectionRadius` 默认值（20）同一档 —— 学生不该在两个「连接点」上感受到两套精度；
+ *   · 实测（本仓那套 CDP 探针，落点相对**那条线的中点**量）：偏 **15px 连上**、偏 **20px 连上**、
+ *     偏 **25px 不连** ——「偏 15px 松手什么都不发生」这个原始故障被治好；
+ *   · 为什么不是正好 20：中点有两份算法（我们按库 `getSmoothStepPath` 算的标签点、DOM 里那个
+ *     白底框的中心），实测两者差 ~0.4px；取 20 时「偏 20px」正好卡在边界上（实测 20.02px 就落空）。
+ *     22 把这条边界推出去 2px，同时 25px 仍然不连（该连的连上、不该连的不连）。
+ *   · 单位是**屏幕 px**，不是流坐标：手指的精度发生在屏幕上，画布缩到 0.35 倍时 20 流坐标只有
+ *     7 屏幕 px（等于没吸附），放大到 2.2 倍又会吸走老远的边。
+ * ⚠️ 与**框的句柄**的竞争：落点若压在框的句柄上（`elementFromPoint` 在节点层拿到它），
+ *    库已经形成有效连接 ⇒ 兜底这一路根本不进（`handledRef` 已置位）⇒ **框的句柄赢**。
+ * ⚠️ 这条兜底**只管「从节点的句柄拖出来」**那一类（`onConnectStart` 记下的起点）。
+ *    从**线上**那颗中点句柄往回拖（边 → 节点）本来就走库自己的有效连接、不经过这里。
+ */
+const EDGE_SNAP_RADIUS = 22;
 
 /**
  * 拆线时，交点这一侧该接哪个句柄 —— 让两段**接回原来的方向**（竖直流程图走上/下，横向流程图走左/右）。
@@ -208,6 +248,26 @@ const positionOfHandle = (id: unknown, fallback: Position): Position => (
   id === 'top' ? Position.Top : id === 'left' ? Position.Left
     : id === 'right' ? Position.Right : id === 'bottom' ? Position.Bottom : fallback
 );
+
+/**
+ * 一个节点上某个句柄的**流坐标** —— 起止点按「句柄在节点那一侧边上**居中**」算（库就是这么摆的）。
+ * ⚠️ 抽成模块级是因为两处要用：锚点表（`edgeFlowAnchors`）与 `onConnectEnd` 的几何兜底。
+ *    两份各写一遍必然分叉，而分叉的表现是「吸附算出来的距离整体偏半个节点」这种**不报错**的错。
+ * ⚠️ 宽高优先用库量出来的 `measured`（真实尺寸），没量到才退回 150×54 —— 与画布默认值同一档。
+ */
+const handleFlowPoint = (node: FlowNode, handleId: unknown, fallback: Position): FlowPoint => {
+  const box = {
+    x: node.position.x,
+    y: node.position.y,
+    width: node.measured?.width ?? 150,
+    height: node.measured?.height ?? 54,
+  };
+  const position = positionOfHandle(handleId, fallback);
+  return position === Position.Top ? { x: box.x + box.width / 2, y: box.y }
+    : position === Position.Bottom ? { x: box.x + box.width / 2, y: box.y + box.height }
+      : position === Position.Left ? { x: box.x, y: box.y + box.height / 2 }
+        : { x: box.x + box.width, y: box.y + box.height / 2 };
+};
 
 /** 流程图几何里用的一个点（纯函数之间传参用，省得把 `{ x: number; y: number }` 写两遍）。 */
 type FlowPoint = { x: number; y: number };
@@ -323,9 +383,11 @@ function FlowEdgeLine({
           </text>
         </g>
       )}
-      {/* ⚠️ 这颗句柄**不再**与上面的标签同点：`midHandle` 把它沿「标签点 → 目标端」挪了 14px
+      {/* ⚠️ 这颗句柄**不再**与上面的标签同点：`midHandle` 把它沿「标签点 → 目标端」挪了 `HANDLE_GAP`
           （理由见上面那段注释）。它住在 `EdgeLabelRenderer` 那一层，DOM 上排在所有边之后
-          ⇒ 画在标签之上，也因此必须挪开，否则正落在中点的单击/双击会被它吞掉。 */}
+          ⇒ 画在标签之上，也因此必须挪开，否则正落在中点的单击/双击会被它吞掉。
+          🔴 它的盒子**故意不撑大**（试过 36/40px：会把线上 Y/N 标签白底框的下半截吃掉，
+          「双击线上的字」当场坏掉）—— 落点不准由 `onConnectEnd` 那条几何兜底负责，见 `EDGE_SNAP_RADIUS`。 */}
       <EdgeLabelRenderer>
         <Handle
           type="target"
@@ -419,6 +481,23 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(initial.current.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.current.edges);
   const initialized = useRef(false);
+  /**
+   * ★ 2026-10-06（教师：「拖到线附近松手要能连上」）：**吸附兜底**要用的两个记号（见 `onConnectEnd`）。
+   *   · `dragOriginRef` —— 这一拖是从**哪个句柄**出发的。库的 `onConnectEnd` 只给
+   *     `(event, connectionState)`，而 `connectionState.source` 在拖到空白时可能是 null
+   *     ⇒ 起点必须自己记（`onConnectStart` 给的是 `{ nodeId, handleId, handleType }`）。
+   *   · `handledRef` —— 这一拖**已经生效过**了吗。`onConnect` 成功会走 `splitEdgeAt`（在那里置位），
+   *     于是「同一次拖拽只插一个交点」是结构性的：兜底那一句先看它，绝不重复拆同一条线。
+   */
+  const dragOriginRef = useRef<{ nodeId: string; handleId: string | null; handleType: 'source' | 'target' } | null>(null);
+  const handledRef = useRef(false);
+  /**
+   * ⚠️ `flowToScreenPosition` 也要给 `onConnectEnd` 的几何兜底用（把「边的中点在屏幕上的哪儿」
+   *    算出来与 `clientX/clientY` 比距离）⇒ 实例必须在这里就取（不能等到下面 `deleteElements` 那处）。
+   *    用库自己的换算而不是自己乘 `viewport`：那是**页面**坐标（含容器 rect 与页面滚动），
+   *    而 `viewport.x + flowX * zoom` 只对「浮层住在 `.flowStage` 里」成立。
+   */
+  const { flowToScreenPosition } = useReactFlow<FlowNode, Edge>();
   const nodeTypes = useMemo(() => ({ flow: FlowNodeEditor }), []);
   /**
    * ★ 2026-10-06（教师，A 方案）：线的中点那颗句柄住在**自定义边**里
@@ -501,23 +580,11 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     const source = nodes.find((item) => item.id === edge?.source);
     const target = nodes.find((item) => item.id === edge?.target);
     if (!edge || !source || !target) return null;
-    const boxOf = (node: FlowNode) => ({
-      x: node.position.x,
-      y: node.position.y,
-      width: node.measured?.width ?? 150,
-      height: node.measured?.height ?? 54,
-    });
-    const handlePoint = (box: ReturnType<typeof boxOf>, position: Position) => (
-      position === Position.Top ? { x: box.x + box.width / 2, y: box.y }
-        : position === Position.Bottom ? { x: box.x + box.width / 2, y: box.y + box.height }
-          : position === Position.Left ? { x: box.x, y: box.y + box.height / 2 }
-            : { x: box.x + box.width, y: box.y + box.height / 2 }
-    );
     const sourcePosition = positionOfHandle(edge.sourceHandle, Position.Bottom);
     const targetPosition = positionOfHandle(edge.targetHandle, Position.Top);
-    const from = handlePoint(boxOf(source), sourcePosition);
+    const from = handleFlowPoint(source, edge.sourceHandle, Position.Bottom);
     // ⚠️ 这个 `to` 就是**终点锚点**：箭头落在目标节点的这一侧句柄上。
-    const to = handlePoint(boxOf(target), targetPosition);
+    const to = handleFlowPoint(target, edge.targetHandle, Position.Top);
     /* ★ 删除按钮「往 source 退」的方向 = **目标句柄轴的外法线**（末段方向），不是「起点→终点」直线。
        ⚠️ 由 `targetPosition` 决定 —— 线从哪一侧进目标，就往那一侧退（见 `backAxis`）。 */
     const back = backAxis(targetPosition);
@@ -573,13 +640,101 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     }]);
   };
   /**
+   * 🔴 **拆线的唯一实现**（「插交点 + 拆原线 + 接上学生这一拖」）——两条入口共用它：
+   *    · `onConnect`：库自己判定了「落点就是那颗中点句柄」；
+   *    · `onConnectEnd`：库没判定成功，但我们**几何上**认得出「松手点就在这条线附近」
+   *      （见 `EDGE_SNAP_RADIUS`）。
+   * ⚠️ 只留一份是硬要求：两份实现必然分叉，而分叉的表现是「精确命中一条行为、吸附松手另一条行为」
+   *    且两边都不报错。判据 `surface-lifecycle.test.ts` 会把这条钉住（吸附那条路必须走这个函数）。
+   * ⚠️ 参数只吃**两端**：
+   *    · `endpointId` —— 学生那一拖的**另一端**（节点的 id）：从节点 source 柄拉 ⇒ 它接在交点上；
+   *      从节点 target 柄拉（菱形左侧那种）⇒ 交点接在它后面；
+   *    · `endpointHandle` / `endpointFromDrag` —— 那一端的句柄 id、以及**是不是从边中点拉出来的**
+   *      （后者决定 `link` 的方向）。
+   */
+  const splitEdgeAt = useCallback((
+    hitEdgeId: string,
+    endpointId: string,
+    endpointHandle: string | null | undefined,
+    endpointDraggedFromEdge: boolean,
+  ) => {
+    const anchors = edgeFlowAnchors(hitEdgeId);
+    if (!anchors) return;
+    const junctionId = `junction-${Date.now()}-${nodes.length}`;
+    /* ⚠️ 12 与 CSS 里 `.flowNode_junction` 的 12×12 是同一个数：节点 `position` 说的是
+       **左上角**，各减一半才能让那颗圆点正落在标签点上（不这么减，线会岔开 6px）。 */
+    const junctionHalf = 6;
+    /* 🔴 `handledRef` 在**这里**置位（而不是在 onConnect 里）：两条入口都会走到这一句，
+       于是「同一次拖拽只能生效一次」是**结构性**的 —— `onConnectEnd` 那条兜底看到它就不再插。 */
+    handledRef.current = true;
+    setNodes((current) => [...current, {
+      id: junctionId,
+      type: 'flow',
+      // 🔴 **流坐标**（`position` 用的那套），刻意不碰 `viewport` —— 那是给浮层用的屏幕坐标。
+      position: { x: anchors.midX - junctionHalf, y: anchors.midY - junctionHalf },
+      data: { label: '', kind: 'junction' },
+    }]);
+    setEdges((current) => {
+      const original = current.find((edge) => edge.id === hitEdgeId);
+      if (!original) return current;
+      // ⚠️ 交点那两个句柄的方位取自**原边**（它原来从 source 的哪一侧出去、进 target 的哪一侧）
+      //    ⇒ 两段接回去以后与原来那条线重合。见 `junctionInHandle` 上面那段实测。
+      const inHandle = junctionInHandle(positionOfHandle(original.sourceHandle, Position.Bottom));
+      const outHandle = junctionOutHandle(positionOfHandle(original.targetHandle, Position.Top));
+      // ①原边的 source → **交点**：label / sourceHandle / markerEnd……全部保留，
+      //   只把 `targetHandle` 换成交点上的那一颗（原来那个是**上一个**目标节点的句柄，
+      //   直接留着才是真错 —— 那句「断开 targetHandle」的意思正是别把它带过来）。
+      const head: Edge = { ...original, target: junctionId, targetHandle: inHandle, type: 'flow' };
+      // ②**交点** → 原来那个目标节点（用 addEdge 走一次库自己的加边，id 由它给）。
+      const tail: Edge = {
+        id: `${junctionId}-tail`,
+        source: junctionId,
+        sourceHandle: outHandle,
+        target: original.target,
+        targetHandle: original.targetHandle ?? null,
+        type: 'flow',
+      };
+      // ★ 学生**刚拉的那根线本身**也必须接上。
+      //   🔴 只拆原线 = 画布上什么新东西都不会出现（教师 2026-10-06 报的「连线加不上」正是它）：
+      //      拖拽时看到的预览线在松手那一刻消失，随后原线被拆成两段但**看上去还是原来那根线**
+      //      ⇒ 学生的感受是「白拖了一次」，而数据里也确实没有他画的那根线。
+      //   ⚠️ 方向按他从哪一侧拉：从节点的 source 柄拉 ⇒ X → 交点；从节点的 target 柄拉 ⇒ 交点 → X。
+      const link: Edge = endpointDraggedFromEdge
+        ? {
+          id: `${junctionId}-link`,
+          source: junctionId,
+          sourceHandle: outHandle,
+          target: endpointId,
+          targetHandle: endpointHandle ?? null,
+          type: 'flow',
+        }
+        : {
+          id: `${junctionId}-link`,
+          source: endpointId,
+          sourceHandle: endpointHandle ?? null,
+          target: junctionId,
+          targetHandle: inHandle,
+          type: 'flow',
+        };
+      // ⚠️ 与拆出来的那一段**逐字段重合**时不再画第二根（同一根线画两遍 = 数据里两条重叠的线）。
+      const twin = endpointDraggedFromEdge ? tail : head;
+      const duplicated = link.source === twin.source && link.target === twin.target
+        && (link.sourceHandle ?? null) === (twin.sourceHandle ?? null)
+        && (link.targetHandle ?? null) === (twin.targetHandle ?? null);
+      // ⚠️ 顺序：先摘掉原边 → 把 `tail` 交给 addEdge → 把 `head`（**沿用原边 id**）放回去 → 接上学生这一拖。
+      //    沿用 id 是有意的：`selected` / `labelingEdge` 那些状态还指着它，拆线不该凭空多出悬空 id。
+      return [...addEdge(tail, current.filter((edge) => edge.id !== original.id)), head, ...(duplicated ? [] : [link])];
+    });
+  }, [nodes.length, edgeFlowAnchors, setEdges, setNodes]);
+
+  /**
    * ★ 2026-10-06（教师）：「判断框出来的两条线默认应该是一条上面是 Y，一条上面是 N」。
    * ⇒ 从**判断框**拉出来的线自动带上 Y / N（按这个判断框已有几条带标注的出边排：0→Y、1→N、再多就不猜）。
    * ⚠️ 其它节点拉出来的线**不自动给字**：给每条线都塞一个 Y 是噪音，而且会让「线上一片字」。
    *
    * ★ 2026-10-06（教师，A 方案）：「新建的连接线可以连在另一根连接线的中点上」。
    * ⇒ 连到**线上的中点句柄**时，`connection.target` 就是那条**边的 id**（凭据怎么来的见
-   *   `FlowEdgeLine` 上面那段注释）⇒ 在这里把原边拆成两段、中间插一个交点小圆点。
+   *   `FlowEdgeLine` 上面那段注释）⇒ 把原边拆成两段、中间插一个交点小圆点。
    */
   const onConnect = useCallback((connection: Connection) => {
     // ── ① 落点是**一条边**（连线中点那颗句柄）⇒ 插交点 + 拆原边 + **接上学生这一拖** ──────
@@ -593,70 +748,8 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     if (hitEdge) {
       /** 学生是从**边中点**那一侧拉出来的吗（否则就是从节点的句柄拉过来的）。 */
       const draggedFromEdge = connection.source === hitEdge.id;
-      const anchors = edgeFlowAnchors(hitEdge.id);
-      if (!anchors) return;
-      const junctionId = `junction-${Date.now()}-${nodes.length}`;
-      /* ⚠️ 12 与 CSS 里 `.flowNode_junction` 的 12×12 是同一个数：节点 `position` 说的是
-         **左上角**，各减一半才能让那颗圆点正落在标签点上（不这么减，线会岔开 6px）。 */
-      const junctionHalf = 6;
-      setNodes((current) => [...current, {
-        id: junctionId,
-        type: 'flow',
-        // 🔴 **流坐标**（`position` 用的那套），刻意不碰 `viewport` —— 那是给浮层用的屏幕坐标。
-        position: { x: anchors.midX - junctionHalf, y: anchors.midY - junctionHalf },
-        data: { label: '', kind: 'junction' },
-      }]);
-      setEdges((current) => {
-        const original = current.find((edge) => edge.id === hitEdge.id);
-        if (!original) return current;
-        // ⚠️ 交点那两个句柄的方位取自**原边**（它原来从 source 的哪一侧出去、进 target 的哪一侧）
-        //    ⇒ 两段接回去以后与原来那条线重合。见 `junctionInHandle` 上面那段实测。
-        const inHandle = junctionInHandle(positionOfHandle(original.sourceHandle, Position.Bottom));
-        const outHandle = junctionOutHandle(positionOfHandle(original.targetHandle, Position.Top));
-        // ①原边的 source → **交点**：label / sourceHandle / markerEnd……全部保留，
-        //   只把 `targetHandle` 换成交点上的那一颗（原来那个是**上一个**目标节点的句柄，
-        //   直接留着才是真错 —— 那句「断开 targetHandle」的意思正是别把它带过来）。
-        const head: Edge = { ...original, target: junctionId, targetHandle: inHandle, type: 'flow' };
-        // ②**交点** → 原来那个目标节点（用 addEdge 走一次库自己的加边，id 由它给）。
-        const tail: Edge = {
-          id: `${junctionId}-tail`,
-          source: junctionId,
-          sourceHandle: outHandle,
-          target: original.target,
-          targetHandle: original.targetHandle ?? null,
-          type: 'flow',
-        };
-        // ★ 学生**刚拉的那根线本身**也必须接上。
-        //   🔴 只拆原线 = 画布上什么新东西都不会出现（教师 2026-10-06 报的「连线加不上」正是它）：
-        //      拖拽时看到的预览线在松手那一刻消失，随后原线被拆成两段但**看上去还是原来那根线**
-        //      ⇒ 学生的感受是「白拖了一次」，而数据里也确实没有他画的那根线。
-        //   ⚠️ 方向按他从哪一侧拉：从节点的 source 柄拉 ⇒ X → 交点；从节点的 target 柄拉 ⇒ 交点 → X。
-        const link: Edge = draggedFromEdge
-          ? {
-            id: `${junctionId}-link`,
-            source: junctionId,
-            sourceHandle: outHandle,
-            target: connection.target,
-            targetHandle: connection.targetHandle ?? null,
-            type: 'flow',
-          }
-          : {
-            id: `${junctionId}-link`,
-            source: connection.source,
-            sourceHandle: connection.sourceHandle ?? null,
-            target: junctionId,
-            targetHandle: inHandle,
-            type: 'flow',
-          };
-        // ⚠️ 与拆出来的那一段**逐字段重合**时不再画第二根（同一根线画两遍 = 数据里两条重叠的线）。
-        const twin = draggedFromEdge ? tail : head;
-        const duplicated = link.source === twin.source && link.target === twin.target
-          && (link.sourceHandle ?? null) === (twin.sourceHandle ?? null)
-          && (link.targetHandle ?? null) === (twin.targetHandle ?? null);
-        // ⚠️ 顺序：先摘掉原边 → 把 `tail` 交给 addEdge → 把 `head`（**沿用原边 id**）放回去 → 接上学生这一拖。
-        //    沿用 id 是有意的：`selected` / `labelingEdge` 那些状态还指着它，拆线不该凭空多出悬空 id。
-        return [...addEdge(tail, current.filter((edge) => edge.id !== original.id)), head, ...(duplicated ? [] : [link])];
-      });
+      const endpointId = (draggedFromEdge ? connection.target : connection.source) as string;
+      splitEdgeAt(hitEdge.id, endpointId, draggedFromEdge ? connection.targetHandle : connection.sourceHandle, draggedFromEdge);
       return;
     }
     // ── ② 落点是**节点** ⇒ 保持原有行为（外加判断框出边默认 Y / N）──────────────────
@@ -670,7 +763,62 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
       // ⚠️ 这里仍然存 `'smoothstep'`（保持原有行为）；渲染时 `visibleEdges` 会把每条边强制成 `'flow'`。
       return addEdge({ ...connection, type: 'smoothstep', ...(label ? { label } : {}) }, current);
     });
-  }, [nodes, edges, edgeFlowAnchors, setEdges, setNodes]);
+  }, [nodes, edges, splitEdgeAt, setEdges]);
+
+  /**
+   * ★ 2026-10-06（教师：「小学课堂上拖到线附近松手要能连上」）——**落点吸附**（几何兜底）。
+   *
+   * 🔴 为什么需要它（实测事实，不是猜）：中点那颗句柄住在自定义边里、**不在 `nodeLookup`**
+   *    ⇒ 库给节点句柄的 `connectionRadius`（20px）**对它无效**；库只剩 `isValidHandle()` 里那条
+   *    `document.elementFromPoint`。于是「落点偏 5px」就已经什么都不发生 ⇒ 小学课堂上大量白拖。
+   *    ⚠️ 「把句柄自己撑大」那条路试过（36/40px 透明命中层）：连接是好了，但它会把线上 Y/N
+   *    标签白底框的**下半截**吃掉 ⇒「双击线上的字改文字」坏掉。那条路已废弃（CSS 里留了警告）。
+   *
+   * ✅ 这条路的判据全在**代码里**，不依赖任何 DOM 细节：
+   *    · `onConnectStart` 记下「这一拖是从哪个句柄出发的」（`dragOriginRef`）；
+   *    · `onConnect` 若成功过一次 ⇒ `handledRef` 已置位 ⇒ 这里**整段不进**（不许重复插交点）；
+   *    · 松手点压着**任何**句柄（框的句柄或中点句柄）⇒ 也不进（库已经处理过了，或者库已经明确拒绝）；
+   *    · 指针离最近那条线的**中点** ≤ `EDGE_SNAP_RADIUS` 屏幕 px ⇒ 走**同一条** `splitEdgeAt`。
+   * ⚠️ 拖到空白：附近一条边都没有 ⇒ 什么都不做（不是「插一个悬空交点」）。
+   * ⚠️ 落点比**起点句柄**还近 ⇒ 那是「拖出去一点点又放回来」⇒ 什么都不做（否则会插出自环/重叠线）。
+   */
+  const onConnectEnd = useCallback((event: MouseEvent | TouchEvent) => {
+    if (handledRef.current) return;
+    const origin = dragOriginRef.current;
+    if (!origin) return;
+    if (!('clientX' in event)) return;
+    const clientX = event.clientX;
+    const clientY = event.clientY;
+    // ⚠️ 落点下有句柄 ⇒ 库的判断已经生效（有效连接会走 onConnect、无效连接就是库明确拒绝）
+    //    ⇒ 兜底让位。这条同时挡住「从 source 柄拖出去几像素又放回来」那种误插。
+    const hit = document.elementFromPoint(clientX, clientY);
+    if (hit instanceof Element && hit.closest('.react-flow__handle')) return;
+    const originNode = nodes.find((node) => node.id === origin.nodeId);
+    if (!originNode) return;
+    // 起点句柄的**屏幕**坐标：落点比它还近 ⇒ 这次拖拽等于没动，别当成「连到线上」。
+    // ⚠️ 用库自己的 `flowToScreenPosition`（含容器 rect 与页面滚动），不自己乘 `viewport`：
+    //    那条换算只对「浮层住在 `.flowStage` 里」成立，而这里是**页面**坐标（`clientX/clientY`）。
+    const originScreen = flowToScreenPosition(handleFlowPoint(originNode, origin.handleId, Position.Bottom));
+    if (Math.hypot(clientX - originScreen.x, clientY - originScreen.y) <= EDGE_SNAP_RADIUS) return;
+    /** 离指针最近、且在 `EDGE_SNAP_RADIUS` 之内的那条边（比的是**各边中点**在屏幕上的位置）。 */
+    let nearest: { id: string; distance: number } | null = null;
+    for (const edge of edges) {
+      const anchors = edgeFlowAnchors(edge.id);
+      if (!anchors) continue;
+      // ⚠️ 只找**学生拉的那一端之外**的线：把边连回它自己那一端会插出一个自环。
+      if (edge.source === origin.nodeId || edge.target === origin.nodeId) continue;
+      const mid = flowToScreenPosition({ x: anchors.midX, y: anchors.midY });
+      const distance = Math.hypot(clientX - mid.x, clientY - mid.y);
+      if (distance > EDGE_SNAP_RADIUS) continue;
+      if (!nearest || distance < nearest.distance) nearest = { id: edge.id, distance };
+    }
+    if (!nearest) return;
+
+    /* ⚠️ 方向：句柄**类型**说了算 —— 从 source 柄拉 ⇒ 学生那一端是**源**（X → 交点）；
+       从 target 柄拉 ⇒ 反过来（交点 → X）。这与 `onConnect` 里 `draggedFromEdge` 那一支
+       是同一个语义，只是这里不可能「从边那侧拉」（那一路库一定已经形成有效连接）。 */
+    splitEdgeAt(nearest.id, origin.nodeId, origin.handleId, origin.handleType === 'target');
+  }, [nodes, edges, edgeFlowAnchors, splitEdgeAt, flowToScreenPosition]);
 
   /**
    * ★ 2026-10-06（教师认可的第 1 步整理）：**一个选中模型** —— 单选，`null` = 什么都没选。
@@ -864,6 +1012,22 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           onNodesChange={disabled ? undefined : onNodesChange}
           onEdgesChange={disabled ? undefined : onEdgesChange}
           onConnect={disabled ? undefined : onConnect}
+          /*
+            ★ 2026-10-06（教师：「拖到线附近松手要能连上」）——**落点吸附**的两个钩子。
+            🔴 为什么不用库的 `connectionRadius`：那颗中点句柄住在自定义边里、**不在 `nodeLookup`**
+               ⇒ 库的几何吸附看不见它，库的判定只剩 `elementFromPoint`（实测偏 5px 就已失效）。
+               ⚠️ 「把句柄自己撑大」那条路试过，会把线上 Y/N 标签的下半截吃掉 ⇒ 已放弃。
+            ① `onConnectStart` 只做一件事：记下这一拖的**起点句柄**（给兜底算方向、算距离用）；
+               顺手把 `handledRef` 清掉 —— 上一次拖拽的记号不能漏到这一次。
+            ② `onConnectEnd` 是兜底：库没形成有效连接、而松手点离某条线的中点 ≤ `EDGE_SNAP_RADIUS`
+               ⇒ 走**同一条** `splitEdgeAt`（判据与「什么都不做」的几种情形都写在那段注释里）。
+          */
+          onConnectStart={disabled ? undefined : (_, params) => {
+            // 上一次拖拽的记号不许漏到这一次；起点句柄则要记下来（兜底靠它算方向与距离）。
+            handledRef.current = false;
+            dragOriginRef.current = { nodeId: params.nodeId ?? '', handleId: params.handleId ?? null, handleType: params.handleType ?? 'source' };
+          }}
+          onConnectEnd={disabled ? undefined : onConnectEnd}
           // ★ 2026-10-06（教师）：点图形就选中它；点线就选中那条线。
           //   ⚠️ 「选中」只有一个槽位 ⇒「点框清线、点线清框」是**结构性成立**的（不必两边互相清）。
           onNodeClick={(_, node) => { setSelected({ kind: 'node', id: node.id }); setLabelingEdge(null); }}

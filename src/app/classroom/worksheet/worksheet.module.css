@@ -2594,8 +2594,12 @@
   ⚠️ 选择器前面挂上 `.thirdPartyCanvas` 是**故意的**：库的 `.react-flow__handle` 也定了
      width/height/border/background，同为单类时就看两份样式表谁排在后面 —— 这里多一层保证我们赢
      （与上面那两条 `:global(.react-flow__edge-text*)` 同一个理由）。
-  ⚠️ 它与线上的文字标签**同一个点**（都是 `getSmoothStepPath` 回的标签点），但它那一层排在边之上
+  ⚠️ 它与线上的文字标签**挨得很近**（句柄沿「中点 → 目标端」挪了 `HANDLE_GAP`），但它那一层排在边之上
      ⇒ 画在标签上面、也先拿到指针事件（标签压不住它、点得到）。
+  🔴 这里的 width/height 保持 10px **是有意的**，别把它当命中区撑大：实测（无头 Chrome 154 + CDP）
+     撑到 36 / 40px 之后，`elementFromPoint(线上 Y/N 标签中心)` 会返回这颗句柄 ⇒
+     「双击线上的字改文字」当场坏掉（那个盒子把标签白底框的下半截吃掉了）。
+     落点不准由 `onConnectEnd` 那条几何兜底负责（见组件里的 `EDGE_SNAP_RADIUS`）。
 */
 .thirdPartyCanvas .flowEdgeHandle {
   width: 10px;

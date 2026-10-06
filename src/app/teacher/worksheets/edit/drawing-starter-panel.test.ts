@@ -25,13 +25,13 @@ test('★ 底稿面板：用学生的画板、写回带 tool 的 drawingStarter�
   // ② 写回 `drawingStarter`（带 tool！学生端按 `starter.tool === 'flowchart'` 判断要不要合并）。
   assert.match(source, /drawingStarter: \{ tool: 'flowchart', data: next \}/, '写回的形状不对（缺 tool 学生端会直接忽略）');
   // ③ 开关（教师 2026-10-06：「底稿要设一个开关」）：勾上落一份空底稿让画板立刻出现，取消清掉。
-  assert.match(source, /type="checkbox"[\s\S]{0,160}?checked=\{!!starter\}/, '没有「要不要设底稿」的开关');
+  assert.match(source, /type="checkbox"[\s\S]{0,200}?role="switch"[\s\S]{0,120}?checked=\{!!starter\}/, '没有「要不要设底稿」的开关');
   assert.match(source, /drawingStarter: undefined/, '取消开关没有清掉底稿');
   assert.match(source, /window\.confirm/, '已经有底稿时取消没有确认 —— 一次误点就丢一张图');
   // ④ 画板要有明确高度：它靠量出容器尺寸才初始化（这条路径我们修过两次：scale(0) / overflowHidden）。
   assert.match(source, /height: 380/, '底稿画板没有给固定高度 —— 量不出尺寸它不会初始化');
   // ⑤ 还没接好的档位要说清楚，而不是给一个画不了东西的空框。
-  assert.match(source, /底稿目前只支持/, '非流程图档没有说明');
+  assert.match(source, /初始图目前只支持/, '非流程图档没有说明');
 });
 
 test('★ 2026-10-06（教师）：照片上传时整块隐藏；两个区域改成紧凑样式', () => {

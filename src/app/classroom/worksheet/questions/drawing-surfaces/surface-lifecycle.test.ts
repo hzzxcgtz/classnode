@@ -360,5 +360,9 @@ test('★ 2026-10-06（教师）：底稿（A 不算学生作答 / B 不能改�
   // ③ 快照仍按**全部**画（教师预览/AI/报告要看到完整那张图）。
   assert.match(live, /lastFlow\.current = payload;/, '快照用的不是完整那份（教师/AI 会看到缺了底稿的图）');
   // ④ B：底稿的节点是锁的，而且**不会**被 `disabled` 反向解锁。
-  assert.match(live, /locked: disabled \|\| node\.data\.locked === true/, '底稿的锁定会被编辑状态解开（B）');
+  // ⊘ 2026-10-06 第三版：底稿**不再锁**（教师澄清 2「学生可以修改底稿」），
+  //   改成「可恢复」⇒ 学生端必须有一颗「恢复初始图」按钮（那是唯一的回退路径）。
+  assert.match(live, /restoreFlowchart\(starterPayload\)/, '没有「恢复初始图」的实现');
+  assert.match(live, /\{starter && \(/, '「恢复初始图」没有按「这一题有没有初始图」显示');
+  assert.ok(!/draggable: false/.test(stripComments(fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', '..', 'lib', 'worksheet-drawing-starter.ts'), 'utf8'))), '底稿又被锁住了（学生应当可以修改）');
 });

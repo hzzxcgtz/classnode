@@ -31,6 +31,7 @@ import { flowchartSvg } from '@/lib/worksheet-flowchart-svg.ts';
 import { svgToPngBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 import {
   mergeFlowchart,
+  restoreFlowchart,
   readFlowchartPayload,
   subtractFlowchart,
   type DrawingStarter,
@@ -167,6 +168,19 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     [edges],
   );
 
+  /**
+   * 「恢复初始图」（教师澄清 2：「学生可以修改底稿，但是可以提供一个『恢复底稿』的按钮」）。
+   *
+   * 🔴 这是**唯一**的回退路径：流程图这一档的工具条只有「加节点」与「线上标注」，
+   *    没有撤销、也没有清空 —— 学生把教师给的图改乱了，只能靠这颗按钮回去。
+   * ⚠️ 只在**这一题有初始图**时才出现（没有初始图就没什么可恢复的，多一颗按钮只是噪音）。
+   */
+  const restoreStarter = () => {
+    const base = restoreFlowchart(starterPayload);
+    setNodes(base.nodes as unknown as FlowNode[]);
+    setEdges(base.edges as unknown as Edge[]);
+  };
+
   const addNode = (kind: FlowKind, label: string) => {
     const offset = nodes.length * 26;
     setNodes((current) => [...current, {
@@ -210,7 +224,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   })();
   const visibleNodes = useMemo(() => nodes.map((node) => ({
     ...node,
-    // ★ B：底稿的节点**永远**是锁的（`disabled || 底稿`）—— 学生编辑时不能把它解锁。
+    // ⊘ 2026-10-06 第三版：底稿**不再锁**（学生可以改），所以这里只看「只读展示」这一条。
     data: { ...node.data, locked: disabled || node.data.locked === true },
   })), [disabled, nodes]);
 
@@ -221,6 +235,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('process', '处理过程')}>过程</button>
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('decision', '判断条件')}>判断</button>
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('io', '输入/输出')}>输入/输出</button>
+        {starter && (
+          <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={restoreStarter}>恢复初始图</button>
+        )}
         <span className={styles.drawingToolbarHint}>{editingEdge ? '这条线标注：' : '从圆形连接点拖向另一节点即可连线'}</span>
         {editingEdge && (
           <>

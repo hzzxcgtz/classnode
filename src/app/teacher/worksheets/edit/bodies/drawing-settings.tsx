@@ -68,7 +68,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
     return (
       <div className="worksheet-editor-drawing-settings">
         <p className="worksheet-editor-drawing-note">
-          这一题学生用<b>照片上传</b>作答，不会打开画板 ⇒ 作图工具、画布底图、底稿都已隐藏。
+          这一题学生用<b>照片上传</b>作答，不会打开画板 ⇒ 作图工具、画布底图、初始图都已隐藏。
           想让学生在画板上画，把上面的作答方式改回<b>画板绘制</b>。
         </p>
       </div>
@@ -184,22 +184,25 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
       <section className="worksheet-editor-drawing-section" aria-labelledby={`drawing-starter-${node.id}`}>
         <div className="worksheet-editor-drawing-heading">
           <div>
-            <h5 id={`drawing-starter-${node.id}`}>底稿</h5>
+            <h5 id={`drawing-starter-${node.id}`}>初始图</h5>
           </div>
           <label className="worksheet-editor-drawing-switch">
+            {/* ★ 教师澄清 3：「要使用开关按钮，不要使用复选框」⇒ `role="switch"` + 自己画轨道
+                （外观见 globals.css 的 `.worksheet-editor-drawing-switch input[role='switch']`）。 */}
             <input
               type="checkbox"
+              role="switch"
               checked={!!starter}
               onChange={(event) => {
                 if (!event.target.checked) {
-                  if (starter && !window.confirm('取消底稿会清掉已经画好的内容，确定吗？')) return;
+                  if (starter && !window.confirm('清掉初始图会丢掉已经画好的内容，确定吗？')) return;
                   onDataChange({ drawingStarter: undefined });
                   return;
                 }
                 onDataChange({ drawingStarter: { tool: 'flowchart', data: { nodes: [], edges: [] } } });
               }}
             />
-            <span>让学生在这张底稿上继续画</span>
+            <span>让学生从这张初始图开始画</span>
           </label>
         </div>
         {starter ? (
@@ -208,7 +211,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
               <p className="worksheet-editor-drawing-note">
                 {/* ★ 2026-10-06：原来这里还有前半句「学生在下面这张图上继续画」——
                     与上面那个开关标签（「让学生在这张底稿上继续画」）同义 ⇒ 只留后半句。 */}
-                <b>底稿不能改也不能删</b>，而且<b>不计入他的作答</b>。
+                学生打开时看到的就是这张图，可以随意接着改；想回到你这张原样，学生端有「恢复初始图」。它本身<b>不计入学生的作答</b>。
               </p>
               <div style={{ height: 380, border: '1px solid #e4ecf4', borderRadius: 10, overflow: 'hidden' }}>
                 <FlowchartDrawing
@@ -221,11 +224,11 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
             </>
           ) : (
             <p className="worksheet-editor-drawing-note">
-              底稿目前只支持<b>流程图</b>；把上面的作图工具改成流程图就能在这里画。
+              初始图目前只支持<b>流程图</b>；把上面的作图工具改成流程图就能在这里画。
             </p>
           )
         ) : (
-          <p className="worksheet-editor-drawing-note">不设底稿时，学生在空画板上从零开始画。</p>
+          <p className="worksheet-editor-drawing-note">不设初始图时，学生在空画板上从零开始画。</p>
         )}
       </section>
     </div>

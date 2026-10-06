@@ -60,32 +60,21 @@ export function mergeFlowchart(starter: FlowchartPayload, mine: FlowchartPayload
   const starterNodeIds = new Set(starter.nodes.map((node) => node.id));
   const starterEdgeIds = new Set(starter.edges.map((edge) => edge.id));
   return {
-    nodes: [
-      // ⚠️ 四处一起锁：不能拖（draggable）、不能删（deletable）、文字只读（locked）、
-      //    也不让它成为被选中后能被 Delete 干掉的目标（React Flow 逐元素的判定）。
-      ...starter.nodes.map((node) => ({
-        ...node,
-        draggable: false,
-        deletable: false,
-        data: { ...(node.data as object ?? {}), locked: true },
-      })),
-      ...mine.nodes.filter((node) => !starterNodeIds.has(node.id)),
-    ],
-    edges: [
-      ...starter.edges.map((edge) => ({ ...edge, deletable: false })),
-      ...mine.edges.filter((edge) => !starterEdgeIds.has(edge.id)),
-    ],
+    // ⊘ 2026-10-06 第三版（教师澄清 2）：「学生可以修改底稿」—— 原来这里会锁住
+    //   底稿的节点与边（不能拖/不能删/文字只读），**已撤销**。学生拿到的是可以随便改的图，
+    //   想回到教师给的样子就按工具条上的「恢复初始图」（`restoreFlowchart`）。
+    // ⚠️ 于是 B 那条决定的实现从「锁」换成了「可恢复」——**恢复是唯一回退路径**
+    //   （流程图那一档没有撤销/清空），所以那个按钮不是可选装饰。
+    nodes: [...starter.nodes, ...mine.nodes.filter((node) => !starterNodeIds.has(node.id))],
+    edges: [...starter.edges, ...mine.edges.filter((edge) => !starterEdgeIds.has(edge.id))],
   };
 }
 
-/**
- * 学生要交上去的那份 = **画板上的全部 − 底稿**（A：底稿不算他的作答）。
- *
- * 🔴 只按 **id** 剔除，不做几何比较：图形的 id 是建的时候生成、跟着数据一起存下来的，
- *    所以「删掉教师的节点再加一个位置相同的」也不会被误判成同一个。
- * ⚠️ 学生若把某条**边的标注**改了（B 允许改标注、只是不能删底稿），这里仍会把那条边
- *    剔掉 ⇒ 他的改动不丢，而是体现在**位图快照**上（教师预览 / AI / 报告都用快照）。
- */
+/** 「恢复初始图」：把画板内容重置回教师给的那份（不看学生改过什么）。 */
+export function restoreFlowchart(starter: FlowchartPayload): FlowchartPayload {
+  return { nodes: [...starter.nodes], edges: [...starter.edges] };
+}
+
 export function subtractFlowchart(all: FlowchartPayload, starter: FlowchartPayload): FlowchartPayload {
   const starterNodeIds = new Set(starter.nodes.map((node) => node.id));
   const starterEdgeIds = new Set(starter.edges.map((edge) => edge.id));

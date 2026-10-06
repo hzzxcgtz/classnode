@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 
 import {
   mergeFlowchart,
+  restoreFlowchart,
   readDrawingStarter,
   readFlowchartPayload,
   subtractFlowchart,
@@ -25,20 +26,31 @@ test('阳性对照：读得出底稿，也认得出「没有底稿」（否则�
   assert.equal(readDrawingStarter({ type: 'single-choice', data: { drawingStarter: starter } }), null);
 });
 
-test('B：合并之后底稿的节点/边被锁住，学生自己的不锁', () => {
+test('★ 学生可以改底稿（教师澄清 2 反转了原来的 B）：合并之后**不锁**任何东西', () => {
   const starter = readFlowchartPayload({ nodes: [node('t1'), node('t2')], edges: [edge('e1', 't1', 't2')] });
   const mine = readFlowchartPayload({ nodes: [node('s1')], edges: [] });
   const merged = mergeFlowchart(starter, mine);
-  assert.deepEqual(merged.nodes.map((item) => item.id), ['t1', 't2', 's1'], '合并顺序/集合不对');
-  for (const id of ['t1', 't2']) {
-    const item = merged.nodes.find((entry) => entry.id === id)!;
-    assert.equal(item.draggable, false, `${id} 还能拖动（B：学生不能改底稿）`);
-    assert.equal((item.data as Record<string, unknown>).locked, true, `${id} 的文字还能改`);
-    assert.equal(item.deletable, false, `${id} 还能删（B：学生不能删底稿）`);
+  assert.deepEqual(merged.nodes.map((item) => item.id), ['t1', 't2', 's1']);
+  for (const item of merged.nodes) {
+    assert.equal(item.draggable, undefined, `${item.id} 还被锁着不能拖（学生应当可以修改底稿）`);
+    assert.equal(item.deletable, undefined, `${item.id} 还被锁着不能删`);
+    assert.equal((item.data as Record<string, unknown>)?.locked, undefined, `${item.id} 的文字还是只读`);
   }
-  const mineNode = merged.nodes.find((entry) => entry.id === 's1')!;
-  assert.equal(mineNode.draggable, undefined, '学生自己的节点反而不许拖了');
-  assert.equal(merged.edges.find((entry) => entry.id === 'e1')!.deletable, false, '底稿的边还能删（B）');
+  assert.equal(merged.edges[0].deletable, undefined, '底稿的边还被锁着不能删');
+});
+
+test('「恢复初始图」：把画板内容退回教师给的那份（不管学生改了什么）', () => {
+  const starter = readFlowchartPayload({ nodes: [node('t1'), node('t2')], edges: [edge('e1', 't1', 't2')] });
+  const restored = restoreFlowchart(starter);
+  assert.deepEqual(restored.nodes.map((item) => item.id), ['t1', 't2']);
+  assert.deepEqual(restored.edges.map((item) => item.id), ['e1']);
+  // 与合并结果同源，但**不带**学生后来加的东西。
+  const merged = mergeFlowchart(starter, readFlowchartPayload({ nodes: [node('s9')], edges: [] }));
+  assert.equal(merged.nodes.length, 3);
+  assert.equal(restoreFlowchart(starter).nodes.length, 2);
+  // 反面对照：恢复出来的是**副本**，改它不该动到底稿本身。
+  restored.nodes.push(node('x'));
+  assert.equal(starter.nodes.length, 2, '恢复时返回了同一份引用，改它会污染底稿');
 });
 
 test('A：交上去的那份只留学生自己画的（按 id 剔除底稿）', () => {

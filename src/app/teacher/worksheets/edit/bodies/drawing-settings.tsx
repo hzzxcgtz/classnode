@@ -2,6 +2,8 @@
 
 import { useRef, useState } from 'react';
 
+// ⚠️ 学生端那块画板是**默认导出**（我们直接复用它，而不是再写一份）。
+import FlowchartDrawing from '@/app/classroom/worksheet/questions/drawing-surfaces/flowchart-drawing';
 import { api } from '@/lib/api';
 import {
   DRAWING_BACKGROUND_PRESETS,
@@ -10,6 +12,7 @@ import {
   readDrawingTool,
   type DrawingMode,
 } from '@/lib/worksheet-drawing';
+import { readDrawingStarter } from '@/lib/worksheet-drawing-starter';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import type { WorksheetQuestionNode } from '@/lib/types';
 
@@ -20,6 +23,14 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
 }) {
   const tool = readDrawingTool(node);
   const background = readDrawingBackground(node);
+  const starter = readDrawingStarter(node);
+  /**
+   * 底稿画板用的底图，与学生在同一道题上看到的**一致**：
+   * 预设档是站内公开资源（原样用），自定义上传要走 `worksheetAssetUrl`（它会补上 API 前缀）。
+   */
+  const starterBackgroundUrl = background.url
+    ? (background.preset === 'custom' ? worksheetAssetUrl(background.url) : background.url)
+    : null;
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -118,6 +129,43 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
           }}
         />
       </section>
+
+      {/*
+        ★ 2026-10-06（教师）：「学生可以完全从空白开始画，也可以在教师准备好的基础上继续画」。
+        教师用**与学生同一块画板**摆一张不完整的流程图 ⇒ 学生打开时接着画。
+
+        三条决定（逐字见 `@/lib/worksheet-drawing-starter` 的注释）：
+          · 试点只有流程图这一档（其它两档的学生端还没接，给出来就是骗人 ⇒ 这里 `tool === 'flowchart'` 才显示）；
+          · **A 底稿不算学生的作答** ⇒ 学生交上去的只有他自己画的；
+          · **B 学生不能改/删底稿** ⇒ 学生端把它锁住（不能拖、不能删、文字只读）。
+        ⚠️ 画板必须有一个**量得出高度**的容器（它靠容器尺寸初始化；`scale(0)` 与 `overflowHidden`
+          那两个坑就是这么来的）⇒ 外面那层给死高度。
+      */}
+      {tool === 'flowchart' && (
+        <section className="worksheet-editor-drawing-section" aria-labelledby={`drawing-starter-${node.id}`}>
+          <div className="worksheet-editor-drawing-heading">
+            <div>
+              <h5 id={`drawing-starter-${node.id}`}>底稿（可选）</h5>
+              <p>在这里画一张不完整的流程图，学生打开后接着画。学生<b>不能修改或删除</b>底稿，底稿也<b>不计入他的作答</b>。</p>
+            </div>
+            {starter ? (
+              <button
+                type="button"
+                onClick={() => onDataChange({ drawingStarter: undefined })}
+                style={{ minHeight: 36, padding: '0 12px', borderRadius: 9, border: '1px solid #dde6f0', background: '#fff', fontWeight: 650, cursor: 'pointer' }}
+              >清空底稿</button>
+            ) : null}
+          </div>
+          <div style={{ height: 380, border: '1px solid #e4ecf4', borderRadius: 10, overflow: 'hidden' }}>
+            <FlowchartDrawing
+              data={starter?.tool === 'flowchart' ? starter.data : undefined}
+              backgroundUrl={starterBackgroundUrl}
+              disabled={false}
+              onChange={(next: unknown) => onDataChange({ drawingStarter: { tool: 'flowchart', data: next } })}
+            />
+          </div>
+        </section>
+      )}
     </div>
   );
 }

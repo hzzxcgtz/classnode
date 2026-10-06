@@ -591,6 +591,10 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   const lastSnapshotRef = useRef<FlowSnapshot<FlowNode, Edge>>({ nodes: initial.current.nodes, edges: initial.current.edges });
   const lastSigRef = useRef<string | null>(null);
   const draggingRef = useRef(false);
+  /** ★ 2026-10-06（审查发现 I2）：这棵画板的根元素 —— 用来判定「这个快捷键该不该由我响应」。 */
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  /** 最后一次 pointerdown 落在这台画板里吗（见下面那条捕获相监听）。 */
+  const lastTouchedRef = useRef(false);
   const [, setHistoryVersion] = useState(0);
   const initialized = useRef(false);
   /**
@@ -665,7 +669,19 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *    这样松手后这一次 effect 比的就是「拖动前 vs 拖动后」，**恰好压一步**。
    */
   useEffect(() => {
-    if (draggingRef.current) return; // 先查它，顺便省掉拖动中每一次指纹计算
+    /*
+      🔴 两条「正在拖动」都要挡：
+        · `draggingRef` —— 我们自己那颗**路径调整圆点**（它走 window 的 pointermove，不归 React Flow
+          管，见 `moveSelectedEdgeRoute`）。它的 `stop()` 在 pointerup 与 pointercancel 上**都**挂着，不会漏。
+        · `nodes.some(n => n.dragging)` —— React Flow 的**节点拖动**。
+          ⚠️ 这里**故意不**用回调置的标记：库有**两条路径结束拖动时不调 `onNodeDragStop`**
+          （多点触控的第二根手指、拖动中被删掉的那个节点）⇒ 靠回调置的标记会**永久卡在 true**，
+          此后这条 effect 每次 `return`、`lastSigRef` 也不再更新，**整个会话记不下任何新步骤**
+          （撤销键变灰后再也不亮）。读节点上这个字段则**自愈** —— 库在
+          `updateNodePositions(dragItems, false)` 里会把它置回 false，**abort 路径也走那一句**。
+          （★ 审查发现 I1。）
+    */
+    if (draggingRef.current || nodes.some((node) => node.dragging)) return;
     const sig = flowchartSignature(nodes, edges);
     if (lastSigRef.current === null) { lastSigRef.current = sig; return; } // 首帧：只立基线
     if (lastSigRef.current === sig) return;                                 // 没有实质变化
@@ -775,6 +791,27 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   }, [nodes, edges, setNodes, setEdges]);
 
   /**
+   * ★ 2026-10-06（**审查发现 I2**）：记下「最后一次 pointerdown 落在哪台画板里」。
+   *
+   * 🔴 `worksheet-panel.tsx` 会把同一个可见分组里的题**全部**渲染出来 —— 一份学习单里若有两道
+   *    流程图题，两个实例各自挂一个 window 监听 ⇒ 按一次 `Cmd+Z` **两道题各退一步**，
+   *    并各自重新上报一份作答（`onChange` + 位图快照）。学生眼前那道看起来「没反应」，
+   *    另一道（可能已经画好、也可能不在视口里）被静默改了一步 —— 这类「改到别处」最难被发现。
+   * ✅ 用**捕获相**监听：不管事件在子树哪一层被 `stopPropagation` 掉，这里都先收到。
+   */
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const root = rootRef.current;
+      // ⚠️ 本文件里 `Node` 这个名字被 React Flow 的类型占了（`type FlowNode = Node<FlowData>`）⇒
+      //    DOM 那个 Node 必须显式写成 `globalThis.Node`，否则 `as Node` 会被解析成那个泛型类型
+      //    （`tsc` 当场报 TS2345）。用 `instanceof` 而不是断言，顺带也不用管 `null`。
+      lastTouchedRef.current = !!(root && event.target instanceof globalThis.Node && root.contains(event.target));
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+  }, []);
+
+  /**
    * ★ 2026-10-06：`Cmd/Ctrl+Z` 撤销、加 `Shift` 重做。
    *
    * 🔴 **焦点在输入框里时一律不管** —— 框内文字（节点里那个 input）与线上标注（就地输入框）里，
@@ -786,6 +823,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   useEffect(() => {
     if (disabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!lastTouchedRef.current) return; // ★ I2：最后被碰的不是我 ⇒ 这个快捷键不归我管
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
@@ -887,10 +925,22 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     }]);
   };
 
+  /**
+   * ★ 2026-10-06（**审查发现 C2**）：拖这颗圆点**也必须走同一个 `draggingRef`**。
+   *
+   * 🔴 它的 `move` 监听的是 **window 的 pointermove**（这是画布上的一层自定义浮层，
+   *    不是 React Flow 的节点拖动）⇒ 上面那条变化检测 effect 的 `draggingRef` 守卫
+   *    **原本看不见它**：每个 pointermove 都满足「守卫为假 + 指纹变了（`routeX/routeY` 在指纹里）」
+   *    ⇒ **压一步**。一次 1 秒的拖动 60–120 个事件 ⇒ 冲过 `HISTORY_LIMIT=50`，
+   *    `pushHistory` 就把**最老的那一头丢掉** —— 学生此前所有可撤销的步骤**不可恢复地消失**。
+   * ✅ 首尾各置/清一次位之后，松手那一次 effect 比的正好是「拖动前 vs 拖动后」⇒ **恰好一步**，
+   *    与节点拖动同一套机制。
+   */
   const moveSelectedEdgeRoute = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (!selectedEdgeId || disabled) return;
     event.preventDefault();
     event.stopPropagation();
+    draggingRef.current = true;
     const edgeId = selectedEdgeId;
     const move = (pointer: PointerEvent) => {
       const point = screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY });
@@ -899,6 +949,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
         : edge));
     };
     const stop = () => {
+      draggingRef.current = false;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', stop);
       window.removeEventListener('pointercancel', stop);
@@ -1318,7 +1369,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   })), [disabled, nodes]);
 
   return (
-    <div className={styles.thirdPartySurface}>
+    <div className={styles.thirdPartySurface} ref={rootRef}>
       <div className={styles.drawingSurfaceToolbar} role="toolbar" aria-label="流程图工具">
         {/*
           ★ 2026-10-06（教师拍板，截图圈了这四颗按钮 + 「这些文字都没有改」）：按钮上的文字用
@@ -1409,9 +1460,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
             setSnapCandidateId(null);
           }}
           onConnectEnd={disabled ? undefined : onConnectEnd}
-          // ★ 2026-10-06：一次拖动 = 一步撤销（详见上面那条变化检测 effect）。
-          onNodeDragStart={disabled ? undefined : () => { draggingRef.current = true; }}
-          onNodeDragStop={disabled ? undefined : () => { draggingRef.current = false; }}
+          // ⚠️ 这里**故意没有** `onNodeDragStart/Stop`：节点拖动的「正在拖」信号读的是节点自己的
+          //    `dragging` 字段（详见上面那条变化检测 effect）—— 用回调置标记会在两条 abort 路径上
+          //    漏掉，标记一旦卡死，整个会话都记不下新步骤（★ 审查发现 I1）。
           // ★ 2026-10-06（教师）：点图形就选中它；点线就选中那条线。
           //   ⚠️ 「选中」只有一个槽位 ⇒「点框清线、点线清框」是**结构性成立**的（不必两边互相清）。
           onNodeClick={(_, node) => { setSelected({ kind: 'node', id: node.id }); setLabelingEdge(null); }}

@@ -26,7 +26,7 @@ function blockBetween(source: string, startMarker: string, endMarker: string): s
  * ⚠️ 起点取 effect 的**第一个语句**（拖动守卫），**不能**取 `const sig = …` 那一行 ——
  * 它在守卫**之后**，那样切出来的片段看不见 `draggingRef`，判据必红（施工时实测踩到过一次）。
  */
-const detectSource = (s: string) => blockBetween(s, 'if (draggingRef.current) return;', '}, [nodes, edges])');
+const detectSource = (s: string) => blockBetween(s, 'if (draggingRef.current', '}, [nodes, edges])');
 
 test('拖动中不压栈 —— 一次拖动必须只记一步', () => {
   const block = detectSource(SOURCE);
@@ -34,9 +34,24 @@ test('拖动中不压栈 —— 一次拖动必须只记一步', () => {
   assert.ok(/draggingRef\.current/.test(block), '拖动中要提前 return，否则每个 mousemove 都会压一步');
 });
 
-test('拖动合并的两个钩子挂在 ReactFlow 上', () => {
-  assert.match(SOURCE, /onNodeDragStart=/, '缺 onNodeDragStart');
-  assert.match(SOURCE, /onNodeDragStop=/, '缺 onNodeDragStop');
+/*
+  ★ 2026-10-06（**审查发现 I1 + I3a**）：这条判据原来只断言**两个 prop 名字出现在整个文件里**。
+  审查实测：写成 `onNodeDragStop={disabled ? undefined : () => {}}`（**只留名字、不清标记**）
+  它照样全绿 —— 而那正是「拖一次之后撤销永久失灵」的形态。
+
+  🔴 根因：React Flow 有**两条路径结束拖动时不调用 `onNodeDragStop`** —— 多点触控的第二根手指、
+  以及拖动中被删掉的那个节点（d3 的 end 处理器开头就是 `if (!dragStarted || abortDrag) return`）。
+  靠回调置的标记会**永久卡在 true**，此后那条 effect 每次 `return`、`lastSigRef` 也不再更新 ⇒
+  **整个会话不再记录任何新步骤**，撤销键变灰后再也不会亮起来。学生端就是 iPad，一只手拿机器、
+  另一只手拖框时第二根手指落下是现实场景。
+  ✅ 所以信号要**自愈**：改读节点上的 `dragging` 标记 —— 库在 `updateNodePositions(dragItems, false)`
+  里会把它置回 false，**abort 路径也走这一句**。
+*/
+test('「正在拖节点」的信号要能自愈 —— 读 nodes 上的 dragging，不靠只置位不清位的回调', () => {
+  const block = detectSource(SOURCE);
+  assert.ok(block.length > 100, `切片太短（${block.length}），判据可能在空串上假绿`);
+  assert.match(block, /nodes\.some\(/, '要读 nodes 上的 dragging（abort 路径下库会把它置回 false）');
+  assert.match(block, /dragging/, '要认 dragging 这个字段');
 });
 
 /*
@@ -45,24 +60,49 @@ test('拖动合并的两个钩子挂在 ReactFlow 上', () => {
   `.superpowers/sdd/…-plan/progress.md` 的 pre-flight 裁定：它引用 `const undo = `，
   而 `undo` 要到 Task 3 才存在，留在 Task 2 会让那个任务结束时必红。
 */
-const undoSourced = (s: string) => blockBetween(s, 'const undo = ', 'setHistoryVersion');
+/*
+  ★ 2026-10-06（**审查发现 I3b**）：下面两条原来**只对 `undo` 跑** —— 切片是从 `const undo = `
+  到**第一个** `setHistoryVersion`，**根本到不了 `redo`**。审查实测：把 `redo` 里的同步三行整个删掉，
+  判据照样全绿。而 redo 的指纹不同步与 undo 是**同一个**危险（那条 effect 会把「重做」当成一次新操作）。
+  「与 undo 逐字对称」此前只是注释里的承诺，没有任何网 ⇒ 现在按**函数名**参数化、两个各跑一遍。
+*/
+const undoSource = (s: string) => blockBetween(s, 'const undo = ', 'setHistoryVersion');
+const redoSource = (s: string) => blockBetween(s, 'const redo = ', 'setHistoryVersion');
 
-test('撤销后必须同步指纹 —— 否则那条 effect 会把撤销当成新操作（死循环）', () => {
-  const block = undoSourced(SOURCE);
-  assert.ok(block.length > 100, `撤销函数的切片太短（${block.length}）`);
-  assert.match(block, /lastSigRef\.current\s*=/, '撤销后不同步 lastSigRef ⇒ 撤销一下、图又弹回去');
-});
+for (const [label, pick] of [['撤销', undoSource], ['重做', redoSource]] as const) {
+  test(`${label}后必须同步指纹 —— 否则那条 effect 会把它当成新操作（死循环）`, () => {
+    const block = pick(SOURCE);
+    assert.ok(block.length > 100, `${label}函数的切片太短（${block.length}）`);
+    assert.match(block, /lastSigRef\.current\s*=/, `${label}后不同步 lastSigRef ⇒ 图会自己弹回去`);
+  });
 
-test('撤销会清掉选中态 —— 被撤掉的那个框不该还「选中着」', () => {
-  const block = undoSourced(SOURCE);
-  assert.ok(block.length > 100, `撤销函数的切片太短（${block.length}）`);
-  assert.match(block, /setSelected\(null\)/, '撤销后选择态要清掉');
-  assert.match(block, /setLabelingEdge\(null\)/, '撤销后「正在改标注」也要清掉');
-});
+  test(`${label}会清掉选中态 —— 被撤掉的那个框不该还「选中着」`, () => {
+    const block = pick(SOURCE);
+    assert.ok(block.length > 100, `${label}函数的切片太短（${block.length}）`);
+    assert.match(block, /setSelected\(null\)/, `${label}后选择态要清掉`);
+    assert.match(block, /setLabelingEdge\(null\)/, `${label}后「正在改标注」也要清掉`);
+  });
+}
 
 test('两颗按钮的禁用态跟着 canUndo / canRedo', () => {
   assert.match(SOURCE, /disabled=\{disabled \|\| !canUndo\(historyRef\.current\)\}/, '撤销按钮的禁用态不对');
   assert.match(SOURCE, /disabled=\{disabled \|\| !canRedo\(historyRef\.current\)\}/, '重做按钮的禁用态不对');
+});
+
+/*
+  ★ 2026-10-06（审查发现 C2）：**拖「路径调整圆点」也必须只记一步**。
+  那颗圆点是画布上的一层自定义浮层，它自己的 `move` 监听的是 **window 的 pointermove** ——
+  不归 React Flow 的 `onNodeDragStart/Stop` 管。于是变化检测里那道 `draggingRef` 守卫**看不见它**，
+  每个 pointermove 都满足「守卫为假 + 指纹变了（routeX/routeY 在指纹里）」⇒ **压一步**。
+  一次 1 秒的拖动约 60–120 个事件 ⇒ 超过 `HISTORY_LIMIT=50`，`pushHistory` 会把**最老的那一头丢掉**，
+  学生此前所有可撤销的步骤**不可恢复地消失**。
+*/
+test('拖「路径调整圆点」也只记一步 —— 它走画布外的浮层，不是 React Flow 的节点拖动', () => {
+  const block = blockBetween(SOURCE, 'const moveSelectedEdgeRoute = ', '\n  };');
+  assert.ok(block.length > 200, `切片太短（${block.length}），判据可能在空串上假绿`);
+  assert.ok(block.length < 1500, `切片太长（${block.length}）—— 结束标记没找到、泄漏到文件末尾了`);
+  assert.match(block, /draggingRef\.current = true/, '拖动开始要置位，否则每个 pointermove 都压一步');
+  assert.match(block, /draggingRef\.current = false/, '拖动结束要清位，否则拖动标记卡死、撤销永久失灵');
 });
 
 test('快捷键在输入框里让位给浏览器原生撤销', () => {
@@ -71,4 +111,26 @@ test('快捷键在输入框里让位给浏览器原生撤销', () => {
   assert.match(block, /INPUT/, '要认 INPUT');
   assert.match(block, /TEXTAREA/, '要认 TEXTAREA');
   assert.match(block, /isContentEditable/, '要认 contentEditable');
+  // ★ 2026-10-06（审查发现 I3c）：**顺序**才是这条判据的实质 —— 只断言三个词「出现过」，
+  // 把 `preventDefault()` 挪到守卫**之前**照样全绿，而那等于把浏览器原生撤销也一并挡掉了。
+  const guard = block.indexOf('isContentEditable');
+  const prevent = block.indexOf('preventDefault');
+  assert.ok(guard > -1 && prevent > -1, '守卫或 preventDefault 不见了');
+  assert.ok(guard < prevent, '先 preventDefault 再判输入框 ⇒ 输入框里的原生撤销也被挡掉了（顺序反了）');
+});
+
+/*
+  ★ 2026-10-06（**审查发现 I2**）：快捷键必须**只作用于最后被碰过的那台画板**。
+  监听挂在 `window` 上，而 `worksheet-panel.tsx` 会把同一个可见分组里的题**全部**渲染出来 ——
+  一份学习单里若有两道流程图题，两个实例各挂一个 window 监听 ⇒ 按一次 `Cmd+Z`，
+  **两道题各退一步**，并各自重新上报一份作答（`onChange` + 位图快照）。
+  学生眼前的题看起来「没反应」，另一道（可能已经画好、也可能不在视口里）被静默改了一步 ——
+  这类「改到别处」的错最难被发现。
+  ✅ 判据收进本实例：`rootRef` 记根元素，window 上的 `pointerdown`（捕获相）记「最后被碰的是不是我」。
+*/
+test('快捷键的作用域收在这台画板里 —— 多道流程图题不会一起撤销', () => {
+  const block = blockBetween(SOURCE, 'const onKeyDown = (event: KeyboardEvent)', 'window.addEventListener');
+  assert.ok(block.length > 100, `快捷键处理器的切片太短（${block.length}）`);
+  assert.match(block, /lastTouchedRef\.current/, '要判定「这台画板是不是最后被碰过的那台」');
+  assert.match(SOURCE, /rootRef/, '要有根元素 ref 供「碰的是不是我」判定');
 });

@@ -2576,7 +2576,13 @@
   box-shadow: none;
 }
 .flowNode_decision[data-selected='1'] { box-shadow: none; }
-.flowNode_decision[data-selected='1'] .flowNodeShape polygon { stroke: #365f88; stroke-width: 3; }
+/*
+  ⚠️ 选中时**只换颜色、不加粗** —— 与 `.flowNode[data-selected='1']`（只换 border-color）同一套。
+  这里原来还写着 `stroke-width: 3`，于是菱形一被选中就比旁边粗一圈
+  （与教师 2026-10-06 报的「菱形的框太粗了」是同一个病根的两个面）。
+  `flowchart-node-stroke.test.ts` 钉着这条：那条规则里不许再出现 `stroke-width`。
+*/
+.flowNode_decision[data-selected='1'] .flowNodeShape polygon { stroke: #365f88; }
 /*
   ★ 2026-10-06（教师，A 方案）：**交点** —— 连到线上时插进那条线里的小圆点（`kind: 'junction'`）。
   ★ 2026-10-06（教师截图）：「**大大的圆点其实是不需要的**」⇒ 从 12×12 的**实心深色**点

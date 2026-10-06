@@ -73,6 +73,19 @@ const FLOW_ICONS: Record<FlowKind | 'restore' | 'trash', string> = {
 };
 export type FlowIconKey = keyof typeof FLOW_ICONS;
 type FlowNode = Node<FlowData>;
+
+/**
+ * ★ 2026-10-06（教师认可的第 1 步整理）：**画布上只有一份「选中」**，而且是单选。
+ *
+ * 原来三套浮层各有一份状态（选中连线 / 正在改文字的连线 / 选中的图形），于是「点框清线、
+ * 点线清框、点空白都清」这条语义要在三处手工维护。现在只有这一个槽位：
+ *   · 点框 ⇒ `{ kind: 'node', id }`（自然就清掉了线）；
+ *   · 点线 ⇒ `{ kind: 'edge', id }`（自然就清掉了框）；
+ *   · 点空白 ⇒ `null`。
+ * `kind` 只决定**浮层怎么算锚点、按钮叫什么名字**；删除路径不分叉
+ * （⚠️ 交点 `kind: 'junction'` 就是一颗普通的框，与普通框走同一条 `deleteElements`）。
+ */
+type FlowSelection = { kind: 'node' | 'edge'; id: string };
 // ⚠️ 不必自己声明「带 label 的边」类型：React Flow 自带的 `Edge` 就有 `label?: string | ReactNode`
 //    （注释留在这里，免得下一个人又去造一个没用的别名 —— 那会变成一条 unused 警告）。
 
@@ -146,13 +159,33 @@ const edgeHandleNodeId = (edgeId: string): Partial<ComponentProps<typeof Handle>
 const edgeLabelWidth = (label: string) => Math.max(22, Array.from(label).length * 8 + 14);
 
 /**
- * ★ 2026-10-06（教师）：「选中一个图形后，也要出现删除按钮，可以删除这个图形以及与它相连的线。」
+ * ★ 2026-10-06（教师认可的第 2 步整理）：浮层的几何**就这一条规则**，数值全部在这里命名。
  *
- * 按钮浮在**节点上边缘上方**多少（流坐标）。44px 的按钮以自己中心定位
- * （`.flowEdgeFloat` 的 `transform: translate(-50%, -50%)`）⇒ 28 让整颗按钮落在框**外面**、
- * 又只隔一指宽，一眼看得出「它属于这个框」。
+ * 规则一句话：**画布上的浮层一律是 44px 的命中区，从锚点沿「法线 / 目标句柄轴」往外偏移，
+ * 永不压住句柄，偏移距离吃段长上限（`clampOffset` ≤ 40%）。**
+ *
+ *   · `FLOAT_SIZE`      —— 命中区 44px（老 iPad 的手指下限）。
+ *   · `NODE_FLOAT_GAP`  —— 删除**图形**的按钮：中心在节点上边缘**上方**多少（流坐标）。
+ *   · `EDGE_FLOAT_BACK` —— 删除**连线**的按钮：沿**目标句柄轴**（smoothstep 末段方向）往 source 退多少（流坐标）。
+ *   · `HANDLE_GAP`      —— **中点浮层**（就地输入框 / 中点句柄）：沿「中点 → 目标端」挪多少（流坐标）。
+ *
+ * 🔴 `EDGE_FLOAT_BACK` 与 `HANDLE_GAP` **不是同一个数换了个名字**，谁也不许"统一"成对方：
+ *    · 26 的起点是**终点**（箭头落点）、方向是**目标句柄轴的外法线** ⇒ 目的是让按钮别盖住箭头、
+ *      最后那段线和目标侧的连接点；
+ *    · 14 的起点是**中点**（库回的标签点）、方向是「中点 → 目标端」的直线 ⇒ 目的是让开线上的
+ *      Y/N 标签，并把正落在中点的单击/双击还给那条线。
+ *    起点不同、方向不同、目的不同 —— 把 26 换成 14（或反过来）就是把几何改坏。
+ * ⚠️ `NODE_FLOAT_GAP` 由 `FLOAT_SIZE` 推出来（半个按钮 + 一指宽的缝）：按钮以自己中心定位
+ *    （`.flowEdgeFloat` 的 `transform: translate(-50%, -50%)`）⇒ 整颗按钮落在框**外面**
+ *    又贴着框，一眼看得出「它属于这个框」。数值仍是 28（几何没动）。
+ * ⚠️ `FLOAT_SIZE` 这个数在 `worksheet.module.css` 的 `.flowEdgeFloat` 里**还有一份**（CSS 读不到
+ *    TS 常量，而 `worksheet-tap-targets.test.ts` 量的正是样式表那一份）⇒ 两份必须一致，
+ *    `surface-lifecycle.test.ts` 会把它们对起来。
  */
-const NODE_FLOAT_GAP = 28;
+const FLOAT_SIZE = 44;
+const NODE_FLOAT_GAP = FLOAT_SIZE / 2 + 6;
+const EDGE_FLOAT_BACK = 26;
+const HANDLE_GAP = 14;
 
 /**
  * 拆线时，交点这一侧该接哪个句柄 —— 让两段**接回原来的方向**（竖直流程图走上/下，横向流程图走左/右）。
@@ -182,8 +215,8 @@ type FlowPoint = { x: number; y: number };
 /**
  * 偏移量的**上限**：不超过这一段长度的 **40%**。
  *
- * 🔴 为什么必须有：26 / 14 是给**常见边长**定的（节点 150×54、默认间距上百 px）。学生把两个框
- *    拖到几乎贴住时，这一段可能只剩 ~20px —— 26px 会越过中点、极短边上甚至越过 source 端
+ * 🔴 为什么必须有：`EDGE_FLOAT_BACK` / `HANDLE_GAP` 是给**常见边长**定的（节点 150×54、默认间距上百 px）。
+ *    学生把两个框拖到几乎贴住时，这一段可能只剩 ~20px —— 26px 会越过中点、极短边上甚至越过 source 端
  *    ⇒ 浮层（删除按钮 / 中点句柄 / 就地输入框）飞出线外，看着像「按钮丢了」。
  *    取 **40%（小于一半）** ⇒ 退完一定还在**靠终点这一侧**，不会越过中点。
  * ⚠️ 纯函数、且放**模块级**：`surface-lifecycle.test.ts` 会把它抠出来喂**短边**验算
@@ -202,7 +235,7 @@ const clampOffset: (distance: number, span: number) => number = (distance, span)
  *   · **删除按钮**原本正以箭头落点为心 ⇒ 44px 的它把箭头、最后 ~22px 的线、
  *     以及目标节点那一侧的连接点全盖住（想从那儿拉新线会点到删除按钮）；
  *   · **中点句柄 / 就地输入框**与线上的 Y/N 标签同点 ⇒ 悬停/选中变实会把字盖住，
- *     而且正落在中点的单击/双击会被句柄吞掉 ⇒ 往目标端挪 14px。
+ *     而且正落在中点的单击/双击会被句柄吞掉 ⇒ 往目标端挪 `HANDLE_GAP`。
  * ⚠️ 方向用「point → toward」的直线方向：**中点那边**（句柄、就地输入框）用它是合适的 ——
  *    中点处**没有唯一的轴**（末段轴只在中点两侧各自成立）。**终点（删除按钮）不用它**，
  *    改用 `backAxis` 沿目标句柄轴退，那才是严格的「沿线」（理由见 `backAxis`）。
@@ -225,7 +258,7 @@ const offsetAlong: (point: FlowPoint, toward: FlowPoint, distance: number) => Fl
  *    或节点横向错开很大）能与真实末段差 ~75° —— 按 dx=200 / dy=146 那种拐角算，26px 会变成
  *    「偏离线 ~21px、只沿线退 ~15px」，按钮就横在线旁边了。
  *    方位对应：目标句柄在 Top ⇒ 线从**上方**进目标 ⇒ 往回退就是 **-y**；Bottom / Left / Right 同理。
- * ⚠️ 中点那 14px 仍用 `offsetAlong` 的直线近似（中点处没有唯一的轴）。
+ * ⚠️ 中点那 `HANDLE_GAP` 仍用 `offsetAlong` 的直线近似（中点处没有唯一的轴）。
  */
 const backAxis: (targetPosition: Position) => FlowPoint = (targetPosition) => {
   if (targetPosition === Position.Top) return { x: 0, y: -1 };
@@ -243,14 +276,14 @@ function FlowEdgeLine({
   });
   /** 线上的字（判断框分出来的 Y / N 或学生自己写的）—— 只认字符串，节点式标签我们不用。 */
   /**
-   * ★ 2026-10-06（教师认可）：**中点句柄**沿「标签点 → 目标端」方向挪 14px。
-   * 🔴 上一版把 14px 错加在 `edgeAnchor()` 上（那只服务**双击后的就地输入框**）⇒ 症状没治：
+   * ★ 2026-10-06（教师认可）：**中点句柄**沿「标签点 → 目标端」方向挪 `HANDLE_GAP`。
+   * 🔴 上一版把这段位移错加在 `edgeMidAnchor()` 上（那只服务**双击后的就地输入框**）⇒ 症状没治：
    *    句柄仍与线上的 Y/N 标签同点（悬停/选中变实就盖住那个字），并且**正落在中点的单击/双击被它吞掉**。
-   * ✅ 复用模块级的 `offsetAlong`（与另两处偏移同一套：同一个方向约定 + 同一个上限）——
+   * ✅ 复用模块级的 `offsetAlong`（与另两处偏移同一套规则：同一个方向约定 + 同一个上限）——
    *    极短边上距离同样被压到段长的 40% 以内，不会一路挪进目标节点里。
    * ⚠️ 交点节点用的是 `anchors.midX/midY`（**精确中点**），与此处无关 —— 拆出来的两段必须与原来的线重合。
    */
-  const midHandle = offsetAlong({ x: labelX, y: labelY }, { x: targetX, y: targetY }, 14);
+  const midHandle = offsetAlong({ x: labelX, y: labelY }, { x: targetX, y: targetY }, HANDLE_GAP);
   /**
    * ⚠️ 实测记录（无头 Chrome 154 + 教师那张真底稿 `q_aac88ed0…`，逐像素扫过 `elementFromPoint`）：
    *    短边上中点句柄与**框的句柄**在屏幕上会糊成一团（例如 0→处理过程 那条：两颗点的圆心只差
@@ -481,12 +514,12 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    * **中点**锚点 → 容器内坐标。就地文字输入框用它（标签就画在中点，就地编辑才顺手），
    * 连到线上时插的那个交点节点也用它算**流坐标**。
    */
-  const edgeAnchor = (edgeId: string | null) => {
+  const edgeMidAnchor = (edgeId: string | null) => {
     const anchors = edgeFlowAnchors(edgeId);
     if (!anchors) return null;
     const { midX, midY, endX, endY } = anchors;
-    // ★ 往目标端挪 14px：既避开线上的 Y/N 标签，也把「正落在中点的单击/双击」还给那条线。
-    const shiftedMid = offsetAlong({ x: midX, y: midY }, { x: endX, y: endY }, 14);
+    // ★ 往目标端挪 `HANDLE_GAP`：既避开线上的 Y/N 标签，也把「正落在中点的单击/双击」还给那条线。
+    const shiftedMid = offsetAlong({ x: midX, y: midY }, { x: endX, y: endY }, HANDLE_GAP);
     return { x: viewport.x + shiftedMid.x * viewport.zoom, y: viewport.y + shiftedMid.y * viewport.zoom };
   };
 
@@ -500,11 +533,11 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     const anchors = edgeFlowAnchors(edgeId);
     if (!anchors) return null;
     const { endX, endY, fromX, fromY, backX, backY } = anchors;
-    /* ★ 往 source 退 26px：44px 的删除按钮不许盖住箭头、最后那段线，以及目标侧的连接点。
+    /* ★ 往 source 退 `EDGE_FLOAT_BACK`：44px 的删除按钮不许盖住箭头、最后那段线，以及目标侧的连接点。
        ✅ 方向取**目标句柄轴**（`backX/backY` = 末段方向）⇒ 拐弯的边上也真的贴线；
           「起点→终点」直线近似在那种边上能偏出线外 ~21px（见 `backAxis` 的注释）。
-       ✅ 距离过 `clampOffset`：短边上退不到 26px 就停住，不会越过中点 / source 端。 */
-    const step = clampOffset(26, Math.hypot(endX - fromX, endY - fromY));
+       ✅ 距离过 `clampOffset`：短边上退不到 `EDGE_FLOAT_BACK` 就停住，不会越过中点 / source 端。 */
+    const step = clampOffset(EDGE_FLOAT_BACK, Math.hypot(endX - fromX, endY - fromY));
     const shiftedEnd = { x: endX + backX * step, y: endY + backY * step };
     return { x: viewport.x + shiftedEnd.x * viewport.zoom, y: viewport.y + shiftedEnd.y * viewport.zoom };
   };
@@ -600,7 +633,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           && (link.sourceHandle ?? null) === (twin.sourceHandle ?? null)
           && (link.targetHandle ?? null) === (twin.targetHandle ?? null);
         // ⚠️ 顺序：先摘掉原边 → 把 `tail` 交给 addEdge → 把 `head`（**沿用原边 id**）放回去 → 接上学生这一拖。
-        //    沿用 id 是有意的：`editingEdge`/`labelingEdge` 那些状态还指着它，拆线不该凭空多出悬空 id。
+        //    沿用 id 是有意的：`selected` / `labelingEdge` 那些状态还指着它，拆线不该凭空多出悬空 id。
         return [...addEdge(tail, current.filter((edge) => edge.id !== original.id)), head, ...(duplicated ? [] : [link])];
       });
       return;
@@ -618,19 +651,16 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     });
   }, [nodes, edges, edgeFlowAnchors, setEdges, setNodes]);
 
-  /** 学生点了某条线 ⇒ 工具条上出现「这条线标注」那一组（Y / N / 清空 / 自由文字）。 */
-  const [editingEdge, setEditingEdge] = useState<string | null>(null);
-  /** 正在改文字的那条线（双击进入）—— 它出现一个就地输入框。 */
-  const [labelingEdge, setLabelingEdge] = useState<string | null>(null);
   /**
-   * ★ 2026-10-06（教师）：「选中一个图形后，也要出现删除按钮」——被选中的**图形**的 id。
-   *
-   * ⚠️ 与 `editingEdge`（被选中的**线**）是**同一个单选**语义的两个槽位：点图形清线、点线清图形，
-   *    所以两块浮层不会同时出现（同一个位置叠两颗按钮，学生只会点到上面那颗）。
-   * ⊘ 交点（`kind: 'junction'`）**不做特殊处理**：它也是一颗图形节点，删了它、连着它的线一起没，
-   *    这是可接受的（教师没有对交点提任何要求）。
+   * ★ 2026-10-06（教师认可的第 1 步整理）：**一个选中模型** —— 单选，`null` = 什么都没选。
+   * 点框 / 点线 / 点空白这三个入口都只写这一个槽位 ⇒「点框清线、点线清框」是**结构性成立**的，
+   * 不必再靠三处状态互相当心清干净。
    */
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [selected, setSelected] = useState<FlowSelection | null>(null);
+  /** 正在改文字的那条线（双击进入）—— 它出现一个就地输入框（这不是「选中」，是进入编辑）。 */
+  const [labelingEdge, setLabelingEdge] = useState<string | null>(null);
+  /** 选中的是**线**时，工具条上出现「这条线标注」那一组（Y / N / 清空 / 自由文字）。 */
+  const selectedEdgeId = selected?.kind === 'edge' ? selected.id : null;
   /**
    * 视口（`onMove` 给的 `{x, y, zoom}`）。
    * 🔴 用它把**流坐标**换算成容器内坐标：`local = viewport.x + flowX * zoom`。
@@ -640,12 +670,6 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    * ⚠️ 初始化成恒等变换；`onMove` 在平移/缩放时都会回调，所以浮层最多在一帧内偏一点。
    */
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
-  /** 删除这条连线（浮层按钮与工具条那条路共用）。 */
-  const removeEdge = (id: string) => {
-    setEdges((current) => current.filter((edge) => edge.id !== id));
-    setEditingEdge(null);
-    setLabelingEdge(null);
-  };
 
   /**
    * ★ 2026-10-06（教师）：「可以删除这个图形**以及与它相连的线**」。
@@ -662,25 +686,70 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *    已在 `withoutLegacyLocks` 剥掉）⇒ 底稿的框同样删得掉，与「学生可以修改底稿」一致。
    */
   const { deleteElements } = useReactFlow<FlowNode, Edge>();
-  const removeNode = (id: string) => {
-    setSelectedNode(null);
-    void deleteElements({ nodes: [{ id }] });
+
+  /**
+   * ★ 2026-10-06（教师认可的第 1 步整理）：删掉**当前选中的那一件** —— 画布上唯一的删除出口。
+   *   · 选中的是**线** ⇒ 从 `edges` 里摘掉这一条；
+   *   · 选中的是**框** ⇒ 交给库的 `deleteElements`（「与它相连的线」是库自己算的，理由见上）。
+   * ⚠️ 交点**不做特例**：它也是一颗框，走的正是下面同一句 `deleteElements`（删它、连着它的线一起没，
+   *    教师没有对交点提任何要求）。
+   */
+  const removeSelected = () => {
+    const target = selected;
+    if (!target) return;
+    setSelected(null);
+    setLabelingEdge(null);
+    if (target.kind === 'edge') {
+      setEdges((current) => current.filter((edge) => edge.id !== target.id));
+      return;
+    }
+    void deleteElements({ nodes: [{ id: target.id }] });
   };
 
   /**
    * 被选中的**图形** ⇒ 它上边缘上方那颗删除按钮的**容器内坐标**（`.flowStage` 用的是这一套）。
-   * ⚠️ 与线的两个浮层**同一套视口换算**（`local = viewport + 流坐标 × zoom`），别写成屏幕坐标。
+   * ⚠️ 与线的浮层**同一套视口换算**（`local = viewport + 流坐标 × zoom`），别写成屏幕坐标。
    * ⚠️ 水平中心用 `measured.width`（库量出来的真实宽）：节点被长文字撑宽时按钮不会偏。
    * ⚠️ 找不到那个节点（刚被删/刚「恢复初始图」）就返回 null ⇒ 按钮不画，不留一颗悬空按钮。
    */
-  const selectedNodeAnchor = (() => {
-    if (!selectedNode) return null;
-    const node = nodes.find((item) => item.id === selectedNode);
+  const nodeFloatAnchor = (nodeId: string) => {
+    const node = nodes.find((item) => item.id === nodeId);
     if (!node) return null;
     const width = node.measured?.width ?? 150;
     const flowX = node.position.x + width / 2;
     const flowY = node.position.y - NODE_FLOAT_GAP;
     return { x: viewport.x + flowX * viewport.zoom, y: viewport.y + flowY * viewport.zoom };
+  };
+
+  /**
+   * ★ 第 1 步整理：**一处锚点解析** —— 选中的是框就取「框上边缘上方」，是线就取「终点（箭头那一端）」。
+   * ⚠️ 交点与普通框走**同一支**（它也是一颗框），解析里不许为它开特例。
+   */
+  const selectedAnchor = (() => {
+    if (!selected) return null;
+    return selected.kind === 'edge' ? edgeEndAnchor(selected.id) : nodeFloatAnchor(selected.id);
+  })();
+
+  /**
+   * ★ 第 1 步整理：**一处渲染** —— 舞台里只有这一个浮层，两种形态：
+   *   · `label`  —— 双击连线后的**就地输入框**（中点锚点，这条交互不许丢）；
+   *   · `delete` —— 选中框 / 线后的**图标删除按钮**（框 ⇒ 连带删相连的线；线 ⇒ 删这条线）。
+   * 🔴 `label` 优先：双击连线必然先触发一次单击 ⇒ 两个形态**结构性互斥**（不再靠两处状态互相当心清），
+   *    否则那颗 44px 的按钮会压在这个输入框上。
+   */
+  const overlay = (() => {
+    if (labelingEdge) {
+      const anchor = edgeMidAnchor(labelingEdge);
+      return anchor ? { mode: 'label' as const, edgeId: labelingEdge, anchor } : null;
+    }
+    if (!selected) return null;
+    const anchor = selectedAnchor;
+    if (!anchor) return null;
+    return {
+      mode: 'delete' as const,
+      anchor,
+      label: selected.kind === 'node' ? '删除这个图形' : '删除这条连线',
+    };
   })();
 
   const setEdgeLabel = (id: string, label: string) => {
@@ -693,7 +762,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *    等于把这条判据关掉。非字符串（理论上有）就当空。
    */
   const editingLabel = (() => {
-    const label = edges.find((edge) => edge.id === editingEdge)?.label;
+    const label = edges.find((edge) => edge.id === selectedEdgeId)?.label;
     return typeof label === 'string' ? label : '';
   })();
   const visibleNodes = useMemo(() => nodes.map((node) => ({
@@ -712,11 +781,11 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
         {starter && (
           <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={restoreStarter}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.restore} /></svg>恢复初始图</button>
         )}
-        <span className={styles.drawingToolbarHint}>{editingEdge ? '这条线标注：' : '从圆形连接点拖向另一节点即可连线'}</span>
-        {editingEdge && (
+        <span className={styles.drawingToolbarHint}>{selectedEdgeId ? '这条线标注：' : '从圆形连接点拖向另一节点即可连线'}</span>
+        {selectedEdgeId && (
           <>
             {['Y', 'N', '是', '否'].map((value) => (
-              <button className={styles.drawingToolbarButton} key={value} type="button" disabled={disabled} onClick={() => setEdgeLabel(editingEdge, value)}>{value}</button>
+              <button className={styles.drawingToolbarButton} key={value} type="button" disabled={disabled} onClick={() => setEdgeLabel(selectedEdgeId, value)}>{value}</button>
             ))}
             {/* ★ 2026-10-06（教师）：「可不可以用户加自定义的字？」——可以，直接在这一格里打。
                 ⚠️ 它是**受控**的：值来自那条边自己（`edges.find`），所以切换线、清空、撤销
@@ -729,9 +798,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
               aria-label="这条线上的自定义文字"
               placeholder="自定义"
               value={editingLabel}
-              onChange={(event) => setEdgeLabel(editingEdge, event.target.value)}
+              onChange={(event) => setEdgeLabel(selectedEdgeId, event.target.value)}
             />
-            <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => { setEdgeLabel(editingEdge, ''); setEditingEdge(null); }}>清空</button>
+            <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => { setEdgeLabel(selectedEdgeId, ''); setSelected(null); }}>清空</button>
           </>
         )}
       </div>
@@ -744,20 +813,20 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           onNodesChange={disabled ? undefined : onNodesChange}
           onEdgesChange={disabled ? undefined : onEdgesChange}
           onConnect={disabled ? undefined : onConnect}
-          // ★ 2026-10-06（教师）：「选中一个图形后，也要出现删除按钮」——点图形就选中它。
-          //   ⚠️ 同时清掉「被选中的线」：两块浮层是**同一个单选**（否则两颗按钮会叠在同一处）。
-          onNodeClick={(_, node) => { setSelectedNode(node.id); setEditingEdge(null); setLabelingEdge(null); }}
-          onEdgeClick={(event, edge) => { event.stopPropagation(); setEditingEdge(edge.id); setLabelingEdge(null); setSelectedNode(null); }}
+          // ★ 2026-10-06（教师）：点图形就选中它；点线就选中那条线。
+          //   ⚠️ 「选中」只有一个槽位 ⇒「点框清线、点线清框」是**结构性成立**的（不必两边互相清）。
+          onNodeClick={(_, node) => { setSelected({ kind: 'node', id: node.id }); setLabelingEdge(null); }}
+          onEdgeClick={(event, edge) => { event.stopPropagation(); setSelected({ kind: 'edge', id: edge.id }); setLabelingEdge(null); }}
           /*
             ★ 2026-10-06（教师）：「双击线条可以输入/修改连接线上的文字」。
             双击进入**就地输入框**（就在那条线中点），回车提交、Esc 取消。
             ⚠️ 单击仍是「选中这条线」（浮出删除按钮）—— 两件事分开，不互相抢。
           */
-          onEdgeDoubleClick={(event, edge) => { event.stopPropagation(); setEditingEdge(edge.id); setLabelingEdge(edge.id); setSelectedNode(null); }}
+          onEdgeDoubleClick={(event, edge) => { event.stopPropagation(); setSelected({ kind: 'edge', id: edge.id }); setLabelingEdge(edge.id); }}
           // 浮层要跟着视口走（平移/缩放都会回调）
           onMove={(_, next) => setViewport(next)}
-          // 点空白 ⇒ 两边的选中都清掉（「选中」是单选，点空就是没有选中）。
-          onPaneClick={() => { setEditingEdge(null); setSelectedNode(null); }}
+          // 点空白 ⇒ 选中清掉（「选中」是单选，点空就是没有选中），就地输入框也一起退掉。
+          onPaneClick={() => { setSelected(null); setLabelingEdge(null); }}
           nodesDraggable={!disabled}
           nodesConnectable={!disabled}
           connectionMode={ConnectionMode.Loose}
@@ -771,64 +840,35 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           <Controls showInteractive={false} />
         </ReactFlow>
         {/*
-          ★ 2026-10-06（教师）：「要求点击可以选中连接线，会跳出一个图标型的删除按钮，可删除连接线；
-          双击线条可以输入/修改连接线上的文字。」
-          ★ 2026-10-06（教师截图）：「删除图标移到这条连线的**终点**」⇒ 删除按钮改用
-          `edgeEndAnchor()`（目标节点那一侧的句柄点 = 箭头落点）；**就地输入框仍用中点**
-          `edgeAnchor()`（标签画在中点，就地编辑才顺手）—— 两个浮层两个锚点，别合并。
-          ⚠️ 两个浮层都用视口换算成**容器内坐标**（视口由 `onMove` 跟）。
-          ⚠️ 正在改文字时**不显示**删除按钮：双击必然先触发一次单击，两个浮层叠在一起会互相压住。
-        */}
-        {editingEdge && !labelingEdge && edgeEndAnchor(editingEdge) && (
-          <button
-            className={styles.flowEdgeFloat}
-            type="button"
-            disabled={disabled}
-            aria-label="删除这条连线"
-            title="删除这条连线"
-            style={{ left: edgeEndAnchor(editingEdge)!.x, top: edgeEndAnchor(editingEdge)!.y }}
-            onClick={() => removeEdge(editingEdge)}
-          >
-            <svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.trash} /></svg>
-          </button>
-        )}
-        {/*
-          ★ 2026-10-06（教师）：「选中一个图形后，也要出现删除按钮，可以删除这个图形以及与它相连的线。」
-          ⚠️ 出现条件 = **选中的那个图形 id**（`selectedNode`）+ 算得出锚点；恒真 = 画布上永远挂着一颗按钮。
-          ⚠️ 位置：节点的**上边缘上方**（`NODE_FLOAT_GAP`），用与线的浮层**同一套视口换算**。
+          ★ 2026-10-06（教师认可的第 1 步整理）：**画布上只有这一处浮层** —— 三套（线的删除按钮、
+          就地输入框、图形的删除按钮）合并成同一个 `overlay` 描述式的两个形态，位置都来自同一处
+          锚点解析（`selectedAnchor` / `edgeMidAnchor`），都用视口换算成**容器内坐标**（`onMove` 跟）。
+            · `label`  —— 双击连线后的就地输入框（**中点**锚点：线上的字就画在中点，就地编辑才顺手）；
+            · `delete` —— 选中框 / 线后的图标删除按钮（框 ⇒ 连带删相连的线；线 ⇒ 删这条线）。
+          ⚠️ 教师截图那条规矩仍在：**删除按钮用终点锚点**（目标节点那一侧的句柄点 = 箭头落点），
+             就地输入框仍用中点 —— 两个锚点别合并。
+          ⚠️ 正在改文字时**不画**删除按钮：双击必然先触发一次单击，两个形态叠在一起会互相压住
+             （这里由 `overlay` 的两个形态**结构性互斥**保证）。
           ⚠️ 命中区复用 `.flowEdgeFloat`（44px 是硬要求：`worksheet-tap-targets.test.ts` 会把本模块里
-             每一个按钮的命中区逐个量一遍；这个类已经写着 width/height 44px）。
-          ⚠️ 它必须住在 `.flowStage` **里面**（与线的两块浮层同一个容器），否则会按外层卡片定位、
-             差出「卡片头 + 工具条」那 200 多像素。
+             每一个按钮的命中区逐个量一遍；这个类已经写着 width/height = `FLOAT_SIZE`）。
+          🔴 它必须住在 `.flowStage` **里面**、而且排在 `</ReactFlow>` **之后**：离了舞台就会按外层
+             卡片定位（教师 2026-10-06 实测差出「卡片头 + 工具条」那约 280px）。
         */}
-        {selectedNode && selectedNodeAnchor && (
-          <button
-            className={styles.flowEdgeFloat}
-            type="button"
-            disabled={disabled}
-            aria-label="删除这个图形"
-            title="删除这个图形"
-            style={{ left: selectedNodeAnchor.x, top: selectedNodeAnchor.y }}
-            onClick={() => removeNode(selectedNode)}
-          >
-            <svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.trash} /></svg>
-          </button>
-        )}
-        {labelingEdge && edgeAnchor(labelingEdge) && (
+        {overlay && (overlay.mode === 'label' ? (
           <input
             className={styles.flowEdgeInput}
-            style={{ left: edgeAnchor(labelingEdge)!.x, top: edgeAnchor(labelingEdge)!.y }}
+            style={{ left: overlay.anchor.x, top: overlay.anchor.y }}
             autoFocus
             maxLength={12}
             disabled={disabled}
             aria-label="这条连线上的文字"
             placeholder="线上文字"
-            defaultValue={String(edges.find((edge) => edge.id === labelingEdge)?.label ?? '')}
+            defaultValue={String(edges.find((edge) => edge.id === overlay.edgeId)?.label ?? '')}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') { setEdgeLabel(labelingEdge, event.currentTarget.value); setLabelingEdge(null); }
+              if (event.key === 'Enter') { setEdgeLabel(overlay.edgeId, event.currentTarget.value); setLabelingEdge(null); }
               if (event.key === 'Escape') setLabelingEdge(null);
             }}
-            onBlur={(event) => { setEdgeLabel(labelingEdge, event.currentTarget.value); setLabelingEdge(null); }}
+            onBlur={(event) => { setEdgeLabel(overlay.edgeId, event.currentTarget.value); setLabelingEdge(null); }}
             onPaste={(event) => {
               // 与「评分标准」同一个归一化：从 Word 复制带进来的排版在这里同样是噪音。
               const raw = event.clipboardData.getData('text/plain');
@@ -837,7 +877,19 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
               event.currentTarget.value = normalizePastedText(raw).slice(0, 12);
             }}
           />
-        )}
+        ) : (
+          <button
+            className={styles.flowEdgeFloat}
+            type="button"
+            disabled={disabled}
+            aria-label={overlay.label}
+            title={overlay.label}
+            style={{ left: overlay.anchor.x, top: overlay.anchor.y }}
+            onClick={removeSelected}
+          >
+            <svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.trash} /></svg>
+          </button>
+        ))}
       </div>
     </div>
   );

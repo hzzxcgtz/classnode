@@ -35,6 +35,30 @@ const SURFACES = ['basic-drawing.tsx', 'math-drawing.tsx', 'mindmap-drawing.tsx'
 /** 画板的样式表（流程图那三条批注里有两条是 CSS 层面的）。 */
 const CSS = fs.readFileSync(path.resolve(HERE, '..', '..', 'worksheet.module.css'), 'utf8');
 
+/**
+ * ★ 2026-10-06（教师认可的第 1 步整理）：三套浮层合并成**一个选中模型 + 一处锚点解析 + 一处渲染**
+ *   之后，判据要抠的几块结构。
+ *
+ * ⚠️ 这些只是**切片**（把一段代码取出来再按**语义**判），不是判据本身；切不出来时必须**如实报错**
+ *    （下面每个用例都有一条长度断言），不许静默在空串上全绿 —— 假绿比红更坏。
+ * ⚠️ 结束标记一律用**代码**：注释早被 `stripComments` 剥掉了，拿注释当标记会切出空串或切到文件末尾；
+ *    而 `onConnect` 的结束标记用 useCallback 的 deps 那一行 ⇒ **不认变量名**，改个名不会误红。
+ */
+function blockAfter(source: string, startMarker: string, endMarker: string): string {
+  const at = source.indexOf(startMarker);
+  if (at === -1) return '';
+  const end = source.indexOf(endMarker, at + startMarker.length);
+  return end === -1 ? source.slice(at) : source.slice(at, end);
+}
+/** `onConnect` 的函数体（到 useCallback 的 deps 那一行为止）。 */
+const onConnectSource = (source: string) => blockAfter(source, 'const onConnect = useCallback', '\n  }, [');
+/** ★ 第 1 步整理后的**唯一**浮层描述式：`const overlay = (() => { … })();`。 */
+const overlaySource = (source: string) => blockAfter(source, 'const overlay = ', '})();');
+/** 「一处锚点解析」：`const selectedAnchor = (() => { … })();`。 */
+const selectedAnchorSource = (source: string) => blockAfter(source, 'const selectedAnchor = ', '})();');
+/** 唯一的删除出口：`const removeSelected = () => { … };`（切到下一个顶层 `const` 为止）。 */
+const removeSelectedSource = (source: string) => blockAfter(source, 'const removeSelected = ', '\n  const ');
+
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
@@ -376,18 +400,28 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
     assert.ok(live.includes(`${key}:`), `图标表里少了 ${key}`);
     assert.ok(live.includes(`FLOW_ICONS.${key}`), `${key} 的图标没有挂到按钮上`);
   }
-  // ② 单击选中 ⇒ 浮出**图标型**删除按钮（不是文字按钮）。
-  assert.match(live, /aria-label="删除这条连线"/, '没有浮层删除按钮');
+  // ② 单击选中（框或线）⇒ 浮出**图标型**删除按钮（不是文字按钮）。
+  //    ★ 第 1 步整理：三套浮层合并成**一处渲染** ⇒ 删除按钮与就地输入框是同一个 `overlay`
+  //      描述式的两个形态，按钮的名字按选中种类取（框 ⇒ 删除这个图形 / 线 ⇒ 删除这条连线）。
+  assert.match(live, /删除这个图形/, '没有「删除这个图形」这个名字');
+  assert.match(live, /删除这条连线/, '没有「删除这条连线」这个名字');
+  assert.match(live, /aria-label=\{overlay\.label\}/, '删除按钮的无障碍名字没有跟着选中的种类走');
   assert.match(live, /className=\{styles\.flowEdgeFloat\}/, '删除按钮没有用浮层样式');
-  assert.match(live, /onClick=\{\(\) => removeEdge\(editingEdge\)\}/, '浮层删除按钮没接上删除');
-  // ③ 双击 ⇒ 就地输入框（回车提交 / Esc 取消），且改文字时不显示删除按钮（双击必然先触发一次单击）。
+  assert.match(live, /onClick=\{removeSelected\}/, '浮层删除按钮没接上「删掉当前选中的那一件」');
+  // ③ 双击 ⇒ 就地输入框（回车提交 / Esc 取消），且改文字时**不出现**删除按钮
+  //    （双击必然先触发一次单击 ⇒ 两个形态必须互斥，否则 44px 的按钮会压在那个输入框上）。
+  //    ★ 第 1 步整理之后互斥是**结构性**的：`overlay` 里标签形态优先，删除形态在它后面。
   assert.match(live, /onEdgeDoubleClick=/, '双击连线没有接');
-  // ★ 2026-10-06（教师截图）：删除按钮改用**终点**锚点 ⇒ 这条判据跟着改成 `edgeEndAnchor`
-  //   （它要守的是「两个浮层不同时出现」，与用哪个锚点无关；锚点本身由下面那条新判据守）。
-  assert.match(live, /editingEdge && !labelingEdge && edgeEndAnchor\(editingEdge\)/, '两个浮层会同时出现（叠在一起互相压）');
   assert.match(live, /aria-label="这条连线上的文字"/, '没有就地输入框');
   assert.match(live, /event\.key === 'Enter'/, '回车没有提交');
   assert.match(live, /event\.key === 'Escape'/, 'Esc 没有取消');
+  const overlaySrc = overlaySource(live);
+  assert.ok(overlaySrc.length > 80, '浮层描述式没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(overlaySrc, /if \(labelingEdge\)/, '正在改文字时没有优先返回就地输入框 —— 删除按钮会压在它上面');
+  // ⚠️ 反面对照：把那个优先分支改成永不进入（`if (false)`）⇒ 必须判违规。
+  const noLabelFirst = overlaySrc.replace('if (labelingEdge)', 'if (false)');
+  assert.notEqual(noLabelFirst, overlaySrc, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!/if \(labelingEdge\)/.test(noLabelFirst), '反面对照没被抓住 —— 这条判据是恒真的');
   // ④b 🔴 浮层必须**落在画布舞台里面**：教师 2026-10-06 实测「删除图标在最上面」——
   //   当时浮层被插到了舞台**外面**，于是按外层卡片定位，y 差了「卡片头 + 工具条」那约 280px。
   //   这条判据用**位置关系**钉死它（顺序错了就红，不必靠真机截图才发现）。
@@ -396,12 +430,17 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   const floatAt = live.indexOf('styles.flowEdgeFloat');
   assert.ok(stageAt !== -1 && reactFlowAt !== -1 && floatAt !== -1, '舞台/ReactFlow/浮层有缺失');
   assert.ok(stageAt < reactFlowAt && reactFlowAt < floatAt, '浮层没有落在画布舞台里（会在卡片上乱飘）');
-  // ④ ★ 两条偏移（教师 2026-10-06 认可）：删除按钮往 source 退 26px、中点句柄往目标端挪 14px。
+  // ⚠️ 再加一条**包含关系**：浮层必须是舞台里 `</ReactFlow>` 的**直接兄弟** ——
+  //    `</ReactFlow>` 与浮层之间**不许出现 `</div>`**（出现 = 浮层排在舞台收尾之后，
+  //    于是按外层卡片定位 —— 正是「y 差约 280px」那次事故）。
+  assert.ok(!/<\/div>/.test(live.slice(reactFlowAt, floatAt)), '浮层排在舞台的收尾 </div> 之后（会按外层卡片定位、差出卡片头 + 工具条）');
+  // ④ ★ 两条偏移（教师 2026-10-06 认可）：删除按钮往 source 退 `EDGE_FLOAT_BACK`、
+  //   中点句柄往目标端挪 `HANDLE_GAP`。两个距离都是**命名常量**（数值本身由几何用例验算）。
   assert.match(live, /\boffsetAlong\b/, '没有偏移函数 offsetAlong');
-  // ⚠️ 判据**按语义**写：抠出各自的函数体，在**体内**查「有没有 offsetAlong + 距离是多少」，
+  // ⚠️ 判据**按语义**写：抠出各自的函数体，在**体内**查「有没有 offsetAlong + 用的是哪个常量」，
   //    不逐字钉格式（按猜的格式写实际是多行 + `anchors.` 前缀，自己把自己判红 ✗）。
   //    切函数体切到**下一个顶层 `const` 声明**为止 —— 固定长度切片会把隔壁函数吞进来，
-  //    两个函数挨着只隔 ~250 字，「26 在 endBody 里」就会靠泄漏恒真。
+  //    两个函数挨着只隔 ~250 字，「常量名在 endBody 里」就会靠泄漏恒真。
   const bodyOf = (name: string) => {
     const at = live.indexOf(`const ${name} = `);
     if (at === -1) return '';
@@ -409,12 +448,15 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
     return next === -1 ? live.slice(at) : live.slice(at, next);
   };
   const endBody = bodyOf('edgeEndAnchor');
-  const midBody = bodyOf('edgeAnchor');
+  const midBody = bodyOf('edgeMidAnchor');
   assert.ok(endBody.length > 40 && midBody.length > 40, '两个锚点函数没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  // 删除按钮 → 往 source 退 **26**；中点浮层 → 往目标端挪 **14**。两个距离不许互换。
-  assert.ok(/\b26\b/.test(endBody) && !/\b14\b/.test(endBody), '删除按钮的距离不是 26px（或与中点那 14px 互换了）');
-  assert.ok(/offsetAlong\(/.test(midBody) && /\b14\b/.test(midBody) && !/\b26\b/.test(midBody),
-    '中点浮层没有往目标端挪 14px（会压住 Y/N 标签）');
+  // 删除按钮 → 往 source 退 `EDGE_FLOAT_BACK`；中点浮层 → 往目标端挪 `HANDLE_GAP`。两个距离不许互换。
+  // ⚠️ 数值（26 / 14）**只在组件里声明一次**，锚点函数里认的是**名字** ⇒ 这里也不抄数字；
+  //    常量的**数值行为**由下面的几何用例（真喂短边）验算。
+  assert.ok(/\bEDGE_FLOAT_BACK\b/.test(endBody) && !/\bHANDLE_GAP\b/.test(endBody),
+    '删除按钮的距离不是命名常量 EDGE_FLOAT_BACK（或与中点那个互换了）');
+  assert.ok(/offsetAlong\(/.test(midBody) && /\bHANDLE_GAP\b/.test(midBody) && !/\bEDGE_FLOAT_BACK\b/.test(midBody),
+    '中点浮层没有走命名常量 HANDLE_GAP（会压住 Y/N 标签）');
   // ★ 删除按钮的退向必须是**目标句柄轴**（`backX/backY` = smoothstep 末段方向），**不许**退回
   //   「起点→终点」直线近似 —— 直线近似在拐弯的边上会偏出线外 ~21px（见 `backAxis` 的注释）。
   //   轴映射本身另有**几何用例**（backAxis 四个方位 + 短边 clamp）。
@@ -435,8 +477,7 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   //    否则拆出来的两段与原来那条线对不上（当初正是按精确中点实测出「完全重合」）。
   //    判据**圈在 `onConnect` 体内**，不是「offsetAlong 后 200 字内有没有 junctionHalf」那种靠距离的写法
   //    （距离一变就恒真/恒假）。
-  const onConnectAt = live.indexOf('const onConnect = useCallback');
-  const onConnectBody = live.slice(onConnectAt, live.indexOf('const [editingEdge, setEditingEdge]', onConnectAt));
+  const onConnectBody = onConnectSource(live);
   assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.match(onConnectBody, /position: \{ x: anchors\.midX - junctionHalf, y: anchors\.midY - junctionHalf \}/, '交点没有落在精确中点上');
   assert.ok(!/offsetAlong/.test(onConnectBody), '交点被卷进了浮层偏移（拆出来的两段会与原线对不上）');
@@ -451,9 +492,14 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   //   而 `smoothstep` 是折线，中心点经常不在路径上。现在必须用库自己的路径函数取**标签点**。
   assert.match(live, /getSmoothStepPath\(\{/, '锚点没有用库的路径函数（第一版就是这里飘的）');
   assert.match(live, /const \[, labelX, labelY\] = getSmoothStepPath/, '没有取标签点 labelX/labelY');
-  // ⑤ 两个浮层都要 44px 命中区（那条用例逐个 <button> 量）。
-  assert.match(css, /\.flowEdgeFloat \{[\s\S]{0,200}?width: 44px;/, '浮层删除按钮的命中区小于 44px');
-  assert.match(css, /\.flowEdgeInput \{[\s\S]{0,260}?min-height: 44px;/, '就地输入框太矮');
+  // ⑤ 浮层命中区：组件里的命名常量 `FLOAT_SIZE` 与样式表里那几处尺寸**必须一致**
+  //    （CSS 读不到 TS 常量，所以只能靠这条判据把两份对起来；44px 这个**下限**由
+  //    `worksheet-tap-targets.test.ts` 直接从 CSS 量）。
+  const floatSize = Number((live.match(/const FLOAT_SIZE = (\d+);/) || [])[1]);
+  assert.ok(Number.isFinite(floatSize) && floatSize > 0, `没有读到命名常量 FLOAT_SIZE（读到 ${floatSize}）`);
+  assert.match(css, new RegExp(`\\.flowEdgeFloat \\{[\\s\\S]{0,200}?width: ${floatSize}px;`), '浮层删除按钮的命中区与 FLOAT_SIZE 不一致');
+  assert.match(css, new RegExp(`\\.flowEdgeFloat \\{[\\s\\S]{0,200}?height: ${floatSize}px;`), '浮层删除按钮的命中区与 FLOAT_SIZE 不一致');
+  assert.match(css, new RegExp(`\\.flowEdgeInput \\{[\\s\\S]{0,260}?min-height: ${floatSize}px;`), '就地输入框太矮（与 FLOAT_SIZE 不一致）');
 });
 
 test('★ 2026-10-06（教师，A 方案）：连接线中点可以连 —— 中点句柄 + 插交点 + 拆线', () => {
@@ -474,11 +520,11 @@ test('★ 2026-10-06（教师，A 方案）：连接线中点可以连 —— �
   assert.ok(labelRendererAt !== -1 && midHandleAt !== -1 && labelRendererAt < midHandleAt, '中点句柄没有住在 EdgeLabelRenderer 里（边是 SVG，<div> 塞进去渲染不出来）');
   assert.match(live, /type="target"/, '中点句柄不是 target');
   assert.match(live, /position=\{Position\.Top\}/, '中点句柄没有用 Position.Top');
-  // ★ 教师认可：句柄**不再**停在标签点上，而是沿「标签点 → 目标端」方向挪 14px
+  // ★ 教师认可：句柄**不再**停在标签点上，而是沿「标签点 → 目标端」方向挪 `HANDLE_GAP`
   //   （原来与 Y/N 标签同点 ⇒ 悬停变实会盖字，且正落在中点的单击/双击被它吞掉）。
   // ⚠️ 判据按**语义**判，不逐字钉算术写法（上一版钉的是 `const handleX = labelX + ((targetX - labelX) / shiftLen) * 14`
   //    那种整句正则 —— 换个变量名/换成多行就红，正是今天连红五次的那类断言）。这里拆成两条**行为**：
-  //    ① 位移必须从**库回的标签点**出发、朝**目标端**、距离 14（来源判据保留，不能因为挪了就丢掉来源）；
+  //    ① 位移必须从**库回的标签点**出发、朝**目标端**、距离取命名常量（来源判据保留，不能因为挪了就丢掉来源）；
   //    ② 样式必须用**位移后**的坐标（不能再是裸的 labelX/labelY）。
   const lineAt = live.indexOf('function FlowEdgeLine(');
   // ⚠️ 结束标记必须是 `\n}\n`：props 解构的结尾是 `\n}: EdgeProps)`（也是行首的 `}`），
@@ -491,7 +537,8 @@ test('★ 2026-10-06（教师，A 方案）：连接线中点可以连 —— �
   assert.match(shiftArgs[1], /\blabelY\b/, '句柄的位移不是从库回的标签点（labelY）出发的');
   assert.match(shiftArgs[1], /\btargetX\b/, '句柄的位移方向不是朝目标端（targetX）');
   assert.match(shiftArgs[1], /\btargetY\b/, '句柄的位移方向不是朝目标端（targetY）');
-  assert.match(shiftArgs[1], /\b14\b/, '句柄的位移距离不是 14px');
+  // ★ 第 2 步整理：距离认**命名常量** `HANDLE_GAP`（数值只在组件里声明一次；短边验算在几何用例里）。
+  assert.match(shiftArgs[1], /\bHANDLE_GAP\b/, '句柄的位移距离不是命名常量 HANDLE_GAP');
   const handleStyle = lineBody.match(/style=\{\{ left: ([\w.]+), top: ([\w.]+) \}\}/);
   assert.ok(handleStyle, '句柄的 style 没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.ok(!/\blabel[XY]\b/.test(handleStyle[1]) && !/\blabel[XY]\b/.test(handleStyle[2]),
@@ -505,9 +552,9 @@ test('★ 2026-10-06（教师，A 方案）：连接线中点可以连 —— �
   assert.match(live, /edgeTypes=\{edgeTypes\}/, 'ReactFlow 没有用上自定义边');
   assert.match(live, /\.map\(\(edge\) => \(\{ \.\.\.edge, type: 'flow' \}\)\)/, "visibleEdges 没有给每条边强制 type: 'flow'（老作答的 'smoothstep' 就没有中点句柄）");
   // ④ onConnect：target 是**已存在的边 id** ⇒ 插一个交点 + 把原边拆成两段。
-  // ⚠️ 切片的**结束标记必须是代码**（`const [editingEdge, …`）：注释早就被 `stripComments` 剥掉了，
-  //    拿注释当标记会切出一个空串或者切到文件末尾（那会让下面几条在错误的范围上"全绿"）。
-  const onConnectBody = live.slice(live.indexOf('const onConnect = useCallback'), live.indexOf('const [editingEdge, setEditingEdge]'));
+  // ⚠️ 切片走 `onConnectSource()`，它的**结束标记是代码**（useCallback 的 deps 那一行）：注释早就被
+  //    `stripComments` 剥掉了，拿注释当标记会切出一个空串或者切到文件末尾（那会让下面几条在错误的范围上"全绿"）。
+  const onConnectBody = onConnectSource(live);
   assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
   // ⚠️ 判据**圈在 `const hitEdge = …` 那一句里**：只断言「全函数里同时出现 connection 的两端」
   //    会漏 —— 下面那句 `connection.source === hitEdge.id` 正好把 source 带进来，于是「只认 target」
@@ -553,7 +600,7 @@ test('★ 2026-10-06（教师报「连线加不上」）：连到线中点时，
       而且必须真的排进「加边」那句的返回数组里；**不**逐字钉三元表达式或返回语句的写法
       （今天已经因为钉格式红过五六次）。
   */
-  const onConnectBody = live.slice(live.indexOf('const onConnect = useCallback'), live.indexOf('const [editingEdge, setEditingEdge]'));
+  const onConnectBody = onConnectSource(live);
   assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
   // ① 结构：边那一支必须在「落点是节点」那一支**之前**，并且自己提前 return
   //    （不 return 的话同一拖还会被下面那一支再处理一遍）。
@@ -590,7 +637,7 @@ test('★ 2026-10-06（教师报「连线加不上」）：连到线中点时，
 
 test('★ 2026-10-06（教师报「连线加不上」）：落点约定 —— Loose 模式 / 中点句柄是 target / data-nodeid=边 id', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
-  const onConnectBody = live.slice(live.indexOf('const onConnect = useCallback'), live.indexOf('const [editingEdge, setEditingEdge]'));
+  const onConnectBody = onConnectSource(live);
   assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
   /*
     ⚠️ 这一条钉的是**三条相互咬合的约定**（每一条的「为什么」都写在断言消息里）：
@@ -621,7 +668,7 @@ test('★ 2026-10-06（教师报「连线加不上」）：落点约定 —— L
   assert.match(live, /'data-nodeid': edgeId/, '中点句柄没有补 data-nodeid=边 id —— 库读不到 node id，往它上面拖 `onConnect` 一次都不响');
 });
 
-test('★ 2026-10-06（教师）：选中一个图形 ⇒ 浮出删除按钮，删它**连带删掉相连的线**', () => {
+test('★ 2026-10-06（教师）：选中一个图形 ⇒ 浮出删除按钮，删它**连带删掉相连的线**（与选中连线共用一处浮层）', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   /*
     🔴 实测（无头 Chrome 154 + 教师那张真底稿，CDP 真合成鼠标事件点过）：
@@ -630,33 +677,35 @@ test('★ 2026-10-06（教师）：选中一个图形 ⇒ 浮出删除按钮，�
         （= 28 流坐标 × zoom 1.25175，正是 `NODE_FLOAT_GAP`）。
       · 点它 ⇒ 那个框没了，**与它相连的两条线也一起没了**：DOM 里的边 4 → 2
         （剩下的是 1→2 与 1→0，都不挨着它）。
+    ★ 第 1 步整理之后，这一条按**语义**判（一个选中模型 / 一处浮层 / 一条删除路），不再钉
+      `selectedNode` / `selectedNodeAnchor` / `removeNode` 这些旧写法 —— 但它守的东西一条不少。
   */
-  const nodeFloatAt = live.indexOf('aria-label="删除这个图形"');
-  assert.ok(nodeFloatAt !== -1, '没有「删除这个图形」那颗浮层按钮');
-  // ① 出现条件必须**认「选中的那个图形」**（恒真 = 画布上永远挂着一颗按钮）。
-  const floatGateOk = (source: string): boolean => {
-    const at = source.indexOf('aria-label="删除这个图形"');
-    if (at === -1) return false;
-    const open = source.lastIndexOf('{selectedNode', at);
-    if (open === -1) return false;
-    const cond = source.slice(open, at);
-    // 既要有「选中的那个图形」，也要「算得出锚点」（节点刚被删/刚恢复初始图时不留悬空按钮）。
-    return /selectedNode/.test(cond) && /selectedNodeAnchor/.test(cond);
+  const overlayBody = overlaySource(live);
+  assert.ok(overlayBody.length > 80, '浮层描述式没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  // ① **一个选中模型**：`{ kind, id }` 的**单一**槽位（点框 / 点线 / 点空白都只写它）。
+  assert.match(live, /type FlowSelection = \{[\s\S]{0,40}?kind: 'node' \| 'edge'[\s\S]{0,40}?id: string/,
+    '没有统一的选中模型（`{ kind: "node" | "edge"; id }`）');
+  assert.match(live, /const \[selected, setSelected\] = useState<FlowSelection \| null>\(null\)/, '没有唯一的选中状态');
+  // ⚠️ 旧的两个槽位（`selectedNode` / `editingEdge`）不许再长回来：「点框清线、点线清框」
+  //    靠的正是**只有这一个**槽位（两个槽位就得靠三处手工互相清）。
+  assert.ok(!/setSelectedNode|setEditingEdge/.test(live), '旧的第二个选中槽位又回来了 —— 单选只该有一个状态');
+  // ② 出现条件必须**认「有没有选中」**（恒真 = 画布上永远挂着一颗按钮）。
+  const deleteGateOk = (source: string): boolean => {
+    const body = overlaySource(source);
+    // 既要有「没选中就什么都不浮」，也要「删除那一支用选中 + 那一处锚点解析」。
+    return /if \(!\s*selected\s*\)\s*return null/.test(body) && /mode: 'delete'/.test(body) && /selectedAnchor/.test(body);
   };
-  assert.ok(floatGateOk(live), '那颗浮层的出现条件没认「选中的图形 id」—— 恒真就等于画布上永远挂着一颗删除按钮');
-  assert.match(live, /const \[selectedNode, setSelectedNode\] = useState<string \| null>\(null\)/, '没有「被选中的图形」这份状态');
-  // ⚠️ 反面对照：出现条件改成恒真（`{true && (`）⇒ 必须判违规。
-  const alwaysOnFloat = live.replace(/\{selectedNode && selectedNodeAnchor && \(/, '{true && (');
+  assert.ok(deleteGateOk(live), '浮层的出现条件没认「有没有选中」—— 恒真就等于画布上永远挂着一颗删除按钮');
+  // ⚠️ 反面对照：把那道闸拿掉（`if (!selected) return null;`）⇒ 必须判违规。
+  //    （只改**浮层描述式那一块**：同名的闸在 `selectedAnchor` 里也有一句，全局 replace 会先改到它。）
+  const alwaysOnFloat = live.replace(overlayBody, overlayBody.replace('if (!selected) return null;', ''));
   assert.notEqual(alwaysOnFloat, live, '反面对照没造出来 —— 这条判据会变成恒真');
-  assert.ok(!floatGateOk(alwaysOnFloat), '反面对照没被抓住 —— 这条判据是恒真的');
-  // ② 删图形必须**连带删掉与它相连的线**：走库的 `deleteElements`。
+  assert.ok(!deleteGateOk(alwaysOnFloat), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ③ 删图形必须**连带删掉与它相连的线**：走库的 `deleteElements`。
   //    （`@xyflow/system` 的 `getElementsToRemove` 里有 `getConnectedEdges(matchingNodes, deletableEdges)`
   //      —— 相连的边是**它自己算的**；自己 filter nodes 只会把线留在画布上，而且是两条悬空段。）
-  const removeAt = live.indexOf('const removeNode = ');
-  assert.ok(removeAt !== -1, '没有 removeNode —— 先修这条判据');
-  const removeEnd = live.indexOf('\n  const ', removeAt + 1);
-  const removeBody = live.slice(removeAt, removeEnd === -1 ? undefined : removeEnd);
-  assert.ok(removeBody.length > 40, 'removeNode 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const removeBody = removeSelectedSource(live);
+  assert.ok(removeBody.length > 40, '删除出口没抠出来 —— 先修这条判据，别让它在空串上全绿');
   const removesConnectedEdges = (body: string) => /deleteElements\(\{[\s\S]{0,100}?nodes: \[/.test(body);
   assert.ok(removesConnectedEdges(removeBody),
     '删图形没有走库的 deleteElements —— 它是唯一会自己算「与它相连的边」的那条路；只 filter nodes 会把相连的线留在画布上');
@@ -664,35 +713,54 @@ test('★ 2026-10-06（教师）：选中一个图形 ⇒ 浮出删除按钮，�
   const manualNodeOnly = removeBody.replace(/void deleteElements\([\s\S]*?\);/, 'setNodes((current) => current.filter((node) => node.id !== id));');
   assert.notEqual(manualNodeOnly, removeBody, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.ok(!removesConnectedEdges(manualNodeOnly), '反面对照没被抓住 —— 这条判据是恒真的');
-  // ③ 点空白 ⇒ 两边的选中都清掉（「选中」是单选，点空就是没有选中）。
+  // ③b 同一个出口也要真的删**连线**（选中的是线时）。
+  const removesEdge = (body: string) => /kind === 'edge'/.test(body) && /\.id !== target\.id/.test(body);
+  assert.ok(removesEdge(removeBody), '同一条删除路没有「选中的是线」那一支 —— 选中连线时的按钮会点了没反应');
+  const noEdgeBranch = removeBody.replace(/if \(target\.kind === 'edge'\)[\s\S]*?return;/, '');
+  assert.notEqual(noEdgeBranch, removeBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!removesEdge(noEdgeBranch), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ④ 点空白 ⇒ 选中清掉（「选中」是单选，点空就是没有选中），就地输入框也一起退掉。
   const paneAt = live.indexOf('onPaneClick={');
   assert.ok(paneAt !== -1, '没有 onPaneClick');
   const paneHandler = live.slice(paneAt, live.indexOf('}', paneAt));
-  assert.match(paneHandler, /setSelectedNode\(null\)/, '点空白没有清掉「选中的图形」—— 那颗删除按钮会留在画布上');
-  // ④ 两块浮层是**同一个单选**：点图形清线、点线清图形（否则两颗 44px 按钮会叠在同一处）。
+  assert.match(paneHandler, /setSelected\(null\)/, '点空白没有清掉选中 —— 那颗删除按钮会留在画布上');
+  // ⑤ 点图形 / 点线**写的是同一个槽位**（所以「点框清线、点线清框」结构性成立）。
   const nodeClickAt = live.indexOf('onNodeClick={');
   const edgeClickAt = live.indexOf('onEdgeClick={');
   assert.ok(nodeClickAt !== -1 && edgeClickAt > nodeClickAt, 'onNodeClick/onEdgeClick 没抠出来 —— 先修这条判据');
   const nodeClickHandler = live.slice(nodeClickAt, edgeClickAt);
-  assert.match(nodeClickHandler, /setSelectedNode\(node\.id\)/, '点图形没有把「选中的图形」设成它');
-  assert.match(nodeClickHandler, /setEditingEdge\(null\)/, '点图形没有清掉「选中的线」—— 两颗删除按钮会叠在同一处');
+  assert.match(nodeClickHandler, /setSelected\(\{ kind: 'node', id: node\.id \}\)/, '点图形没有把它设成「选中的框」');
   const edgeClickHandler = live.slice(edgeClickAt, live.indexOf('onEdgeDoubleClick={'));
-  assert.match(edgeClickHandler, /setSelectedNode\(null\)/, '点线没有清掉「选中的图形」—— 两颗删除按钮会叠在同一处');
-  // ⑤ 位置与命中区：复用线段浮层那套（44px 是硬要求；`worksheet-tap-targets.test.ts` 会逐个量），
+  assert.match(edgeClickHandler, /setSelected\(\{ kind: 'edge', id: edge\.id \}\)/, '点线没有把它设成「选中的线」');
+  // ⑥ 位置与命中区：复用线段浮层那套样式（44px 是硬要求；`worksheet-tap-targets.test.ts` 会逐个量），
   //    并且必须住在画布舞台**里面**（跑到外面就会按外层卡片定位、差出两百多像素）。
-  const btnTag = live.slice(live.lastIndexOf('<button', nodeFloatAt), nodeFloatAt);
-  assert.match(btnTag, /styles\.flowEdgeFloat/, '图形删除浮层没复用 44px 的浮层样式（命中区会跌破 44px）');
-  assert.ok(live.indexOf('</ReactFlow>') < nodeFloatAt, '图形删除浮层跑到画布舞台外面了（会按外层卡片定位）');
-  // ⑥ 锚点必须是「节点上边缘**上方**」+ 与另两块浮层同一套视口换算。
-  const anchorAt = live.indexOf('const selectedNodeAnchor = ');
-  assert.ok(anchorAt !== -1, '没有 selectedNodeAnchor —— 先修这条判据');
+  //    ★ 整理之后画布上只有**一处**浮层渲染 ⇒ 这个类名只该出现一次。
+  const floatAt = live.indexOf('styles.flowEdgeFloat');
+  assert.ok(floatAt !== -1, '没有浮层删除按钮');
+  // ⚠️ 整个**开标签**都取出来（属性是多行的）：从它的 `<button` 起到那个收尾的 `>` 为止。
+  const btnTag = live.slice(live.lastIndexOf('<button', floatAt), live.indexOf('>', floatAt) + 1);
+  assert.match(btnTag, /styles\.flowEdgeFloat/, '删除浮层没复用 44px 的浮层样式（命中区会跌破 44px）');
+  assert.match(btnTag, /onClick=\{removeSelected\}/, '删除浮层的点击没有接到唯一的删除出口');
+  const reactFlowAt = live.indexOf('</ReactFlow>');
+  assert.ok(reactFlowAt < floatAt, '删除浮层跑到画布舞台外面了（会按外层卡片定位）');
+  // ⚠️ 包含关系也钉住：`</ReactFlow>` 与浮层之间不许有 `</div>` —— 有就说明浮层排在舞台收尾之后。
+  assert.ok(!/<\/div>/.test(live.slice(reactFlowAt, floatAt)), '删除浮层排在舞台的收尾 </div> 之后（会按外层卡片定位）');
+  assert.equal(live.split('styles.flowEdgeFloat').length - 1, 1, '删除浮层画了两处 —— 第 1 步整理要求「一处渲染」');
+  // ⑦ 锚点必须是「节点上边缘**上方**」+ 与线的浮层同一套视口换算。
+  const anchorAt = live.indexOf('const nodeFloatAnchor = ');
+  assert.ok(anchorAt !== -1, '没有节点浮层的锚点 —— 先修这条判据');
   const anchorEnd = live.indexOf('\n  const ', anchorAt + 1);
-  const anchorsBody = live.slice(anchorAt, anchorEnd === -1 ? undefined : anchorEnd);
+  const anchorsBody = anchorAt === -1 ? '' : live.slice(anchorAt, anchorEnd === -1 ? undefined : anchorEnd);
+  assert.ok(anchorsBody.length > 40, '节点锚点没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.match(anchorsBody, /node\.position\.y - NODE_FLOAT_GAP/, '锚点没有退到节点上边缘**上方**（`NODE_FLOAT_GAP`）');
   assert.match(anchorsBody, /viewport\.x \+ [\w.]+ \* viewport\.zoom/, '锚点没有做横向视口换算（浮层会飘）');
   assert.match(anchorsBody, /viewport\.y \+ [\w.]+ \* viewport\.zoom/, '锚点没有做纵向视口换算（浮层会飘）');
-  // ⑦ 交点不做特例（教师没提它）：删除那条路上不许给 `junction` 开分支。
-  assert.ok(!/junction/.test(removeBody), '删除图形那条路上给交点开了特例 —— 教师没要求（删交点、连带删它两条线是可接受的）');
+  // ⑧ 交点不做特例（教师没提它）：删除那条路、浮层描述式、锚点解析里都不许给 `junction` 开分支。
+  const selectedAnchorBody = selectedAnchorSource(live);
+  assert.ok(selectedAnchorBody.length > 40, '锚点解析没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(!/junction/.test(removeBody), '删除那条路上给交点开了特例 —— 教师没要求（删交点、连带删它两条线是可接受的）');
+  assert.ok(!/junction/.test(overlayBody), '浮层给交点开了特例 —— 交点与普通框同一处浮层');
+  assert.ok(!/junction/.test(selectedAnchorBody), '锚点解析给交点开了特例 —— 交点与普通框走同一条锚点');
 });
 
 test('★ 2026-10-06（教师，A 方案）：快照要认「交点」——一颗小圆点，不能落进默认的空矩形', async () => {
@@ -773,24 +841,32 @@ test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就�
   assert.match(anchorsBody, new RegExp(`backY: ${backVec[1]}\\.y`), '锚点表没有给出目标句柄轴 backY');
   // ⚠️ 按语义判（在函数体里查两轴），不逐字钉返回语句 —— 只同步 x 轴、y 轴没同步就是自己把自己判红 ✗。
   //    格式一变就红的断言本身就是负担。
-  const endFnAt = live.indexOf('const edgeEndAnchor = ');
-  const endFn = endFnAt === -1 ? '' : live.slice(endFnAt, live.indexOf('\n  const ', endFnAt + 1));
-  assert.ok(/viewport\.x \+ shiftedEnd\.x/.test(endFn) && /viewport\.y \+ shiftedEnd\.y/.test(endFn), '终点锚点没有做视口换算');
-  // 删除浮层那一块 ⇒ 只能用终点锚点。
-  const floatAt = live.indexOf('styles.flowEdgeFloat');
-  const inputAt = live.indexOf('styles.flowEdgeInput');
-  assert.ok(floatAt !== -1 && inputAt !== -1 && floatAt < inputAt, '两个浮层没抠出来 —— 先修这条判据');
-  const floatBlock = live.slice(live.lastIndexOf('{editingEdge && !labelingEdge', floatAt), inputAt);
-  assert.match(floatBlock, /edgeEndAnchor\(editingEdge\)/, '删除浮层没有用终点锚点（教师要求它落在箭头那一端）');
-  assert.ok(!/edgeAnchor\(editingEdge\)/.test(floatBlock), '删除浮层用回了中点锚点');
-  // 就地输入框那一块 ⇒ 只能用中点锚点（标签画在中点，就地编辑才顺手）。
-  const inputBlock = live.slice(inputAt, live.indexOf('</div>', inputAt));
-  assert.match(inputBlock, /edgeAnchor\(labelingEdge\)/, '就地输入框没有用中点锚点');
-  assert.ok(!/edgeEndAnchor/.test(inputBlock), '就地输入框被挪到了终点（与它要改的那个标签分家）');
-  // 反面对照：把两个锚点**换回来**（删除浮层改用中点）⇒ 上面那条必须红。
-  const swapped = live.replaceAll('edgeEndAnchor(editingEdge)', 'edgeAnchor(editingEdge)');
-  const swappedFloat = swapped.slice(swapped.lastIndexOf('{editingEdge && !labelingEdge', floatAt), inputAt);
-  assert.ok(!/edgeEndAnchor\(editingEdge\)/.test(swappedFloat), '反面对照没造出来 —— 这条判据会变成恒真');
+  const endFn = blockAfter(live, 'const edgeEndAnchor = ', '\n  const ');
+  assert.ok(endFn.length > 40, '终点锚点没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(/viewport\.x \+ [\w.]+ \* viewport\.zoom/.test(endFn) && /viewport\.y \+ [\w.]+ \* viewport\.zoom/.test(endFn),
+    '终点锚点没有做视口换算（浮层会飘）');
+  // ★ 第 1 步整理：**一处锚点解析** —— 选中的是**线**时必须落到**终点**锚点（箭头那一端），
+  //   不是中点（中点那句留给就地输入框）。判据按语义：看解析里「edge 那一支」接的是哪个锚点函数。
+  const selectedAnchorBody = selectedAnchorSource(live);
+  assert.ok(selectedAnchorBody.length > 40, '锚点解析没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const edgeUsesEndAnchor = (source: string): boolean => {
+    const body = selectedAnchorSource(source);
+    return /kind === 'edge'/.test(body) && /edgeEndAnchor\(/.test(body) && !/edgeMidAnchor\(/.test(body);
+  };
+  assert.ok(edgeUsesEndAnchor(live), '选中连线时的浮层没有落在终点锚点（教师要求它贴在箭头那一端）');
+  // ⚠️ 反面对照：把线那一支换成**中点**锚点 ⇒ 必须判违规（这条判据不是恒真的）。
+  const midInstead = live.replace(/(const selectedAnchor = [\s\S]{0,400}?)edgeEndAnchor\(/, '$1edgeMidAnchor(');
+  assert.notEqual(midInstead, live, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!edgeUsesEndAnchor(midInstead), '反面对照没被抓住 —— 这条判据是恒真的');
+  // 就地输入框那一块（`overlay` 的 label 形态）⇒ 只能用中点锚点（标签画在中点，就地编辑才顺手）。
+  const overlayBody = overlaySource(live);
+  assert.ok(overlayBody.length > 80, '浮层描述式没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(overlayBody, /edgeMidAnchor\(labelingEdge\)/, '就地输入框没有用中点锚点（与它要改的那个标签分家）');
+  assert.ok(!/edgeEndAnchor/.test(overlayBody), '就地输入框被挪到了终点（与它要改的那个标签分家）');
+  // ⚠️ 反面对照：把就地输入框挪到终点锚点 ⇒ 必须判违规。
+  const labelAtEnd = overlayBody.replace('edgeMidAnchor(labelingEdge)', 'edgeEndAnchor(labelingEdge)');
+  assert.notEqual(labelAtEnd, overlayBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!/edgeMidAnchor\(labelingEdge\)/.test(labelAtEnd), '反面对照没被抓住 —— 这条判据是恒真的');
 });
 
 /**
@@ -798,11 +874,13 @@ test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就�
  *   不能只靠正则猜实现（「有没有 clampOffset 这个调用」挡不住「比例写成 0.9」）。
  *
  * 🔴 为什么必须有这一条：「极短边」在源码级断言里没法验。学生把两个框拖到几乎贴住时，这一段
- *    可能只剩 ~20px —— 26 / 14 会越过中点、甚至在极短边上越过 source 端 ⇒ 只能把纯函数抠出来
- *    **喂一条短边**量。这是上一轮报告里「拿不准」第 (C) 条的正式补丁。
+ *    可能只剩 ~20px —— `EDGE_FLOAT_BACK` / `HANDLE_GAP` 会越过中点、甚至在极短边上越过 source 端
+ *    ⇒ 只能把纯函数抠出来**喂一条短边**量。这是上一轮报告里「拿不准」第 (C) 条的正式补丁。
  * ⚠️ 为什么抠文本求值、而不是 import：这个文件是 `'use client'` 的 React 组件，import 会把
  *    React Flow + React 一起拖进来（本仓没有 jsdom）。下面这三个函数只做加减乘除、不碰
  *    React/state，**类型都写在 `const` 那一侧** ⇒ 抠出来的 `(a, b) => { … }` 本身就是合法 JS。
+ * ★ 第 2 步整理：喂进来的距离**从组件源码里读它自己的命名常量**（不在测试里再抄一遍 26 / 14），
+ *    测的就是生产代码真正在用的那个数。
  * ⚠️ 反面对照（变异测试，见本轮报告）：把 clamp 去掉、或把某个方位的轴写反 ⇒ 下面这几条必须红。
  */
 test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂一条短边验算（几何函数级）', () => {
@@ -816,6 +894,24 @@ test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂�
     assert.ok(arrow !== -1 && end !== -1, `纯几何函数 ${name} 没抠出来 —— 先修这条判据，别让它在空串上全绿`);
     return src.slice(arrow + 2, end + 3);
   };
+  /**
+   * 读一个**只由数字与算术组成**的模块级常量（`44` / `FLOAT_SIZE / 2 + 6` 都认）。
+   * ⚠️ 变量名在 `scope` 里，所以 `NODE_FLOAT_GAP` 那种「由别的常量推出来」的写法也能读。
+   */
+  const constOf = (name: string, scope: Record<string, number> = {}): number => {
+    const m = src.match(new RegExp(`const ${name} = ([^;]+);`));
+    assert.ok(m, `没找到命名常量 ${name} —— 先修这条判据`);
+    const value = new Function(...Object.keys(scope), `return (${m[1]});`)(...Object.values(scope));
+    assert.equal(typeof value, 'number', `${name} 不是一个数（读出来是 ${String(value)}）`);
+    return value as number;
+  };
+  const FLOAT_SIZE = constOf('FLOAT_SIZE');
+  const NODE_FLOAT_GAP = constOf('NODE_FLOAT_GAP', { FLOAT_SIZE });
+  const EDGE_FLOAT_BACK = constOf('EDGE_FLOAT_BACK');
+  const HANDLE_GAP = constOf('HANDLE_GAP');
+  assert.ok(EDGE_FLOAT_BACK > 0 && HANDLE_GAP > 0, '两个偏移常量必须是正数');
+  // ⚠️ 规则里那句「永不压住句柄」的数值落点：按钮要以自己中心定位，所以往上至少要半个按钮。
+  assert.ok(NODE_FLOAT_GAP >= FLOAT_SIZE / 2, `删除图形的按钮会压住节点上边缘（NODE_FLOAT_GAP=${NODE_FLOAT_GAP} < 半个按钮 ${FLOAT_SIZE / 2}）`);
   const code = ['clampOffset', 'offsetAlong', 'backAxis'].map((name) => `const ${name} = ${grab(name)}`).join('\n');
   // ⚠️ 只喂给 `backAxis`：它内部拿 `Position.某` 做比较，所以给一份**同一个对象**即可（具体值不重要）。
   const Position = { Top: 'top', Bottom: 'bottom', Left: 'left', Right: 'right' } as const;
@@ -827,24 +923,24 @@ test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂�
   };
 
   // ① 上限：**不超过段长的一半**（这正是不越过中点的理由），常见边长下不许打折。
-  assert.equal(geom.clampOffset(26, 1000), 26, '常见边长下 26px 被打了折（删除按钮会缩水）');
-  assert.equal(geom.clampOffset(14, 1000), 14, '常见边长下 14px 被打了折（句柄会缩水）');
-  assert.ok(geom.clampOffset(26, 20) < 26, '极短边上没有生效任何上限');
-  assert.ok(geom.clampOffset(26, 20) <= 10, '极短边上偏移没被压到中点之前（会越过中点）');
+  assert.equal(geom.clampOffset(EDGE_FLOAT_BACK, 1000), EDGE_FLOAT_BACK, '常见边长下删除按钮的距离被打了折（按钮会缩水）');
+  assert.equal(geom.clampOffset(HANDLE_GAP, 1000), HANDLE_GAP, '常见边长下中点浮层的距离被打了折（句柄会缩水）');
+  assert.ok(geom.clampOffset(EDGE_FLOAT_BACK, 20) < EDGE_FLOAT_BACK, '极短边上没有生效任何上限');
+  assert.ok(geom.clampOffset(EDGE_FLOAT_BACK, 20) <= 10, '极短边上偏移没被压到中点之前（会越过中点）');
   assert.ok(geom.clampOffset(1000, 100) <= 50, '上限比例 ≥ 一半 —— 会越过中点');
 
   // ② 短边上的**删除按钮**：end=(0,200)、source=(0,180)（段长只有 20px）⇒ 必须仍落在**靠终点这一侧**。
   const endPt = { x: 0, y: 200 };
   const fromPt = { x: 0, y: 180 };
   const back = geom.backAxis(Position.Top);
-  const step = geom.clampOffset(26, Math.hypot(endPt.x - fromPt.x, endPt.y - fromPt.y));
+  const step = geom.clampOffset(EDGE_FLOAT_BACK, Math.hypot(endPt.x - fromPt.x, endPt.y - fromPt.y));
   const movedEnd = { x: endPt.x + back.x * step, y: endPt.y + back.y * step };
   assert.ok(movedEnd.y < endPt.y, '删除按钮没有往 source 退（方向反了）');
   assert.ok(movedEnd.y > (endPt.y + fromPt.y) / 2, '短边上删除按钮退过了中点（44px 的它会盖住另一半线）');
 
   // ③ 短边上的**中点浮层**：中点 (0,190) → 目标 (0,200)（该段只有 10px）⇒ 挪完不许到达/越过目标端。
   const midPt = { x: 0, y: 190 };
-  const shiftedMid = geom.offsetAlong(midPt, { x: 0, y: 200 }, 14);
+  const shiftedMid = geom.offsetAlong(midPt, { x: 0, y: 200 }, HANDLE_GAP);
   assert.ok(shiftedMid.y > midPt.y, '中点浮层没有往目标端挪（方向反了）');
   assert.ok(shiftedMid.y < 200, '短边上中点浮层挪到了目标端（会压住目标节点的连接点）');
 
@@ -856,8 +952,10 @@ test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂�
   const axes = [Position.Top, Position.Bottom, Position.Left, Position.Right].map((p) => JSON.stringify(geom.backAxis(p)));
   assert.equal(new Set(axes).size, 4, '四个方位的退向有重复（有方位没被区分开）');
 
-  // ⑤ 生产代码真的**接上**了这两个纯函数（不是只在测试里算了一遍）：中点那 14px 也必须吃上限。
-  assert.match(grab('offsetAlong'), /clampOffset\(/, 'offsetAlong 没有接上 clampOffset（中点那 14px 就没有上限）');
+  // ⑤ 生产代码真的**接上**了这两个纯函数（不是只在测试里算了一遍）：中点那一段也必须吃上限。
+  assert.match(grab('offsetAlong'), /clampOffset\(/, 'offsetAlong 没有接上 clampOffset（中点那一段就没有上限）');
+  // ★ 第 2 步整理：**两个距离不许互换**（起点不同、方向不同、目的不同）—— 数值上也要能区分。
+  assert.notEqual(EDGE_FLOAT_BACK, HANDLE_GAP, '两个偏移常量变成同一个数了 —— 「沿句柄轴退」与「往目标端挪」是两件事');
 });
 
 
@@ -866,6 +964,11 @@ test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂�
 //   以及 `viewport.x + labelX * viewport.zoom` 那句（它把中点浮层的**变量名**也钉死了）。
 //   它们钉的是**格式**而不是行为 —— 今天实现一改就连红五次，每次都要跟着同步
 //   （还两次只同步了一半，自己把自己判红 ✗）。真正的判据在别处，并且按**语义**判：
-//   「两个锚点分别被谁使用」「有没有 offsetAlong + 距离 26 / 14」「两个浮层有没有视口换算（不认变量名）」
-//   「交点必须用精确中点」—— 改写法不会红、改行为才会红。
+//   「一处锚点解析里线那一支用终点锚点 / 就地输入框用中点锚点」「两个浮层有没有视口换算（不认变量名）」
+//   「交点必须用精确中点」「删除走 deleteElements」—— 改写法不会红、改行为才会红。
+//
+// ★ 2026-10-06（第 1 步整理）之后同理：上面那些用例**不再**钉 `selectedNode` / `editingEdge` /
+//   `edgeAnchor` / `selectedNodeAnchor` / `removeNode` 这些旧结构（它们已经被合并掉了），
+//   改成切出「选中模型 / 浮层描述式 / 锚点解析 / 删除出口」这四块，再按语义判 ——
+//   守的东西一条没少（单选、出现条件、连带删边、锚点各就各位、交点不开特例）。
 

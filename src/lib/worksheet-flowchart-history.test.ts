@@ -8,13 +8,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  HISTORY_KEYS_LIMIT,
   HISTORY_LIMIT,
   canRedo,
   canUndo,
+  clearAllHistories,
   emptyHistory,
   flowchartSignature,
+  loadHistory,
   pushHistory,
   redoHistory,
+  saveHistory,
   undoHistory,
 } from './worksheet-flowchart-history.ts';
 
@@ -85,4 +89,42 @@ test('指纹：位置 / 文字 / 连线算变化（反面对照）', () => {
   assert.notEqual(flowchartSignature([node({ data: { label: '改了', kind: 'process' } })], []), base, '改了字要算');
   const edge = { id: 'e1', source: 'n1', target: 'n2' };
   assert.notEqual(flowchartSignature([node()], [edge]), base, '多了一条线要算');
+});
+
+// ── 跨挂载存活的历史（★ 2026-10-06 教师在真机上发现全屏问题之后加的）──────────
+
+test('按 key 存的历史，换个实例也读得回来 —— 这是「切全屏不丢撤销」的全部依据', () => {
+  clearAllHistories();
+  const h = pushHistory(emptyHistory<{ tag: string }>(), snap('A'));
+  saveHistory('q_1', h);
+  // ⚠️ 换一个「实例」（这里只是再调一次）去读 —— 模拟画板被 portal 重挂之后重新挂载。
+  assert.equal(loadHistory<{ tag: string }>('q_1').past.length, 1, '存进去的必须能读回来');
+  clearAllHistories();
+});
+
+test('没存过的 key 拿到空历史 —— 不是 undefined', () => {
+  clearAllHistories();
+  const fresh = loadHistory<{ tag: string }>('never-saved');
+  assert.deepEqual(fresh, { past: [], future: [] });
+});
+
+test('不同的 key 互不干扰 —— 一份学习单里两道题不能共用一条历史', () => {
+  clearAllHistories();
+  saveHistory('q_1', pushHistory(emptyHistory<{ tag: string }>(), snap('A')));
+  saveHistory('q_2', emptyHistory<{ tag: string }>());
+  assert.equal(loadHistory<{ tag: string }>('q_1').past.length, 1);
+  assert.equal(loadHistory<{ tag: string }>('q_2').past.length, 0, 'q_2 不该看到 q_1 的历史');
+  clearAllHistories();
+});
+
+test('key 太多时丢最久没用过的那个 —— 这张表活到页面卸载为止，必须有盖子', () => {
+  clearAllHistories();
+  for (let i = 0; i < HISTORY_KEYS_LIMIT + 2; i += 1) {
+    saveHistory(`q_${i}`, pushHistory(emptyHistory<{ tag: string }>(), snap(`s${i}`)));
+  }
+  assert.equal(loadHistory<{ tag: string }>('q_0').past.length, 0, '最老的 q_0 应当已被丢掉');
+  assert.equal(loadHistory<{ tag: string }>(`q_${HISTORY_KEYS_LIMIT + 1}`).past.length, 1, '最新的还在');
+  // 阳性对照：**中间**那个也得在 —— 否则「丢最老」写成「清空」也能过上面两条。
+  assert.equal(loadHistory<{ tag: string }>('q_3').past.length, 1, 'q_3 不该被连累');
+  clearAllHistories();
 });

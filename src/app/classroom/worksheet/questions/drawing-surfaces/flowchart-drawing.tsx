@@ -36,8 +36,10 @@ import {
   canUndo,
   emptyHistory,
   flowchartSignature,
+  loadHistory,
   pushHistory,
   redoHistory,
+  saveHistory,
   undoHistory,
   type FlowHistory,
   type FlowSnapshot,
@@ -544,7 +546,7 @@ function toFlowPayload(nodes: FlowNode[], edges: Edge[]) {
 }
 
 
-function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, starter }: DrawingSurfaceProps) {
+function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, starter, historyKey }: DrawingSurfaceProps) {
   /**
    * ★ 2026-10-06（教师）：「学生可以完全从空白开始画，也可以在教师准备好的基础上继续画」。
    *
@@ -587,7 +589,18 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     ⚠️ `lastSnapshotRef` 是「上一次压栈时的图」，`lastSigRef` 是它的指纹。
        `lastSigRef` 初值是 `null`，表示**基线还没建立** —— 首帧只记基线、不压栈。
   */
-  const historyRef = useRef<FlowHistory<FlowSnapshot<FlowNode, Edge>>>(emptyHistory());
+  /*
+   * ★ 2026-10-06（教师真机发现全屏坏掉之后）：有 `historyKey` 时，历史从**模块级的表**里取 ——
+   * 因为「全屏切 portal」会让 React 重挂整棵子树，组件内的一切（含 `useRef`）都会重建，
+   * 历史当场归零。没传 key 就是组件内的一份，行为与从前完全一样。
+   */
+  const historyRef = useRef<FlowHistory<FlowSnapshot<FlowNode, Edge>>>(
+    historyKey ? loadHistory<FlowSnapshot<FlowNode, Edge>>(historyKey) : emptyHistory(),
+  );
+  /** 历史一变就存回去（没传 key 时是空操作）。三处调用：压栈、撤销、重做。 */
+  const persistHistory = useCallback(() => {
+    if (historyKey) saveHistory(historyKey, historyRef.current);
+  }, [historyKey]);
   const lastSnapshotRef = useRef<FlowSnapshot<FlowNode, Edge>>({ nodes: initial.current.nodes, edges: initial.current.edges });
   const lastSigRef = useRef<string | null>(null);
   const draggingRef = useRef(false);
@@ -696,8 +709,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     historyRef.current = pushHistory(historyRef.current, lastSnapshotRef.current);
     lastSnapshotRef.current = { nodes, edges };
     lastSigRef.current = sig;
+    persistHistory(); // ★ 存回模块级的表（没传 historyKey 时是空操作）
     setHistoryVersion((v) => v + 1); // 让两颗按钮的 disabled 跟着刷新
-  }, [nodes, edges]);
+  }, [nodes, edges, persistHistory]);
 
   /**
    * ★ 2026-10-06（教师）：「连接线默认没箭头的吗？」
@@ -788,8 +802,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     setLabelingEdge(null);
     lastSnapshotRef.current = snap;
     lastSigRef.current = flowchartSignature(snap.nodes, snap.edges);
+    persistHistory(); // ★ 撤销/重做也要存回表：那一步之后重挂（切全屏）同样不能丢
     setHistoryVersion((v) => v + 1);
-  }, [nodes, edges, setNodes, setEdges]);
+  }, [nodes, edges, persistHistory, setNodes, setEdges]);
 
   /** ★ 2026-10-06：**重做** —— 与 `undo` 逐字对称，只有 `redoHistory` 与 `future` 的方向不同。 */
   const redo = useCallback(() => {
@@ -811,8 +826,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     setLabelingEdge(null);
     lastSnapshotRef.current = snap;
     lastSigRef.current = flowchartSignature(snap.nodes, snap.edges);
+    persistHistory(); // ★ 撤销/重做也要存回表：那一步之后重挂（切全屏）同样不能丢
     setHistoryVersion((v) => v + 1);
-  }, [nodes, edges, setNodes, setEdges]);
+  }, [nodes, edges, persistHistory, setNodes, setEdges]);
 
   /**
    * ★ 2026-10-06（**审查发现 I2**）：记下「最后一次 pointerdown 落在哪台画板里」。

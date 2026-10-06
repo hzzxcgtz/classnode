@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import { readDrawingBackground, readDrawingTool } from '@/lib/worksheet-drawing';
@@ -110,21 +111,28 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
         disabled={disabled}
         onChange={update}
         onImage={updateImage}
+        /* ★ 2026-10-06：题目 id 当「撤销历史」的 key —— 全屏切 portal 会重挂子树，
+           历史靠这个 key 从模块级的表里取回来（见 `types.ts` 的 `historyKey`）。 */
+        historyKey={node.id}
       />
     </div>
   );
   /*
-   * ★ M4（审查留下的）：**不再用 `createPortal` 换渲染位置**。
-   * 原来全屏时走 `createPortal(content, document.body)` —— 同一个 JSX 元素换个位置渲染，React 会
-   * **卸载再挂载**整棵子树 ⇒ 画板实例重建 ⇒ **撤销历史（住在 ref 里）归零**：学生画了半天、
-   * 切一下全屏，撤销键就灰了，而且没有任何提示。
-   * ✅ 全屏本来就该由 CSS 负责：`.thirdPartyWorkspaceMaximized` 已经是 `position: fixed; inset: 0`
-   * （在「portal 到 body」的前提下那句其实是冗余的 —— 它的存在恰好说明当初的意图就是 CSS 全屏）。
-   * ⚠️ `position: fixed` 在祖先链带 `transform` / `filter` / `will-change` 时会退化成相对那个祖先。
-   * 若真机上发现全屏没铺满，就是撞上了这一条 —— 那要另想办法，**别默默把 portal 加回来**：
-   * 加回来等于重新接受「切全屏丢历史」。
+   * ★ 2026-10-06（**教师在真机上发现**）：**portal 必须保留** —— 上一轮我曾把它去掉（为了保住
+   * 撤销历史），结果全屏当场坏掉，已回退。
+   *
+   * 🔴 为什么 CSS 做不到：全屏态 `.thirdPartyWorkspaceMaximized` 是 `position: fixed; inset: 0`，
+   * 但 `fixed` 在有些祖先下会**退化成相对那个祖先**（`transform` / `filter` / `backdrop-filter` /
+   * `contain` / `will-change` 任一即可）。教师实测：去掉 portal 之后，全屏那层**只覆盖题目卡那么大、
+   * 根本没铺满**，还盖住了旁边的画板。我翻遍 `worksheet` / `shell` / `globals` 三个样式表也没定位到
+   * 是哪个祖先干的 —— **但 portal 到 `document.body` 能绕开这一切**（body 之上没有祖先劫持它）。
+   * 这大概就是当初写 portal 的真正理由。
+   *
+   * ⚠️ 它的代价是真实的：同一棵子树换个渲染位置 ⇒ React **卸载再挂载** ⇒ 画板实例重建。
+   * 那份代价用「历史跨挂载存活」正面解决（见 `@/lib/worksheet-flowchart-history.ts` 的
+   * `loadHistory` / `saveHistory`，以及画板里的 `historyKey`），**不是**靠去掉 portal 来回避。
    */
-  return content;
+  return maximized && typeof document !== 'undefined' ? createPortal(content, document.body) : content;
 }
 
 function documentBodyOverflow(): string {

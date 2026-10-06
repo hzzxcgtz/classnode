@@ -113,3 +113,48 @@ export function flowchartSignature(
     ]),
   ]);
 }
+
+/* ── 跨挂载存活的历史（★ 2026-10-06 教师在真机上发现全屏问题之后加的）────────────────
+
+  🔴 **为什么需要它**：全屏必须走 `createPortal(content, document.body)` —— 去掉 portal 之后
+  `position: fixed` 会被某个祖先劫持、全屏铺不满（详见 `drawing-tool-body.tsx` 那段注释，
+  以及教师在真机上拍的那张图）。而**同一棵子树换个渲染位置 ⇒ React 卸载再挂载** ⇒ 画板实例重建
+  ⇒ 上面这些历史住在 `useRef` 里，**当场归零**。
+
+  ⇒ 历史必须存在**组件之外**，按一个**跨挂载稳定的 key** 索引（画板那边用题目 id）。
+  ⚠️ 只在**传了 key** 时启用：没传就还是组件内的一份（`emptyHistory()`），行为与从前一样，
+  别的三个画板、以及教师端的底稿编辑都不受影响。
+
+  ⚠️ `HISTORY_KEYS_LIMIT` 是**必需**的：这是模块级的表，活到页面卸载为止。一份学习单里翻几十道题
+  就会一直涨 ⇒ 超了丢**最久没用过**的那个 key（`Map` 保持插入序，重新读一次就把它挪到队尾）。
+*/
+const persistent = new Map<string, FlowHistory<FlowSnapshot<unknown, unknown>>>();
+
+/** 表里最多留几个 key 的历史。12 足够覆盖「学生在一份学习单里来回翻题」的规模。 */
+export const HISTORY_KEYS_LIMIT = 12;
+
+/** 取某个 key 的历史；没存过就是**空历史**（不是 undefined —— 调用方直接当初始值用）。 */
+export function loadHistory<S>(key: string): FlowHistory<S> {
+  const hit = persistent.get(key);
+  if (!hit) return emptyHistory<S>();
+  // 重新插入 ⇒ 标记为「最近用过」（否则淘汰时会把正在做的那道题丢掉）。
+  persistent.delete(key);
+  persistent.set(key, hit);
+  return hit as FlowHistory<S>;
+}
+
+/** 存某个 key 的历史，并把超过上限的最久未用者丢掉。 */
+export function saveHistory<S>(key: string, history: FlowHistory<S>): void {
+  persistent.delete(key);
+  persistent.set(key, history as FlowHistory<FlowSnapshot<unknown, unknown>>);
+  while (persistent.size > HISTORY_KEYS_LIMIT) {
+    const oldest = persistent.keys().next().value;
+    if (oldest === undefined) break;
+    persistent.delete(oldest);
+  }
+}
+
+/** 只给用例用：清空这张表（生产代码不调用 —— 它会一把抹掉所有题的历史）。 */
+export function clearAllHistories(): void {
+  persistent.clear();
+}

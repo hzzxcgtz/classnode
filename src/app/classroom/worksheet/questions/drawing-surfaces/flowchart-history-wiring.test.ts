@@ -46,7 +46,13 @@ test('切片找不到结束标记时返回空串 —— 不许静默泄漏到文
  * ⚠️ 起点取 effect 的**第一个语句**（拖动守卫），**不能**取 `const sig = …` 那一行 ——
  * 它在守卫**之后**，那样切出来的片段看不见 `draggingRef`，判据必红（施工时实测踩到过一次）。
  */
-const detectSource = (s: string) => blockBetween(s, 'if (draggingRef.current', '}, [nodes, edges])');
+/*
+ * ⚠️ 结束标记写 `}, [nodes, edges`（**不带右括号**）：那条 effect 的依赖数组加过东西
+ * （`persistHistory`），写死 `[nodes, edges])` 就会找不到 —— 而 `blockBetween` 现在
+ * 「找不到就返回空串」，于是两条判据当场红。这正是 M3 那个修复想要的效果：
+ * **依赖数组一变，切片立刻失效并喊出来**，而不是静默泄漏到文件末尾把判据泡软。
+ */
+const detectSource = (s: string) => blockBetween(s, 'if (draggingRef.current', '}, [nodes, edges');
 
 test('拖动中不压栈 —— 一次拖动必须只记一步', () => {
   const block = detectSource(SOURCE);
@@ -153,6 +159,24 @@ test('快捷键在输入框里让位给浏览器原生撤销', () => {
 });
 
 /*
+  ★ 2026-10-06（教师真机发现全屏坏掉之后）：**撤销历史必须能活过 portal 重挂**。
+
+  全屏切 portal ⇒ React 卸载再挂载整棵子树 ⇒ 住在 `useRef` 里的历史归零。
+  解法是把历史存到**模块级的表**里、按题目 id 索引（见 `worksheet-flowchart-history.ts` 的
+  `loadHistory` / `saveHistory`）。
+
+  ⚠️ 这条判据钉三件事，少任何一件「切全屏不丢撤销」都是空话：宿主**传了** key、
+  画板**取**了它、画板**存**回去。
+*/
+test('撤销历史跨挂载存活：宿主传 key、画板取它、画板存回去', () => {
+  const HOST = fs.readFileSync(path.join(HERE, '..', 'drawing-tool-body.tsx'), 'utf8');
+  assert.match(HOST, /historyKey=\{node\.id\}/, '宿主要把题目 id 当 key 传下去');
+  assert.match(SOURCE, /historyKey\s*\}/, '画板要从 props 里解构出 historyKey');
+  assert.match(SOURCE, /loadHistory</, '画板初始化历史时要从表里取');
+  assert.match(SOURCE, /saveHistory\(/, '画板要把历史存回表');
+});
+
+/*
   ★ 2026-10-06（**审查发现 I2**）：快捷键必须**只作用于最后被碰过的那台画板**。
   监听挂在 `window` 上，而 `worksheet-panel.tsx` 会把同一个可见分组里的题**全部**渲染出来 ——
   一份学习单里若有两道流程图题，两个实例各挂一个 window 监听 ⇒ 按一次 `Cmd+Z`，
@@ -162,38 +186,37 @@ test('快捷键在输入框里让位给浏览器原生撤销', () => {
   ✅ 判据收进本实例：`rootRef` 记根元素，window 上的 `pointerdown`（捕获相）记「最后被碰的是不是我」。
 */
 /*
-  ★ 2026-10-06（**审查留下的 M4**）：全屏画板**不许换渲染位置**。
+  ★ 2026-10-06（**教师在真机上发现，推翻了上一轮的做法**）：**portal 是必需的，去掉它反而坏事**。
 
-  `drawing-tool-body.tsx` 原来在全屏时走 `createPortal(content, document.body)` —— 同一个 JSX 元素
-  换个位置渲染，React 会**卸载再挂载**整棵子树 ⇒ 画板实例重建 ⇒ **撤销历史（住在 ref 里）归零**。
-  学生画了半天、切一下全屏，撤销键就灰了，而且没有任何提示。
+  上一轮我为了「保住撤销历史」把 portal 去掉了。但那个代价更大：去掉之后全屏靠
+  `.thirdPartyWorkspaceMaximized` 的 `position: fixed`，而 `fixed` 在有些祖先下会**退化成相对
+  那个祖先**（`transform` / `filter` / `backdrop-filter` / `contain` / `will-change` 任一即可）。
+  教师真机实测：**全屏后那层只覆盖题目卡那么大、根本没铺满**，还盖住了旁边的画板，
+  看起来像「一层层递归进去」。
 
-  ✅ 全屏本来就该由 CSS 负责：`.thirdPartyWorkspaceMaximized` 已经是 `position: fixed; inset: 0`
-  （在「portal 到 body」的前提下那句其实是冗余的 —— 它的存在恰好说明当初的意图就是 CSS 全屏）。
+  🔴 我没能在 CSS 里定位到那个祖先（`worksheet` / `shell` / `globals` 三个文件都查过，其余
+  `transform` 全是 `translateY(1px)` 这类小元素）—— 但 **portal 到 `document.body` 能绕开这一切**
+  （body 之上没有祖先可以劫持它）。这大概就是当初写 portal 的真正理由。
 
-  🔴 这条判据**证明不了**的事：`position: fixed` 在祖先链带 `transform` / `filter` / `will-change`
-  时会退化成相对那个祖先，那种情况下全屏会坏。**必须真机确认一次。**
+  ✅ 结论：**portal 加回来**；「切全屏丢历史」改用「模块级的表 + 跨挂载稳定的 key」正面解决
+  （见紧随其后的那条判据）。
+  ⚠️ 判据只看**代码行**：本文件的说明注释里就写着 `createPortal`，直接对整个文件做正则会被
+  自己的注释绊倒（上一轮实测踩到过）。
 */
-test('全屏不许换渲染位置 —— 换位置会把整棵子树重挂、撤销历史归零', () => {
+test('全屏必须走 portal —— fixed 会被祖先劫持，portal 到 body 才绕得开', () => {
   // ⚠️ 宿主文件在**上一层**（`questions/`），不在 `drawing-surfaces/` —— 写错路径的表现是 ENOENT，
   //    而那条错误同样让判据「红」，很容易被误当成「变异命中」（施工时踩过：连着几次假红）。
   const HOST = fs.readFileSync(path.join(HERE, '..', 'drawing-tool-body.tsx'), 'utf8');
   assert.ok(HOST.length > 500, '宿主文件读空了');
-  /*
-    ⚠️ **必须只看代码行**：上面那段说明注释里就写着 `createPortal` 这个词 —— 直接对整个文件做正则，
-    判据会被自己的注释绊倒（施工时实测：修好之后它仍然红）。剥注释在本仓有先例，但这里不需要那么重：
-    本文件的注释都是独立行，按行首过滤即可。
-  */
   const codeLines = HOST.split('\n').filter((line) => {
     const t = line.trim();
     return t !== '' && !t.startsWith('*') && !t.startsWith('/*') && !t.startsWith('//');
   });
   assert.ok(codeLines.length > 10, `过滤后只剩 ${codeLines.length} 行代码，判据可能在空集上假绿`);
   assert.ok(
-    !codeLines.some((line) => line.includes('createPortal')),
-    '全屏切换不许用 portal 换位置（重挂子树 ⇒ 清空撤销历史）',
+    codeLines.some((line) => line.includes('createPortal(content, document.body)')),
+    '全屏必须把画板 portal 到 body（见注释：去掉之后 fixed 会被祖先劫持、全屏铺不满）',
   );
-  assert.match(HOST, /thirdPartyWorkspaceMaximized/, '全屏要靠 CSS 类，不靠换容器');
 });
 
 test('快捷键的作用域收在这台画板里 —— 多道流程图题不会一起撤销', () => {

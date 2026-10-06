@@ -51,7 +51,7 @@ export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
   return (
     <>
       <div className="worksheet-editor-block">
-        <span className="worksheet-editor-block-label">框（学生把这些条目放进去）</span>
+        <span className="worksheet-editor-block-label">分类框</span>
         <div className="worksheet-editor-options">
           {zones.map((zone, index) => (
             // key 用下标：条目缺 id 时写回会补一个（见 `writeEntries`），用 id 当 key
@@ -84,7 +84,7 @@ export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
       </div>
 
       <div className="worksheet-editor-block">
-        <span className="worksheet-editor-block-label">条目（每个条目归到一个框里）</span>
+        <span className="worksheet-editor-block-label">条目与归属</span>
         <div className="worksheet-editor-options">
           {items.map((entry, index) => {
             const zoneId = placement[entry.id] ?? '';
@@ -129,7 +129,7 @@ export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
                   aria-label={`删除条目 ${entry.text.trim() || index + 1}`}
                   onClick={() => commit(categorizeRemoveItem(categorize, index))}
                 >
-                  ×
+                  <TrashIcon />
                 </button>
               </div>
             );
@@ -142,12 +142,12 @@ export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
         </div>
       </div>
 
-      <p className="worksheet-editor-hint">
-        条目在屏幕上的<b>先后顺序与答案无关</b>，答案是每个条目归到了哪个框。全部落对=全对，
-        落对一部分=部分给分，一个都没落对=全错。
-        {unplaced > 0 ? ` 现在还有 ${unplaced} 个条目没有归到框里，保存会被服务端拦下。` : ''}
-        {zones.length < 2 ? ' 归类题至少要两个框。' : ''}
-      </p>
+      {(unplaced > 0 || zones.length < 2) && (
+        <p className="worksheet-editor-warn-hint">
+          {unplaced > 0 ? `还有 ${unplaced} 个条目没有归属。` : ''}
+          {zones.length < 2 ? ' 归类题至少需要两个分类框。' : ''}
+        </p>
+      )}
     </>
   );
 }

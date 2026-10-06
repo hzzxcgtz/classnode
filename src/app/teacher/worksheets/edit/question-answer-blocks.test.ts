@@ -105,7 +105,7 @@ test('★ 右栏的标题要和左栏**同一个类**（换行标签，不是 h4
   //    ⇒ 判据是**位置**：「正确顺序」那个标签后面必须**紧接着**列表/空态那一句。
   assert.match(
     order,
-    /<span className="worksheet-editor-block-label">正确顺序<\/span>\s*\n\s*\{correctOrder\.length === 0 \? \(/,
+    /<span className="worksheet-editor-block-label"><EditorIcon[^>]*\/>正确顺序<\/span>\s*\n\s*\{correctOrder\.length === 0 \? \(/,
     '「正确顺序」标签后面又插了一整段说明 —— 那正是把右栏的行推下去的 ~52px',
   );
 });
@@ -131,13 +131,12 @@ test('🔴 「加一行 / 新建题」的输入框都必须有**灰色占位提�
   }
 });
 
-test('★ 那两句说明搬进了卡片顶部那句话里（不许丢）', () => {
-  // 「学生看不到这个顺序；它是判分的依据」是**必须留着**的信息 ——
-  // 它是教师判断「我改的这一栏会不会影响学生」的唯一依据。
-  // ⚠️ 断言用的是**活代码**（剥过注释）：写进注释里不算数。
-  const card = body(CARD);
-  assert.ok(card.includes('学生看不到'), '「学生看不到」这句丢了');
-  assert.ok(card.includes('判分'), '「判分的依据」这句丢了');
+test('★ 排序题用栏标题区分学生顺序与正确顺序', () => {
+  // 两栏的语义由紧邻内容的标题直接表达，不再额外常驻一段说明。
+  const order = body(ORDER);
+  assert.ok(order.includes('学生看到'), '左栏没有点明学生看到的顺序');
+  assert.ok(order.includes('正确顺序'), '右栏没有点明正确顺序');
+  assert.ok(!body(CARD).includes('学生看不到'), '排序题又恢复了重复长说明');
 });
 
 test('★ 两栏的行高统一（不然每行再差一点，四行下来照样歪）', () => {
@@ -260,7 +259,7 @@ test('★ 选项行：答案设置（圆点/勾选框）在**行尾**，字母�
   // 行首那个字母盒不能丢：关掉自动评分时它是唯一能区分四个选项的东西。
   assert.ok(choice.includes('worksheet-editor-option-correct is-readonly'), '行首的字母盒（A/B/C/D）不见了');
 
-  assert.match(body(CARD), /正确答案点选项右侧的圆点/, '卡片上的提示仍写着「左侧」');
+  assert.match(body(CARD), /点右侧圆点设置答案/, '卡片上的提示没有点明行尾答案控件');
   // ★ 2026-10-06：「点右侧圆点 / 方框」这件事**只由卡片那句讲一次**（同一屏里不说两遍）——
   //    警告条现在只留结论。
   assert.match(choice, /尚未设置正确答案/, '警告条丢了结论');
@@ -311,8 +310,8 @@ test('★ 2026-10-06（教师）：判断题的正确答案块摆在**题干后�
   const live = stripImports(stripComments(CARD));
   // ⚠️ 判据用**这一块的标题**，不要用 `node.type === 'true-false'`：那个条件在卡片靠上处
   //    （摘要/只读预览那条路）也出现过，第一次出现的位置比题干还早 ⇒ 拿它当判据会假红。
-  const stem = live.indexOf('<h4>题干</h4>');
-  const answer = live.indexOf('<h4>正确答案</h4>');
+  const stem = live.search(/<h4><EditorIcon[^>]*\/>题干<\/h4>/);
+  const answer = live.search(/<h4><EditorIcon[^>]*\/>正确答案<\/h4>/);
   assert.ok(stem !== -1 && answer !== -1, '题干或判断题的正确答案块不见了');
   assert.ok(answer > stem, '判断题的正确答案没有排在题干之后');
   // 而且必须在**判分设置**之前 —— 不许又被挪回最下面。
@@ -320,5 +319,5 @@ test('★ 2026-10-06（教师）：判断题的正确答案块摆在**题干后�
   const grader = live.indexOf('评分方式');
   assert.ok(grader !== -1 && answer < grader, '判断题的正确答案又跑到判分设置后面去了');
   // 搬动最怕留下两份：两份都会渲染、都不报错。
-  assert.equal((live.match(/<h4>正确答案<\/h4>/g) ?? []).length, 1, '「正确答案」块不止一处');
+  assert.equal((live.match(/<h4><EditorIcon[^>]*\/>正确答案<\/h4>/g) ?? []).length, 1, '「正确答案」块不止一处');
 });

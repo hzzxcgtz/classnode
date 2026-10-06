@@ -49,7 +49,19 @@ function scale(over: Partial<RewardScale> = {}): RewardScale {
 
 test('十一种卡通奖励加分数的取值两两不同，分数保留、对错不再出现在教师选项中', () => {
   const values = REWARD_STYLE_OPTIONS.map(option => option.value);
-  assert.equal(values[0], 'classnode', 'ClassNode 学霸机器人必须放在教师端的第一个选择位置');
+  assert.equal(values[0], 'classnode', '支点博士必须放在教师端的第一个选择位置');
+  const classnode = REWARD_STYLE_OPTIONS[0];
+  assert.equal(classnode.label, '支点博士');
+  assert.equal(classnode.symbol, '博');
+  assert.match(classnode.hint, /支点博士徽章/);
+  assert.ok(!REWARD_STYLE_OPTIONS.some(option => `${option.label}${option.hint}`.includes('学霸')));
+  assert.deepEqual(
+    REWARD_STYLE_OPTIONS.slice(1, 5).map(option => option.label),
+    ['璀璨星星', '缤纷花朵', '荣耀奖杯', '欢乐小熊'],
+  );
+  assert.ok(REWARD_STYLE_OPTIONS.slice(0, 11).every(option => [...option.label].length === 4), '收藏型奖励名称应统一为四个汉字');
+  const prefixes = REWARD_STYLE_OPTIONS.slice(0, 11).map(option => [...option.label].slice(0, 2).join(''));
+  assert.equal(new Set(prefixes).size, prefixes.length, '收藏型奖励的双字前缀不应重复');
   assert.deepEqual([...values].sort(), [
     'bear', 'bulb', 'classnode', 'crown', 'flower', 'gem', 'key',
     'lightning', 'points', 'rocket', 'star', 'trophy',
@@ -223,7 +235,7 @@ test('累计 = 每题之和：同一份配置下，逐个求和的桶与逐步�
 test('🔴 pointsUnitLabel：量词与图标跟着学习单的奖励档走 —— 不能一直是「分」', () => {
   // 教师原话：「这里要根据学习单的设置来调整，比如几朵花，几颗五角星，
   // **不能一直使用「分」**。」+「后面要加 🌸 或 ⭐ 图标」。
-  assert.equal(pointsUnitLabel('classnode'), '枚学霸徽章');
+  assert.equal(pointsUnitLabel('classnode'), '枚博士徽章');
   assert.equal(pointsUnitLabel('star'), '颗星星', '教师原话是「几颗五角星」—— 不是「个」');
   assert.equal(pointsUnitLabel('flower'), '朵花');
   assert.equal(pointsUnitLabel('trophy'), '座奖杯');

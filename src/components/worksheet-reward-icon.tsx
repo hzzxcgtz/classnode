@@ -14,7 +14,7 @@ interface RewardIconProps {
   label?: string;
 }
 
-/** ClassNode 徽章单独成图，其他十种收藏型奖励分为两张雪碧图；分数保持清晰的矢量加分徽章。 */
+/** 支点博士徽章单独成图，其他十种收藏型奖励分为两张雪碧图；分数保持清晰的矢量加分徽章。 */
 export function RewardIcon({
   kind,
   state = 'earned',

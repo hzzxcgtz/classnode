@@ -30,8 +30,7 @@ export function TrueFalseBody({ node, onDataChange, showAnswer = true }: {
   if (!showAnswer) return null;
 
   return (
-    <div className="worksheet-editor-inline-actions">
-      <span className="worksheet-editor-block-label">正确答案</span>
+    <div className="worksheet-editor-inline-actions worksheet-editor-true-false" role="radiogroup" aria-label="正确答案">
       {TRUE_FALSE_OPTIONS.map(option => (
         <label key={option.key} className="worksheet-editor-option-correct" title="选为正确答案">
           <input
@@ -41,7 +40,7 @@ export function TrueFalseBody({ node, onDataChange, showAnswer = true }: {
             checked={correctKeys[0] === option.key}
             onChange={() => onDataChange({ correctKeys: [option.key] })}
           />
-          <span>{option.text}</span>
+          <span><b aria-hidden="true">{option.key === 'T' ? '✓' : '×'}</b>{option.text}</span>
         </label>
       ))}
       {correctKeys.length !== 1 && (

@@ -20,7 +20,7 @@
 }
 
 .classnodeIcon {
-  background: url('/worksheet-rewards/classnode-scholar.png') center / contain no-repeat;
+  background: url('/worksheet-rewards/classnode-doctor.png') center / contain no-repeat;
   filter: grayscale(1);
   opacity: .32;
   transition: filter .16s ease-out, opacity .16s ease-out, transform .16s ease-out;

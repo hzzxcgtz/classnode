@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 // ★ 2026-09-30：正确顺序 / 「学生看到的顺序」里是教师的条目原文（可能含公式）。
 import { PromptText } from '@/lib/worksheet-prompt-text';
-import { TrashIcon } from '../editor-icons';
+import { EditorIcon, TrashIcon } from '../editor-icons';
 import {
   isOrderAmbiguous,
   isOrderAnswerUsable,
@@ -102,13 +102,12 @@ export function OrderAnswerBody({ node, onDataChange }: {
       {/* ★ 2026-09-30（教师）：「是这个红框里边的位置不对，所以导致错位。」
           原来这里是 `<h4>正确顺序</h4>` + 一整段说明，比左栏那一个
           `.worksheet-editor-block-label` 高出约 **52px** ⇒ 右栏的行整体被推下去，
-          两栏的行对不齐。⇒ 改成与左栏**同一个类**的单行标签；那两句说明搬到卡片顶部
-          （`question-card.tsx` 的 `order.description`）—— 一句话管两栏，也更省地方。 */}
-      <span className="worksheet-editor-block-label">正确顺序</span>
+          两栏的行对不齐。⇒ 改成与左栏**同一个类**的单行标签，
+          并直接用两个栏标题表达学生顺序与正确顺序。 */}
+      <span className="worksheet-editor-block-label"><EditorIcon kind="correct" />正确顺序</span>
       {correctOrder.length === 0 ? (
         <p className="worksheet-editor-hint">
-          还没设置正确顺序 —— 先点下面的「取当前顺序」（它会把现在的条目顺序当答案，
-          同时把学生看到的顺序重新排列），再用这里的 ▲▼ 调成正确的顺序。
+          还没设置答案。可先取当前顺序，再调整位置。
         </p>
       ) : (
         <ol className="worksheet-editor-order-answer">
@@ -212,7 +211,7 @@ export function OrderBody({ node, onDataChange }: {
              的状态，且同时指向两栏（「点重新排列，或调整『正确顺序』那一栏」）。 */}
       <div className="worksheet-editor-order-columns">
       <div className="worksheet-editor-block">
-        <span className="worksheet-editor-block-label">选项顺序</span>
+        <span className="worksheet-editor-block-label"><EditorIcon kind="student" />学生看到</span>
         <div className="worksheet-editor-options">
           {items.map((entry, index) => (
             <div
@@ -266,12 +265,6 @@ export function OrderBody({ node, onDataChange }: {
             重新排列
           </button>
         </div>
-        <p className="worksheet-editor-hint">
-          {/* ★ 2026-09-30：这一行是教师条目原文 ⇒ 认公式。⚠️ 箭头是分隔符，不包。 */}
-          学生看到的顺序：{items.length === 0
-            ? '（还没有条目）'
-            : <PromptText text={items.map(entry => entryLabel(entry.text)).join(' → ')} placeholder="" />}
-        </p>
       </div>
       {/* ── 右栏：正确顺序（从「自动评分」卡搬来的）───────────────────────── */}
       <OrderAnswerBody node={node} onDataChange={onDataChange} />

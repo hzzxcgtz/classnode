@@ -82,7 +82,7 @@ test('选择填空的待选词设置固定在题干之后、自动评分之前',
   // 教师随后说「中间不要分隔，在一个大窗口里」⇒ 开关与设置合成一张卡、`is-mode` 删掉。
   // ⇒ 锚点改认**那张卡的标题**：类名会随排版改名，而「谁在谁前面」这件事是绑在
   //   「题干 / 作答方式 / 自动评分」这三个**区域**上的，标题比类名稳。
-  const gradingMode = source.indexOf('<h3>自动评分</h3>');
+  const gradingMode = source.search(/<h3><EditorIcon[^>]*\/>\u81ea动评分<\/h3>/);
 
   assert.ok(prompt >= 0 && choiceSetup >= 0 && gradingMode >= 0, '三个区域都必须存在');
   assert.ok(prompt < choiceSetup, '待选词设置必须紧跟在题干编辑之后');
@@ -103,7 +103,7 @@ test('聚焦编辑器在同一页连续显示题目内容与评分设置', () =>
   const promptSection = source.indexOf('<section className="worksheet-editor-question-section is-prompt">');
   const gradingSection = source.indexOf('<section className="worksheet-editor-question-section is-grading">');
   assert.ok(gradingSection > promptSection, '评分设置必须排在题目与作答区域之后并直接显示');
-  assert.match(source, /<h4>分值设置<\/h4>/, '评分区应使用唯一的“分值设置”标题');
+  assert.match(source, /<h4><EditorIcon[^>]*\/>分值设置<\/h4>/, '评分区应使用唯一的“分值设置”标题');
   assert.doesNotMatch(source, /<strong>得分规则<\/strong>/, '分值控件内部不应重复“得分规则”标题');
 });
 

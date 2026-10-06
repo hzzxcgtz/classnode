@@ -15,6 +15,7 @@ import {
 import { readDrawingStarter } from '@/lib/worksheet-drawing-starter';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import type { WorksheetQuestionNode } from '@/lib/types';
+import { EditorIcon } from '../editor-icons';
 
 export function DrawingSettings({ node, onDataChange, onNotice }: {
   node: WorksheetQuestionNode;
@@ -68,8 +69,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
     return (
       <div className="worksheet-editor-drawing-settings">
         <p className="worksheet-editor-drawing-note">
-          这一题学生用<b>照片上传</b>作答，不会打开画板 ⇒ 作图工具、画布底图、初始图都已隐藏。
-          想让学生在画板上画，把上面的作答方式改回<b>画板绘制</b>。
+          照片模式不使用作图工具、画布底图和初始图。
         </p>
       </div>
     );
@@ -85,8 +85,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
       <section className="worksheet-editor-drawing-section" aria-labelledby={`drawing-tool-${node.id}`}>
         <div className="worksheet-editor-drawing-heading">
           <div>
-            <h5 id={`drawing-tool-${node.id}`}>作图工具</h5>
-            <p>每道绘图题使用一种工具。新建题目默认使用基础绘图。</p>
+            <h5 id={`drawing-tool-${node.id}`}><EditorIcon kind="tool" />作图工具</h5>
           </div>
         </div>
         {/*
@@ -116,8 +115,8 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
       <section className="worksheet-editor-drawing-section" aria-labelledby={`drawing-background-${node.id}`}>
         <div className="worksheet-editor-drawing-heading">
           <div>
-            <h5 id={`drawing-background-${node.id}`}>画布底图</h5>
-            <p>底图只作为学生作图参照，不会合并进笔迹；上传图建议使用横向图片。</p>
+            <h5 id={`drawing-background-${node.id}`}><EditorIcon kind="background" />画布底图</h5>
+            <p>仅作参照，不会合并进学生笔迹。</p>
           </div>
         </div>
         <div className="worksheet-editor-drawing-swatches">
@@ -184,7 +183,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
       <section className="worksheet-editor-drawing-section" aria-labelledby={`drawing-starter-${node.id}`}>
         <div className="worksheet-editor-drawing-heading">
           <div>
-            <h5 id={`drawing-starter-${node.id}`}>初始图</h5>
+            <h5 id={`drawing-starter-${node.id}`}><EditorIcon kind="starter" />初始图</h5>
           </div>
           <label className="worksheet-editor-drawing-switch">
             {/* ★ 教师澄清 3：「要使用开关按钮，不要使用复选框」⇒ `role="switch"` + 自己画轨道
@@ -211,7 +210,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
               <p className="worksheet-editor-drawing-note">
                 {/* ★ 2026-10-06：原来这里还有前半句「学生在下面这张图上继续画」——
                     与上面那个开关标签（「让学生在这张底稿上继续画」）同义 ⇒ 只留后半句。 */}
-                学生打开时看到的就是这张图，可以随意接着改；想回到你这张原样，学生端有「恢复初始图」。它本身<b>不计入学生的作答</b>。
+                学生将在这张图上继续绘制，初始图本身不计入作答。
               </p>
               <div style={{ height: 380, border: '1px solid #e4ecf4', borderRadius: 10, overflow: 'hidden' }}>
                 <FlowchartDrawing
@@ -227,9 +226,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
               初始图目前只支持<b>流程图</b>；把上面的作图工具改成流程图就能在这里画。
             </p>
           )
-        ) : (
-          <p className="worksheet-editor-drawing-note">不设初始图时，学生在空画板上从零开始画。</p>
-        )}
+        ) : null}
       </section>
     </div>
   );

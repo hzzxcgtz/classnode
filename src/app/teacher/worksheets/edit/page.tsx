@@ -43,11 +43,19 @@ import { RewardIcon } from '@/components/worksheet-reward-icon';
 // `SaveStatus` 是 hook 的状态类型（内核里没有），这两个留在原处。
 import { useWorksheetEditor, type SaveStatus } from './use-worksheet-editor';
 import {
+  isMultipleChoice,
   QUESTION_TYPE_OPTIONS,
   type EditorBlock,
   type QuestionType,
   type WorksheetDraft,
 } from './worksheet-editor-core';
+
+function editorQuestionTypeLabel(node: WorksheetQuestionNode): string {
+  if (node.type === 'single-choice' || node.type === 'multi-choice') {
+    return isMultipleChoice(node) ? '多选题' : '单选题';
+  }
+  return QUESTION_TYPE_OPTIONS.find(option => option.value === node.type)?.label ?? node.type;
+}
 
 /**
  * 学习单编辑页（`/teacher/worksheets/edit/?id=xxx`）。
@@ -568,7 +576,7 @@ function WorksheetEditorBody() {
                     <button type="button" onClick={() => selectQuestion(row.node.id, null)}>
                       <span className="worksheet-editor-outline-number">{row.heading}</span>
                       <span className="worksheet-editor-outline-question-copy">
-                        <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{row.node.type === 'single-choice' || row.node.type === 'multi-choice' ? '选择题' : row.node.type === 'fill-blank' || row.node.type === 'choice-blank' ? '填空题' : QUESTION_TYPE_OPTIONS.find(option => option.value === row.node.type)?.label ?? row.node.type}</strong>
+                        <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{editorQuestionTypeLabel(row.node)}</strong>
                         <em>{row.node.prompt.trim() || '未填写题干'}</em>
                       </span>
                     </button>
@@ -616,7 +624,7 @@ function WorksheetEditorBody() {
                         <button type="button" onClick={() => selectQuestion(row.node.id, task.node.id)}>
                           <span className="worksheet-editor-outline-number">{row.index + 1}</span>
                           <span className="worksheet-editor-outline-question-copy">
-                            <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{row.node.type === 'single-choice' || row.node.type === 'multi-choice' ? '选择题' : row.node.type === 'fill-blank' || row.node.type === 'choice-blank' ? '填空题' : QUESTION_TYPE_OPTIONS.find(option => option.value === row.node.type)?.label ?? row.node.type}</strong>
+                            <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{editorQuestionTypeLabel(row.node)}</strong>
                             <em>{row.node.prompt.trim() || '未填写题干'}</em>
                           </span>
                         </button>

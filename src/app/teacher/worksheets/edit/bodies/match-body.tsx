@@ -187,13 +187,10 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
         <button type="button" className="btn btn-secondary" onClick={() => commit(matchAddRight(match))}>＋ 右侧添加</button>
       </div>
       {showAnswer && (
-        <p className="worksheet-editor-hint">
+        <p className="worksheet-editor-status-note">
           {pairs.length === 0
-            ? '还没有设置任何连线 —— 点每一项右边的开关，打开的格子就是一条正确的连线。'
-            : `已设置 ${pairs.length} 条连线。一个左项可以连多个右项，多个左项也可以连同一个右项。`
-              // ⚠️ 这句话是**纯文本**（不是 markdown）—— 原先写着 `**留空项**`，
-              // 于是屏幕上真的印出两个星号（教师截图里就有）。要强调就换个写法。
-              + '没有连线的左项是「留空项」：学生不需要连它，误连会拿不到全对。'}
+            ? '尚未设置正确连线'
+            : `已设置 ${pairs.length} 条正确连线`}
         </p>
       )}
     </>

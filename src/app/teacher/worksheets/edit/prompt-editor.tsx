@@ -852,9 +852,6 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
              （`math-insert-dialog.tsx`）—— 教师看公式的地方本来就该在那儿。 */}
       {/* ⚠️ 没选中时给一句为什么按不动（裁定 ② 的代价：这些按钮没有第二种含义）。
           放在**框外面**：它夹在工具条与正文中间的话，那个框就不像一个整体了。 */}
-      <p className="worksheet-editor-format-hint">
-        {toolbar.hasSelection ? '格式只作用于选中的那一段文字。' : '先选中要设置格式的文字，再点上面工具栏里的按钮。'}
-      </p>
       {imageUrl && (
         <div className="worksheet-editor-upload-preview">
           <img src={worksheetAssetUrl(imageUrl)} alt="题干配图预览" />

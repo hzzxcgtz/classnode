@@ -66,11 +66,11 @@ test('★ 那个「显示分隔符」的 prop 已经拆了（四处统一成一�
   assert.ok(!body(CARD).includes('joinWith'), '调用点又在自己传显示分隔符');
 });
 
-test('★ 那几处提示语是**同一句**（同一份事实不许有两份拷贝）', () => {
-  // 原来 `question-card.tsx` 里有两句各写一遍的「顿号、逗号、分号」——
-  // 扩充分隔符集合时是同一个事实，两份就是两次漂移的机会。
+test('★ 编辑卡不再重复解释选词分隔符', () => {
+  // 分隔符的实际解析仍由 fill-blanks-body 中的单一常量负责；
+  // 编辑卡不再常驻一段「顿号、逗号、分号」说明，避免把操作界面撑长。
   const card = body(CARD);
-  assert.ok(card.includes('CHOICE_SEPARATOR_HINT'), '提示语没有走那个共用的常量');
+  assert.ok(!card.includes('CHOICE_SEPARATOR_HINT'), '编辑卡又引入了长分隔符提示');
   assert.ok(!card.includes('顿号、逗号'), '还有一处把分隔符**写死**在提示语里');
 });
 

@@ -4187,7 +4187,9 @@ tr:hover td {
    与 `.worksheet-editor-field > span` 同一套字号与颜色；它同时被放在
    `.worksheet-editor-inline-actions` 的横排里当行首标签用，所以是 inline-block。 */
 .worksheet-editor-block-label {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 4px;
   font-size: 0.75rem;
   font-weight: 600;
@@ -6580,6 +6582,9 @@ tr:hover td {
 
 .worksheet-editor-block-head h4 {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   color: #1e293b;
   font-size: 0.813rem;
   font-weight: 700;
@@ -6615,6 +6620,9 @@ tr:hover td {
 
 .worksheet-editor-drawing-heading h5 {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   color: #263b53;
   font-size: .78rem;
   line-height: 1.4;
@@ -6760,7 +6768,14 @@ tr:hover td {
 }
 
 .worksheet-editor-ai-scoring-fields input { min-height: 38px; padding: 7px 10px; }
-.worksheet-editor-ai-scoring-fields textarea { min-height: 76px; padding: 9px 11px; resize: vertical; line-height: 1.55; }
+.worksheet-editor-ai-scoring-fields textarea {
+  min-height: 76px;
+  padding: 9px 11px;
+  resize: vertical;
+  font-size: 0.813rem;
+  font-weight: 400;
+  line-height: 1.6;
+}
 .worksheet-editor-ai-scoring-fields input:focus,
 .worksheet-editor-ai-scoring-fields textarea:focus { border-color: #6f94b9; box-shadow: 0 0 0 3px rgb(73 116 158 / 10%); }
 
@@ -6891,6 +6906,9 @@ tr:hover td {
 }
 
 .worksheet-editor-section-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: #172033;
   font-size: 0.875rem;
   font-weight: 750;
@@ -6917,6 +6935,48 @@ tr:hover td {
 .worksheet-editor-section-head > span.is-active {
   background: var(--primary-light);
   color: var(--primary-dark);
+}
+
+.worksheet-editor-heading-icon {
+  flex: 0 0 auto;
+  color: #587897;
+}
+
+.worksheet-editor-section-head h3 > .worksheet-editor-heading-icon {
+  width: 17px;
+  height: 17px;
+}
+
+/* 绘图设置全部嵌在一个作答块中，参考要点不是它的同级兄弟，不能吃到通用 `+` 间距。 */
+.worksheet-editor-reference-block {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #e5ebf1;
+}
+
+.worksheet-editor-input-modes .worksheet-editor-option-correct > span,
+.worksheet-editor-true-false .worksheet-editor-option-correct > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.worksheet-editor-true-false .worksheet-editor-option-correct > span > b {
+  color: #527198;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.worksheet-editor-status-note {
+  display: inline-flex;
+  align-items: center;
+  margin: 10px 0 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #eef4f8;
+  color: #50677d;
+  font-size: 0.7rem;
+  font-weight: 650;
 }
 
 /* ★ 2026-09-27（教师）：「这个使用左右滑动的开关打开，就表示可以多选，放到右上角去。」
@@ -6961,6 +7021,15 @@ tr:hover td {
 .worksheet-editor-question-section.is-prompt textarea:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(var(--primary-focus-rgb), 0.1);
+}
+
+/* AI 评分仍住在题目区，但评分标准是普通表单文本，不应继承题干的大字号和加粗。 */
+.worksheet-editor-question-section.is-prompt .worksheet-editor-ai-scoring-fields textarea {
+  min-height: 76px;
+  padding: 9px 11px;
+  font-size: 0.813rem;
+  font-weight: 400;
+  line-height: 1.6;
 }
 
 .worksheet-editor-rich-field {

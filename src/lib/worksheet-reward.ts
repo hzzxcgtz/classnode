@@ -79,35 +79,35 @@ export interface RewardStyleOption {
 export const REWARD_STYLE_OPTIONS: readonly RewardStyleOption[] = [
   {
     value: 'classnode',
-    label: 'ClassNode 学霸',
-    symbol: '智',
+    label: '支点博士',
+    symbol: '博',
     unit: '枚',
-    hint: '每答对一题获得几枚 ClassNode 学霸徽章，答错不给。',
+    hint: '每答对一题获得几枚支点博士徽章，答错不给。',
   },
   {
     value: 'star',
-    label: '五角星',
+    label: '璀璨星星',
     symbol: '★',
     unit: '颗',
     hint: '每答对一题给几颗星，答错不给。',
   },
   {
     value: 'flower',
-    label: '花朵',
+    label: '缤纷花朵',
     symbol: '✿',
     unit: '朵',
     hint: '每答对一题给几朵花，答错不给。',
   },
   {
     value: 'trophy',
-    label: '奖杯',
+    label: '荣耀奖杯',
     symbol: '奖',
     unit: '座',
     hint: '每答对一题赢得几座小奖杯，答错不给。',
   },
   {
     value: 'bear',
-    label: '小熊',
+    label: '欢乐小熊',
     symbol: '熊',
     unit: '只',
     hint: '每答对一题收集几只小熊徽章，答错不给。',
@@ -191,7 +191,7 @@ export function pointsUnitLabel(style: RewardStyle): string {
   // 🔴 **按档位分支，不要按「有没有 `symbol`」判**：分数档（`points`）的 `symbol` 是
   // `'+'`，但它是**前缀**（学生端画的是 `+3`，见 `rewardMark`），不是跟在数字后面的量词。
   // 拿它去拼量词会得到「分 +」—— 2026-09-26 我第一版就是这么写的，用例当场抓住。
-  if (style === 'classnode') return '枚学霸徽章';
+  if (style === 'classnode') return '枚博士徽章';
   if (style === 'star') return '颗星星';
   if (style === 'flower') return '朵花';
   if (style === 'trophy') return '座奖杯';

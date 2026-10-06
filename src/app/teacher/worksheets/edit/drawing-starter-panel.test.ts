@@ -43,7 +43,7 @@ test('★ 2026-10-06（教师）：照片上传时整块隐藏；两个区域改
   for (const gone of ['DRAWING_TOOL_OPTIONS.map', 'DRAWING_BACKGROUND_PRESETS.map', 'FlowchartDrawing']) {
     assert.ok(!photoBlock.includes(gone), `照片上传时还渲染了 ${gone}`);
   }
-  assert.match(photoBlock, /都已隐藏/, '照片上传时没有告诉教师为什么是空的');
+  assert.match(photoBlock, /不使用作图工具、画布底图和初始图/, '照片上传时没有告诉教师为什么是空的');
   // ② 两个区域改成：选项只留名字 + 选中项在下面一行说明 + 缩略图行。
   assert.match(source, /className="worksheet-editor-drawing-tools"/, '作图工具没有换成紧凑的按钮行');
   assert.match(source, /className="worksheet-editor-drawing-swatches"/, '画布底图没有换成缩略图行');

@@ -2568,13 +2568,29 @@
       菱形的四个顶点上，与**快照里画的那个菱形**（`worksheet-flowchart-svg.ts`）也对得上。
    ② 「连接线默认没箭头的吗？」——那是 React Flow 的边，箭头见下面的 `visibleEdges`。
 */
+/*
+  ★ 2026-10-06（教师批图：「**文字要包在框内**」）：尺寸与「内接矩形」绑定。
+
+  菱形是**画出来的**，它的内接矩形只有外框的**一半宽、一半高**（顶点落在四条边的中点上）——
+  文字要落在里面，外框就得至少是文字所需的两倍。
+  ⇒ 240×120 ⇒ 内接 120×60 ⇒ label 收到 112px（留 8px 余量），长条件换行后正好放得下。
+
+  🔴 **必须给确定的 min-width**：菱形宽度本来是被文字撑开的，宽度一旦由内容决定，
+  「文字不超过半宽」这个约束就变成循环、也就失去意义（教师报的就是这个形态）。
+*/
 .flowNode_decision {
-  min-width: 150px;
-  min-height: 84px;
+  min-width: 240px;
+  min-height: 120px;
   border: 0;
   background: transparent;
   box-shadow: none;
 }
+/*
+  ⚠️ 外框那条 `.flowNodeLabel { max-width: 220px }` 对菱形**太大了**（220 > 240/2）——
+  内接半宽才是这里的硬上限。这一条特异性更高（两个类），不必依赖书写顺序。
+  `flowchart-node-stroke.test.ts` 钉着「label 的 max-width ≤ 菱形 min-width 的一半」。
+*/
+.flowNode_decision .flowNodeLabel { max-width: 112px; }
 .flowNode_decision[data-selected='1'] { box-shadow: none; }
 /*
   ⚠️ 选中时**只换颜色、不加粗** —— 与 `.flowNode[data-selected='1']`（只换 border-color）同一套。

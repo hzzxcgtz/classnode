@@ -22,6 +22,19 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TSX = fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8');
+
+/**
+ * 按**代码标记**切一段出来（与 `flowchart-history-wiring.test.ts` 里那个同名同形 ——
+ * 那个是这个文件私有的，这边要用就得自己有一份）。
+ * ⚠️ 找不到标记时返回**空串**、不泄漏到文件末尾：泄漏出来的那一大坨会让「长度 > N」的下界断言
+ * 反而更容易过，判据就静默泡软了。
+ */
+function blockBetween(source: string, startMarker: string, endMarker: string): string {
+  const at = source.indexOf(startMarker);
+  if (at === -1) return '';
+  const end = source.indexOf(endMarker, at + startMarker.length);
+  return end === -1 ? '' : source.slice(at, end);
+}
 const CSS = fs.readFileSync(path.resolve(HERE, '..', '..', 'worksheet.module.css'), 'utf8');
 
 /** 其它形状的描边粗细 —— 唯一真源是 CSS 的 `.flowNode` 那条规则。 */
@@ -49,6 +62,35 @@ test('菱形的描边与其它形状一样粗', () => {
     baseBorderWidth(),
     '菱形是画出来的 SVG、其它是 CSS border，两处写死了不同的数 ⇒ 眼睛看得出的粗细差。'
       + '教师 2026-10-06 报过一次：「菱形的框太粗了，要跟其它图形一样。」',
+  );
+});
+
+/*
+  ★ 2026-10-06（教师批图：「**文字要包在框内**」）：**菱形里的文字必须落在内接矩形里**。
+
+  判断框是**画出来的**菱形（`<polygon>`），它的内接矩形只有外框的**一半宽、一半高**
+  —— 顶点落在四条边的中点上。而文字盒 `.flowNodeLabel` 的 `max-width` 是按**整个外框**给的，
+  所以条件一长就必然探出斜边。
+
+  ⚠️ 这里还有个**循环**：菱形宽度本来是被文字**撑开**的（`min-width` 只是下限），
+  所以「只把文字限窄」单独做不管用 —— 两边要**一起**钉：菱形给足确定的尺寸、
+  label 的 `max-width` 收到内接半宽以内。
+*/
+test('菱形里的文字必须落在内接矩形内 —— 半宽是硬上限', () => {
+  const diamond = blockBetween(CSS, '.flowNode_decision {', '}');
+  assert.ok(diamond.length > 20, '找不到 `.flowNode_decision` 那条规则');
+  const minW = /min-width:\s*([\d.]+)px/.exec(diamond);
+  assert.ok(minW, '判断框要有确定的 min-width（否则宽度被文字撑开，下面的上限就失去意义）');
+
+  const labelRule = blockBetween(CSS, '.flowNode_decision .flowNodeLabel', '}');
+  assert.ok(labelRule.length > 10, '找不到「判断框里的 label」那条规则');
+  const maxW = /max-width:\s*([\d.]+)px/.exec(labelRule);
+  assert.ok(maxW, '判断框里的 label 要有自己的 max-width（外框那条 220px 对它太大）');
+
+  const halfWidth = Number(minW[1]) / 2;
+  assert.ok(
+    Number(maxW[1]) <= halfWidth,
+    `label 的 max-width ${maxW[1]}px 超过了内接半宽 ${halfWidth}px ⇒ 字会探出斜边（教师批图报的就是这个）`,
   );
 });
 

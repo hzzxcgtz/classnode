@@ -5,7 +5,6 @@ import {
   addEdge,
   Background,
   BackgroundVariant,
-  BaseEdge,
   ConnectionMode,
   Controls,
   Handle,
@@ -17,7 +16,6 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
-  type EdgeProps,
   type Node,
   MarkerType,
   reconnectEdge,
@@ -599,7 +597,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *    用库自己的换算而不是自己乘 `viewport`：那是**页面**坐标（含容器 rect 与页面滚动），
    *    而 `viewport.x + flowX * zoom` 只对「浮层住在 `.flowStage` 里」成立。
    */
-  const { flowToScreenPosition, screenToFlowPosition } = useReactFlow<FlowNode, Edge>();
+  const { flowToScreenPosition } = useReactFlow<FlowNode, Edge>();
   const nodeTypes = useMemo(() => ({ flow: FlowNodeEditor }), []);
   /*
    * ★ 2026-10-06（教师：「全回原版」）：这里原来注册着一份自定义边（`FlowLabelEdge`）——

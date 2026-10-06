@@ -51,8 +51,11 @@ const JUNCTION_STROKE_WIDTH = 2;
 const JUNCTION_STROKE = '#6b86a5';
 /** 交点填充 = 画板 `.flowNode_junction` 的 `background` —— **空心**（原来是 `COLORS.stroke` 实心）。 */
 const JUNCTION_FILL = '#fff';
-/** 线标签离线多远（流坐标）—— 与画板 `EDGE_LABEL_GAP` 同值、同义。 */
-const FLOW_LABEL_OFFSET = 8;
+/*
+ * ⊘ 2026-10-06（教师：「全回原版」）：这里原有 `FLOW_LABEL_OFFSET = 8` —— 它让快照的标签
+ *   「离线多远」与画板的 `EDGE_LABEL_GAP` 同值（当时标签摆在线旁边）。
+ *   标签交回库之后，画板那边不再摆标签、这边也改成「中点 + 白底框」⇒ 这个偏移没有对象了。
+ */
 
 export interface FlowRasterNode {
   id: string;

@@ -128,9 +128,12 @@ test('★ 线上的字要画进快照（判断框分出的「是 / 否」不能�
    ══════════════════════════════════════════════════════════════════════════════ */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-/** 画板的**唯一真源**：交点样式在 CSS 里、标签离线多远在画板组件里。 */
+/**
+ * 画板的**唯一真源**：交点样式在 CSS 里。
+ * ⊘ 2026-10-06（「全回原版」）：这里原来还指过画板组件（`CANVAS_TSX`）—— 那是为了对「标签离线多远」
+ *   （`EDGE_LABEL_GAP`）。标签交回库之后画板不再摆标签，那个常量与这条引用一起删了。
+ */
 const CANVAS_CSS = path.resolve(HERE, '../app/classroom/worksheet/worksheet.module.css');
-const CANVAS_TSX = path.resolve(HERE, '../app/classroom/worksheet/questions/drawing-surfaces/flowchart-drawing.tsx');
 /** 快照自己的那一份（下面要拿它与画板对起来）。 */
 const SNAPSHOT = path.join(HERE, 'worksheet-flowchart-svg.ts');
 
@@ -190,29 +193,12 @@ function canvasJunctionSize(): number {
   return Number(raw);
 }
 
-/** 画板标签的**摆位规则** —— 抠 `FlowLabelEdge` 那一份实现（与 `surface-lifecycle.test.ts` 同一个靶子）。 */
-function canvasLabelEdgeBody(): string {
-  const live = stripComments(fs.readFileSync(CANVAS_TSX, 'utf8'));
-  const at = live.indexOf('function FlowLabelEdge');
-  assert.notEqual(at, -1, '画板那份只管标签的自定义边（`FlowLabelEdge`）没了 —— 标签又会回到「压线」的摆法');
-  const body = live.slice(at, live.indexOf('\n}\n', at));
-  assert.ok(body.length > 200, '`FlowLabelEdge` 没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  return body;
-}
-
-/** 画板 `EDGE_LABEL_GAP` 那个数。 */
-function canvasLabelGap(): number {
-  const live = stripComments(fs.readFileSync(CANVAS_TSX, 'utf8'));
-  return constNumber(live, 'EDGE_LABEL_GAP');
-}
-
-/** 画板标签摆位符不符合规则（两半都判，变异才抓得住）。 */
-function canvasBiasesRight(source: string): boolean {
-  return /vertical \? \([\s\S]{0,400}?x=\{labelX \+ EDGE_LABEL_GAP\}[\s\S]{0,200}?textAnchor="start"/.test(source);
-}
-function canvasBiasesAbove(source: string): boolean {
-  return /\) : \([\s\S]{0,400}?y=\{labelY - EDGE_LABEL_GAP\}[\s\S]{0,200}?textAnchor="middle"/.test(source);
-}
+/*
+ * ⊘ 2026-10-06（教师：「全回原版」）：这里原有四个辅助函数 —— `canvasLabelEdgeBody` /
+ *   `canvasLabelGap` / `canvasBiasesRight` / `canvasBiasesAbove`，它们是给「快照的标签摆法与
+ *   画板一致」那条判据抠画板实现用的（`FlowLabelEdge` + `EDGE_LABEL_GAP`）。
+ *   标签交回库之后画板不再摆标签，那条判据连同这四个函数一起删了。
+ */
 
 // ── ① 交点（junction）：8×8 的描边空心小环，圆心在节点中心 ─────────────────────
 test('★ 快照的交点与画板一致：8×8 空心环（r=半尺寸 / 白底 / 同色 2px 描边）', () => {

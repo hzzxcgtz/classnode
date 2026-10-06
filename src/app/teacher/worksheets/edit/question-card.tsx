@@ -66,6 +66,7 @@ import { DrawingSettings } from './bodies/drawing-settings';
 import { isInkNode } from '@/lib/worksheet-ink';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 import { api } from '@/lib/api';
+import { normalizePastedText } from '@/lib/worksheet-text-normalize';
 import { TrashIcon } from './editor-icons';
 
 const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string }> = {
@@ -781,6 +782,32 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                         maxLength={2400}
                         rows={4}
                         placeholder="例如：观点明确；至少写出两个依据；能结合题目材料说明。也可以只上传评分量表图片。"
+                        /*
+                          ★ 2026-10-06（教师）：「这里复制进来的文本，格式要去掉」。
+                          🔴 从 Word / PDF 复制中文带进来的是**排版**：每行缩进、全角空格、
+                             标点**前面**多一个空格（「（1 分） ；」）—— 肉眼以为是内容，其实全是噪音。
+                          ⇒ 粘贴时自己接管（`preventDefault` + 写入归一化后的文本，避免「先脏后清」闪一下）；
+                             另外在**离开输入框时**再收一次：粘贴发生在我们接上之前的旧内容也能被清干净
+                             （归一化是幂等的，干净的文本不会被改样）。
+                          ⚠️ 光标不特意复位：`onDataChange` 之后受控值会把光标带到末尾 —— 粘完接着打字
+                             本来就在末尾，这点可接受；真有人抱怨再补一个 ref + effect。
+                          ⚠️ 只去排版、不动内容：数字与单位之间（「满分 4 分」）与拉丁词之间
+                             （「AI 评分」）的空格都保留，标点后的空格只在紧跟中文时才删。
+                        */
+                        onPaste={(event) => {
+                          const raw = event.clipboardData.getData('text/plain');
+                          if (!raw) return;
+                          event.preventDefault();
+                          const element = event.currentTarget;
+                          const start = element.selectionStart ?? element.value.length;
+                          const end = element.selectionEnd ?? element.value.length;
+                          const next = `${element.value.slice(0, start)}${normalizePastedText(raw)}${element.value.slice(end)}`;
+                          onDataChange({ rubricText: next, aiScoringCriteria: undefined });
+                        }}
+                        onBlur={(event) => {
+                          const next = normalizePastedText(event.target.value);
+                          if (next !== event.target.value) onDataChange({ rubricText: next, aiScoringCriteria: undefined });
+                        }}
                         onChange={(event) => onDataChange({
                           rubricText: event.target.value,
                           aiScoringCriteria: undefined,

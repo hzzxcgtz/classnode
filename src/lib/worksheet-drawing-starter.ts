@@ -4,7 +4,8 @@
  * 教师的三条决定（逐字）：
  *   · 「先拿流程图当试点」；
  *   · **A 底稿不算学生的作答** ⇒ 学生交上去的 `data` 里**只留他自己画的**；
- *   · **B 学生不能改/删底稿** ⇒ 底稿的节点锁定（不能拖、不能改字、不能删）。
+ *   · ~~B 学生不能改/删底稿~~ —— **已被 2026-10-06 的第二次澄清反转**：学生**可以**随便改，
+ *     回退靠学生端的「恢复初始图」按钮（`restoreFlowchart`），不再靠锁定。
  *
  * 🔴 为什么放在**单独一个纯模块**里：这里是「底稿 ⇄ 学生作答」的**唯一**换算处
  *    （合并给画板看、剔除后存回去）。两处各写一遍必然分叉 —— 而分叉的表现是
@@ -53,8 +54,8 @@ export function readFlowchartPayload(raw: unknown): FlowchartPayload {
 /**
  * 画板要显示的那份 = **底稿 + 学生自己画的**（按 id 去重，底稿优先）。
  *
- * ⚠️ 底稿的节点被标成 `locked`（B：不能改/删）；学生自己的节点不带这个标记。
- * ⚠️ 底稿的边 `deletable: false`（同样为了 B；学生那条线他仍可以删/改标注）。
+ * ⚠️ 底稿的节点**不再加锁**（见上面那条反转说明）。
+ * ⚠️ 这条边不加锁 —— 与节点一样，学生可以删、可以改标注（回退靠「恢复初始图」）。
  */
 export function mergeFlowchart(starter: FlowchartPayload, mine: FlowchartPayload): FlowchartPayload {
   const starterNodeIds = new Set(starter.nodes.map((node) => node.id));

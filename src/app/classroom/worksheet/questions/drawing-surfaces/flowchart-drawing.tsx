@@ -18,6 +18,7 @@ import {
   type Edge,
   type Node,
   MarkerType,
+  getSmoothStepPath,
   type NodeProps,
 } from '@xyflow/react';
 // ★ 2026-10-06（教师）：「加上去的字变成了小黑块」——根因是这里原来引的是 **base.css**
@@ -203,22 +204,48 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    * ⚠️ 取的是**两个节点中心的中点**，不是折线的真实中点 —— 浮层只需要「落在这条线附近」，
    *    而折线的真实中点要复刻 `smoothstep` 的路径算法（多一份真源，迟早跟库的算法分叉）。
    */
+  /** 句柄 id → 库的站位（我们的节点固定用 top/right/bottom/left 这四个 id）。 */
+  const positionOfHandle = (id: unknown, fallback: Position): Position => (
+    id === 'top' ? Position.Top : id === 'left' ? Position.Left
+      : id === 'right' ? Position.Right : id === 'bottom' ? Position.Bottom : fallback
+  );
+
+  /**
+   * 选中/双击那条线**在路径上**的位置（换算成容器内坐标）—— 浮层按钮与就地输入框都摆这儿。
+   *
+   * 🔴 第一版用「两个节点中心的中点」，实测**离那条线很远**（教师 2026-10-06：「距离太远，
+   *    应该就在那根连接线上」）—— `smoothstep` 是**折线**，两个中心的连线中点经常根本不在路径上。
+   * ✅ 现在用库自己的 `getSmoothStepPath` 取它返回的**标签点**（`labelX/labelY`）：
+   *    这正是库给边缘标签用的位置 ⇒ 一定落在折线上，也不必我们复刻路径算法。
+   * ⚠️ 起止点按「句柄在节点边上居中」算（句柄确实居中于那一侧），所以与库画出来的路径点一致。
+   */
   const edgeAnchor = (edgeId: string | null) => {
     if (!edgeId) return null;
     const edge = edges.find((item) => item.id === edgeId);
     const source = nodes.find((item) => item.id === edge?.source);
     const target = nodes.find((item) => item.id === edge?.target);
     if (!edge || !source || !target) return null;
-    const centerOf = (node: FlowNode) => {
-      const width = node.measured?.width ?? 150;
-      const height = node.measured?.height ?? 54;
-      return { x: node.position.x + width / 2, y: node.position.y + height / 2 };
-    };
-    const a = centerOf(source);
-    const b = centerOf(target);
-    const flowX = (a.x + b.x) / 2;
-    const flowY = (a.y + b.y) / 2;
-    return { x: viewport.x + flowX * viewport.zoom, y: viewport.y + flowY * viewport.zoom };
+    const boxOf = (node: FlowNode) => ({
+      x: node.position.x,
+      y: node.position.y,
+      width: node.measured?.width ?? 150,
+      height: node.measured?.height ?? 54,
+    });
+    const handlePoint = (box: ReturnType<typeof boxOf>, position: Position) => (
+      position === Position.Top ? { x: box.x + box.width / 2, y: box.y }
+        : position === Position.Bottom ? { x: box.x + box.width / 2, y: box.y + box.height }
+          : position === Position.Left ? { x: box.x, y: box.y + box.height / 2 }
+            : { x: box.x + box.width, y: box.y + box.height / 2 }
+    );
+    const sourcePosition = positionOfHandle(edge.sourceHandle, Position.Bottom);
+    const targetPosition = positionOfHandle(edge.targetHandle, Position.Top);
+    const from = handlePoint(boxOf(source), sourcePosition);
+    const to = handlePoint(boxOf(target), targetPosition);
+    const [, labelX, labelY] = getSmoothStepPath({
+      sourceX: from.x, sourceY: from.y, sourcePosition,
+      targetX: to.x, targetY: to.y, targetPosition,
+    });
+    return { x: viewport.x + labelX * viewport.zoom, y: viewport.y + labelY * viewport.zoom };
   };
 
   const addNode = (kind: FlowKind, label: string) => {

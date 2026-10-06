@@ -388,7 +388,11 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   assert.match(live, /event\.key === 'Escape'/, 'Esc 没有取消');
   // ④ 浮层靠**视口换算**跟随（不引 Provider、也不复刻折线算法）。
   assert.match(live, /onMove=\{\(_, next\) => setViewport\(next\)\}/, '没有跟视口');
-  assert.match(live, /viewport\.x \+ flowX \* viewport\.zoom/, '坐标换算不对（浮层会飘）');
+  assert.match(live, /viewport\.x \+ labelX \* viewport\.zoom/, '坐标换算不对（浮层会飘）');
+  // ★ 教师 2026-10-06：「距离太远，应该就在那根连接线上」——第一版取两节点中心的中点，
+  //   而 `smoothstep` 是折线，中心点经常不在路径上。现在必须用库自己的路径函数取**标签点**。
+  assert.match(live, /getSmoothStepPath\(\{/, '锚点没有用库的路径函数（第一版就是这里飘的）');
+  assert.match(live, /const \[, labelX, labelY\] = getSmoothStepPath/, '没有取标签点 labelX/labelY');
   // ⑤ 两个浮层都要 44px 命中区（那条用例逐个 <button> 量）。
   assert.match(css, /\.flowEdgeFloat \{[\s\S]{0,200}?width: 44px;/, '浮层删除按钮的命中区小于 44px');
   assert.match(css, /\.flowEdgeInput \{[\s\S]{0,260}?min-height: 44px;/, '就地输入框太矮');

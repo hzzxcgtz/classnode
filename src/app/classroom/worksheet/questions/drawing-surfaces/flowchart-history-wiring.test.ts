@@ -219,6 +219,26 @@ test('全屏必须走 portal —— fixed 会被祖先劫持，portal 到 body �
   );
 });
 
+/*
+  ★ 2026-10-06（教师批图：「**这个点的移动要定个范围**」）：**连接点只能沿它所在的那条线走**。
+
+  连接点是「连到线上」时**插进那条线里**的 —— 位置本身就意味着「它在这条线上」。学生把它往
+  左右一拖，两侧的线段为了接上它就会**折返绕弯**，看起来像箭头画错了（教师真机拍到的正是这个）。
+
+  纯逻辑（算出「该锁哪个轴、锁在哪个值」）在 `junctionAxisLocks`，那边有单元测试；这条判据只钉
+  **接线**：它必须挂在 `onNodesChange`（位置变化的入口）上，而且 `<ReactFlow>` 用的必须是
+  **包过的那个** —— 少任何一环，拦了等于没拦。
+*/
+test('连接点的拖动约束接在 onNodesChange 上，且 ReactFlow 用的是包过的那个', () => {
+  assert.match(SOURCE, /junctionAxisLocks\(nodes, edges\)/, '要算出连接点的锁');
+  assert.match(SOURCE, /const onNodesChangeGuarded = useCallback/, '要包一层');
+  assert.match(
+    SOURCE,
+    /onNodesChange=\{disabled \? undefined : onNodesChangeGuarded\}/,
+    'ReactFlow 必须用包过的那个（用了原版就等于没拦）',
+  );
+});
+
 test('快捷键的作用域收在这台画板里 —— 多道流程图题不会一起撤销', () => {
   const block = blockBetween(SOURCE, 'const onKeyDown = (event: KeyboardEvent)', 'window.addEventListener');
   assert.ok(block.length > 100, `快捷键处理器的切片太短（${block.length}）`);

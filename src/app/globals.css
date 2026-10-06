@@ -9216,3 +9216,74 @@ tr:hover td {
     line-height: 1.35;
   }
 }
+
+/*
+  ★ 2026-10-06（教师）：「作图工具和画布底图这两个区域的 UI 要重新设计一下，要让用户看起来
+  更直观，而且不要占用太大的空间」。
+  ⇒ 选项只留名字（原来每张卡顶着两行说明），选中的那一项在下面用一行说明；
+    两排都按宽度自动铺开，窄屏也不挤成两三行。这层刻意写在后面：上面的基础规则仍然提供
+    配色与边框，这里只收紧**密度**（覆盖而不是重写，避免两处各说一套）。
+*/
+.worksheet-editor-drawing-tools,
+.worksheet-editor-drawing-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 6px;
+}
+.worksheet-editor-drawing-swatches { grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); }
+.worksheet-editor-drawing-tool,
+.worksheet-editor-drawing-swatch {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  min-height: 0;
+  padding: 8px 10px;
+  border: 1px solid #d8e2ed;
+  border-radius: 10px;
+  background: #fff;
+  color: #263b53;
+  font: inherit;
+  font-size: .74rem;
+  font-weight: 650;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: border-color .14s ease-out, background-color .14s ease-out;
+}
+.worksheet-editor-drawing-tool[data-checked='1'],
+.worksheet-editor-drawing-swatch[data-checked='1'] {
+  border-color: #7e9fbe;
+  background: #f1f6fb;
+}
+.worksheet-editor-drawing-swatch-preview {
+  width: 100%;
+  height: 34px;
+  border: 1px solid #e4ecf4;
+  border-radius: 6px;
+  background-color: #fff;
+  background-size: 22px 22px;
+  background-position: center;
+  display: grid;
+  place-items: center;
+  color: #8aa0b6;
+  font-size: .95rem;
+  font-weight: 700;
+}
+/* 选中项的那行说明（两排共用） */
+.worksheet-editor-drawing-note {
+  margin: 0;
+  color: #6a7d93;
+  font-size: .7rem;
+  line-height: 1.55;
+}
+/* 底稿开关 */
+.worksheet-editor-drawing-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #466384;
+  font-size: .72rem;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.worksheet-editor-drawing-switch input { accent-color: #527198; }

@@ -19,16 +19,41 @@ test('阳性对照：这份源码确实读到了（否则下面几条在空串�
   assert.match(source, /DrawingSettings/, '这不是那个组件');
 });
 
-test('★ 底稿面板：只给流程图档、用学生的画板、写回带 tool 的 drawingStarter', () => {
-  // ① 只在流程图档出现（试点就这一档；其它档学生端还没接，给出来就是骗人）。
-  assert.match(source, /tool === 'flowchart' && \(/, '底稿面板没有限定在流程图档');
-  assert.match(source, /\{tool === 'flowchart' && \([\s\S]*?<FlowchartDrawing/, '底稿面板里不是那块学生画板');
-  // ② 用的是学生那块画板（同一份数据 ⇒ 教师画的就是学生要接着画的那份）。
+test('★ 底稿面板：用学生的画板、写回带 tool 的 drawingStarter、有开关', () => {
+  // ① 用的是学生那块画板（同一份数据 ⇒ 教师画的就是学生要接着画的那份）。
   assert.match(source, /import FlowchartDrawing from '@\/app\/classroom\/worksheet\/questions\/drawing-surfaces\/flowchart-drawing'/, '没有复用学生端的画板组件（它是默认导出）');
-  // ③ 写回 `drawingStarter`（带 tool！学生端按 `starter.tool === 'flowchart'` 判断要不要合并）。
+  // ② 写回 `drawingStarter`（带 tool！学生端按 `starter.tool === 'flowchart'` 判断要不要合并）。
   assert.match(source, /drawingStarter: \{ tool: 'flowchart', data: next \}/, '写回的形状不对（缺 tool 学生端会直接忽略）');
-  // ④ 能清空（否则教师反悔之后这道题永远带着底稿）。
-  assert.match(source, /drawingStarter: undefined/, '没有「清空底稿」');
-  // ⑤ 画板要有明确高度：它靠量出容器尺寸才初始化（这条路径我们修过两次：scale(0) / overflowHidden）。
-  assert.match(source, /height: \d+/, '底稿画板没有给固定高度 —— 量不出尺寸它不会初始化');
+  // ③ 开关（教师 2026-10-06：「底稿要设一个开关」）：勾上落一份空底稿让画板立刻出现，取消清掉。
+  assert.match(source, /type="checkbox"[\s\S]{0,160}?checked=\{!!starter\}/, '没有「要不要设底稿」的开关');
+  assert.match(source, /drawingStarter: undefined/, '取消开关没有清掉底稿');
+  assert.match(source, /window\.confirm/, '已经有底稿时取消没有确认 —— 一次误点就丢一张图');
+  // ④ 画板要有明确高度：它靠量出容器尺寸才初始化（这条路径我们修过两次：scale(0) / overflowHidden）。
+  assert.match(source, /height: 380/, '底稿画板没有给固定高度 —— 量不出尺寸它不会初始化');
+  // ⑤ 还没接好的档位要说清楚，而不是给一个画不了东西的空框。
+  assert.match(source, /底稿目前只支持/, '非流程图档没有说明');
+});
+
+test('★ 2026-10-06（教师）：照片上传时整块隐藏；两个区域改成紧凑样式', () => {
+  const css = fs.readFileSync(path.resolve(import.meta.dirname, '..', '..', '..', 'globals.css'), 'utf8');
+  // ① 作答方式 = 照片上传 ⇒ 工具/底图/底稿一个都不参与（留一句解释 + 指路）。
+  assert.match(source, /node\.inputMode === 'photo'/, '没有读作答方式');
+  assert.match(source, /if \(photo\) \{[\s\S]*?return \(/, '照片上传时没有提前返回（内容还露在外面）');
+  const photoBlock = source.slice(source.indexOf('if (photo) {'), source.indexOf('const selectedTool'));
+  for (const gone of ['DRAWING_TOOL_OPTIONS.map', 'DRAWING_BACKGROUND_PRESETS.map', 'FlowchartDrawing']) {
+    assert.ok(!photoBlock.includes(gone), `照片上传时还渲染了 ${gone}`);
+  }
+  assert.match(photoBlock, /都已隐藏/, '照片上传时没有告诉教师为什么是空的');
+  // ② 两个区域改成：选项只留名字 + 选中项在下面一行说明 + 缩略图行。
+  assert.match(source, /className="worksheet-editor-drawing-tools"/, '作图工具没有换成紧凑的按钮行');
+  assert.match(source, /className="worksheet-editor-drawing-swatches"/, '画布底图没有换成缩略图行');
+  assert.match(source, /const selectedTool = DRAWING_TOOL_OPTIONS.find/, '没有「选中的那一项」的说明行');
+  assert.match(source, /const selectedBackground = background\.preset === 'custom'/, '底图那一项没有说明行');
+  // ⚠️ 反面：**不许**再回到「每张卡两行说明」的老样子（那正是不占空间要解决的问题）。
+  const toolsBlock = source.slice(source.indexOf('drawing-tools'), source.indexOf('drawing-swatches'));
+  assert.ok(!/<small>/.test(toolsBlock), '作图工具又给每张卡加了说明文字');
+  // ③ 样式在这一层收紧（覆盖，不重写上面的基础规则）。
+  for (const rule of ['.worksheet-editor-drawing-tools', '.worksheet-editor-drawing-swatch-preview', '.worksheet-editor-drawing-switch', '.worksheet-editor-drawing-note']) {
+    assert.ok(css.includes(rule), `globals.css 里少了 ${rule}`);
+  }
 });

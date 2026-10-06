@@ -388,7 +388,7 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   assert.match(live, /aria-label="这条连线上的文字"/, '没有就地输入框');
   assert.match(live, /event\.key === 'Enter'/, '回车没有提交');
   assert.match(live, /event\.key === 'Escape'/, 'Esc 没有取消');
-  // ④ 🔴 浮层必须**落在画布舞台里面**：教师 2026-10-06 实测「删除图标在最上面」——
+  // ④b 🔴 浮层必须**落在画布舞台里面**：教师 2026-10-06 实测「删除图标在最上面」——
   //   当时浮层被插到了舞台**外面**，于是按外层卡片定位，y 差了「卡片头 + 工具条」那约 280px。
   //   这条判据用**位置关系**钉死它（顺序错了就红，不必靠真机截图才发现）。
   const stageAt = live.indexOf('styles.flowStage');
@@ -396,9 +396,51 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   const floatAt = live.indexOf('styles.flowEdgeFloat');
   assert.ok(stageAt !== -1 && reactFlowAt !== -1 && floatAt !== -1, '舞台/ReactFlow/浮层有缺失');
   assert.ok(stageAt < reactFlowAt && reactFlowAt < floatAt, '浮层没有落在画布舞台里（会在卡片上乱飘）');
-  // ④ 浮层靠**视口换算**跟随（不引 Provider、也不复刻折线算法）。
+  // ④ ★ 两条偏移（教师 2026-10-06 认可）：删除按钮往 source 退 26px、中点句柄往目标端挪 14px。
+  assert.match(live, /\boffsetAlong\b/, '没有偏移函数 offsetAlong');
+  // ⚠️ 判据**按语义**写：抠出各自的函数体，在**体内**查「有没有 offsetAlong + 距离是多少」，
+  //    不逐字钉格式（按猜的格式写实际是多行 + `anchors.` 前缀，自己把自己判红 ✗）。
+  //    切函数体切到**下一个顶层 `const` 声明**为止 —— 固定长度切片会把隔壁函数吞进来，
+  //    两个函数挨着只隔 ~250 字，「26 在 endBody 里」就会靠泄漏恒真。
+  const bodyOf = (name: string) => {
+    const at = live.indexOf(`const ${name} = `);
+    if (at === -1) return '';
+    const next = live.indexOf('\n  const ', at + 1);
+    return next === -1 ? live.slice(at) : live.slice(at, next);
+  };
+  const endBody = bodyOf('edgeEndAnchor');
+  const midBody = bodyOf('edgeAnchor');
+  assert.ok(endBody.length > 40 && midBody.length > 40, '两个锚点函数没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  // 删除按钮 → 往 **source** 退 26；中点浮层 → 往**目标端**挪 14。两个距离不许互换。
+  assert.ok(/offsetAlong\(/.test(endBody) && /\b26\b/.test(endBody) && !/\b14\b/.test(endBody),
+    '删除按钮没有往 source 退 26px（会盖住箭头与目标侧连接点）');
+  assert.ok(/offsetAlong\(/.test(midBody) && /\b14\b/.test(midBody) && !/\b26\b/.test(midBody),
+    '中点句柄没有往目标端挪 14px（会压住 Y/N 标签、还吞掉中点的单击）');
+  // 退的方向必须是 **source**：删除按钮的体内得引用起点锚点（没有它就没法往 source 退）。
+  assert.match(endBody, /fromX|fromY/, '删除按钮没有引用起点锚点（没法往 source 退）');
+  // ★ 两个浮层都要**视口换算**（局部坐标 = `viewport + 流坐标 × zoom`），少一轴就会飘。
+  //   这条正是原来那句 `/viewport\.x \+ labelX \* viewport\.zoom/` 真正守的东西 ——
+  //   但它把中点浮层的变量名（`labelX`）也钉死了，实现一改就红。这里改成**不认变量名**的写法。
+  const convertX = /viewport\.x \+ [\w.]+ \* viewport\.zoom/;
+  const convertY = /viewport\.y \+ [\w.]+ \* viewport\.zoom/;
+  assert.ok(convertX.test(midBody) && convertY.test(midBody), '中点浮层没有做视口换算（浮层会飘）');
+  assert.ok(convertX.test(endBody) && convertY.test(endBody), '终点浮层没有做视口换算（浮层会飘）');
+  // ⚠️ 反面：**交点节点**必须用**精确中点**（`anchors.midX - junctionHalf`），偏移不许卷进 `onConnect` ——
+  //    否则拆出来的两段与原来那条线对不上（当初正是按精确中点实测出「完全重合」）。
+  //    判据**圈在 `onConnect` 体内**，不是「offsetAlong 后 200 字内有没有 junctionHalf」那种靠距离的写法
+  //    （距离一变就恒真/恒假）。
+  const onConnectAt = live.indexOf('const onConnect = useCallback');
+  const onConnectBody = live.slice(onConnectAt, live.indexOf('const [editingEdge, setEditingEdge]', onConnectAt));
+  assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(onConnectBody, /position: \{ x: anchors\.midX - junctionHalf, y: anchors\.midY - junctionHalf \}/, '交点没有落在精确中点上');
+  assert.ok(!/offsetAlong/.test(onConnectBody), '交点被卷进了浮层偏移（拆出来的两段会与原线对不上）');
+  // 反面对照：往 onConnect 里塞一句 offsetAlong ⇒ 上面那句必须红（证明它不是恒真）。
+  const poisonedConnect = onConnectBody.replace('const junctionHalf = 6;', 'const junctionHalf = offsetAlong({ x: 1, y: 1 }, { x: 2, y: 2 }, 6);');
+  assert.notEqual(poisonedConnect, onConnectBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(/offsetAlong/.test(poisonedConnect), '反面对照没造出来 —— 这条判据会变成恒真');
+
+  // ⑤ 浮层靠**视口换算**跟随（不引 Provider、也不复刻折线算法）。
   assert.match(live, /onMove=\{\(_, next\) => setViewport\(next\)\}/, '没有跟视口');
-  assert.match(live, /viewport\.x \+ labelX \* viewport\.zoom/, '坐标换算不对（浮层会飘）');
   // ★ 教师 2026-10-06：「距离太远，应该就在那根连接线上」——第一版取两节点中心的中点，
   //   而 `smoothstep` 是折线，中心点经常不在路径上。现在必须用库自己的路径函数取**标签点**。
   assert.match(live, /getSmoothStepPath\(\{/, '锚点没有用库的路径函数（第一版就是这里飘的）');
@@ -426,7 +468,12 @@ test('★ 2026-10-06（教师，A 方案）：连接线中点可以连 —— �
   assert.ok(labelRendererAt !== -1 && midHandleAt !== -1 && labelRendererAt < midHandleAt, '中点句柄没有住在 EdgeLabelRenderer 里（边是 SVG，<div> 塞进去渲染不出来）');
   assert.match(live, /type="target"/, '中点句柄不是 target');
   assert.match(live, /position=\{Position\.Top\}/, '中点句柄没有用 Position.Top');
-  assert.match(live, /style=\{\{ left: labelX, top: labelY \}\}/, '中点句柄没有落在 getSmoothStepPath 的标签点上');
+  // ★ 教师认可：句柄**不再**停在标签点上，而是沿「标签点 → 目标端」方向挪 14px
+  //   （原来与 Y/N 标签同点 ⇒ 悬停变实会盖字，且正落在中点的单击/双击被它吞掉）。
+  // ⚠️ 语义判：仍然必须**来自** getSmoothStepPath 的标签点，且偏移方向取自目标端。
+  assert.match(live, /const handleX = labelX \+ \(\(targetX - labelX\) \/ shiftLen\) \* 14/, '句柄没有沿标签点往目标端挪 14px');
+  assert.match(live, /const handleY = labelY \+ \(\(targetY - labelY\) \/ shiftLen\) \* 14/, '句柄的纵向偏移不对');
+  assert.match(live, /style=\{\{ left: handleX, top: handleY \}\}/, '句柄位置没有用偏移后的坐标');
   assert.match(live, /'data-nodeid': edgeId/, '句柄没有补 data-nodeid（没补 ⇒ 库在边里取不到 node id，拖上去 onConnect 不响）');
   // ② 线上的字自己画，且类名与库**逐字相同**（我们的配色 CSS 就是按这两个类写的）。
   assert.match(live, /className="react-flow__edge-textbg"/, '边的标签白底没有用库那个类名（配色会失效）');
@@ -511,10 +558,30 @@ test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就�
       · 终点（`endX/endY`）＝ **目标节点那一侧**的句柄点（`to`）＝ 箭头落点 ⇒ 选中后浮出的删除图标。
     ⚠️ 别拿起点（source 那端）当终点：教师指的是**箭头**落下的那一端。
   */
-  assert.match(live, /const \{ midX: labelX, midY: labelY \} = anchors;/, '中点锚点没有取自 getSmoothStepPath 的标签点');
-  assert.match(live, /const to = handlePoint\(boxOf\(target\), targetPosition\);/, '终点锚点不是「目标节点那一侧的句柄点」');
-  assert.match(live, /return \{ midX: labelX, midY: labelY, endX: to\.x, endY: to\.y \};/, '两个锚点没有从中点/终点分别给出');
-  assert.match(live, /return \{ x: viewport\.x \+ anchors\.endX \* viewport\.zoom, y: viewport\.y \+ anchors\.endY \* viewport\.zoom \};/, '终点锚点没有做视口换算');
+  // ⚠️ 判据**按语义**判（抠出 `edgeFlowAnchors` 的函数体，看**每个锚点是从哪个数据来的**），
+  //    不逐字钉 `const { midX: labelX … } = anchors;` / 整条 `return { … }` —— 实现刚从单行
+  //    解构改成了多行 offsetAlong，这类判据连红五次、还两次只同步一半 ✗。变量叫什么名字都行：
+  //    先认出「库回的标签点」与「目标侧/起点侧的句柄点」这三个来源，再看锚点表用了谁。
+  const anchorsAt = live.indexOf('const edgeFlowAnchors = useCallback');
+  const anchorsBody = anchorsAt === -1 ? '' : live.slice(anchorsAt, live.indexOf('\n  const ', anchorsAt + 1));
+  assert.ok(anchorsBody.length > 400, '锚点函数没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const labelPoint = anchorsBody.match(/const \[, (\w+), (\w+)\] = getSmoothStepPath/) || [];
+  assert.ok(labelPoint[1] && labelPoint[2], '没有取库回的标签点 labelX/labelY');
+  assert.match(anchorsBody, new RegExp(`midX: ${labelPoint[1]}[\\s\\S]{0,80}?midY: ${labelPoint[2]}`), '中点锚点没有取自 getSmoothStepPath 的标签点');
+  const endPoint = anchorsBody.match(/const (\w+) = handlePoint\(boxOf\(target\), targetPosition\)/) || [];
+  assert.ok(endPoint[1], '终点锚点不是「目标节点那一侧的句柄点」');
+  assert.match(anchorsBody, new RegExp(`endX: ${endPoint[1]}\\.x`), '两个锚点没有从中点/终点分别给出（终点 x）');
+  assert.match(anchorsBody, new RegExp(`endY: ${endPoint[1]}\\.y`), '两个锚点没有从中点/终点分别给出（终点 y）');
+  // ★ 2026-10-06（教师认可的第一条偏移）：删除按钮要往 **source** 退 ⇒ 锚点表必须多吐起点。
+  const startPoint = anchorsBody.match(/const (\w+) = handlePoint\(boxOf\(source\), sourcePosition\)/) || [];
+  assert.ok(startPoint[1], '起点句柄点没抠出来 —— 先修这条判据');
+  assert.match(anchorsBody, new RegExp(`fromX: ${startPoint[1]}\\.x`), '锚点表没有给出起点 fromX（删除按钮没法往 source 退）');
+  assert.match(anchorsBody, new RegExp(`fromY: ${startPoint[1]}\\.y`), '锚点表没有给出起点 fromY（删除按钮没法往 source 退）');
+  // ⚠️ 按语义判（在函数体里查两轴），不逐字钉返回语句 —— 只同步 x 轴、y 轴没同步就是自己把自己判红 ✗。
+  //    格式一变就红的断言本身就是负担。
+  const endFnAt = live.indexOf('const edgeEndAnchor = ');
+  const endFn = endFnAt === -1 ? '' : live.slice(endFnAt, live.indexOf('\n  const ', endFnAt + 1));
+  assert.ok(/viewport\.x \+ shiftedEnd\.x/.test(endFn) && /viewport\.y \+ shiftedEnd\.y/.test(endFn), '终点锚点没有做视口换算');
   // 删除浮层那一块 ⇒ 只能用终点锚点。
   const floatAt = live.indexOf('styles.flowEdgeFloat');
   const inputAt = live.indexOf('styles.flowEdgeInput');
@@ -531,3 +598,13 @@ test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就�
   const swappedFloat = swapped.slice(swapped.lastIndexOf('{editingEdge && !labelingEdge', floatAt), inputAt);
   assert.ok(!/edgeEndAnchor\(editingEdge\)/.test(swappedFloat), '反面对照没造出来 —— 这条判据会变成恒真');
 });
+
+
+// ⊘ 2026-10-06：这里原有几条**逐字钉实现写法**的断言（整条 `return { x: … }` 语句、
+//   `const { midX: labelX, midY: labelY } = anchors;`、整条 `return { midX: labelX, … };` 之类），
+//   以及 `viewport.x + labelX * viewport.zoom` 那句（它把中点浮层的**变量名**也钉死了）。
+//   它们钉的是**格式**而不是行为 —— 今天实现一改就连红五次，每次都要跟着同步
+//   （还两次只同步了一半，自己把自己判红 ✗）。真正的判据在别处，并且按**语义**判：
+//   「两个锚点分别被谁使用」「有没有 offsetAlong + 距离 26 / 14」「两个浮层有没有视口换算（不认变量名）」
+//   「交点必须用精确中点」—— 改写法不会红、改行为才会红。
+

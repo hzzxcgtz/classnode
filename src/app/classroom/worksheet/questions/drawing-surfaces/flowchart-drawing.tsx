@@ -175,6 +175,15 @@ function FlowEdgeLine({
     sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
   });
   /** 线上的字（判断框分出来的 Y / N 或学生自己写的）—— 只认字符串，节点式标签我们不用。 */
+  /**
+   * ★ 2026-10-06（教师认可）：**中点句柄**沿「标签点 → 目标端」方向挪 14px。
+   * 🔴 上一版把 14px 错加在 `edgeAnchor()` 上（那只服务**双击后的就地输入框**）⇒ 症状没治：
+   *    句柄仍与线上的 Y/N 标签同点（悬停/选中变实就盖住那个字），并且**正落在中点的单击/双击被它吞掉**。
+   * ⚠️ 交点节点用的是 `anchors.midX/midY`（**精确中点**），与此处无关 —— 拆出来的两段必须与原来的线重合。
+   */
+  const shiftLen = Math.hypot(targetX - labelX, targetY - labelY) || 1;
+  const handleX = labelX + ((targetX - labelX) / shiftLen) * 14;
+  const handleY = labelY + ((targetY - labelY) / shiftLen) * 14;
   const text = typeof label === 'string' ? label : '';
   const textWidth = text ? edgeLabelWidth(text) : 0;
   return (
@@ -210,7 +219,7 @@ function FlowEdgeLine({
           position={Position.Top}
           id="edge-mid"
           className={`${styles.flowEdgeHandle}${selected ? ` ${styles.flowEdgeHandleOn}` : ''}`}
-          style={{ left: labelX, top: labelY }}
+          style={{ left: handleX, top: handleY }}
           {...edgeHandleNodeId(id)}
         />
       </EdgeLabelRenderer>
@@ -352,6 +361,25 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    * ⚠️ 包成 `useCallback`（依赖就是它读的那两份 state）：`onConnect` 里也要用它，
    *    不然 `react-hooks/exhaustive-deps` 会多出一条「缺依赖」的警告。
    */
+  /**
+   * 把锚点沿「起点 → 终点」方向推开一段（★ 2026-10-06 教师认可的两条偏移）。
+   *
+   * 🔴 为什么必须推开（都是截图暴露的真问题）：
+   *   · **删除按钮**原本正以箭头落点为心 ⇒ 44px 的它把箭头、最后 ~22px 的线、
+   *     以及目标节点那一侧的连接点全盖住（想从那儿拉新线会点到删除按钮）⇒ 往 source 退 26px；
+   *   · **中点句柄**与线上的 Y/N 标签同点 ⇒ 悬停/选中变实会把字盖住，而且正落在中点的
+   *     单击/双击会被句柄吞掉 ⇒ 往目标端挪 14px（一并解决「中点被吞」）。
+   * ⚠️ 方向用「起点→终点」的直线方向近似路径方向：smoothstep 的末段本来就是**沿句柄轴**进来的，
+   *    所以终点处这条近似与真实路径一致；中点处在竖直/水平的常见情形也一致。
+   * ⚠️ **交点节点不用这个偏移** —— 它必须落在**精确中点**上，否则拆出来的两段与原来的线对不上。
+   */
+  const offsetAlong = (point: { x: number; y: number }, toward: { x: number; y: number }, distance: number) => {
+    const dx = toward.x - point.x;
+    const dy = toward.y - point.y;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: point.x + (dx / len) * distance, y: point.y + (dy / len) * distance };
+  };
+
   const edgeFlowAnchors = useCallback((edgeId: string | null) => {
     if (!edgeId) return null;
     const edge = edges.find((item) => item.id === edgeId);
@@ -379,7 +407,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
       sourceX: from.x, sourceY: from.y, sourcePosition,
       targetX: to.x, targetY: to.y, targetPosition,
     });
-    return { midX: labelX, midY: labelY, endX: to.x, endY: to.y };
+    return { midX: labelX, midY: labelY, endX: to.x, endY: to.y, fromX: from.x, fromY: from.y };
   }, [edges, nodes]);
 
   /**
@@ -389,8 +417,10 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   const edgeAnchor = (edgeId: string | null) => {
     const anchors = edgeFlowAnchors(edgeId);
     if (!anchors) return null;
-    const { midX: labelX, midY: labelY } = anchors;
-    return { x: viewport.x + labelX * viewport.zoom, y: viewport.y + labelY * viewport.zoom };
+    const { midX, midY, endX, endY } = anchors;
+    // ★ 往目标端挪 14px：既避开线上的 Y/N 标签，也把「正落在中点的单击/双击」还给那条线。
+    const shiftedMid = offsetAlong({ x: midX, y: midY }, { x: endX, y: endY }, 14);
+    return { x: viewport.x + shiftedMid.x * viewport.zoom, y: viewport.y + shiftedMid.y * viewport.zoom };
   };
 
   /**
@@ -402,7 +432,13 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   const edgeEndAnchor = (edgeId: string | null) => {
     const anchors = edgeFlowAnchors(edgeId);
     if (!anchors) return null;
-    return { x: viewport.x + anchors.endX * viewport.zoom, y: viewport.y + anchors.endY * viewport.zoom };
+    // ★ 往 source 退 26px：44px 的删除按钮不许盖住箭头、最后那段线，以及目标侧的连接点。
+    const shiftedEnd = offsetAlong(
+      { x: anchors.endX, y: anchors.endY },
+      { x: anchors.fromX, y: anchors.fromY },
+      26,
+    );
+    return { x: viewport.x + shiftedEnd.x * viewport.zoom, y: viewport.y + shiftedEnd.y * viewport.zoom };
   };
 
   const addNode = (kind: FlowKind, label: string) => {

@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from 'react';
 
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { readBlankCount } from '@/lib/worksheet-questions';
 import { BLANK_MARK_TEXT } from '@/lib/worksheet-prompt-marks';
+// ★ 2026-10-06：粘贴去格式那一个纯函数（唯一一份，题目卡里「评分标准」那个 textarea 用的也是它）。
+import { normalizePastedText } from '@/lib/worksheet-text-normalize';
 import { CHOICE_JOINER, allowsAiGrading, blankSlots, fillGradingModesFor, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode, type FillBlankSetting, type FillGradingMode } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
@@ -72,11 +74,60 @@ export function SymbolListInput({ values, split, placeholder, onChange }: {
     setDraft(values.join(CHOICE_JOINER));
   }, [canonical, values, split]);
 
+  /**
+   * ★ 2026-10-06（教师）：「这里复制进来的文本，格式要去掉」——**粘贴去格式**。
+   *
+   * 🔴 从 Word / PDF / 网页复制中文带进来的**不是内容，是排版**：每行缩进、全角空格、
+   *    标点**前面**多一个空格（「（1 分） ；」）—— 肉眼以为是内容，其实全是噪音。
+   *    ⇒ 与题目卡里「评分标准」那个 textarea 的 `onPaste` **同一种接法**：接管粘贴
+   *      （`preventDefault` + 直接写入归一化后的文本，避免「先脏后清」闪一下）。
+   *
+   * ⚠️ ★ 2026-10-06（**只接 `onPaste`，不接 `onBlur`**）：本文件有一条**既有判据**不许出现
+   *    `onBlur`（`fill-blanks-body.test.ts` 第一条 —— 教师 2026-09-30 明确要求
+   *    「不用刻意地转成某一个特别的符号」：那次失焦时的重排会把教师刚打的「阳光,水分」
+   *    当场改成「阳光、水分」）。而对这个**列表**输入，失焦再收一次本来就**没有第二份东西可收**：
+   *    `data` 里存的从来就是 `split` 解析好的词表 —— 排版（空格 / 缩进）压根没进过数据，
+   *    真正需要接管的是**粘贴那一瞬间**（老师的原文第一次出现的地方）。
+   *    ⚠️ 于是「参考答案 / 参考要点」那一处（同一个组件）也**只有 `onPaste`**：
+   *       它要的第二次收口在这个组件里做不到，而在外面挂一个 `onBlur` 既不改变屏幕上的字
+   *       （回填判据是 `sameChoiceItems`，词表没变就不回填），又会白白多写一次同值。
+   *
+   * ⚠️ 这个组件是**参考答案 / 参考要点（主观题）、每一空的答案与评分标准、待选词、共用选词**
+   *    共用的那一个单行列表输入 ⇒ 接线接在这里，几处一起拿到同一个行为（各接一份必然漂移）。
+   * ⚠️ **制表符 / 换行先换成显示分隔符**（`CHOICE_JOINER`，见下面 `cleanedText`）：`<input>`
+   *    显示不了换行，而制表符 / 换行本来就是 `split` 认的分隔符 ⇒ 换成顿号后**解析出来的词
+   *    一个都没变**，屏幕上却真的看得见词与词的分界（不换的话浏览器会把两行拼成「阳光水分」，
+   *    而 `normalizePastedText` 会把制表符变成**空格** —— 空格不是分隔符，一列词会粘成一个词）。
+   * ⚠️ **`onChange`（打字那条路）一个字都没动** —— 教师打 `阳光,水分` 时那个逗号仍然原样留着
+   *    （见上面那个 effect 的说明）。
+   */
+  const cleanedText = (raw: string) => normalizePastedText(
+    // 🔴 **先把制表符 / 换行换成显示分隔符，再去格式**。
+    //    理由：`normalizePastedText` 会把制表符换成普通空格，而**空格不是分隔符**
+    //    （`CHOICE_SPLIT` 只认 `CHOICE_SEPARATORS` + `\t\r\n`）⇒ 从 Excel / 表格里粘进来
+    //    的一列词会被粘成**一个词**（静默丢条目，屏幕上只是少了几项）。
+    //    换成顿号之后，解析出来的词与粘之前**逐项相同**，而屏幕上也真的看得见分界。
+    raw.replace(/[\t\r\n]+/g, CHOICE_JOINER),
+  );
+
+  const pasteCleanedText = (event: ReactClipboardEvent<HTMLInputElement>) => {
+    const raw = event.clipboardData.getData('text/plain');
+    if (!raw) return;
+    event.preventDefault();
+    const element = event.currentTarget;
+    const start = element.selectionStart ?? element.value.length;
+    const end = element.selectionEnd ?? element.value.length;
+    const next = `${element.value.slice(0, start)}${cleanedText(raw)}${element.value.slice(end)}`;
+    setDraft(next);
+    onChange(split(next));
+  };
+
   return (
     <input
       className="input"
       value={draft}
       placeholder={placeholder}
+      onPaste={pasteCleanedText}
       onChange={(event) => {
         const next = event.target.value;
         setDraft(next);

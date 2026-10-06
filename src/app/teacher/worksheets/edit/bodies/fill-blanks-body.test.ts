@@ -278,3 +278,57 @@ test('★ 「共用选词」在所有空设置的**下面**（单列），且逐
   assert.match(bodySrc, /auto: '本地评分'/, '逐空那一档又叫回「自动评分」了');
   assert.ok(!/auto: '自动评分'/.test(bodySrc), '逐空那一档与整题那张卡重名了');
 });
+
+test('③ 每空答案 / 参考答案共用的那个列表输入已接「粘贴去格式」（**只接 onPaste**）', () => {
+  // ★ 2026-10-06（教师）：「这里复制进来的文本，格式要去掉」—— 与题目卡里「评分标准」那个
+  //   textarea 的 `onPaste` **同一种接法**（`normalizePastedText`，纯函数）。
+  //
+  // 🔴 这一格是**多处共用**的那一个单行列表输入（主观题参考答案 / 参考要点、每一空的答案与
+  //    评分标准、待选词、共用选词）⇒ 接线接在组件上，几处一起拿到同一个行为。
+  // 🔴 **只接 `onPaste`**：本文件里 `onBlur` 被上面第一条既有判据整个禁掉（教师 2026-09-30
+  //    要求「不用刻意地转成某一个特别的符号」）；而对这个列表输入，失焦再收一次本来也没有
+  //    第二份东西可收 —— `data` 里存的从来就是 `split` 解析好的词表，排版从没进过数据。
+  const source = body(BODY);
+  const fnAt = source.indexOf('export function SymbolListInput');
+  assert.ok(fnAt > 0, '找不到那个单行列表输入组件');
+  const nextFnAt = source.indexOf('export function ', fnAt + 10);
+  const fn = source.slice(fnAt, nextFnAt > 0 ? nextFnAt : undefined);
+  assert.ok(fn.length > 200, '切出来的组件区域是空的 —— 下面几条会对空串假绿');
+
+  const inputAt = fn.indexOf('<input');
+  assert.ok(inputAt > 0, '组件里那个单行输入不见了');
+  const input = fn.slice(inputAt, fn.indexOf('/>', inputAt));
+  assert.match(input, /onPaste=\{/, '这一格没有接管粘贴 —— 从 Word 粘进来的排版会留在答案里');
+  assert.match(fn, /normalizePastedText/, '没有走那个纯函数（自己写一套去格式 = 第二份真源）');
+  // 粘贴是**接管**（`preventDefault` + 自己写回），不是「先让浏览器粘进去再清理」——
+  // 少了它，屏幕上会闪一下脏文本，而且那一下会占掉一格撤销栈。
+  assert.match(fn, /event\.preventDefault\(\)/, '`onPaste` 没有接管（`preventDefault`）—— 会「先脏后清」闪一下');
+  // 🔴 制表符 / 换行是 `split` 认的分隔符，而 `normalizePastedText` 会把制表符换成**空格**
+  //    （空格不是分隔符）⇒ 必须先换成显示分隔符再去格式，否则从表格里粘一列词会粘成**一个词**。
+  assert.match(
+    fn,
+    /\[\\t\\r\\n\]\+/,
+    '粘贴时没有先保住制表符 / 换行这两个分隔符 —— 从表格里粘进来的一列词会粘成一个词',
+  );
+  assert.match(fn, /replace\([^)]*CHOICE_JOINER\)/, '那两个分隔符没有换成显示分隔符（屏幕上会看不见分界）');
+
+  // 🔴 反面一：`onBlur` 不许出现在这个组件（上面第一条网钉着整个文件；这里就近再钉一次，
+  //    免得将来把组件搬走时那条网跟着失效）。
+  assert.ok(!/\bonBlur\b/.test(fn), '这个组件又挂了 `onBlur` —— 会在失焦时动教师打的字');
+  // 🔴 反面二：打字那条路（`onChange`）不许被碰。
+  const onChangeAt = input.indexOf('onChange=');
+  assert.ok(onChangeAt > 0, '`onChange` 不见了 —— 打字那条路被弄坏了');
+  assert.ok(
+    !input.slice(onChangeAt).includes('normalizePastedText'),
+    '`onChange` 里夹带了归一化 —— 会打扰老师打字（本次只接 onPaste）',
+  );
+
+  // 接的是**哪两处**：每空答案那一格、以及主观题的「参考答案 / 参考要点」—— 两处用的都是这一个组件。
+  const answerAt = source.indexOf('worksheet-editor-fill-answer-editor');
+  assert.ok(answerAt > 0, '找不到每空答案那一格');
+  assert.match(source.slice(answerAt, answerAt + 700), /<SymbolListInput/, '每空答案那一格换控件了 —— 粘贴去格式接不到它');
+  const card = body(CARD);
+  const referenceAt = card.indexOf('worksheet-editor-reference-block');
+  assert.ok(referenceAt > 0, '找不到主观题「参考答案 / 参考要点」那一块');
+  assert.match(card.slice(referenceAt, referenceAt + 1200), /<SymbolListInput/, '参考答案那一格换控件了 —— 粘贴去格式接不到它');
+});

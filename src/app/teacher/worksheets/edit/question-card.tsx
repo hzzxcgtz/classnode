@@ -67,31 +67,28 @@ import { isInkNode } from '@/lib/worksheet-ink';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 import { api } from '@/lib/api';
 import { normalizePastedText } from '@/lib/worksheet-text-normalize';
+// ★ 2026-10-06：判断「这一题的作图工具是不是流程图」只有这一份判据 —— 教师端那个
+// 作图工具选择器（`bodies/drawing-settings.tsx`）与学生端画布读的是同一个函数。
+import { readDrawingTool } from '@/lib/worksheet-drawing';
 import { EditorIcon, TrashIcon } from './editor-icons';
 
-const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string }> = {
-  'single-choice': {
-    title: '选择题设置',
-    // ★ 2026-09-27：这一句不再提粘贴 —— 入口已经搬到题干工具栏那个**看得见的按钮**上
-    //（教师：「不要使用在选项框内 onpaste，还是有个按钮用户使用更方便」）。
-    description: '',
-  },
-  'true-false': {
-    title: '判断答案',
-    description: '',
-  },
-  'multi-choice': {
-    title: '选择题设置',
-    description: '',
-  },
-  'fill-blank': {
-    title: '标准答案',
-    description: '',
-  },
-  'choice-blank': {
-    title: '填空答案',
-    description: '',
-  },
+/**
+ * 作答体那一块的标题 / 说明（**只服务 `answerBlock` 的兜底那一支**）。
+ *
+ * 🔴 ★ 2026-10-06：这里原来有 10 条，其中 5 条（single-choice / multi-choice / true-false /
+ *    fill-blank / choice-blank）**永远渲染不到** —— 唯一读取点是 `answerBlock`，而
+ *    `answerBlock` 先给那五种题型分派了各自的标题：
+ *      · `true-false` ⇒ `null`（它的答案「对 / 错」住在题干后面那一块里）；
+ *      · 选择题（单选 / 多选）⇒「选项」；
+ *      · 填空题与选择填空 ⇒「填空设置」。
+ *    ⇒ 到得了这张表最后一行的只有 order / match / categorize / short-answer / drawing
+ *      （也就是下面剩下的这五条）。删掉那五条**不改变任何渲染**，只是把那句「死文案」
+ *      从屏幕上拿掉（它连注释都在讲一条早已搬走的粘贴入口）。
+ * ⚠️ `Partial<…>`：表里只剩五种题型，读取点于是必须自己兜底（下面 `?? { … }`）——
+ *    写回 `Record<…>` 的话索引签名会谎报「一定取得到」，兜底看起来像死代码。
+ *    ⚠️ 题型串是 `string`（库里手工改过的行可能有任何值）⇒ 兜底那一支**不是**摆设。
+ */
+const QUESTION_EDITOR_COPY: Partial<Record<string, { title: string; description: string }>> = {
   order: {
     title: '选项顺序',
     // 两栏直接用「学生看到 / 正确顺序」点明含义，不再常驻额外说明。
@@ -117,6 +114,18 @@ const QUESTION_EDITOR_COPY: Record<string, { title: string; description: string 
     description: '',
   },
 };
+
+/**
+ * ★ 2026-10-06（教师，信息科技课的流程图作业）：AI 评分那一块的**结构要点模板**。
+ *
+ * 🔴 这段文字是**信息科技课标对流程图的结构要求**（判断框要两分出边并标 Y/N、循环要有回边、
+ *    一个框只说一步操作、要有明确的开始与结束）—— 面向中小学信息科技课的标准流程图作业，
+ *    判的是**结构**（这几条对不对），不是画得好不好看。
+ *    ⇒ 所以模板里一个字都不讲美观，只讲结构。
+ * ⚠️ 放在**命名常量**里：课标表述将来要跟着教材改时，只改这一处（与按钮上的写入共用它）。
+ */
+const STRUCTURE_POINTS_TEMPLATE =
+  '判断框必须有两分出边并标注 Y/N；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。';
 
 /**
  * 标题栏右上角那个**滑动开关**（★ 2026-09-27）。
@@ -710,8 +719,10 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                     <div className="worksheet-editor-ai-scoring-field">
                       <label htmlFor={`ai-scoring-max-${node.id}`}>
                         {/* ★ 2026-10-06：这一格与本地判分块那一格是**同一个字段**
-                            （这道题最多给多少），原来两边各叫各的（满分 / 满额 / 分值）
-                            ⇒ 统一成「分值」（分数档；奖励档仍说“奖励数量”，句子的量词才对得上）。 */}
+                            （这道题最多给多少），原来两边各叫各的（满分 / 满额 / 分值）。
+                            ⇒ 现在两处**同名**，而且名字跟着学习单的奖励形式走：
+                              分数档叫「分值」，图标 / 奖杯那一档叫「奖励数量」——
+                              同一个字段，量词要对得上后面那个单位（「3 座奖杯」不是「分值 3 座奖杯」）。 */}
                         {pointsUnit === '分' ? '分值' : '奖励数量'}（{pointsUnit}）
                       </label>
                       <div className="worksheet-editor-ai-scoring-stepper">
@@ -789,6 +800,43 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                         })}
                       />
                     </label>
+                    {/*
+                      ★ 2026-10-06（教师）：信息科技课的流程图作业判的是**结构**，所以给一颗
+                      「插入结构要点模板」—— 按一下把 `STRUCTURE_POINTS_TEMPLATE` 那几条要点
+                      追加进评分标准，教师再按自己这一题改写。
+
+                      🔴 **只在「作图题 + 作图工具是流程图」时出现**：判据是
+                        `readDrawingTool(node) === 'flowchart'`（那份判据只有一份，见文件头的 import）。
+                        别的题型（含基础绘图 / 数学作图 / 思维导图）没有「判断框、回边」这些结构要求，
+                        把这段模板摆给它们就是一句**屏幕上说得出口的谎话**。
+                      ⚠️ 它收在 `aiScoringEnabled` 那一支里（跟着上面那个输入框显隐）：
+                        标准框关着的时候不摆按钮 —— 否则教师按了，文字写进了 data，而屏幕上
+                        一个能读它的输入框都没有（本仓最防的那类「静默写入」）。
+                      ⚠️ **追加，不是覆盖**：已有内容时前面补一个换行（教师写了一半再点它，
+                        原来那半句不许被吞掉）。
+                      ⚠️ 写回走的是与上面 `onChange` **同一条路**：`rubricText` 为准，
+                        旧字段 `aiScoringCriteria` 一并清掉（只写 `rubricText` 的话，教师把框删空后
+                        回退值会重新出现，看起来像「删不掉」）。
+                      ⚠️ 按钮**不许放进 `<label>`**：`<label>` 会把点击转发给内部第一个可标注元素
+                        （`<button>` 就是），标签里的空白点一下也会触发它 —— 那条教训见上面
+                        「分值 / 奖励数量」那一格（教师报过「点了下面空白地方也会减」）。
+                    */}
+                    {readDrawingTool(node) === 'flowchart' && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          // 显示值可能是旧数据里的 `aiScoringCriteria`（见上面那段说明）⇒ 取合并后的那一份。
+                          const current = rubricText || aiScoringCriteria;
+                          onDataChange({
+                            rubricText: current ? `${current}\n${STRUCTURE_POINTS_TEMPLATE}` : STRUCTURE_POINTS_TEMPLATE,
+                            aiScoringCriteria: undefined,
+                          });
+                        }}
+                      >
+                        插入结构要点模板
+                      </button>
+                    )}
                     <input
                       ref={rubricImageInputRef}
                       type="file"

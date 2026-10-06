@@ -321,3 +321,83 @@ test('★ 2026-10-06（教师）：判断题的正确答案块摆在**题干后�
   // 搬动最怕留下两份：两份都会渲染、都不报错。
   assert.equal((live.match(/<h4><EditorIcon[^>]*\/>正确答案<\/h4>/g) ?? []).length, 1, '「正确答案」块不止一处');
 });
+
+/** 从 `{` 起**配平大括号**取出整段。⚠️ 不用固定长度窗口：加几行注释就会把它挤出窗口
+ *  （绿得冤枉或红得冤枉 —— 本文件已经为一类固定窗口改过一次，见「两栏窄屏」那一条）。 */
+function braceBlock(code: string, openAt: number): string {
+  let depth = 0;
+  for (let i = openAt; i < code.length; i += 1) {
+    if (code[i] === '{') depth += 1;
+    else if (code[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return code.slice(openAt, i + 1);
+    }
+  }
+  return '';
+}
+
+test('② `QUESTION_EDITOR_COPY` 里的五种死文案已删，兜底仍在（含反面对照）', () => {
+  // ★ 2026-10-06：这张表**唯一**的读取点是 `answerBlock` 的兜底那一支，而
+  //   single-choice / multi-choice / true-false / fill-blank / choice-blank 五种题型
+  //   在 `answerBlock` 里**各自先被分派了标题**（on the way 到不了兜底）——
+  //   那五条于是永远渲染不到，是「屏幕上不存在的一段文案」。
+  const code = body(CARD);
+  const declAt = code.indexOf('QUESTION_EDITOR_COPY');
+  assert.ok(declAt > 0, '找不到 QUESTION_EDITOR_COPY（这不是题卡文件？）');
+  const eqAt = code.indexOf('= {', declAt);
+  assert.ok(eqAt > declAt, '找不到那张表的对象字面量');
+  const table = braceBlock(code, eqAt + 2);
+  assert.ok(table.length > 100, '取出来的表是空的 —— 下面两条会对空串假绿');
+
+  // 阳性对照：今天**真的**会走兜底那五种题型的标题必须还在
+  // （⚠️ 这五个键都不带连字符，源码里是不加引号的 `order:` ⇒ 两种写法都要认）。
+  for (const key of ['order', 'match', 'categorize', 'short-answer', 'drawing']) {
+    assert.match(table, new RegExp(`'?${key}'?:`), `兜底要用的 ${key} 那一行不见了`);
+  }
+  // 🔴 反面：这五种题型各有自己的分支 ⇒ 副本必须删掉（留着 = 一段永远到不了的文案）。
+  for (const key of ['single-choice', 'multi-choice', 'true-false', 'fill-blank', 'choice-blank']) {
+    assert.ok(
+      !new RegExp(`'${key}':`).test(table),
+      `${key} 的副本又回来了 —— 它永远渲染不到（唯一读取点是 answerBlock 那一支兜底）`,
+    );
+  }
+  // 兜底的另一半：类型收成 `Partial`（索引签名不再谎报「一定取得到」），读取点自己给一份。
+  assert.match(code, /QUESTION_EDITOR_COPY\s*:\s*Partial</, '这张表没有收成 Partial');
+  assert.match(
+    code,
+    /\?\?\s*\{\s*title:\s*'[^']*',\s*description:\s*''\s*,?\s*\}/,
+    '🔴 读取点的兜底不见了 —— 删掉那五条之后，走到兜底那一支的题型会渲染出**空标题**',
+  );
+
+  // 🔴 删得掉的前提（反面对照）：`answerBlock` 先给那五种题型分派了各自的标题；
+  //    这三支少一支，删掉的那几条就会真的变成「没有标题」。
+  const answerAt = code.indexOf('const answerBlock');
+  assert.ok(answerAt > 0, '找不到 answerBlock');
+  const answer = code.slice(answerAt, code.indexOf('const shownPoints', answerAt));
+  assert.match(answer, /\bnull\b/, '判断题那一支（答案是 null）不见了');
+  assert.match(answer, /'选项'/, '选择题那一支（标题「选项」）不见了');
+  assert.match(answer, /isBlankType/, '填空类那一支（标题「填空设置」）不见了');
+});
+
+test('③ 选项文字也接了「粘贴去格式」：onPaste 接管 + onBlur 再收一次（不碰 onChange）', () => {
+  // ★ 2026-10-06（教师）：「这里复制进来的文本，格式要去掉」—— 与题目卡「评分标准」那个
+  //   textarea **同一种接法**（`normalizePastedText`，`onPaste` 接管 + `onBlur` 再收一次）。
+  const choice = body(CHOICE);
+  const at = choice.indexOf('worksheet-editor-option-content');
+  assert.ok(at > 0, '找不到选项文字那一块');
+  const inputAt = choice.indexOf('<input', at);
+  assert.ok(inputAt > at, '选项文字那一格不是 `<input>`（换控件了？）');
+  const input = choice.slice(inputAt, choice.indexOf('/>', inputAt));
+  assert.match(input, /placeholder=\{`选项 \$\{option\.key\}`\}/, '这一格不是「选项文字」那一格（读错地方了？）');
+
+  assert.match(input, /onPaste=\{/, '选项那一格没有接管粘贴');
+  assert.match(input, /onBlur=\{/, '选项那一格没有在失焦时再收一次');
+  assert.match(choice, /normalizePastedText/, '选项那一格没有走那个纯函数（自己写一套去格式 = 第二份真源）');
+
+  // 🔴 反面：打字那条路（`onChange`）不许被这次改动碰 —— 老师每敲一个字符都被归一化是不可接受的。
+  assert.match(input, /onChange=\{/, '`onChange` 不见了 —— 打字那条路被弄坏了');
+  assert.ok(
+    !/onChange=\{[\s\S]*normalizePastedText/.test(input),
+    '`onChange` 里夹带了归一化 —— 会打扰老师打字（本次只接 onPaste + onBlur）',
+  );
+});

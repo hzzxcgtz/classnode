@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { api } from '@/lib/api';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
+// ★ 2026-10-06：粘贴去格式那一个纯函数（唯一一份，题目卡里「评分标准」那个 textarea 用的也是它）。
+import { normalizePastedText } from '@/lib/worksheet-text-normalize';
 import { TrashIcon } from '../editor-icons';
 import {
   dropIndexAt,
@@ -48,6 +50,37 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
       ? writeMultipleOptions(nextOptions, nextCorrect)
       : writeOptions(nextOptions, nextCorrect);
     onDataChange({ options: written.options, correctKeys: written.correctKeys });
+  };
+
+  /** 只改**一个**选项的文字，其余与正确答案原样交回 `commit`（重编号纪律见文件头）。 */
+  const commitOptionText = (index: number, text: string) => {
+    commit(options.map((item, itemIndex) => (itemIndex === index ? { ...item, text } : item)), correctKeys);
+  };
+
+  /**
+   * ★ 2026-10-06（教师）：「这里复制进来的文本，格式要去掉」——选项文字那一格的**粘贴去格式**。
+   *
+   * 🔴 从 Word / 网页复制进来的**不是内容，是排版**（行首缩进、全角空格、标点**前面**多一个
+   *    空格）⇒ 与题目卡里「评分标准」那个 textarea **同一种接法**：`onPaste` 接管
+   *    （`preventDefault` + 直接写入归一化后的文本，避免「先脏后清」闪一下），
+   *    **离开输入框时**再收一次（接上之前就已经粘进来的旧内容也能被清干净 ——
+   *    `normalizePastedText` 是幂等的，干净的文本不会被改样）。
+   * ⚠️ **只接管 `onPaste` 与 `onBlur`**：打字那条路（`onChange`）一个字都没动。
+   * ⚠️ `onBlur` **只在内容真的变了才写回**：没改样就不写，不白占一格撤销栈。
+   */
+  const pasteOptionText = (index: number, event: ReactClipboardEvent<HTMLInputElement>) => {
+    const raw = event.clipboardData.getData('text/plain');
+    if (!raw) return;
+    event.preventDefault();
+    const element = event.currentTarget;
+    const start = element.selectionStart ?? element.value.length;
+    const end = element.selectionEnd ?? element.value.length;
+    commitOptionText(index, `${element.value.slice(0, start)}${normalizePastedText(raw)}${element.value.slice(end)}`);
+  };
+
+  const flushOptionText = (index: number, value: string) => {
+    const next = normalizePastedText(value);
+    if (next !== value) commitOptionText(index, next);
   };
 
   /**
@@ -188,12 +221,10 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
                 className="input"
                 value={option.text}
                 placeholder={`选项 ${option.key}`}
-                onChange={event => {
-                  const nextOptions = options.map((item, itemIndex) => (
-                    itemIndex === optionIndex ? { ...item, text: event.target.value } : item
-                  ));
-                  commit(nextOptions, correctKeys);
-                }}
+                // 粘贴去格式（`onPaste` 接管 + `onBlur` 再收一次）。⚠️ 打字那条路 `onChange` 没动。
+                onPaste={event => pasteOptionText(optionIndex, event)}
+                onBlur={event => flushOptionText(optionIndex, event.target.value)}
+                onChange={event => commitOptionText(optionIndex, event.target.value)}
               />
               {option.imageUrl && (
                 /* ★ 2026-10-05：「移除图片」原来挤在右边那三个小盒中间。它一出现，

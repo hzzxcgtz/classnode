@@ -121,7 +121,7 @@ test('阳性对照：评分标准的图片上传跟着搬进了 AI 评分块（�
 test('🔴 加减按钮不许待在 `<label>` 里 —— 点标签里的空白会被转发给第一个按钮', () => {
   const source = fs.readFileSync(CARD, 'utf8');
   const at = source.indexOf('worksheet-editor-ai-scoring-field"');
-  assert.ok(at > 0, '找不到「奖励总量」那一格（类名或结构变了？）');
+  assert.ok(at > 0, '找不到「分值 / 奖励数量」那一格（类名或结构变了？）');
   // 从那一格的开头，截到步进器收尾（`</div>`）：这段里只应有 label + 步进器。
   const stepperAt = source.indexOf('worksheet-editor-ai-scoring-stepper', at);
   assert.ok(stepperAt > at, '那一格里找不到步进器');
@@ -141,5 +141,62 @@ test('🔴 加减按钮不许待在 `<label>` 里 —— 点标签里的空白�
     !block.slice(labelOpen, labelClose).includes('<button'),
     '🔴 加减按钮不许放进 `<label>`：点标签文字或空白会把点击转发给第一个 `<button>` —— '
     + '教师报的「点了下面空白地方也会减」就是这个。标签只圈文字，用 `htmlFor` 关联输入框。',
+  );
+});
+
+/** 块注释（含 JSX 的 `{/* … *\/}`）与整行 `//` 注释。判据必须落在**活代码**上 —— 注释里写着不算。 */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+}
+
+/** 那段要点就是**进提示词的那一句**（教师要求逐字），所以只有它逐字钉；常量名/类名一律不钉。 */
+const STRUCTURE_POINTS_TEMPLATE_TEXT =
+  '判断框必须有两分出边并标注 Y/N；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。';
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+test('① 结构要点模板：常量在、按钮只服务流程图、点击是**追加**（不是覆盖）', () => {
+  // ★ 2026-10-06（教师，信息科技课的流程图作业）：「这个面向中小学信息科技课画标准流程图，
+  //   作业常判**结构**而不是画得好不好」⇒ AI 评分那一块给一颗「插入结构要点模板」。
+  const code = stripComments(fs.readFileSync(CARD, 'utf8'));
+  // 判据一律落在**剥过注释**的活代码上：上面那段说明里逐字写着 `readDrawingTool(node) === 'flowchart'`，
+  // 不剥注释的话，把源码里的那个条件删掉，注释会替它把这条断言喂绿。
+  assert.match(code, /worksheet-editor-ai-scoring-fields/, '这不是题卡文件（路径读错了？）');
+
+  // ① 命名常量：由**模板文本**反查常量名（改名不影响判据）。
+  const decl = code.match(new RegExp(
+    `const\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*'${escapeRegExp(STRUCTURE_POINTS_TEMPLATE_TEXT)}'`,
+  ));
+  assert.ok(decl, '结构要点模板常量不见了（或那段文字被改写了）—— 它就是进提示词的那一份');
+  const templateName = decl![1];
+  const declEnd = decl!.index! + decl![0].length;
+
+  // ② 它必须真的被按钮用上（光有常量 = 教师按不到，文字永远进不了 rubricText）。
+  const useAt = code.indexOf(templateName, declEnd);
+  assert.ok(useAt > declEnd, '模板常量声明了却没有人用 —— 那颗按钮不见了');
+
+  // ③ 出现条件：收在「作图工具是流程图」那一支里。
+  //    🔴 改成恒真（`{true && (` 或删掉这一支）⇒ 数学作图 / 思维导图 / 基础绘图的题也会看到
+  //       「判断框要两分出边」这种它们根本没有的结构要求。
+  const guardAt = code.lastIndexOf('readDrawingTool', useAt);
+  assert.ok(
+    guardAt > 0 && useAt - guardAt < 600,
+    '这颗按钮没有收在「作图工具」那一支里（改成恒真 / 挪出这一支了？）',
+  );
+  assert.match(code.slice(guardAt, useAt), /===\s*'flowchart'/, '出现条件不再是「作图工具是流程图」');
+
+  // ④ 点击 ⇒ **追加**（已有内容时前面补一个换行），不是覆盖。
+  //    判据：写回值 = 「当前那一份标准」+ `\n` + 模板（`${当前}\n${模板}`）。
+  const handler = code.slice(useAt - 320, useAt + 220);
+  assert.match(
+    handler,
+    new RegExp(`\\$\\{[^}]+\\}\\\\n\\$\\{${templateName}\\}`),
+    '🔴 模板必须是**追加**：“当前那一份标准” + 换行 + 模板。覆盖式写入会把教师写了一半的那段吞掉。',
+  );
+  // ⑤ 写回沿用现有那条路：旧字段 `aiScoringCriteria` 一并清掉（不清的话删空后回退值会重新出现）。
+  assert.match(
+    handler,
+    /aiScoringCriteria:\s*undefined/,
+    '写回时没有清掉旧字段 `aiScoringCriteria` —— 教师把框删空后那段旧标准会重新出现（像「删不掉」）',
   );
 });

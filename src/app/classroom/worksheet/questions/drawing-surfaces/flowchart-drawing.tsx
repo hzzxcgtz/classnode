@@ -273,6 +273,39 @@ const handleFlowPoint = (node: FlowNode, handleId: unknown, fallback: Position):
 type FlowPoint = { x: number; y: number };
 
 /**
+ * 一次鼠标/触摸事件落在**哪儿**（页面坐标）；**拿不到就回 `null`**，调用方据此整段走人。
+ *
+ * 🔴 为什么必须单独一个纯函数，而不是直接读 `event.clientX`（这是**主设备上的功能缺口**）：
+ *    学生用的是 iPad ⇒ 拖拽走的是 **`TouchEvent`**，而 `TouchEvent` **没有** `clientX/clientY`
+ *    —— 那两个坐标挂在 `touches` / `changedTouches` 里**每一根 Touch** 上。
+ *    上一版的闸是 `if (!('clientX' in event)) return;` ⇒ **触屏整段被挡在门外** ⇒ iPad 上
+ *    「拖到线附近松手」仍然只认精确命中那颗 10px 的点。
+ *    实测（无头 Chrome 154 + `Emulation.setTouchEmulationEnabled` + `Input.dispatchTouchEvent`，
+ *    触屏拖拽从 n3 上句柄到线中点附近）：改前偏 **0px（正落在线上中点）** 就什么都不发生；
+ *    改后偏 15px / 20px 都连上（见 `surface-lifecycle.test.ts` 里那条用例的数字）。**0px 那一格最刺眼**
+ *    —— 触屏下学生就算**正正落在线上**也连不上，只因为那颗句柄挪开了 `HANDLE_GAP`。
+ *
+ * 🔴 两个语义细节（都是实测出来的，别按「看起来等价」改）：
+ *    · **`touchend` 那一刻 `touches` 已经空了**，抬起来的那一根在 `changedTouches` 里
+ *      ⇒ 必须**优先 `changedTouches[0]`**。先读 `touches[0]` 会正好在「松手」这一格拿到 undefined
+ *      —— 而松手那一格才是决定「连不连」的那一格。
+ *      ⚠️ 库自己那份 `getEventPosition` 就是 `event.touches?.[0].clientX`（`@xyflow/system` 0.0.82）：
+ *      它在 `touchend` 上会抛 `Cannot read properties of undefined`，只因为库在 `onPointerUp` 里
+ *      **不重算坐标**（用的是上一次 `touchmove` 缓存的结果）才没炸。我们的兜底必须自己拿坐标
+ *      ⇒ 这条洞躲不过去，只能按上面那句写对。
+ *    · `touchmove` 时 `changedTouches` 与 `touches` 是同一根手指 ⇒ 两者等价，`touches[0]` 当兜底。
+ * ⚠️ 纯函数、放**模块级**：`surface-lifecycle.test.ts` 会把它抠出来喂四种假事件**真跑一遍**
+ *    （`touchend` 那种「`changedTouches` 有、`touches` 空」是必测的一条）。
+ */
+const pointerClientPoint: (event: MouseEvent | TouchEvent) => FlowPoint | null = (event) => {
+  // 鼠标 / 指针事件（PointerEvent 继承 MouseEvent）走这一支。
+  if ('clientX' in event && 'clientY' in event) return { x: event.clientX, y: event.clientY };
+  // ⚠️ 顺序不能反：`touchend` 时 `touches` 为空，抬起来那一根只在 `changedTouches` 里。
+  const touch = event.changedTouches?.[0] ?? event.touches?.[0];
+  return touch ? { x: touch.clientX, y: touch.clientY } : null;
+};
+
+/**
  * 偏移量的**上限**：不超过这一段长度的 **40%**。
  *
  * 🔴 为什么必须有：`EDGE_FLOAT_BACK` / `HANDLE_GAP` 是给**常见边长**定的（节点 150×54、默认间距上百 px）。
@@ -786,9 +819,11 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     if (handledRef.current) return;
     const origin = dragOriginRef.current;
     if (!origin) return;
-    if (!('clientX' in event)) return;
-    const clientX = event.clientX;
-    const clientY = event.clientY;
+    const point = pointerClientPoint(event);
+    // 既不是鼠标/指针、也没有任何 touch ⇒ 拿不到落点，整段走人（绝不在 undefined 上算距离）。
+    if (!point) return;
+    const clientX = point.x;
+    const clientY = point.y;
     // ⚠️ 落点下有句柄 ⇒ 库的判断已经生效（有效连接会走 onConnect、无效连接就是库明确拒绝）
     //    ⇒ 兜底让位。这条同时挡住「从 source 柄拖出去几像素又放回来」那种误插。
     const hit = document.elementFromPoint(clientX, clientY);

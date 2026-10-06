@@ -843,6 +843,87 @@ test('★ 2026-10-06（教师：「拖到线附近松手也要能连上」）：
   assert.ok(!/offsetAlong|HANDLE_GAP/.test(splitBody), '拆线里混进了浮层偏移（交点会跟着浮层走）');
 });
 
+test('★ 2026-10-06（教师：「拖到线附近松手也要能连上」）：落点坐标必须认**触屏**（iPad 才是主设备）', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  /*
+    🔴 为什么单独立一条：学生用的是 **iPad** ⇒ 拖拽走的是 **`TouchEvent`**，而 `TouchEvent` **没有**
+       `clientX/clientY` —— 那两个坐标挂在 `touches` / `changedTouches` 里**每一根 Touch** 上。
+       上一版的闸是 `if (!('clientX' in event)) return;` ⇒ 触屏整段被挡在门外。
+
+       🔴 实测（无头 Chrome 154 + `Emulation.setTouchEmulationEnabled` + `Input.dispatchTouchEvent`
+          合成 touchStart/touchMove×10/touchEnd；**同一套探针、同一张底图，只换那一行闸**）：
+
+         · 改前：偏 **0px（正落在线上中点）** / 15px / 20px / 25px / 拖到空白 ⇒ **全是「什么都不发生」**
+                 （DOM 边 2→2、节点 4→4、作答为空）；只有精确压在那颗 10px 点上才连得上（2→4）。
+         · 改后：偏 **0 / 15 / 20px ⇒ 都连上**（DOM 边 2→4、节点 4→5、**恰好 1 个交点**，
+                 作答里 `junction→n2` 与 `junction→n3` 都在）；
+                 偏 **25px 不连**、**拖到空白不插交点**（两条反面仍然成立）。
+       ⚠️ 「0px 也连不上」那一格最刺眼：触屏下学生**正正落在线上**也连不上，只因为中点句柄
+          按 `HANDLE_GAP` 挪开了 —— 教师说的「小学课堂上会大量发生」在 iPad 上是 100% 发生。
+  */
+  // ① 源码级：坐标读取必须是**模块级的命名纯函数**（下面要把它抠出来真跑）。
+  const decl = live.indexOf('const pointerClientPoint: ');
+  assert.notEqual(decl, -1, '没有模块级的坐标纯函数 pointerClientPoint（触屏坐标会散落在各处）');
+  const arrow = live.indexOf('= (', decl);
+  const end = arrow === -1 ? -1 : live.indexOf('\n};', arrow);
+  assert.ok(arrow !== -1 && end !== -1, 'pointerClientPoint 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const pointBody = live.slice(arrow + 2, end + 3);
+  assert.ok(pointBody.length > 60, `pointerClientPoint 太短（${pointBody.length} 字）—— 先修这条判据`);
+  // ② 语义（源码级）：`changedTouches` 是**首选**、`touches` 是**兜底**。
+  //    ⚠️ `\btouches\b` **不会**命中 `changedTouches` 里的那一截（T 是大写）⇒ 这个先后判据是准的。
+  const changedAt = pointBody.search(/\bchangedTouches\b/);
+  const touchesAt = pointBody.search(/\btouches\b/);
+  assert.notEqual(changedAt, -1,
+    '没有读 changedTouches —— `touchend` 那一刻 `touches` 已经空了，抬起来的那一根只在 changedTouches 里（而松手那一格才决定连不连）');
+  assert.notEqual(touchesAt, -1, '没有读 touches 兜底 —— touchmove 那一格会漏掉');
+  assert.ok(changedAt < touchesAt, 'changedTouches 不是首选 —— 会在「松手」那一格拿到 undefined');
+  assert.match(pointBody, /changedTouches[\s\S]{0,90}?(\?\?|\|\|)[\s\S]{0,90}?\btouches\b/,
+    '两个来源不是「changedTouches 优先、touches 兜底」的关系');
+  // ③ 行为级：把纯函数抠出来**真喂四种假事件**（这条不认写法、只认结果）。
+  // ⚠️ 抠出来的那一段**带着结尾的 `;`**（它是条 `const … = (event) => { … };` 语句，不是表达式）
+  //    ⇒ 必须当**语句**拼回去再取出来；写成 `return (${…});` 会多一个分号、当场语法错。
+  const buildPoint = (src: string) => new Function(`const fn = ${src}\nreturn fn;`)() as (event: unknown) => { x: number; y: number } | null;
+  const point = buildPoint(pointBody);
+  const cases: Array<[string, unknown, { x: number; y: number } | null]> = [
+    ['鼠标 / 指针（PointerEvent 继承 MouseEvent）', { clientX: 5, clientY: 6 }, { x: 5, y: 6 }],
+    ['touchend：touches 已空、changedTouches 里才有那一根', { changedTouches: [{ clientX: 7, clientY: 8 }], touches: [] }, { x: 7, y: 8 }],
+    ['touchmove：只有 touches（changedTouches 为空）', { changedTouches: [], touches: [{ clientX: 9, clientY: 10 }] }, { x: 9, y: 10 }],
+    ['两样都没有（拿不到落点）', {}, null],
+  ];
+  for (const [label, event, expected] of cases) {
+    assert.deepEqual(point(event), expected, `pointerClientPoint 对「${label}」不对 —— 落点会取错或取不到`);
+  }
+  // ⚠️ 反面对照：把 `changedTouches` 那半拿掉（只留 `touches`）⇒ touchend 那一格必须被抓住。
+  //    （这条正是「先读 touches 会在松手那一格拿到 undefined」的机器化版本。）
+  const noChanged = pointBody.replace(/event\.changedTouches[\s\S]{0,40}?(\?\?|\|\|)\s*/, '');
+  assert.notEqual(noChanged, pointBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  // ⚠️ 反面对照本身也要**是一份合法变体**（只砍掉 changedTouches、仍读 touches）：
+  //    否则「它红了」可能只是因为那段变异代码根本编译不过（假红 = 判据恒真）。
+  assert.ok(!/\bchangedTouches\b/.test(noChanged) && /\btouches\b/.test(noChanged),
+    '反面对照没造干净（应当只剩 touches 那一支）—— 这条判据会变成恒真');
+  const pointNoChanged = buildPoint(noChanged);
+  assert.notDeepEqual(pointNoChanged(cases[1][1]), cases[1][2],
+    '反面对照没被抓住 —— 「changedTouches 优先」这条判据是恒真的（touchend 会取不到坐标）');
+  // ④ 接线：兜底必须**只**通过这个函数拿坐标，而且不许再有「没有 clientX 就走人」那道闸。
+  const endBody = onConnectEndSource(live);
+  assert.ok(endBody.length > 300, '落点吸附那段没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(endBody, /pointerClientPoint\(event\)/, 'onConnectEnd 没有走坐标纯函数（触屏拿不到落点）');
+  assert.ok(!/'clientX' in event/.test(endBody),
+    "还留着 `'clientX' in event` 那道闸 —— 它正是把触屏整段挡在门外的根因");
+  // ⚠️ 「拿不到落点就走人」必须**盯住接住这次调用的那个变量**，不能只写 `/if \(!\w+\) return;/`：
+  //    同一段里还有 `if (!origin) return;` / `if (!nearest) return;` ⇒ 那种松判据会被它们**顶绿**
+  //    （变异测试实测：把 `if (!point) return;` 改成 `if (!point) { void point; }`，松判据照样绿 ✗）。
+  const pointCall = endBody.match(/const (\w+) = pointerClientPoint\(event\);/);
+  assert.ok(pointCall, '没抠出「接住落点的那次调用」—— 先修这条判据，别让它在空串上全绿');
+  assert.match(endBody, new RegExp(`!\\s*${pointCall[1]}\\b[\\s\\S]{0,40}?return`),
+    `拿不到落点（\`${pointCall[1]}\` 为 null）时没有整段走人 —— 会在 undefined 上算距离`);
+  // ⑤ 全文件审计：除这个纯函数之外**不许**再有人直接读 `event.clientX/clientY`
+  //    （`TouchEvent` 上没有这两个属性 ⇒ 那样写出来的每一处都是「触屏上拿到 undefined」）。
+  const outsideReads = live.replace(pointBody, '').match(/event\.client[XxYy]/g) ?? [];
+  assert.deepEqual(outsideReads, [],
+    '除坐标纯函数之外还有人直接读 event.clientX/clientY —— TouchEvent 上没有这两个属性，触屏那一格会拿到 undefined');
+});
+
 test('★ 2026-10-06（教师报「连线加不上」）：落点约定 —— Loose 模式 / 中点句柄是 target / data-nodeid=边 id', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   const onConnectBody = onConnectSource(live);
@@ -1132,6 +1213,33 @@ test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂�
   const EDGE_FLOAT_BACK = constOf('EDGE_FLOAT_BACK');
   const HANDLE_GAP = constOf('HANDLE_GAP');
   assert.ok(EDGE_FLOAT_BACK > 0 && HANDLE_GAP > 0, '两个偏移常量必须是正数');
+  /*
+    ★ 2026-10-06（教师按 CSS 算过像素）：`HANDLE_GAP` 的**数值下限**不是拍脑袋来的 —— 它是
+      「中点句柄脱开线上的 Y/N 标签白底框」这条像素规则算出来的，所以这里把它**当成规则来验**：
+        · 白底框高取自组件里那一句 `<rect className="react-flow__edge-textbg" … height={22}>`
+          （以标签点为中心 ⇒ 上下各 11px）；
+        · 句柄本体尺寸取自样式表 `.thirdPartyCanvas .flowEdgeHandle` 的 width（10px ⇒ ±5px）；
+        · 竖直边：句柄只往**下方**挪 ⇒ 上沿离标签点 `HANDLE_GAP - 半个句柄`，要 ≥ 11；
+        · 45° 斜边：位移的竖直分量只有 `HANDLE_GAP / √2`，也要 ≥ 11。
+      ⇒ 两式都成立才算「脱开」。**14 两式都不成立**（9 < 11、9.9 < 11）；16 只过第一式；18 两式都过。
+      ⚠️ 这样写而不是 `assert.equal(HANDLE_GAP, 18)`：钉的是**规则**（CSS/JSX 里的真实尺寸变了，
+        这条下限会跟着重新算），而不是某个数字 —— 但谁把 18 改回 14，它一定红。
+  */
+  const bgRectHeight = Number((src.match(/react-flow__edge-textbg[\s\S]{0,300}?height=\{(\d+)\}/) ?? [])[1]);
+  assert.ok(Number.isFinite(bgRectHeight) && bgRectHeight > 0,
+    `没读到线上标签白底框的高度（读到 ${bgRectHeight}）—— 先修这条判据，别让它在 NaN 上全绿`);
+  const handleDotSize = Number((CSS.match(/\.thirdPartyCanvas \.flowEdgeHandle \{[\s\S]{0,200}?width: (\d+)px;/) ?? [])[1]);
+  assert.ok(Number.isFinite(handleDotSize) && handleDotSize > 0,
+    `没读到中点句柄的尺寸（读到 ${handleDotSize}）—— 先修这条判据，别让它在 NaN 上全绿`);
+  const labelHalf = bgRectHeight / 2;
+  const dotHalf = handleDotSize / 2;
+  /** 「中点句柄脱开 Y/N 标签」这条像素规则：竖直边与 45° 斜边**都要**成立。 */
+  const clearsLabel = (gap: number) => gap - dotHalf >= labelHalf && gap / Math.SQRT2 >= labelHalf;
+  assert.ok(clearsLabel(HANDLE_GAP),
+    `HANDLE_GAP=${HANDLE_GAP} 会让中点句柄压住线上的 Y/N 标签（竖直边只剩 ${(HANDLE_GAP - dotHalf).toFixed(1)}px、45° 斜边只剩 ${(HANDLE_GAP / Math.SQRT2).toFixed(1)}px，而白底框半径是 ${labelHalf}px）`);
+  // ⚠️ 反面对照：回到改前那个 14px（= 现在这个值再减 4）⇒ 必须判违规。
+  assert.ok(!clearsLabel(HANDLE_GAP - 4),
+    '反面对照没被抓住 —— 这条判据是恒真的（14px 那种取值必须判「压住标签」）');
   // ⚠️ 规则里那句「永不压住句柄」的数值落点：按钮要以自己中心定位，所以往上至少要半个按钮。
   assert.ok(NODE_FLOAT_GAP >= FLOAT_SIZE / 2, `删除图形的按钮会压住节点上边缘（NODE_FLOAT_GAP=${NODE_FLOAT_GAP} < 半个按钮 ${FLOAT_SIZE / 2}）`);
   const code = ['clampOffset', 'offsetAlong', 'backAxis'].map((name) => `const ${name} = ${grab(name)}`).join('\n');

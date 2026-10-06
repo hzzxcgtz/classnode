@@ -3,7 +3,10 @@
 import { useEffect, useRef } from 'react';
 import MindElixir from 'mind-elixir';
 import type { MindElixirData, MindElixirInstance } from 'mind-elixir';
+import { zh_CN as zhCN } from 'mind-elixir/i18n';
 import 'mind-elixir/style.css';
+
+import { useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 
 import type { DrawingSurfaceProps } from './types';
 import styles from '../../worksheet.module.css';
@@ -14,9 +17,19 @@ function readMindData(raw: unknown): MindElixirData | null {
   return row.nodeData && typeof row.nodeData === 'object' ? raw as MindElixirData : null;
 }
 
-export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange }: DrawingSurfaceProps) {
+export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange, onImage }: DrawingSurfaceProps) {
   const host = useRef<HTMLDivElement | null>(null);
   const mind = useRef<MindElixirInstance | null>(null);
+  const scheduleRaster = useRef<() => void>(() => {});
+  // ⚠️ 走 ref 而不是把 `scheduleRaster` 塞进那个 `[]` 依赖的 effect：实例只挂载一次，
+  //    而 `capture` 每次渲染都是新的闭包 —— 用 ref 转发才能让副作用里的调用拿到最新的那一个。
+  scheduleRaster.current = useDrawingRaster({
+    capture: async () => {
+      const blob = await mind.current?.exportPng(true);
+      return blob ?? null;
+    },
+    onUrl: onImage,
+  });
 
   useEffect(() => {
     if (!host.current) return;
@@ -24,12 +37,88 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
       el: host.current,
       direction: MindElixir.SIDE,
       editable: !disabled,
-      contextMenu: false,
-      toolBar: false,
+      /**
+       * ★ 2026-10-06（教师）：「它有工具条就用它的，尽量不要自己画。」
+       *
+       * ⇒ 打开库**自带**的两条工具条（右下：全屏 / 回到中心 / 放大 / 缩小；
+       *    左上：左 / 右 / 两侧方向）与**长按（右键）菜单**
+       *    （插入子节点 / 父节点 / 同级节点、**删除节点**、上移 / 下移、专注、连接、摘要）。
+       *
+       * ⚠️ 菜单文案必须显式给中文：库内默认那份是英文
+       *    （`dist/MindElixir.js` 里 `Yn = { addChild: 'Add child', … }`），
+       *    中文包在 `mind-elixir/i18n` 的 `zh_CN` 里，在这里传进去。
+       * 🔴 这条开关同时修掉一个**真实缺陷**：以前 `contextMenu: false` + iPad 上没有 Delete 键
+       *    ⇒ 学生**删不掉**一个节点（只能用「撤销」一步步退回去）。
+       */
+      toolBar: true,
+      contextMenu: { locale: zhCN },
       keypress: !disabled,
       allowUndo: true,
-      overflowHidden: true,
+      /**
+       * 🔴 **不要传 `overflowHidden: true`**（2026-10-06 定位到的一条硬结论）。
+       *
+       * 教师报「学生端思维导图画不了、点击选不中、也不能改文字」，DevTools 里那个
+       * `.map-container` 上**只有** `keydown / copy / cut / paste` ——
+       * `pointerdown / pointermove / pointerup / click / contextmenu / wheel` **一个都没有**。
+       * 用无头 Chrome 逐个选项二分（干净原生页面，不带 React）：
+       *
+       *   只有 el+direction            → 有 pointerdown ✓ 点得中 ✓
+       *   +editable / +toolBar / +contextMenu
+       *   +keypress  / +allowUndo      → 仍然 ✓
+       *   **+overflowHidden            → 只剩 copy/cut/paste/keydown ✗ 点不中 ✗**
+       *   +theme / +mobileMultiSelect / +newTopicName → 一路坏到底（累加效应）
+       *
+       * ⇒ 这个选项让库**跳过整套指针交互层的安装**：画得出来、工具条能点（那是它自己的
+       *   `onclick`）、我们直接调 API 也能加节点（`addChild(目标)`），但**画布上什么都点不动**。
+       * ⚠️ 裁剪本来就不需要它：外层 `.thirdPartyCanvas` 自己就是 `overflow: hidden`
+       *   （见 `worksheet.module.css`），画布溢出的部分照样被裁掉。
+       */
       mobileMultiSelect: false,
+      /**
+       * ★ 2026-10-06（教师）：「可不可以和流程图一样，鼠标在空白区域是手型、可以移动整个画布」。
+       * 🔴 库自己把「**左键**拖空白」判给了**框选**（`dist/MindElixir.js` 的指针处理里那句
+       *    `if (e.editable && b.className === 'map-container' && f.button === 0 …) { ptState = BoxSelect; return; }`
+       *    —— 它**不看** `mouseSelectionButton`，所以左键永远先被框选吃掉），而平移只留给
+       *    「触屏拖动」或「空格 + 拖动」。
+       * ⇒ 把**框选挪到右键**（`mouseSelectionButton: 2`，选择那一层认这个值），
+       *    左键则由我们自己在**捕获阶段**接管成平移（见下面那段 pointerdown）——
+       *    这样两件事都在，谁也不抢谁。
+       */
+      mouseSelectionButton: 2,
+      /**
+       * ★ 2026-10-06（教师）：「鼠标滚轮默认也应该是缩放功能」。
+       *
+       * 🔴 库的默认**反过来**：滚轮 = **平移**，`Ctrl/⌘ + 滚轮` 才是缩放
+       *    （`dist/MindElixir.js` 里那个 wheel 处理器逐字如此）。它留了 `handleWheel`
+       *    这个口子，所以这里接过来改成：**滚轮 = 以指针为中心缩放**（与流程图那边一致）。
+       *
+       * ⚠️ 缩放范围由库自己夹（`scaleMin 0.2` / `scaleMax 1.4`），越界的值它直接忽略。
+       * ⚠️ 触控板的双指滚动也会走到这里（它就是 wheel 事件）⇒ 在触控板上双指也会缩放
+       *    而不是平移 —— 与 React Flow 那边的手感一致，是**同一个约定**，不是这里的疏漏。
+       * ⚠️ 用 `mind.current` 而不是闭包里的 `instance`：选项在 `new MindElixir(...)` 之前
+       *    就要写出来，那时实例还不存在（实例建好后立刻赋给 `mind.current`）。
+       */
+      handleWheel: (event: WheelEvent) => {
+        const instance = mind.current;
+        if (!instance) return;
+        event.preventDefault();
+        /**
+         * ⚠️ 步进必须**按 `deltaY` 成比例**，不能用固定档（教师 2026-10-06 实测：「滚动速度太快，
+         *    步进值太大」）。原因很实在：**鼠标一格 ≈ ±100，触控板一次 ≈ ±1~4** ——
+         *    固定档在鼠标上还算合适，在触控板上就是「一划就飞」（它一次滚动会发几十个事件）。
+         * · `0.0008` ⇒ 鼠标一格约 **8%**；触控板一次约 **0.1%~0.3%**（细而顺）；
+         * · 每事件再夹在 **±8%** 以内：快速甩动时不会一步跳掉半张图；
+         * · `deltaMode` 是**单位**（0=像素 / 1=行 / 2=页），Firefox 在部分平台报「行」——
+         *   不换算的话同一台机器上换个浏览器手感会差十几倍。
+         */
+        const perUnit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1;
+        const step = Math.max(-0.08, Math.min(0.08, -event.deltaY * perUnit * 0.0008));
+        if (step === 0) return;
+        instance.scale(instance.scaleVal * (1 + step), {
+          x: event.clientX,
+          y: event.clientY,
+        });
+      },
       newTopicName: '新主题',
       theme: {
         ...MindElixir.THEME,
@@ -52,12 +141,187 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
     });
     instance.init(readMindData(data) ?? MindElixir.new('中心主题'));
     if (disabled) instance.disableEdit();
-    const publish = () => onChange(instance.getData());
-    instance.bus.addListener('operation', publish);
+    /**
+     * 🔴 **建完就选中根节点**。`mind-elixir` 的 `addChild()` / `insertSibling()` 用的是
+     * **当前选中节点**（`const n = e || this.currentNode; if (!n) return;` —— 逐字在
+     * `dist/MindElixir.js` 里），而 `init()` 结束时**什么都没选中** ⇒ 在一张新图上
+     * 调 `addChild()` 是**静默 no-op**。
+     *
+     * 这就是教师 2026-10-06 报的「学生端思维导图画不了、点了没反应」的第二个根因
+     * （第一个是 `scale(0)`）：**按了「添加子主题」什么都不发生，而且不报错**。
+     * 实测（headless Chrome，与本组件逐字同源的建法）：`init()` 后立刻 `addChild()`
+     * ⇒ 节点数 **1 → 1**；先选中根节点再 `addChild()` ⇒ 1 → 2。
+     * ⚠️ 老 iPad 上没有鼠标悬停，学生也未必知道「要先点一下那个方块」——所以这一步
+     *    由我们替他做，而不是写进提示语里。
+     */
+    const rootElement = instance.findEle(instance.nodeData.id);
+    if (rootElement) instance.selectNode(rootElement);
+
+    /**
+     * 鼠标拖空白 = 平移整个画布（教师 2026-10-06 要的「和流程图一样」）。
+     *
+     * 🔴 三个必须的细节：
+     *   ① 监听挂在**捕获阶段**（`{ capture: true }`）：库自己的指针处理挂在容器上（冒泡阶段，
+     *      而且它排在前面注册），不在捕获阶段拦下并 `stopPropagation`，左键仍会被它判成框选；
+     *   ② 只接管 **鼠标左键**（`pointerType === 'mouse' && button === 0`）：**触屏本来就平移**
+     *      （库对 touch 走的是 pan，不是框选），接管触屏只会把事情弄坏；
+     *   ③ 落点必须是**空白处**（`.map-container` / `.map-canvas` 自己，不是节点）——
+     *      否则点节点、拖节点、点连接点全会被抢走。
+     */
+    const hostEl = host.current;
+    const isBlank = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      return !!el && (el.classList.contains('map-container') || el.classList.contains('map-canvas'));
+    };
+    let panning: { x: number; y: number } | null = null;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse' || event.button !== 0 || !isBlank(event.target)) return;
+      event.stopPropagation();
+      panning = { x: event.clientX, y: event.clientY };
+      if (hostEl) hostEl.style.cursor = 'grabbing';
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (!panning) return;
+      const dx = event.clientX - panning.x;
+      const dy = event.clientY - panning.y;
+      panning = { x: event.clientX, y: event.clientY };
+      /**
+       * ⚠️ 符号**是正的**（教师 2026-10-06 实测：「方向反了」）。
+       * 我一开始把 `move()` 的参数理解成「内容往哪边走」，于是写了 `-dx` —— 反了。
+       * 库自己的鼠标平移逐字就是 `e.move(t.clientX - this.lastX, t.clientY - this.lastY)`
+       * （`dist/MindElixir.js` 的 `handlePointerMove`）⇒ `move(dx, dy)` 的语义是
+       * **内容跟着指针走**：往右拖，图往右走 —— 也就是「抓住纸往哪拖，纸往哪走」。
+       */
+      instance.move(dx, dy);
+    };
+    const onPointerUp = () => {
+      if (!panning) return;
+      panning = null;
+      if (hostEl) hostEl.style.cursor = '';
+    };
+    hostEl?.addEventListener('pointerdown', onPointerDown, { capture: true });
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+
+    /**
+     * 位图快照。🔴 传 `noForeignObject = true`：默认那条路把节点文字装进
+     * `<foreignObject>` 再栅格化，而老 iPad（Safari 15）对它的支持很勉强 ——
+     * 出来的可能是**空白图**且不报错。开着这个开关它会改成画 `<text>`。
+     */
+    const publish = () => {
+      onChange(instance.getData());
+      scheduleRaster.current();
+    };
+    /**
+     * ★ 2026-10-06（教师）：「设置成中心主题靠左的格式，然后点上面的全屏，中心主题自己就靠右了」。
+     *
+     * 🔴 根因：**全屏是换容器**（`drawing-tool-body.tsx` 里 `createPortal(content, document.body)`），
+     *    React 会把这块子树**卸载重建** ⇒ 实例是照着 `data` 重建的。而库改方向时
+     *    `initLeft/initRight/initSide` **只 fire `changeDirection`、不 fire `operation`**
+     *    （`dist/MindElixir.js` 逐字如此）—— 我们原来只监听 `operation` ⇒ 那次改动**没被存下来**
+     *    ⇒ 重建时读到旧方向，屏幕上就是「它自己靠右了」（刷新一下同样会丢）。
+     *
+     * ⇒ 把**所有会改变 `getData()` 的事件**都接上。⚠️ 纯视图事件**不接**
+     *   （`scale` / `move` / `selectNode` / `selectNewNode` …）：它们按指针频率触发，
+     *   接上等于「每移动一像素存一次」。
+     * ⚠️ 以后库再新增「改数据」的事件时，这张名单要跟着补 —— 症状就是「某个操作刷新后丢失」。
+     */
+    const publishEvents = ['operation', 'changeDirection', 'expandNode'] as const;
+    publishEvents.forEach((event) => instance.bus.addListener(event, publish));
     mind.current = instance;
-    window.setTimeout(() => instance.scaleFit(), 0);
+    /**
+     * 🔴 「适应画布」那一等**必须留句柄、并在清理里清掉**。这不是洁癖，是教师撞到的那个报错：
+     *
+     *   Runtime TypeError  Cannot read properties of undefined (reading 'offsetHeight')
+     *   at MindmapDrawing.useEffect (…/mindmap-drawing.tsx:58:38)
+     *    58 |     window.setTimeout(() => instance.scaleFit(), 0);
+     *
+     * 两层成因，缺一不成：
+     *   ① App Router 在 `next.config` 没写 `reactStrictMode` 时**默认开严格模式**
+     *      （`next/dist/build/define-env.js` 里 `__NEXT_STRICT_MODE_APP` 的注释就是
+     *      「When next.config.js does not have reactStrictMode it's enabled by default」）
+     *      ⇒ 开发模式下 effect 走 **挂载 → 卸载 → 再挂载**；
+     *   ② `mind-elixir` 的 `destroy()` 把 `this.nodes` / `this.container` 全设成 `undefined`
+     *      （`dist/MindElixir.js:2758` 逐字），而 `scaleFit()` 头一行就是
+     *      `this.nodes.offsetHeight / this.container.offsetHeight`
+     *      ⇒ 卸载时那颗 `setTimeout(…, 0)` 还在队列里，烧着的时候实例已经销毁了。
+     *
+     * ⚠️ 生产构建里 effect 只跑一遍，所以这个洞**只在 dev 里现形** —— 而 dev 正是教师
+     *    平时待的地方（也是唯一能看着它跑起来的地方）。别因为「线上没报」把它删了。
+     * ⚠️ 光加 `instance.nodes && …` 那种判空是治标：第二次挂载会新建一个实例，而这里
+     *    引用的是**闭包里的那一个**（已经销毁的）—— 判空只是把这一步静默跳过，
+     *    「适应画布」于是再也不生效，而且没有任何提示。清掉定时器才是本来的意图。
+     */
+    /**
+     * 🔴 「适应画布」**必须等这块框真的有尺寸之后再算**。
+     *
+     * `toCenter()` / `scaleFit()` 算的是 `(容器尺寸 - 内容尺寸) / 2` 一类的东西
+     * （`Ne()` 逐字读 `container.offsetWidth/offsetHeight`）。**容器量出来是 0 的时候**，
+     * 这两个数就成了「把内容整体推出可视区」的量 —— 而库给画布按了 `transform`、
+     * 外层又是 `overflow: hidden` ⇒ 屏幕上就是**一块空白画布 + 库自带的工具条**
+     * （教师 2026-10-06 报的「学生端思维导图画不了，点工具按钮没反应」正是这个形状：
+     * 图在，只是被平移到了框外）。
+     *
+     * ⇒ 所以：**量不出尺寸就先不算**，用 `ResizeObserver` 盯着，等它能量出真实尺寸的那一帧
+     *   再适应一次；之后容器尺寸变了（全屏作图那条路）只**重新居中**，不覆盖学生自己的缩放。
+     */
+    let fitted = false;
+    let alive = true;
+    let retryTimer: number | null = null;
+    const fitWhenSized = () => {
+      const box = host.current?.getBoundingClientRect();
+      if (!box || box.width < 40 || box.height < 40) return;   // 还没量出来 ⇒ 这一帧什么都不做
+      // 第一次：适应画布（定缩放 + 粗居中）；紧接着「回到中心」把**根节点**摆到正中
+      // （库自己的「回到中心」按钮就是这条 —— 对思维导图来说，根节点是视觉锚点）。
+      if (!fitted) {
+        fitted = true;
+        if (retryTimer !== null) { window.clearTimeout(retryTimer); retryTimer = null; }
+        instance.scaleFit();
+        instance.toCenter();
+        return;
+      }
+      instance.toCenter();
+    };
+    const rafId = window.requestAnimationFrame(fitWhenSized);
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(fitWhenSized) : null;
+    observer?.observe(host.current);
+    /**
+     * 🔴 **兜底重试**，不能只靠 `ResizeObserver`：CSS 迟到、容器稍后才长出来、
+     *    以及**某些环境根本不派发 observer 回调**（无头浏览器 + 虚拟时间实测如此）——
+     *    那些情况下只挂 observer 就等于「永远不适配」，而这正是教师看到的空白画布。
+     * ⚠️ 一旦适配成功就**停**：`fitted` 之后继续重试会覆盖学生自己的缩放/平移。
+     */
+    let attempts = 0;
+    const retry = () => {
+      if (!alive || fitted) return;
+      attempts += 1;
+      fitWhenSized();
+      if (fitted) return;
+      // ⚠️ 放弃之前**留一句话**：这条路上「一直没适配」在屏幕上就是一块空白画布，
+      //    而没有日志的话，下一次只能再猜一遍（教师 2026-10-06 报的那次就是这样）。
+      if (attempts === 15) {
+        const box = host.current?.getBoundingClientRect();
+        console.warn(
+          '[思维导图] 一直没有量出画布尺寸，已放弃「适应画布」——画布可能是空白的。',
+          { width: box?.width ?? null, height: box?.height ?? null },
+        );
+        return;
+      }
+      retryTimer = window.setTimeout(retry, 200);
+    };
+    retryTimer = window.setTimeout(retry, 60);
+
     return () => {
-      instance.bus.removeListener('operation', publish);
+      alive = false;
+      window.cancelAnimationFrame(rafId);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      observer?.disconnect();
+      hostEl?.removeEventListener('pointerdown', onPointerDown, { capture: true });
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      publishEvents.forEach((event) => instance.bus.removeListener(event, publish));
       instance.destroy();
       mind.current = null;
     };
@@ -67,14 +331,26 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
 
   return (
     <div className={styles.thirdPartySurface}>
+      {/*
+        🔴 这里**只留「撤销 / 重做」**：库自带的 UI 里没有它们（它的工具条是视图操作、
+        长按菜单是节点操作），而 iPad 上没有 Ctrl+Z —— 少了这两颗，学生改错一步就回不去。
+        其余（加子/同级节点、适应画布、回到中心、全屏、缩放、方向）全部交给库自己的 UI，
+        我们不再画第二份。
+      */}
       <div className={styles.drawingSurfaceToolbar} role="toolbar" aria-label="思维导图工具">
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => mind.current?.addChild()}>添加子主题</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => mind.current?.insertSibling('after')}>添加同级主题</button>
+        {/*
+          ⊘ 2026-10-06 第二轮（教师）：「这两个不要了，其它按钮做得好看些」——「添加子主题 /
+          添加同级主题」两颗**删掉**。
+          🔴 为什么现在敢删（第一轮加它们是有理由的，那条理由仍成立、只是换了承担者）：
+            当时的病根是「库的 addChild() 吃**当前选中节点**，而新图里什么都没选中 ⇒ 静默 no-op」。
+            现在**建完图就选中根节点**（见上面 selectNode 那一段），加上指针交互层已经修好
+            （overflowHidden 那条），学生的加节点入口回到**库自己的长按菜单**
+            （插入子节点 / 父节点 / 同级节点）—— 工具条下方那行提示已经写明。
+          ⚠️ 删的是「我们的按钮」，**不是**「加节点的能力」。
+        */}
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => mind.current?.undo()}>撤销</button>
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => mind.current?.redo()}>重做</button>
-        <span className={styles.drawingToolbarSpacer} />
-        <button className={styles.drawingToolbarButton} type="button" onClick={() => mind.current?.scaleFit()}>适应画布</button>
-        <button className={styles.drawingToolbarButton} type="button" onClick={() => mind.current?.toCenter()}>回到中心</button>
+        <span className={styles.drawingToolbarHint}>双击节点写字；长按节点打开菜单（增删、上移下移、连接）；滚轮缩放</span>
       </div>
       <div
         ref={host}
@@ -84,3 +360,4 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
     </div>
   );
 }
+

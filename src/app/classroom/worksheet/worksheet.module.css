@@ -2338,20 +2338,28 @@
 .drawingSurfaceToolbar select,
 .drawingSurfaceToolbar input[type='color'] {
   min-height: 40px;
-  border: 1px solid #c6d5e4;
-  border-radius: 9px;
+  border: 1px solid #dde6f0;
+  border-radius: 10px;
   background: #fff;
-  color: #3e5d7d;
+  color: #33506f;
   font: inherit;
+  box-shadow: 0 1px 2px rgba(16, 42, 67, .06);
+  transition: border-color .12s ease, box-shadow .12s ease, background .12s ease;
+}
+.drawingSurfaceToolbar button:hover:not(:disabled),
+.drawingWorkspaceHeader button:hover:not(:disabled) {
+  border-color: #b9cadd;
+  box-shadow: 0 2px 6px rgba(16, 42, 67, .10);
 }
 
 .drawingWorkspaceHeader button,
-.drawingSurfaceToolbar button { padding: 7px 11px; font-weight: 650; cursor: pointer; }
+.drawingSurfaceToolbar button { padding: 7px 12px; font-weight: 650; cursor: pointer; }
 .drawingToolbarButton { min-height: 44px !important; }
 .drawingSurfaceToolbar button[aria-pressed='true'] {
   border-color: #527198;
   background: #eaf0f6;
   color: #294d73;
+  box-shadow: inset 0 1px 2px rgba(16, 42, 67, .08);
 }
 .drawingWorkspaceHeader button:active,
 .drawingSurfaceToolbar button:active { transform: translateY(1px); }
@@ -2381,6 +2389,37 @@
 .drawingSurfaceToolbar select { padding: 0 8px; }
 .drawingSurfaceToolbar input[type='color'] { width: 42px; padding: 4px; }
 .drawingToolbarSpacer { flex: 1 1 16px; }
+/*
+  ★ 2026-10-06（教师）：「整个工具栏 UI 重新设计一下，归类要科学。」
+  数学作图那一排按 基础 / 多边形 / 角与线 / 其他 分组：组内紧凑、组间一条细线 + 一个小标题。
+  ⚠️ 按钮改成「图标 + 文字」⇒ 让按钮变成 flex（图标与文字基线对齐，不然图标会偏高）。
+*/
+.drawingSurfaceToolbar button { display: inline-flex; align-items: center; gap: 5px; }
+.drawingToolbarGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 9px;
+  border-right: 1px solid #e4ecf4;
+}
+.drawingToolbarGroup:last-of-type { border-right: 0; padding-right: 0; }
+.drawingToolbarGroupLabel {
+  color: #93a6b8;
+  font-size: .688rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+  white-space: nowrap;
+}
+.drawingToolbarIcon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .drawingToolbarHint { color: #7b8da1; font-size: .75rem; }
 
 .thirdPartyCanvas {
@@ -2396,10 +2435,53 @@
   touch-action: none;
 }
 
+/* ★ 2026-10-06：数学作图的**拖动预览层**（拖动过程的线条画在这里，必然可见）。 */
+.mathStage { position: relative; }
+.mathOverlay { position: absolute; inset: 0; pointer-events: none; }
+/*
+  ★ 2026-10-06：选中图形后就地浮出的「删除」按钮（教师选的 A 方案）。
+  ⚠️ 44×44 是**硬要求**（`worksheet-tap-targets.test.ts` 逐个 <button> 量命中区）；
+  ⚠️ 压在图形上方 12px 处，并自带白底+描边，免得在深色图形上糊成一团。
+*/
+.mathFloatingDelete {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, calc(-100% - 12px));
+  border: 1px solid #e7c9a9;
+  border-radius: 12px;
+  background: #fff;
+  color: #b45309;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(16, 42, 67, .18);
+  pointer-events: auto;
+}
+.mathFloatingDelete:disabled { cursor: default; opacity: .55; }
 .mathCanvas { cursor: crosshair; }
 .mathCanvas :global(svg) { touch-action: none; }
-.mindmapCanvas :global(me-main) { height: 100%; }
-.mindmapCanvas :global(.map-container) { height: 100%; }
+/*
+  🔴 2026-10-06：这里原来有两条覆盖 —— `me-main { height: 100% }` 与
+  `.map-container { height: 100% }`。**都删掉**，两个理由：
+    · 库自己的布局是**按内容撑开**的：`.map-canvas { width: fit-content }`、
+      `me-nodes { width/height: max-content }`、`me-main { display:flex; align-items:flex-start }`
+      （逐字见 `dist/MindElixir.css`）——它的居中/缩放/平移全靠这套「内容尺寸 + transform」
+      算出来的（`toCenter()` 读的就是 `me-root` 的 `offsetLeft/Top/Width/Height`）。
+      我们把它改成 100% 等于在它的坐标系里塞了一组它没预期的尺寸。
+    · 「容器要撑满这块框」这件事**库自己已经做了**：它的 `.map-container` 就是
+      `width:100%; height:100%`（那是它 `el` 底下的那一层，不是 `me-main`）。
+  ⇒ 它按内容排、我们只负责给外层一个**确定尺寸的框**（`.thirdPartyCanvas` 那条 height）。
+*/
+/*
+  ★ 2026-10-06（教师）：「鼠标在空白区域是手型，可以移动整个画布」（与流程图一致）。
+  ⚠️ 只加在**空白层**：节点由库自己的 `.map-container me-parent { cursor: pointer }` 管
+     （那条更具体，不会被这里覆盖）⇒ 抓取手势只在空白处出现，正合直觉。
+  ⚠️ 拖动中的 `grabbing` 由组件在捕获阶段按需写到 `style.cursor` 上（这里不写 `:active`：
+     我们在捕获阶段 `stopPropagation`，`:active` 在部分浏览器上不会落到这个元素）。
+*/
+.mindmapCanvas :global(.map-container),
+.mindmapCanvas :global(.map-canvas) { cursor: grab; }
 .mindmapCanvasWithBackground :global(me-main),
 .mindmapCanvasWithBackground :global(.map-container) { background: transparent !important; }
 
@@ -2419,8 +2501,62 @@
 .flowNode_terminator { border-radius: 999px; }
 .flowNode_io { transform: skew(-10deg); }
 .flowNode_io input { transform: skew(10deg); }
-.flowNode_decision { min-width: 112px; min-height: 112px; transform: rotate(45deg); }
-.flowNode_decision input { transform: rotate(-45deg); width: 96px; }
+/*
+  ★ 2026-10-06（教师三问）：
+   ① 「判断框怎么这个形状？」——原来它是**把一个 112×112 的方块旋转 45°**，
+      于是它比邻居大出一圈、文字区被压成 96px，四个连接点还落在对角上。
+      ⇒ 改成**和别的节点同一个盒子**（150×84），菱形用一层 SVG 画在背后
+      （`FlowNodeEditor` 里那块 `.flowNodeShape`）：描边清晰、四个连接点正好落在
+      菱形的四个顶点上，与**快照里画的那个菱形**（`worksheet-flowchart-svg.ts`）也对得上。
+   ② 「连接线默认没箭头的吗？」——那是 React Flow 的边，箭头见下面的 `visibleEdges`。
+*/
+.flowNode_decision {
+  min-width: 150px;
+  min-height: 84px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.flowNode_decision[data-selected='1'] { box-shadow: none; }
+.flowNode_decision[data-selected='1'] .flowNodeShape polygon { stroke: #365f88; stroke-width: 3; }
+/*
+  ★ 2026-10-06（教师）：「加上去的字变成了小黑块」。
+  🔴 那个黑块是**边的标签**：React Flow 的标签由「一个背景矩形 + 一段文字」组成，
+     而样式表里没给它 `fill` 时，SVG 的默认填充是**黑色**。我们已经在组件里换成带主题的
+     `style.css`，这里再**钉一遍**（两处都写是有意的：主题换了也不会变成读不出来的颜色）。
+*/
+.thirdPartyCanvas :global(.react-flow__edge-textbg) { fill: #ffffff; }
+.thirdPartyCanvas :global(.react-flow__edge-text) {
+  fill: #263b53;
+  font-size: 12px;
+  font-weight: 650;
+}
+/* 「这条线标注：」那一组里那个自由文字输入框（与旁边按钮同高）。 */
+.drawingToolbarEdgeLabel {
+  min-height: 44px;
+  width: 108px;
+  padding: 0 10px;
+  border: 1px solid #dde6f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #33506f;
+  font: inherit;
+  font-weight: 650;
+  box-shadow: 0 1px 2px rgba(16, 42, 67, .06);
+}
+.drawingToolbarEdgeLabel::placeholder { color: #9db0c4; }
+.flowNodeShape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* ⚠️ 它在 DOM 里排在输入框**前面**，而绝对定位元素会盖住静态元素 ⇒ 白底多边形会把
+     「判断条件」四个字吃掉（教师 2026-10-06 截图：菱形是空的）。所以 SVG 压在 0 层，
+     输入框抬到 1 层 —— 这样菱形内部照样能双击打字。 */
+  z-index: 0;
+}
+.flowNode input { position: relative; z-index: 1; }
 .flowNode input {
   width: 122px;
   border: 0;
@@ -2436,6 +2572,21 @@
   height: 10px;
   border: 2px solid #527198;
   background: #fff;
+  /*
+    ★ 2026-10-06（教师）：「每个图形的操作柄为什么一直显示？」
+    ⇒ 默认**隐形**（`opacity: 0` 仍然可点，只是看不见），鼠标悬停这个节点、或它被选中时才显形。
+    🔴 但**触屏设备必须留着**（`@media (hover: none)`）：iPad 上没有 hover，全隐形的话
+       学生根本不知道从哪儿拖出连线 —— 那条路是这个题型唯一的连线入口。
+  */
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+.flowNode:hover :global(.react-flow__handle),
+.flowNode:focus-within :global(.react-flow__handle),
+.flowNode[data-selected='1'] :global(.react-flow__handle) { opacity: 1; }
+@media (hover: none) {
+  .flowNode :global(.react-flow__handle) { opacity: .5; }
+  .flowNode[data-selected='1'] :global(.react-flow__handle) { opacity: 1; }
 }
 
 @media (max-width: 720px) {

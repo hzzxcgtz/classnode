@@ -7,6 +7,8 @@ import {
   type ReactSketchCanvasRef,
 } from 'react-sketch-canvas';
 
+import { dataUrlToBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
+
 import type { DrawingSurfaceProps } from './types';
 import styles from '../../worksheet.module.css';
 
@@ -22,7 +24,7 @@ function readPaths(raw: unknown): CanvasPath[] {
   });
 }
 
-export default function BasicDrawing({ data, backgroundUrl, disabled, onChange }: DrawingSurfaceProps) {
+export default function BasicDrawing({ data, backgroundUrl, disabled, onChange, onImage }: DrawingSurfaceProps) {
   const canvas = useRef<ReactSketchCanvasRef | null>(null);
   const initialPaths = useRef(readPaths(data));
   const [eraser, setEraser] = useState(false);
@@ -33,9 +35,23 @@ export default function BasicDrawing({ data, backgroundUrl, disabled, onChange }
     if (initialPaths.current.length > 0) void canvas.current?.loadPaths(initialPaths.current);
   }, []);
 
+  /** 位图快照：`exportImage` 吐的是 base64 data URL（`react-sketch-canvas` 的签名如此）。 */
+  const scheduleRaster = useDrawingRaster({
+    capture: async () => {
+      const dataUrl = await canvas.current?.exportImage('png');
+      return dataUrl ? dataUrlToBlob(dataUrl) : null;
+    },
+    onUrl: onImage,
+  });
+
   const publish = async () => {
     const paths = await canvas.current?.exportPaths();
-    if (paths) onChange({ paths });
+    if (paths) {
+      onChange({ paths });
+      // ⚠️ 排在 `onChange` **之后**：抓图是异步的，先抓后写会让「这次改动」还没进作答，
+      //    快照就已经按新内容生成了 —— 那两张永远差一拍。
+      scheduleRaster();
+    }
   };
 
   const undo = () => {

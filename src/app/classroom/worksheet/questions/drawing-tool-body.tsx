@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import { readDrawingBackground, readDrawingTool } from '@/lib/worksheet-drawing';
+import { readDrawingStarter } from '@/lib/worksheet-drawing-starter.ts';
 import type { DrawingDocument } from '@/lib/worksheet-drawing-document';
 import { defaultInkBox } from '@/lib/worksheet-ink';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
@@ -62,14 +63,27 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
   }, [maximized]);
 
   const update = useCallback((data: unknown) => {
-    const nextDocument: DrawingDocument = { tool, data };
+    const nextDocument: DrawingDocument = {
+      tool,
+      data,
+      // ⚠️ **保留上一次的快照**：`data` 每改一下这份文档就重建一次，顺手把 `image` 丢掉
+      //    等于「学生一动笔，教师/AI 手里那张图就没了」（而且不报错）。
+      ...(drawingDocument?.image ? { image: drawingDocument.image } : {}),
+    };
     onChange({
       kind: 'ink',
       box,
       strokes: [],
       drawing: documentIsEmpty(nextDocument) ? undefined : nextDocument,
     });
-  }, [box, onChange, tool]);
+  }, [box, drawingDocument?.image, onChange, tool]);
+
+  /** 抓图回来：只补 `image`，**不动 `data`**（快照晚到一步，不能覆盖学生刚改的内容）。 */
+  const updateImage = useCallback((image: string) => {
+    const data = drawingDocument?.data;
+    if (data === undefined) return;
+    onChange({ kind: 'ink', box, strokes: [], drawing: { tool, data, image } });
+  }, [box, drawingDocument?.data, onChange, tool]);
 
   const Surface = tool === 'math'
     ? MathDrawing
@@ -90,7 +104,14 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
           {maximized ? '退出全屏' : '全屏作图'}
         </button>
       </div>
-      <Surface data={drawingDocument?.data} backgroundUrl={backgroundUrl} disabled={disabled} onChange={update} />
+      <Surface
+        starter={readDrawingStarter(node)}
+        data={drawingDocument?.data}
+        backgroundUrl={backgroundUrl}
+        disabled={disabled}
+        onChange={update}
+        onImage={updateImage}
+      />
     </div>
   );
   return maximized && typeof document !== 'undefined' ? createPortal(content, document.body) : content;

@@ -423,6 +423,30 @@ test('★ 2026-10-06（教师截图）：库自带那条导航条换掉，改成
   assert.match(live, /pan: \{ enabled: !disabled, needTwoFingers: true \}/, '单指还在平移画布 —— 会把「点一下」和「挪一下」混在一起');
 });
 
+test('★ 2026-10-06：库自带的**悬停信息框**必须关掉（`showInfobox: false`）', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'math-drawing.tsx'), 'utf8'));
+  /**
+   * ⚠️ 只在 `initBoard` 的**选项那一块**里找，不查整个文件：将来某个图形自己的 `attrs` 里出现
+   *    一个同名键不该算数 —— 这里要盯的是**画板级**那一个。
+   * ⚠️ 抠不出选项块时**如实报错**，不许在空串上全绿。
+   */
+  const options = blockAfter(live, 'JXG.JSXGraph.initBoard(', '});');
+  assert.ok(options.length > 200, 'initBoard 的选项没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  /** 语义判：**显式关掉**就算过（`false` / `!1` / `0` 都认），不逐字钉写法。 */
+  const turnsInfoboxOff = (source: string): boolean => /showInfobox:\s*(?:false|!1|0)\b/.test(source);
+  // 🔴 为什么是硬要求：① 它与「选中高亮 / 浮层那颗删除按钮」抢注意力（指针划过图形就冒一条小信息）；
+  //    ② 学生端是老 iPad / Safari 15，**触屏没有 hover** ⇒ 这条信息学生永远看不到。
+  assert.ok(turnsInfoboxOff(options),
+    '库自带的悬停信息框还开着（它与「选中高亮 / 浮层删除按钮」抢注意力，而触屏根本没有 hover）');
+  // ⚠️ 反面对照：改回 `true`、或把那一句整个删掉 ⇒ 必须判违规（这条判据不是恒真的）。
+  const onInstead = options.replace(/showInfobox:\s*false/, 'showInfobox: true');
+  assert.notEqual(onInstead, options, '反面对照没造出来（没找到可替换的那一句）—— 这条判据会变成恒真');
+  assert.ok(!turnsInfoboxOff(onInstead), '反面对照（改成 true）没被抓住 —— 这条判据是恒真的');
+  const dropped = options.replace(/[^\n]*showInfobox[^\n]*\n/, '');
+  assert.notEqual(dropped, options, '反面对照没造出来（那一句没被删掉）—— 这条判据会变成恒真');
+  assert.ok(!turnsInfoboxOff(dropped), '反面对照（整句删掉）没被抓住 —— 这条判据是恒真的');
+});
+
 test('★ 2026-10-06（教师）：底稿（A 不算学生作答 / B 锁定初始图 / 先做流程图）', async () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   const body = stripComments(fs.readFileSync(path.resolve(HERE, '..', 'drawing-tool-body.tsx'), 'utf8'));

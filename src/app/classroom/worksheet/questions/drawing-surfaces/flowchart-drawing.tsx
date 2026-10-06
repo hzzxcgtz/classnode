@@ -45,7 +45,8 @@ import styles from '../../worksheet.module.css';
 /**
  * 节点种类。
  * ★ 2026-10-06（教师，A 方案）：「新建的连接线可以连在另一根连接线的中点上」——
- *   `junction`（交点）就是那颗**小圆点**：它不是从工具栏放下来的，而是「连到线上」时
+ *   `junction`（交点 —— **界面上叫「连接点」**，信息科技课教材里线交叉/汇合处那个小圆就叫这个）
+ *   就是那颗**小圆点**：它不是从工具栏放下来的，而是「连到线上」时
  *   由 `onConnect` 现场插进那条线里、并把原线拆成两段的那个节点。
  */
 type FlowKind = 'terminator' | 'process' | 'decision' | 'io' | 'junction';
@@ -56,7 +57,7 @@ type FlowData = { label: string; kind: FlowKind; locked?: boolean };
  * 画的正是这个按钮会放下的那个节点形状 —— 学生看一眼就知道按下去会得到什么，
  * 不必先读「平行四边形」这四个字。
  * ⚠️ 与 `worksheet-flowchart-svg.ts`（快照）里那几种形状**同源**：胶囊 / 矩形 / 菱形 / 平行四边形。
- * ⚠️ `junction` 那一项是**凑键用的**：交点是「连」出来的、工具栏上没有它的按钮
+ * ⚠️ `junction` 那一项是**凑键用的**：连接点是「连」出来的、工具栏上没有它的按钮
  *    （`FlowKind` 里加了它，这张表就少一个键 —— 少一个键 TS 会当场报错）。
  */
 const FLOW_ICONS: Record<FlowKind | 'restore' | 'trash', string> = {
@@ -98,7 +99,7 @@ type FlowSelection = { kind: 'node' | 'edge'; id: string };
 function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
   const instance = useReactFlow<FlowNode, Edge>();
   const textWidth = Math.min(30, Math.max(10, Array.from(data.label).length + 2));
-  /** ★ 交点是**一个小圆点**、没有文字 ⇒ 它不能有那个可编辑文字输入框（否则图上多一个空框）。 */
+  /** ★ 连接点是**一个小圆点**、没有文字 ⇒ 它不能有那个可编辑文字输入框（否则图上多一个空框）。 */
   const isJunction = data.kind === 'junction';
   return (
     <div className={`${styles.flowNode} ${styles[`flowNode_${data.kind}`]}`} data-selected={selected ? '1' : '0'}>

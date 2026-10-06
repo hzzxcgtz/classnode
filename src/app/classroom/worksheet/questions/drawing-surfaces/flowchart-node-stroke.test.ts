@@ -94,6 +94,35 @@ test('菱形里的文字必须落在内接矩形内 —— 半宽是硬上限', 
   );
 });
 
+/*
+  ★ 2026-10-06（教师真机截图，红框圈着那一团）：「**那个点的问题**」。
+
+  连接点上挂着**四个** `12×12` 的 Handle（上/右/下/左），而这个节点本身只有 **`8×8`**。
+  桌面上它们 `opacity: 0` 看不见；**触屏（`@media (hover: none)`）下改成 `opacity: .5` 半透明显形**
+  —— 于是四个方块的中心分别往上下左右各偏 10px，**并起来正好是一个「十字」**，
+  把真正的空心小圆整个盖住。教师拍到的就是那一团。
+
+  ✅ 连接点的句柄**不需要露出来**：它不是「拖出连线」的入口（线是接在它上/下那两段上的），
+  而那条「触屏必须留着句柄」的理由（见 `worksheet.module.css` 里的长注释）是**对普通框**说的
+  —— 学生要能从框的四个点拖出线来。连接点没有这个需要。
+  ⚠️ `opacity: 0` 的元素**仍然可点**，连线判定不受影响。
+
+  🔴 **位置要紧**：这条规则必须排在 `@media (hover: none)` **之后** —— 同特异性、后写的赢，
+  否则压不住里面那条 `opacity: .5`。
+*/
+test('连接点的句柄不许露出来 —— 4 个 12x12 挤在 8x8 的节点上会糊成一个十字', () => {
+  const mediaAt = CSS.indexOf('@media (hover: none)');
+  assert.ok(mediaAt > -1, '找不到触屏那段媒体查询（样式表改结构了？）');
+  const ruleAt = CSS.indexOf('.flowNode_junction :global(.react-flow__handle)');
+  assert.ok(ruleAt > -1, '缺「连接点的句柄」那条规则');
+  assert.ok(
+    ruleAt > mediaAt,
+    '这条规则必须排在 @media (hover: none) 之后 —— 同特异性下后写的才赢，否则压不住那条 opacity: .5',
+  );
+  const rule = blockBetween(CSS.slice(ruleAt), '{', '}');
+  assert.match(rule, /opacity:\s*0/, '连接点的句柄要彻底隐形（那一团十字的来源）');
+});
+
 test('菱形选中时只换颜色，不加粗 —— 与其它形状同一套', () => {
   // ⚠️ 只认「命中 polygon」的那条规则：`.flowNode_decision[data-selected='1'] { … }` 本身
   //    不含 stroke-width，混进来会假绿。

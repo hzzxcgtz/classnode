@@ -2737,6 +2737,19 @@
   .flowNode :global(.react-flow__handle) { opacity: .5; }
   .flowNode[data-selected='1'] :global(.react-flow__handle) { opacity: 1; }
 }
+/*
+  ★ 2026-10-06（教师真机截图，红框圈着那一团）：「**那个点的问题**」——
+  连接点上挂着**四个** 12×12 的 Handle，而它自己只有 **8×8**。桌面上那些句柄 `opacity: 0` 看不见，
+  但触屏那段媒体查询把它们改成 `.5` 半透明显形 ⇒ 四个方块的中心分别往上下左右各偏 10px，
+  **并起来正好是一个「十字」**，把真正的空心小圆整个盖住。教师拍到的就是那一团。
+
+  ✅ 连接点**不需要**露句柄：它不是「拖出连线」的入口（线接在它上/下那两段上）。
+  上面那条「触屏必须留着句柄」的理由是**对普通框**说的 —— 学生要能从框的四个点拖出线来。
+  ⚠️ `opacity: 0` 的元素**仍然可点**，连线判定不受影响。
+  🔴 位置要紧：必须排在 `@media (hover: none)` **之后** —— 同特异性下后写的才赢，
+  否则里面那条 `opacity: .5` 会把它压回去。
+*/
+.flowNode_junction :global(.react-flow__handle) { opacity: 0; }
 
 @media (max-width: 720px) {
   .thirdPartyCanvas { min-height: 430px; }

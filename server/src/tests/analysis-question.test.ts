@@ -5,6 +5,7 @@ import {
   analysisQuestionDetails,
   analysisReferenceAnswer,
   analysisRubric,
+  hasDrawingStarter,
   rubricTextOf,
 } from '../services/analysis-question.js';
 import type { QuestionNode, QuestionType } from '../services/worksheet-questions.js';
@@ -137,4 +138,41 @@ test('🔴 评分标准与评分要求合并：`rubricText` 为准，旧字段 `
   // 客观题没有评分标准这一说（`analysisRubric` 的第一道闸），但 `rubricTextOf` 是纯读值。
   assert.equal(rubricTextOf(node('single-choice', { aiScoringCriteria: '不该用' })), '不该用');
   assert.equal(analysisRubric(node('single-choice', { aiScoringCriteria: '不该用' })).text, '');
+});
+
+test('★ 绘图题的「初始图」判据：与前端 `readDrawingStarter` 同一把尺子', () => {
+  // 为什么这条要在服务端也钉一遍：这个判据决定「发给 AI 的提示词要不要说『图里有教师的初始图』」。
+  //   服务端**放宽**（认了前端不认的形状）⇒ 模型会去找一段不存在的底稿；
+  //   服务端**收紧** ⇒ 该说的那句没说，模型把教师画的那半张算成学生的成果。
+  // 两种都不报错，所以形状必须逐条对拍前端 `src/lib/worksheet-drawing-starter.ts` 的判据。
+  const starter = { tool: 'flowchart', data: { nodes: [], edges: [] } };
+  assert.equal(hasDrawingStarter(node('drawing', { drawingStarter: starter })), true, '合法的 { tool, data } 就是有初始图');
+  for (const tool of ['flowchart', 'mind-map', 'math', 'free']) {
+    assert.equal(
+      hasDrawingStarter(node('drawing', { drawingStarter: { tool, data: {} } })), true,
+      `「${tool}」是认得出的画板工具（前端 DRAWING_TOOLS 那一档）`,
+    );
+  }
+  // 认不出的形状一律当「没有初始图」—— 与前端回 null 的那些分支一一对应。
+  assert.equal(hasDrawingStarter(node('drawing', {})), false, '没设过 ⇒ 没有初始图');
+  assert.equal(hasDrawingStarter(node('drawing', { drawingStarter: null })), false);
+  assert.equal(hasDrawingStarter(node('drawing', { drawingStarter: 'flowchart' })), false, '字符串不是那个形状');
+  assert.equal(hasDrawingStarter(node('drawing', { drawingStarter: [starter] })), false, '数组不是那个形状');
+  assert.equal(hasDrawingStarter(node('drawing', { drawingStarter: { tool: 'flowchart' } })), false, '缺 data ⇒ 前端也读不出来');
+  assert.equal(hasDrawingStarter(node('drawing', { drawingStarter: { data: {} } })), false, '缺 tool ⇒ 前端也读不出来');
+  assert.equal(
+    hasDrawingStarter(node('drawing', { drawingStarter: { tool: 'nope', data: {} } })), false,
+    '认不出的工具（手改过的数据、将来新增的工具）不算 —— 前端也不认它',
+  );
+});
+
+test('🔴 「初始图」只在**绘图题**上考虑：别的题型挂着同名字段也不算', () => {
+  // 为什么：`data` 是**原样透传**的（见 `normalizeNode`），所以复制/手改来的
+  // `drawingStarter` 可以出现在任何题型上。若判据是「有 tool 有 data 就算」，
+  // 提示词会对一道**根本没有图**的题说「图里有教师预先给出的初始图」——
+  // 模型于是拿一段文字作答去找底稿，评价口径整个错位，而全程没有一处报错。
+  const starter = { tool: 'flowchart', data: { nodes: [] } };
+  for (const type of ['single-choice', 'short-answer', 'fill-blank', 'task'] as const) {
+    assert.equal(hasDrawingStarter(node(type, { drawingStarter: starter })), false, `${type} 不是绘图题，不许认这个字段`);
+  }
 });

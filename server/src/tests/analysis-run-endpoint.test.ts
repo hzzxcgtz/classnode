@@ -44,13 +44,20 @@ async function openTempDb() {
  * （`/v1/files/upload` · `/v3/chat` · `/v3/chat/retrieve` · `/v3/chat/message/list`）。
  * `answer` 就是它「模型」的产出 —— 传 `''` 可以模拟「模型返回空」。
  */
-async function startFakeCoze(answer: string): Promise<{ base: string; close: () => void; hits: string[] }> {
+async function startFakeCoze(answer: string): Promise<{ base: string; close: () => void; hits: string[]; messages: string[] }> {
   const hits: string[] = [];
+  // 真正发出去的那段提示词（`additional_messages[*].content`）。**只有在这里才验得到**：
+  // 界面上的预览没有这段文本，`buildAnalysisMessage` 的用例又够不到「题面 → 载荷 → 提示词」这条线。
+  const messages: string[] = [];
   const app = express();
   app.use(express.json({ limit: '10mb' }));
   app.use((req, _res, next) => { hits.push(`${req.method} ${req.path}`); next(); });
   app.post('/v1/files/upload', (_req, res) => { res.json({ code: 0, data: { id: 'file-1' } }); });
-  app.post('/v3/chat', (_req, res) => {
+  app.post('/v3/chat', (req, res) => {
+    const sent = (req.body as { additional_messages?: Array<{ content?: unknown }> } | undefined)?.additional_messages ?? [];
+    for (const message of sent) {
+      if (typeof message.content === 'string') messages.push(message.content);
+    }
     res.json({ code: 0, data: { id: 'chat-1', conversation_id: 'conv-1', bot_id: 'bot-1', status: 'in_progress', created_at: 1 } });
   });
   app.get('/v3/chat/retrieve', (_req, res) => {
@@ -68,7 +75,7 @@ async function startFakeCoze(answer: string): Promise<{ base: string; close: () 
   const server: Server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
-  return { base: `http://127.0.0.1:${port}`, close: () => server.close(), hits };
+  return { base: `http://127.0.0.1:${port}`, close: () => server.close(), hits, messages };
 }
 
 async function withServer(prisma: PrismaClient) {
@@ -97,11 +104,14 @@ const runUrl = (base: string, ws: string, q: string, classroomId: string) =>
 const DRAWING: Prisma.InputJsonValue = { id: 'q3', type: 'drawing', prompt: '画一画', inputMode: 'handwriting', data: {}, children: [] };
 
 /** 一节标准模式的课 + 一份绘图学习单 + 一份已提交的笔迹作答。返回那几个 id。 */
-async function seed(p: PrismaClient, opts: { analysisAgentId?: string | null; withAnswer?: boolean } = {}) {
+async function seed(
+  p: PrismaClient,
+  opts: { analysisAgentId?: string | null; withAnswer?: boolean; node?: Prisma.InputJsonValue } = {},
+) {
   const worksheet = await p.worksheet.create({
     data: {
       title: '学习单',
-      content: { schemaVersion: 1, nodes: [DRAWING] },
+      content: { schemaVersion: 1, nodes: [opts.node ?? DRAWING] },
       settings: { analysisAgentId: opts.analysisAgentId ?? null },
     },
   });
@@ -257,4 +267,56 @@ test('🔴 指定的智能体是**学伴** ⇒ 400，且一次网络都不发（
   assert.deepEqual(fake.hits, [], '🔴 一个字节都不许发出去');
   const row = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
   assert.equal(row.narrative, null, '也不许写库');
+});
+
+test('★ 教师初始图：只有**真的带初始图**的绘图题，提示词里才有那句「初始图不算学生的作答」', async (t) => {
+  // 🔴 为什么要在端到端这一层再验一遍（`analysis-agent.test.ts` 已经验了拼装那一侧）：
+  //    这句话的去留由**四级接力**决定 —— 题面 → `hasDrawingStarter` 判据 → 载荷标记 → 提示词。
+  //    任何一级接错（判据认错形状 / 忘了从题面传到载荷 / 每道题都置真）都**只**在
+  //    「发给平台的那段文本」上表现出来，而界面上的预览里没有这段文本
+  //    ⇒ 只有假端点收到的 `additional_messages` 能验到它。
+  const db = await openTempDb();
+  const fake = await startFakeCoze('按要求给出解读。');
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const agent = await makeAgent(p, 'coze', fake.base);
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+
+  const drawing = (data: Prisma.InputJsonObject): Prisma.InputJsonValue =>
+    ({ id: 'q3', type: 'drawing', prompt: '画出水循环的过程', inputMode: 'handwriting', data, children: [] });
+  const cases: Array<{ why: string; node: Prisma.InputJsonValue; expectNote: boolean }> = [
+    {
+      why: '绘图题 + 教师给的初始图（合法形状 `{ tool, data }`）',
+      node: drawing({ drawingStarter: { tool: 'flowchart', data: { nodes: [], edges: [] } } }),
+      expectNote: true,
+    },
+    { why: '绘图题但没有初始图', node: drawing({}), expectNote: false },
+    {
+      // 手改/复制来的字段：前端 `readDrawingStarter` 也不认（题型不是 drawing）。
+      why: '问答题上挂着同名字段',
+      node: {
+        id: 'q3', type: 'short-answer', prompt: '说说你的看法', inputMode: 'keyboard',
+        data: { drawingStarter: { tool: 'flowchart', data: {} } }, children: [],
+      },
+      expectNote: false,
+    },
+  ];
+
+  for (const item of cases) {
+    const { worksheet, classroom } = await seed(p, { analysisAgentId: agent.id, node: item.node });
+    const post = await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+    if (post.status !== 200) assert.fail(`${item.why}：生成载荷 HTTP ${post.status}: ${await post.text()}`);
+    const before = fake.messages.length;
+    const run = await fetch(runUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+    if (run.status !== 200) assert.fail(`${item.why}：run HTTP ${run.status}: ${await run.text()}`);
+    const sent = fake.messages.slice(before).join('\n');
+    assert.ok(sent.length > 0, `${item.why}：假端点没收到提示词 —— 这条用例就没验到东西`);
+    assert.equal(
+      sent.includes('不要把初始图当作学生的成果'), item.expectNote,
+      item.expectNote
+        ? `${item.why}：提示词里缺了「初始图不算学生的作答」—— 位图快照是完整那张图，模型会把教师画的那半张算成学生的成果`
+        : `${item.why}：提示词提到了初始图，可这题没有（或不该算）—— 模型会去找一段不存在的底稿`,
+    );
+  }
 });

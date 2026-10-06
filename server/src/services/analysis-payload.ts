@@ -316,6 +316,16 @@ export interface QuestionMeta {
   /** 教师补充的主观题评分标准与示例图片。 */
   rubricText?: string;
   rubricImageUrl?: string | null;
+  /**
+   * ★ 2026-10-06：这道绘图题有没有教师预先给出的「初始图」（判据在 `analysis-question.ts` 的
+   * `hasDrawingStarter`，与前端 `readDrawingStarter` 同一把尺子）。
+   *
+   * 🔴 它决定提示词里要不要加 `DRAWING_STARTER_NOTE` 那一句：初始图**不算**学生的作答，
+   *    而位图快照是**完整那张图**（含教师画的内容）—— 不说这一句，模型会把教师给的框与连线
+   *    算成学生的成果。
+   * ⚠️ **可选**：这是后加的字段，题面字面量（用例、老调用点）缺省即「没有初始图」。
+   */
+  drawingStarter?: boolean;
   /** 主观题可选的 AI 评分设置；未开启时仍把配置明确带到载荷中。 */
   aiScoring?: { enabled: boolean; maxScore: number; unit: string; criteria: string; parts?: Array<{ index: number; maxScore: number }> };
 }
@@ -561,6 +571,11 @@ export interface AnalysisPayload {
   referenceAnswer: string;
   rubricText: string;
   rubricImageUrl: string | null;
+  /**
+   * ★ 2026-10-06：这题有没有教师给的「初始图」（见 `QuestionMeta.drawingStarter`）。
+   * 提示词据此追加 `DRAWING_STARTER_NOTE` 那一句；`false` ⇒ **一个字都不加**。
+   */
+  drawingStarter: boolean;
   localStats: { correct: number; partial: number; incorrect: number; ungraded: number };
   payloadKind: 'text' | 'image' | 'mixed';
   covered: number;
@@ -609,6 +624,9 @@ export function buildAnalysisPayload(input: {
     referenceAnswer: question.referenceAnswer || '（未提供参考答案）',
     rubricText: question.rubricText || '',
     rubricImageUrl: question.rubricImageUrl ?? null,
+    // ⚠️ `=== true` 不是啰嗦：题面字面量可能没这个键（老调用点），`undefined` 必须落成 `false`
+    //    —— 落成真值的后果是**每一道题**的提示词都多一句「图里有教师的初始图」。
+    drawingStarter: question.drawingStarter === true,
     localStats: localStatsOf(entries),
     payloadKind,
     covered: entries.length,

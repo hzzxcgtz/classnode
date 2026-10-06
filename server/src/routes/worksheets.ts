@@ -50,7 +50,9 @@ import { findInkValueError } from '../services/worksheet-ink.js';
 // 那个文件被前端的跨工程对拍用例加载，所以它不能 import 任何东西（M6a 的教训）。
 import { isAnalyzableType } from '../services/analysis-gate.js';
 import { questionTypeLabel } from '../services/question-type-labels.js';
-import { analysisQuestionDetails, analysisReferenceAnswer, analysisRubric } from '../services/analysis-question.js';
+import {
+  analysisQuestionDetails, analysisReferenceAnswer, analysisRubric, hasDrawingStarter,
+} from '../services/analysis-question.js';
 import {
   KNOBS_SETTING_KEY, buildAnalysisPayload, entriesFromAggregate, entriesToAggregate,
   isAnalysisStale, lastSubmittedAt, layoutSheets, normalizeAnalysisKnobs, payloadLabels, selectAnalyzeEntries,
@@ -1373,6 +1375,10 @@ function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: 
     referenceAnswer: analysisReferenceAnswer(node),
     rubricText: rubric.text,
     rubricImageUrl: rubric.imageUrl,
+    // ★ 2026-10-06：这题有没有教师给的「初始图」—— 判据与前端 `readDrawingStarter` 同一把尺子
+    // （`hasDrawingStarter`）。它决定发给 AI 的提示词要不要加那句「初始图不算学生的作答」：
+    // 位图快照是**完整那张图**（含教师画的内容），不说这一句模型会把底稿算成学生的成果。
+    drawingStarter: hasDrawingStarter(node),
     aiScoring: aiScoringConfigOf(node, scoringUnit),
   };
 }

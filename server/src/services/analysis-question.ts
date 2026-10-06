@@ -58,6 +58,39 @@ export function analysisRubric(node: QuestionNode): { text: string; imageUrl: st
   };
 }
 
+/**
+ * 绘图题的**画板工具枚举** —— 与前端 `src/lib/worksheet-drawing.ts` 的 `DRAWING_TOOLS` 逐字相同。
+ *
+ * 🔴 这里必须与前端**同一把尺子**：认不出的 `tool`（手改过的数据、将来新增的工具）在教师端
+ *    `readDrawingStarter` 那里就**不是**初始图；服务端若认它，提示词会对一道实际上没有初始图的题
+ *    说「图里有教师的初始图」，模型于是去找一段不存在的内容。
+ */
+const DRAWING_STARTER_TOOLS: readonly string[] = ['flowchart', 'mind-map', 'math', 'free'];
+
+/**
+ * ★ 2026-10-06：这道题有没有教师预先给出的**初始图**（`data.drawingStarter`，形状 `{ tool, data }`）。
+ *
+ * 🔴 判据与前端 `src/lib/worksheet-drawing-starter.ts` 的 `readDrawingStarter` **逐条对齐**
+ *    （它是「教师给的底稿」的权威读入口，见那个文件顶部的产品语义）：
+ *      ① 只有 `drawing` 题型才有初始图 —— 别的题型上挂着同名字段不算；
+ *      ② `drawingStarter` 得是个**非数组对象**；
+ *      ③ `tool` 得是认得出的画板工具；④ `data` 得是个对象。
+ *    ⇒ 任何一条不满足都回 `false`。方向是**宁可漏说**：多说的后果是模型去找不存在的初始图、
+ *      并把学生的作答当成初始图而少评，两种都不报错。
+ *
+ * ⚠️ 为什么服务端要知道这件事：作图题提交时**只保留学生自己画的部分**（按 id 剔除了初始图），
+ *    而位图快照（`drawing.image`）是**完整那张图**（含教师的框与连线）⇒ 发给 AI 的图里混着
+ *    教师画的内容。那句说明在 `analysis-agent.ts` 的 `DRAWING_STARTER_NOTE`（唯一一份文字）。
+ */
+export function hasDrawingStarter(node: QuestionNode): boolean {
+  if (node.type !== 'drawing') return false;
+  const raw = node.data.drawingStarter;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  const row = raw as Record<string, unknown>;
+  if (!DRAWING_STARTER_TOOLS.includes(row.tool as string)) return false;
+  return !!row.data && typeof row.data === 'object';
+}
+
 function entriesOf(raw: unknown, labelKey = 'text'): Array<{ id: string; text: string }> {
   if (!Array.isArray(raw)) return [];
   const out: Array<{ id: string; text: string }> = [];

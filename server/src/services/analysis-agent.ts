@@ -78,6 +78,24 @@ export function analysisGateOf(
 const LEAD = '请分析下面这道小题的全班作答。不要重复简单统计，重点发现统计无法直接呈现的理解方式、共同困难、思维差异或合理异解，并给教师一个简短的反馈切入点。';
 
 /**
+ * ★ 2026-10-06：**绘图题的初始图**提示 —— 唯一一份文字，`buildAnalysisMessage` 是唯一追加点。
+ *
+ * 🔴 为什么必须加（产品语义，见 `src/lib/worksheet-drawing-starter.ts` 与
+ *    `services/analysis-question.ts` 的 `hasDrawingStarter`）：
+ *    · 教师可以给绘图题准备一张**初始图**（半成品流程图 / 思维导图 / 数学作图），学生在这张图上继续画；
+ *    · 提交作答时**只保留学生自己画的部分**（服务端按 id 剔除了初始图）；
+ *    · 但**位图快照**（`drawing.image`）是**完整那张图**，含教师的初始图。
+ *    ⇒ 模型看到的图里混着教师画的内容，而按产品约定「初始图**不算**学生的作答」。
+ *      少了这一句，模型会把教师给的那半张（框、连线、流程）当成学生的成果来评价 ——
+ *      教师看到的是一份「夸错了内容」的解读，而**全程没有任何报错**。
+ *
+ * ⚠️ 这句是**进提示词的产品文案**（教师也看得懂），不是实现细节：改字就等于改口径，
+ *    所以用例（`analysis-agent.test.ts`）按这段话逐字钉着它 —— 要改就两边一起改。
+ * ⚠️ 只有**真的有初始图**时才追加：每道题都加一遍是噪音，还会让模型去找不存在的初始图。
+ */
+export const DRAWING_STARTER_NOTE = '注意：本题的图里有教师预先给出的「初始图」内容（可能还包含教师给出的框与连线）。评价时请只针对学生自己补充的部分，不要把初始图当作学生的成果。';
+
+/**
  * 载荷 → 发给模型的那段文本。
  *
  * 🔴 **它已经是伪名**（M7a 的 `buildAnalysisPayload` 给的）—— 这里不许再去查真名，
@@ -86,6 +104,13 @@ const LEAD = '请分析下面这道小题的全班作答。不要重复简单统
  * 同一个学生的伪名）。
  */
 export function buildAnalysisMessage(payload: AnalysisPayload, labeled = true): string {
+  // 🔴 **唯一的追加点**：三种载荷形态（text / image / mixed）的正文都由 `analysisBody` 产出，
+  //    「初始图」那一句只在末尾拼**一次** ⇒ 既不会「某一种形态漏加」，也不会「同一句话加两遍」。
+  return `${analysisBody(payload, labeled)}${payload.drawingStarter ? `\n\n${DRAWING_STARTER_NOTE}` : ''}`;
+}
+
+/** 正文。**不含** `DRAWING_STARTER_NOTE`（那一句由 `buildAnalysisMessage` 统一追加）。 */
+function analysisBody(payload: AnalysisPayload, labeled: boolean): string {
   const stats = payload.localStats;
   const head = [
     LEAD,

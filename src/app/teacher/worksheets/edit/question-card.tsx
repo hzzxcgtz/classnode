@@ -735,8 +735,8 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                       <label htmlFor={`ai-scoring-max-${node.id}`}>
                         {/* ★ 2026-10-06：这一格与本地判分块那一格是**同一个字段**
                             （这道题最多给多少），原来两边各叫各的（满分 / 满额 / 分值）
-                            ⇒ 统一成「分值」（分数档；奖励档仍说“奖励总量”，句子的量词才对得上）。 */}
-                        {pointsUnit === '分' ? '分值' : '奖励总量'}（{pointsUnit}）
+                            ⇒ 统一成「分值」（分数档；奖励档仍说“奖励数量”，句子的量词才对得上）。 */}
+                        {pointsUnit === '分' ? '分值' : '奖励数量'}（{pointsUnit}）
                       </label>
                       <div className="worksheet-editor-ai-scoring-stepper">
                         <button

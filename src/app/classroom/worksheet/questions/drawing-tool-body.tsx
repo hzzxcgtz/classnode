@@ -101,7 +101,7 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
       <div className={styles.drawingWorkspaceHeader}>
         <div><strong>{TOOL_LABELS[tool]}</strong><span>本题使用此工具作答</span></div>
         <button className={styles.drawingToolbarButton} type="button" onClick={() => setMaximized(value => !value)} aria-label={maximized ? '退出全屏画板' : '全屏画板'}>
-          {maximized ? '退出全屏' : '全屏作图'}
+          {maximized ? '退出全屏' : '全屏画板'}
         </button>
       </div>
       <Surface

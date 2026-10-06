@@ -17,7 +17,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { junctionAxisLocks, tidyFlowchart } from './worksheet-flowchart-layout.ts';
+import { tidyFlowchart } from './worksheet-flowchart-layout.ts';
 
 /** 判据用的最小节点 —— 形状与 React Flow 的 `Node` 在**用到的这几个字段上**一致。 */
 interface TidyTestNode {
@@ -104,47 +104,6 @@ test('连线横向相接时改用左右句柄', () => {
   const out = tidyFlowchart(nodes, [edge('a', 'b')]);
   assert.equal(out.edges[0].sourceHandle, 'right', 'b 在 a 正右方 ⇒ 从 a 的右边出');
   assert.equal(out.edges[0].targetHandle, 'left', '⇒ 进 b 的左边');
-});
-
-// ── 连接点的拖动约束（★ 2026-10-06 教师：「这个点的移动要定个范围」）──────────
-
-test('竖线上的连接点：锁 x，值取两侧邻居的中心 x', () => {
-  const links = [node('a', 100, 0), node('b', 100, 400)];
-  const mid = node('j', 100, 200, 'junction');
-  const locks = junctionAxisLocks([links[0], mid, links[1]], [edge('a', 'j'), edge('j', 'b')]);
-  const lock = locks.get('j');
-  assert.ok(lock, '竖线上的连接点应当有锁');
-  assert.equal(lock.axis, 'x', '竖线 ⇒ 锁住 x（只许上下走）');
-  assert.equal(lock.value, 175, '锁的值取两侧邻居的中心 x（150/2 + 100）—— 不是它自己当前那个位置');
-});
-
-test('横线上的连接点：锁 y，只许左右走', () => {
-  const links = [node('a', 0, 100), node('b', 600, 100)];
-  const mid = node('j', 300, 100, 'junction');
-  const locks = junctionAxisLocks([links[0], mid, links[1]], [edge('a', 'j'), edge('j', 'b')]);
-  const lock = locks.get('j');
-  assert.ok(lock);
-  assert.equal(lock.axis, 'y');
-  assert.equal(lock.value, 127, '邻居中心 y（54/2 + 100）');
-});
-
-test('普通框不产生锁 —— 起止/处理/判断/输入输出本来就该随便摆', () => {
-  const locks = junctionAxisLocks([node('a', 100, 0), node('b', 100, 400)], [edge('a', 'b')]);
-  assert.equal(locks.size, 0);
-});
-
-test('邻居不足两个的连接点不给锁 —— 线的一端、或孤立点，没有「线」可锁', () => {
-  const only = [node('a', 100, 0), node('j', 100, 200, 'junction')];
-  assert.equal(junctionAxisLocks(only, [edge('a', 'j')]).size, 0, '只有一个邻居 ⇒ 锁不住');
-  assert.equal(junctionAxisLocks([node('j', 100, 200, 'junction')], []).size, 0, '孤立 ⇒ 锁不住');
-});
-
-test('锁的值取「线」而不是「连接点当前位置」 —— 否则它已经被拖偏时就永远锁在偏的地方', () => {
-  const links = [node('a', 100, 0), node('b', 100, 400)];
-  const drifted = node('j', 260, 200, 'junction');   // 已经偏到右边 160px
-  const lock = junctionAxisLocks([links[0], drifted, links[1]], [edge('a', 'j'), edge('j', 'b')]).get('j');
-  assert.ok(lock);
-  assert.equal(lock.value, 175, '要把它拉回线上（175），而不是锁在它当前偏掉的 260');
 });
 
 test('整理不动连线上学生自己调过的路由点', () => {

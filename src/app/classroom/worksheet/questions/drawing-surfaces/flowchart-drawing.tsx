@@ -19,7 +19,6 @@ import {
   type Edge,
   type EdgeProps,
   type Node,
-  type NodeChange,
   MarkerType,
   reconnectEdge,
   getSmoothStepPath,
@@ -45,7 +44,7 @@ import {
   type FlowHistory,
   type FlowSnapshot,
 } from '@/lib/worksheet-flowchart-history.ts';
-import { junctionAxisLocks, tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
+import { tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
 import { flowchartSvg } from '@/lib/worksheet-flowchart-svg.ts';
 import { svgToPngBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 import { normalizePastedText } from '@/lib/worksheet-text-normalize.ts';
@@ -1400,32 +1399,6 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     const label = edges.find((edge) => edge.id === labelableEdgeId)?.label;
     return typeof label === 'string' ? label : '';
   })();
-  /**
-   * ★ 2026-10-06（教师批图：「**这个点的移动要定个范围**」）：**连接点只能沿它所在的那条线走**。
-   *
-   * 🔴 连接点是「连到线上」时**插进那条线里**的，位置本身就意味着「它在这条线上」。
-   *    学生把它往左右一拖，两侧的线段为了接上它就会**折返绕弯**，看起来像箭头画错了。
-   * 纯逻辑在 `junctionAxisLocks`（`@/lib/worksheet-flowchart-layout.ts`，有单元测试）；
-   * 这里只负责把它接到数据流上。
-   */
-  const junctionLocks = useMemo(() => junctionAxisLocks(nodes, edges), [nodes, edges]);
-
-  /**
-   * 拦在**位置变化的入口**上（`onNodesChange`），而**不是** `onNodeDrag` 里事后修正：
-   * 拖动的每个 mousemove 都会经过这里，帧内把被锁的那个轴改回来 ⇒ 学生**看不到**它在左右偏，
-   * 也就不会抖。事后修正则会先渲染一帧偏的、再拽回来。
-   * ⚠️ 只对 `kind === 'junction'` 生效（普通框照旧自由拖动）。
-   */
-  const onNodesChangeGuarded = useCallback((changes: NodeChange<FlowNode>[]) => {
-    if (junctionLocks.size === 0) return onNodesChange(changes);
-    return onNodesChange(changes.map((change) => {
-      if (change.type !== 'position' || !change.position) return change;
-      const lock = junctionLocks.get(change.id);
-      if (!lock) return change;
-      return { ...change, position: { ...change.position, [lock.axis]: lock.value } };
-    }));
-  }, [junctionLocks, onNodesChange]);
-
   const visibleNodes = useMemo(() => nodes.map((node) => ({
     ...node,
     // ★ 「只读展示」那一档（`disabled`，教师预览 / 回顾作答时用）—— 与底稿无关，与过去那个
@@ -1506,7 +1479,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           edges={visibleEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          onNodesChange={disabled ? undefined : onNodesChangeGuarded}
+          onNodesChange={disabled ? undefined : onNodesChange}
           onEdgesChange={disabled ? undefined : onEdgesChange}
           onConnect={disabled ? undefined : onConnect}
           onReconnect={disabled ? undefined : onReconnect}

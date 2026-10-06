@@ -21,48 +21,6 @@
  *    （已知限制：如果一条线的两端都被对齐搬走了，那颗点会留在原处。等真有教师报再说。）
  */
 
-/**
- * ★ 2026-10-06（教师批图：「**这个点的移动要定个范围**」）：**连接点只能沿它所在的那条线走**。
- *
- * 🔴 连接点（`junction`）不是「摆」上去的，是「连到线上」时**插进那条线里**的 ——
- *    它的位置本身就意味着「它在这条线上」。学生把它往左右一拖，两侧的线段为了接上它就会
- *    **折返绕弯**，看起来像箭头画错了（教师真机上拍到的正是这个）。
- *
- * ✅ 约束：**锁住一个轴** —— 竖线上的点只许上下走（锁 x）、横线上的只许左右走（锁 y）。
- *    为什么是「沿轴」而不是「沿整条路径」：规范状态下连接点两侧的两段线本来就是**共线**的
- *    （它插在一条直线上），沿轴就够了；沿路径投影要复刻一遍折线算法，收益不成比例。
- *
- * ⚠️ 锁的**值**取两侧邻居的**中心**（= 那条线的位置），**不是**连接点自己的当前位置 ——
- *    否则它一旦已经被拖偏，就会被永远锁在偏的地方（用例里有一条专门钉这个）。
- *
- * ⚠️ 邻居不足两个时**不给锁**：线的一端、或孤立点，没有「线」可言，硬锁反而把它锁死。
- */
-export function junctionAxisLocks(
-  nodes: readonly TidyNodeLike[],
-  edges: readonly TidyEdgeLike[],
-): Map<string, { axis: 'x' | 'y'; value: number }> {
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const locks = new Map<string, { axis: 'x' | 'y'; value: number }>();
-  const centerX = (node: TidyNodeLike) => node.position.x + widthOf(node) / 2;
-  const centerY = (node: TidyNodeLike) => node.position.y + heightOf(node) / 2;
-
-  for (const node of nodes) {
-    if (kindOf(node) !== 'junction') continue;
-    const neighbours = edges
-      .filter((edge) => edge.source === node.id || edge.target === node.id)
-      .map((edge) => byId.get(edge.source === node.id ? edge.target : edge.source))
-      .filter((other): other is TidyNodeLike => other !== undefined && other.id !== node.id);
-    if (neighbours.length < 2) continue;
-    const [a, b] = neighbours;
-    // 哪个方向的跨度大，这条线就是哪个走向 ⇒ 锁住**另一个**轴。
-    const vertical = Math.abs(centerY(b) - centerY(a)) >= Math.abs(centerX(b) - centerX(a));
-    locks.set(node.id, vertical
-      ? { axis: 'x', value: (centerX(a) + centerX(b)) / 2 }
-      : { axis: 'y', value: (centerY(a) + centerY(b)) / 2 });
-  }
-  return locks;
-}
-
 /** 参与对齐与否只看这几个字段 —— 不 import `@xyflow/react`，这个模块保持纯净。 */
 export interface TidyNodeLike {
   id: string;

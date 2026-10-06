@@ -509,13 +509,21 @@ test('★ 2026-10-06（教师，A 方案）：连接线中点可以连 —— �
   //    拿注释当标记会切出一个空串或者切到文件末尾（那会让下面几条在错误的范围上"全绿"）。
   const onConnectBody = live.slice(live.indexOf('const onConnect = useCallback'), live.indexOf('const [editingEdge, setEditingEdge]'));
   assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  assert.match(onConnectBody, /edges\.find\(\(edge\) => edge\.id === connection\.target\)/, '没有判「target 是已存在的边 id」');
+  // ⚠️ 判据**圈在 `const hitEdge = …` 那一句里**：只断言「全函数里同时出现 connection 的两端」
+  //    会漏 —— 下面那句 `connection.source === hitEdge.id` 正好把 source 带进来，于是「只认 target」
+  //    的坏版本照样绿（变异测试实测过）。
+  const hitGuard = onConnectBody.match(/const hitEdge = ([^;]+);/);
+  assert.ok(hitGuard, 'hitEdge 那一句没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(hitGuard[1], /connection\.target/, '没有判「connection 的 target 是已存在的边 id」');
+  assert.match(hitGuard[1], /connection\.source/, '没有判「connection 的 source 是已存在的边 id」—— 从节点的 target 句柄（菱形左侧那种）拖到中点那一路会漏（实测：会造出一条 source 是边 id 的悬空边，它渲染不出来、却写进作答）');
   assert.match(onConnectBody, /kind: 'junction'/, '没有插 junction 节点');
   assert.match(onConnectBody, /position: \{ x: anchors\.midX - junctionHalf, y: anchors\.midY - junctionHalf \}/, '交点没有落在库算出来的标签点上（流坐标）');
   assert.ok(!/viewport/.test(onConnectBody), '交点的位置用了视口/屏幕坐标（画布一动就飘）');
   // 拆线的两步：① 原边变「原 source → 交点」；② 交点 → 原 target（过一次 addEdge）。
   assert.match(onConnectBody, /const head: Edge = \{ \.\.\.original, target: junctionId/, '原边没有被改成「原 source → 交点」那一段');
-  assert.match(onConnectBody, /addEdge\(tail, current\.filter\(\(edge\) => edge\.id !== original\.id\)\)/, '没有把原边摘掉、再用 addEdge 接上第二段');
+  // ⚠️ 断言到 `filter(...)` 为止，**不钉整句**：这一句后面还要排进学生拉的那根线（见下一条用例），
+  //    钉住右括号等于「加了 link 就红」—— 那正是今天红过好几次的那种格式断言。
+  assert.match(onConnectBody, /addEdge\(tail, current\.filter\(\(edge\) => edge\.id !== original\.id\)/, '没有把原边摘掉、再用 addEdge 接上第二段');
   // ⑤ 交点画成小圆点（不承袭 .flowNode 的 150×54），而且**没有**文字输入框。
   assert.match(css, /\.flowNode_junction \{[\s\S]{0,200}?min-width: 12px;[\s\S]{0,80}?min-height: 12px;/, '交点没有自己的尺寸（会承袭 .flowNode 的 150×54）');
   assert.match(css, /\.flowNode_junction \{[\s\S]{0,260}?border-radius: 50%/, '交点不是圆点');
@@ -527,6 +535,164 @@ test('★ 2026-10-06（教师，A 方案）：连接线中点可以连 —— �
   assert.match(css, /\.thirdPartyCanvas \.flowEdgeHandle \{[\s\S]{0,240}?opacity: \.35;/, '中点句柄没有「常显但很轻」那一档');
   assert.match(css, /\.thirdPartyCanvas \.flowEdgeHandle:hover \{[\s\S]{0,140}?opacity: 1;/, '悬停中点句柄时没有变实');
   assert.match(live, /flowEdgeHandleOn/, '选中那条边时中点句柄没有变实（组件没有按 selected 挂类）');
+});
+
+test('★ 2026-10-06（教师报「连线加不上」）：连到线中点时，**学生拉的那根线本身**必须真的接上', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  /*
+    🔴 实测（无头 Chrome 154 + 教师那张真底稿 `q_aac88ed0…`，用 CDP 真合成鼠标事件、跑本仓真组件）：
+      · 修前（HEAD 0bc9609，同一拖、同一落点：从「过程」框的右句柄拖到另一条线中点那颗句柄）：
+        `onConnect` **确实响了**（所以既不是「拖不动」也不是「落点被判无效」）、交点也插了、
+        原线也拆成两段了 —— 但**学生拉的那根线没有被加进去**：交出去的 edges 只从 4 条变 5 条
+        （那 5 条 = 原线拆出来的两段），作答里只有 `junction-…-tail`。
+        ⇒ 屏幕上预览线一松手就没了、原线看上去还是原来那根（只是线上多了个小点）
+        ⇒ 教师看到的就是「连线没有出现」。
+      · 修后：同一拖、同一落点 ⇒ DOM 里的边 4 **→ 6**，作答里多出 `junction-…-link`
+        （过程框 → 交点）—— 学生画的那根线真的出现了。
+    ⚠️ 判据按**语义**判：那一支里必须出现一根「一端是交点、另一端是 connection 的那一端」的边，
+      而且必须真的排进「加边」那句的返回数组里；**不**逐字钉三元表达式或返回语句的写法
+      （今天已经因为钉格式红过五六次）。
+  */
+  const onConnectBody = live.slice(live.indexOf('const onConnect = useCallback'), live.indexOf('const [editingEdge, setEditingEdge]'));
+  assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  // ① 结构：边那一支必须在「落点是节点」那一支**之前**，并且自己提前 return
+  //    （不 return 的话同一拖还会被下面那一支再处理一遍）。
+  const edgeBranchAt = onConnectBody.indexOf('if (hitEdge) {');
+  const nodeBranchAt = onConnectBody.indexOf('const source = nodes.find(');
+  assert.ok(edgeBranchAt !== -1, '没有「落点是边」那一支');
+  assert.ok(nodeBranchAt > edgeBranchAt, '「落点是节点」那一支跑到前面去了 —— 先修这条判据');
+  const edgeBranch = onConnectBody.slice(edgeBranchAt, nodeBranchAt);
+  assert.match(edgeBranch, /return;/, '边那一支没有提前 return —— 同一拖会被「落点是节点」那一支再走一遍');
+  // ② 「学生拉的那根线」接全了吗？（本地判据函数 ⇒ 反面对照能直接复用它。）
+  const missingLink = (branch: string): string[] => {
+    const missing: string[] = [];
+    const at = branch.indexOf('const link: Edge');
+    if (at === -1) return ['根本没有给学生拉的那根线建边（只拆原线）'];
+    const end = branch.indexOf('addEdge(', at);
+    const body = end === -1 ? branch.slice(at) : branch.slice(at, end);
+    if (!/junctionId[\s\S]{0,240}?connection\.target/.test(body)) missing.push('少了「交点 → 学生拖到的那一端」那一向');
+    if (!/connection\.source[\s\S]{0,240}?junctionId/.test(body)) missing.push('少了「学生拖出的那一端 → 交点」那一向');
+    const tailAt = branch.indexOf('addEdge(tail,');
+    if (tailAt === -1) missing.push('第二段没走 addEdge');
+    else if (!/\blink\b/.test(branch.slice(tailAt, branch.indexOf(';', tailAt)))) missing.push('link 只被声明、没排进返回的边数组（等于没接上）');
+    return missing;
+  };
+  assert.deepEqual(missingLink(edgeBranch), [],
+    `连到线中点时，学生拉的那根线没接上：${missingLink(edgeBranch).join('、')}（教师报的「连线加不上」就是它）`);
+  // ⚠️ 反面对照：把「接上学生那一拖」整段拿掉（回到修前那种「只拆不接」）⇒ 必须判违规。
+  const withoutLink = edgeBranch.replace(/const link: Edge[\s\S]*?(?=return \[)/, '');
+  assert.notEqual(withoutLink, edgeBranch, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.notDeepEqual(missingLink(withoutLink), [], '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⚠️ 反向也要认：`connection.source` 是边 id 时（从节点的 target 句柄拖到中点），
+  //    绝不能把那条边的 id 当成 source 节点（实测：那种边渲染不出来，却会写进作答）。
+  assert.ok(!/source: hitEdge\.id/.test(edgeBranch), '把边 id 当成节点用了 —— 那条边渲染不出来（悬空边）');
+});
+
+test('★ 2026-10-06（教师报「连线加不上」）：落点约定 —— Loose 模式 / 中点句柄是 target / data-nodeid=边 id', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  const onConnectBody = live.slice(live.indexOf('const onConnect = useCallback'), live.indexOf('const [editingEdge, setEditingEdge]'));
+  assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  /*
+    ⚠️ 这一条钉的是**三条相互咬合的约定**（每一条的「为什么」都写在断言消息里）：
+      ① 普通连线（落点是**节点**）仍然要被加进去，而且那一支必须**走得到**；
+      ② `connectionMode` 必须是 Loose；
+      ③ 中点句柄必须是 `target`，并且自己补 `data-nodeid = 边 id`。
+  */
+  // ① 普通连线：那一支把 connection 交给库的 addEdge（这是最基本的「框 → 框」那条路）。
+  const nodeBranchAt = onConnectBody.indexOf('const source = nodes.find(');
+  const nodeBranch = nodeBranchAt === -1 ? '' : onConnectBody.slice(nodeBranchAt);
+  assert.ok(nodeBranch.length > 120, '「落点是节点」那一支没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const passesConnection = (branch: string) => /addEdge\(\{[\s\S]{0,40}\.\.\.connection/.test(branch);
+  assert.ok(passesConnection(nodeBranch),
+    '「落点是节点」那一支没有把 connection 交给库的 addEdge —— 最基本的「框 → 框」连线会断（教师截图里那一路就是它）');
+  // ⚠️ 反面对照：把 connection 换掉 ⇒ 必须判违规。
+  assert.ok(!passesConnection(nodeBranch.replace('...connection', '...{ source: null }')), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ② Loose：库在 loose 下**不要求 source/target 反向**，所以「从任意句柄拖到任意句柄」才通；
+  //    严模式（默认）下 target→target 会被 `isValidHandle` 直接判无效。而我们的四个句柄里
+  //    上/左是 target、右/下是 source（见 `FlowNodeEditor`）—— 学生不会管这个。
+  assert.match(live, /connectionMode=\{ConnectionMode\.Loose\}/,
+    '不是 Loose 模式 —— 学生从 target 句柄（判定框左侧那种）拖到另一个 target 句柄会被库直接判无效');
+  // ③ 中点句柄（住在边里）必须是 `target` + 自己补 `data-nodeid = 边 id`：
+  //    `isValidHandle` 就是靠「`elementFromPoint` 拿到这颗句柄」+「读它的 data-nodeid 当 target」
+  //    才认出「连到线上」的（库的 `Handle` 在边里 `useNodeId()` 拿到 null，不补就没有这个属性）
+  //    —— 这是整条路**唯一**的凭据，也是 `onConnect` 里认出「那是边 id」的唯一来源。
+  assert.match(live, /id="edge-mid"/, '中点句柄的 id 不是 edge-mid');
+  assert.match(live, /type="target"/, '中点句柄不是 target（库在到达端只认 target/source 的类名）');
+  assert.match(live, /'data-nodeid': edgeId/, '中点句柄没有补 data-nodeid=边 id —— 库读不到 node id，往它上面拖 `onConnect` 一次都不响');
+});
+
+test('★ 2026-10-06（教师）：选中一个图形 ⇒ 浮出删除按钮，删它**连带删掉相连的线**', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  /*
+    🔴 实测（无头 Chrome 154 + 教师那张真底稿，CDP 真合成鼠标事件点过）：
+      · 点「处理过程」框（左上角内侧 12px，避开四个句柄）⇒ 出现 `[aria-label="删除这个图形"]`：
+        44×44、水平中心与框的中心重合（451 vs 451.5）、在框**上边缘上方 35px**
+        （= 28 流坐标 × zoom 1.25175，正是 `NODE_FLOAT_GAP`）。
+      · 点它 ⇒ 那个框没了，**与它相连的两条线也一起没了**：DOM 里的边 4 → 2
+        （剩下的是 1→2 与 1→0，都不挨着它）。
+  */
+  const nodeFloatAt = live.indexOf('aria-label="删除这个图形"');
+  assert.ok(nodeFloatAt !== -1, '没有「删除这个图形」那颗浮层按钮');
+  // ① 出现条件必须**认「选中的那个图形」**（恒真 = 画布上永远挂着一颗按钮）。
+  const floatGateOk = (source: string): boolean => {
+    const at = source.indexOf('aria-label="删除这个图形"');
+    if (at === -1) return false;
+    const open = source.lastIndexOf('{selectedNode', at);
+    if (open === -1) return false;
+    const cond = source.slice(open, at);
+    // 既要有「选中的那个图形」，也要「算得出锚点」（节点刚被删/刚恢复初始图时不留悬空按钮）。
+    return /selectedNode/.test(cond) && /selectedNodeAnchor/.test(cond);
+  };
+  assert.ok(floatGateOk(live), '那颗浮层的出现条件没认「选中的图形 id」—— 恒真就等于画布上永远挂着一颗删除按钮');
+  assert.match(live, /const \[selectedNode, setSelectedNode\] = useState<string \| null>\(null\)/, '没有「被选中的图形」这份状态');
+  // ⚠️ 反面对照：出现条件改成恒真（`{true && (`）⇒ 必须判违规。
+  const alwaysOnFloat = live.replace(/\{selectedNode && selectedNodeAnchor && \(/, '{true && (');
+  assert.notEqual(alwaysOnFloat, live, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!floatGateOk(alwaysOnFloat), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ② 删图形必须**连带删掉与它相连的线**：走库的 `deleteElements`。
+  //    （`@xyflow/system` 的 `getElementsToRemove` 里有 `getConnectedEdges(matchingNodes, deletableEdges)`
+  //      —— 相连的边是**它自己算的**；自己 filter nodes 只会把线留在画布上，而且是两条悬空段。）
+  const removeAt = live.indexOf('const removeNode = ');
+  assert.ok(removeAt !== -1, '没有 removeNode —— 先修这条判据');
+  const removeEnd = live.indexOf('\n  const ', removeAt + 1);
+  const removeBody = live.slice(removeAt, removeEnd === -1 ? undefined : removeEnd);
+  assert.ok(removeBody.length > 40, 'removeNode 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const removesConnectedEdges = (body: string) => /deleteElements\(\{[\s\S]{0,100}?nodes: \[/.test(body);
+  assert.ok(removesConnectedEdges(removeBody),
+    '删图形没有走库的 deleteElements —— 它是唯一会自己算「与它相连的边」的那条路；只 filter nodes 会把相连的线留在画布上');
+  // ⚠️ 反面对照：改成「只 filter 节点」（= 只删框、不删线）⇒ 必须判违规。
+  const manualNodeOnly = removeBody.replace(/void deleteElements\([\s\S]*?\);/, 'setNodes((current) => current.filter((node) => node.id !== id));');
+  assert.notEqual(manualNodeOnly, removeBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!removesConnectedEdges(manualNodeOnly), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ③ 点空白 ⇒ 两边的选中都清掉（「选中」是单选，点空就是没有选中）。
+  const paneAt = live.indexOf('onPaneClick={');
+  assert.ok(paneAt !== -1, '没有 onPaneClick');
+  const paneHandler = live.slice(paneAt, live.indexOf('}', paneAt));
+  assert.match(paneHandler, /setSelectedNode\(null\)/, '点空白没有清掉「选中的图形」—— 那颗删除按钮会留在画布上');
+  // ④ 两块浮层是**同一个单选**：点图形清线、点线清图形（否则两颗 44px 按钮会叠在同一处）。
+  const nodeClickAt = live.indexOf('onNodeClick={');
+  const edgeClickAt = live.indexOf('onEdgeClick={');
+  assert.ok(nodeClickAt !== -1 && edgeClickAt > nodeClickAt, 'onNodeClick/onEdgeClick 没抠出来 —— 先修这条判据');
+  const nodeClickHandler = live.slice(nodeClickAt, edgeClickAt);
+  assert.match(nodeClickHandler, /setSelectedNode\(node\.id\)/, '点图形没有把「选中的图形」设成它');
+  assert.match(nodeClickHandler, /setEditingEdge\(null\)/, '点图形没有清掉「选中的线」—— 两颗删除按钮会叠在同一处');
+  const edgeClickHandler = live.slice(edgeClickAt, live.indexOf('onEdgeDoubleClick={'));
+  assert.match(edgeClickHandler, /setSelectedNode\(null\)/, '点线没有清掉「选中的图形」—— 两颗删除按钮会叠在同一处');
+  // ⑤ 位置与命中区：复用线段浮层那套（44px 是硬要求；`worksheet-tap-targets.test.ts` 会逐个量），
+  //    并且必须住在画布舞台**里面**（跑到外面就会按外层卡片定位、差出两百多像素）。
+  const btnTag = live.slice(live.lastIndexOf('<button', nodeFloatAt), nodeFloatAt);
+  assert.match(btnTag, /styles\.flowEdgeFloat/, '图形删除浮层没复用 44px 的浮层样式（命中区会跌破 44px）');
+  assert.ok(live.indexOf('</ReactFlow>') < nodeFloatAt, '图形删除浮层跑到画布舞台外面了（会按外层卡片定位）');
+  // ⑥ 锚点必须是「节点上边缘**上方**」+ 与另两块浮层同一套视口换算。
+  const anchorAt = live.indexOf('const selectedNodeAnchor = ');
+  assert.ok(anchorAt !== -1, '没有 selectedNodeAnchor —— 先修这条判据');
+  const anchorEnd = live.indexOf('\n  const ', anchorAt + 1);
+  const anchorsBody = live.slice(anchorAt, anchorEnd === -1 ? undefined : anchorEnd);
+  assert.match(anchorsBody, /node\.position\.y - NODE_FLOAT_GAP/, '锚点没有退到节点上边缘**上方**（`NODE_FLOAT_GAP`）');
+  assert.match(anchorsBody, /viewport\.x \+ [\w.]+ \* viewport\.zoom/, '锚点没有做横向视口换算（浮层会飘）');
+  assert.match(anchorsBody, /viewport\.y \+ [\w.]+ \* viewport\.zoom/, '锚点没有做纵向视口换算（浮层会飘）');
+  // ⑦ 交点不做特例（教师没提它）：删除那条路上不许给 `junction` 开分支。
+  assert.ok(!/junction/.test(removeBody), '删除图形那条路上给交点开了特例 —— 教师没要求（删交点、连带删它两条线是可接受的）');
 });
 
 test('★ 2026-10-06（教师，A 方案）：快照要认「交点」——一颗小圆点，不能落进默认的空矩形', async () => {

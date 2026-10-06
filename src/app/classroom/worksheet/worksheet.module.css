@@ -2584,36 +2584,24 @@
   font-weight: 650;
 }
 /*
-  ★ 2026-10-06（教师，A 方案）：「新建的连接线可以连在另一根连接线的中点上」——
-  这是那条线**中点**上那颗句柄（从别的节点拖到它上面松手 ⇒ 就地插一个交点小圆点、把线拆成两段）。
-  ⚠️ 它要**常显但很轻**（学生得瞄得准在哪儿），悬停或选中那条边时才变实。
-  🔴 「悬停那条边时变实」**不能**写成 `.react-flow__edge:hover .flowEdgeHandle`：这颗句柄住在
-     `.react-flow__edgelabel-renderer` 里，DOM 上**不是**那条边 `<g class="react-flow__edge">` 的后代
-     （实测：那条选择器一个都选不中）；`~` / `:has()` 又要 Safari 15.4+，而学生端是 Safari 15
-     ⇒ 「悬停」落在句柄**自己**身上，「选中」由组件按 `selected` 挂的 `.flowEdgeHandleOn` 负责。
-  ⚠️ 选择器前面挂上 `.thirdPartyCanvas` 是**故意的**：库的 `.react-flow__handle` 也定了
-     width/height/border/background，同为单类时就看两份样式表谁排在后面 —— 这里多一层保证我们赢
-     （与上面那两条 `:global(.react-flow__edge-text*)` 同一个理由）。
-  ⚠️ 它与线上的文字标签**挨得很近**（句柄沿「中点 → 目标端」挪了 `HANDLE_GAP`），但它那一层排在边之上
-     ⇒ 画在标签上面、也先拿到指针事件（标签压不住它、点得到）。
-  🔴 这里的 width/height 保持 10px **是有意的**，别把它当命中区撑大：实测（无头 Chrome 154 + CDP）
-     撑到 36 / 40px 之后，`elementFromPoint(线上 Y/N 标签中心)` 会返回这颗句柄 ⇒
-     「双击线上的字改文字」当场坏掉（那个盒子把标签白底框的下半截吃掉了）。
-     落点不准由 `onConnectEnd` 那条几何兜底负责（见组件里的 `EDGE_SNAP_RADIUS`）。
+  ★ 2026-10-06（可发现性补偿）：「拖到线附近松手就能连」这条交互要**看得见**。
+  拖动连线**过程中**，组件按「指针到各边中点的距离」算出会吸到哪条边（`snapCandidateId`），
+  在 `visibleEdges` 里给它挂上这个类 —— React Flow 支持逐边 `className`，类落在
+  `<g class="react-flow__edge …">` 上。**只有真的有候选时才挂** ⇒ 拖到空白 / 离得远都不高亮；
+  松手或被取消时组件把类摘掉。
+  🔴 描边必须打在 `.react-flow__edge-path` 上：库给那条路径单独定了 `stroke` / `stroke-width`
+     （它自己那份 `style.css`），只写在 `<g>` 上会被路径自己的声明盖掉（SVG 上继承输给自身声明）。
+  ⚠️ 选择器中间那一截是**我们的** local 类（必须被 CSS Modules 改名），两头的库类名逐字透传
+     —— 写成 `:global()` 里带 `.flowEdgeSnap` 是不行的：那一段不会被改名，规则就永远选不中。
+  ⚠️ 刻意**克制**：只加粗 + 换色，没有动画、没有发光。学生端是老 iPad，拖动本来就在重绘，
+     那批机器上给画布加动画/阴影是已知的卡顿来源（当年实测过）。
+  ⚠️ 别再用 `.react-flow__edge:hover .flowEdgeHandle` 那种写法回忆这颗句柄：它已经不在了
+     （随自定义边一起删掉），悬停态也不需要 —— 高亮由**拖动中的状态**驱动，不是 hover。
 */
-.thirdPartyCanvas .flowEdgeHandle {
-  width: 10px;
-  height: 10px;
-  border: 2px solid #527198;
-  background: #fff;
-  opacity: .35;
-  transition: opacity .12s ease, box-shadow .12s ease;
+.thirdPartyCanvas :global(.react-flow__edge).flowEdgeSnap :global(.react-flow__edge-path) {
+  stroke: #365f88;
+  stroke-width: 3;
 }
-.thirdPartyCanvas .flowEdgeHandle:hover {
-  opacity: 1;
-  box-shadow: 0 0 0 4px rgb(82 113 152 / .22);
-}
-.thirdPartyCanvas .flowEdgeHandleOn { opacity: 1; }
 /* 「这条线标注：」那一组里那个自由文字输入框（与旁边按钮同高）。 */
 .drawingToolbarEdgeLabel {
   min-height: 44px;

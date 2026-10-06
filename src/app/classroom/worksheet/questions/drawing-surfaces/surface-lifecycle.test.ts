@@ -61,14 +61,39 @@ const selectedAnchorSource = (source: string) => blockAfter(source, 'const selec
  * ⚠️ 结束标记用**代码**（`\n  }, [`）：这是本文件惯用的写法，注释早被 `stripComments` 剥掉了。
  */
 const splitEdgeSource = (source: string) => blockAfter(source, 'const splitEdgeAt = useCallback(', '\n  }, [');
-/** 落点吸附的兜底：`const onConnectEnd = useCallback(` 的函数体。 */
+/** 落点吸附：`const onConnectEnd = useCallback(` 的函数体。 */
 const onConnectEndSource = (source: string) => blockAfter(source, 'const onConnectEnd = useCallback(', '\n  }, [');
 /**
- * 「拆线那一份实现」被**几条入口**调用（`splitEdgeAt(` 的出现次数）。
- * ⚠️ 数的是**调用点**：一处是精确命中（`onConnect`）、一处是落点吸附（`onConnectEnd`）。
- *    「声明那一处」不算 —— 它写的是 `const splitEdgeAt = useCallback(`，后面没有紧跟 `(`。
+ * ★ 2026-10-06：「离最近那条边」的距离算法 —— `const nearestEdgeAt = useCallback(` 的函数体。
+ * 🔴 这一份是**吸附**与**拖动中高亮**共用的（两份必然分叉，而分叉的表现是「高亮的是 A、
+ *    真吸上去的是 B」，屏幕上不报错）⇒ 它自己必须能被单独抠出来判。
  */
-const splitterCallSites = (source: string) => (source.match(/splitEdgeAt\(/g) ?? []).length;
+const nearestEdgeSource = (source: string) => blockAfter(source, 'const nearestEdgeAt = useCallback(', '\n  }, [');
+/**
+ * 拖动中高亮那一份 effect 的函数体（从 `const track = (event:` 到 deps 那一行）。
+ * ⚠️ 结束标记用**代码**（`}, [connecting`）：注释早被 `stripComments` 剥掉了。
+ */
+const highlightEffectSource = (source: string) => blockAfter(source, 'const track = (event:', '}, [connecting');
+/**
+ * ★ 2026-10-06：`FlowNodeEditor` 的函数体。
+ * 🔴 结束标记原来写的是 `const edgeHandleNodeId` —— 那个常量随**自定义边**一起删掉了，
+ *    标记变成 -1，而 `slice(x, -1)` **不会报错**：它会从 FlowNodeEditor 一路切到文件末尾。
+ *    于是「节点里的输入框不许挂 nodrag」那条判据当场变成**恒真**（实测：改了源码它照样绿）。
+ *    ⇒ 换成还活着的顶层常量 `const FLOAT_SIZE = `，并且切不出来时**返回空串**让用例自己报错。
+ */
+const editorBodyOf = (source: string): string => {
+  const at = source.indexOf('function FlowNodeEditor');
+  const end = at === -1 ? -1 : source.indexOf('const FLOAT_SIZE = ', at);
+  return at === -1 || end === -1 ? '' : source.slice(at, end);
+};
+/**
+ * ★ 2026-10-06：「拆线」还有**几份实现** / 被调用了几次。
+ * ⚠️ 原来这里数的是**调用点**、要求 ≥ 2 —— 那是在数「精确命中 + 吸附松手两条入口」，
+ *    而自定义边删掉之后只剩吸附那一条入口了。「**只有一份实现**、而且吸附那一路走它」
+ *    才是真正要守的东西（两份实现必然分叉）。
+ */
+const splitterCalls = (source: string) => (source.match(/splitEdgeAt\(/g) ?? []).length;
+const splitterDecls = (source: string) => (source.match(/const splitEdgeAt = useCallback\(/g) ?? []).length;
 /** 唯一的删除出口：`const removeSelected = () => { … };`（切到下一个顶层 `const` 为止）。 */
 const removeSelectedSource = (source: string) => blockAfter(source, 'const removeSelected = ', '\n  const ');
 
@@ -538,10 +563,10 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   //    `</ReactFlow>` 与浮层之间**不许出现 `</div>`**（出现 = 浮层排在舞台收尾之后，
   //    于是按外层卡片定位 —— 正是「y 差约 280px」那次事故）。
   assert.ok(!/<\/div>/.test(live.slice(reactFlowAt, floatAt)), '浮层排在舞台的收尾 </div> 之后（会按外层卡片定位、差出卡片头 + 工具条）');
-  // ④ ★ 两条偏移（教师 2026-10-06 认可）：删除按钮往 source 退 `EDGE_FLOAT_BACK`、
-  //   中点句柄往目标端挪 `HANDLE_GAP`。两个距离都是**命名常量**（数值本身由几何用例验算）。
-  assert.match(live, /\boffsetAlong\b/, '没有偏移函数 offsetAlong');
-  // ⚠️ 判据**按语义**写：抠出各自的函数体，在**体内**查「有没有 offsetAlong + 用的是哪个常量」，
+  // ④ ★ 偏移（教师 2026-10-06 认可）：删除按钮往 source 退 `EDGE_FLOAT_BACK`（**命名常量**，数值由几何用例验算）。
+  //    ⊘ 中点浮层那一份偏移（`HANDLE_GAP` + `offsetAlong`）随**自定义边**一起删了：句柄没了就没有
+  //      「压住 Y/N 标签 / 吞掉中点单击」的问题，就地输入框回到**裸标签点**。
+  // ⚠️ 判据**按语义**写：抠出各自的函数体，在**体内**查「用的是哪个常量」，
   //    不逐字钉格式（按猜的格式写实际是多行 + `anchors.` 前缀，自己把自己判红 ✗）。
   //    切函数体切到**下一个顶层 `const` 声明**为止 —— 固定长度切片会把隔壁函数吞进来，
   //    两个函数挨着只隔 ~250 字，「常量名在 endBody 里」就会靠泄漏恒真。
@@ -554,19 +579,19 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   const endBody = bodyOf('edgeEndAnchor');
   const midBody = bodyOf('edgeMidAnchor');
   assert.ok(endBody.length > 40 && midBody.length > 40, '两个锚点函数没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  // 删除按钮 → 往 source 退 `EDGE_FLOAT_BACK`；中点浮层 → 往目标端挪 `HANDLE_GAP`。两个距离不许互换。
-  // ⚠️ 数值（`EDGE_FLOAT_BACK` / `HANDLE_GAP` 各是多少）**只在组件里声明一次**，锚点函数里认的是**名字**
-  //    ⇒ 这里也不抄数字（常量的数值行为由下面那条几何用例从源码读出来验算）；
-  //    常量的**数值行为**由下面的几何用例（真喂短边）验算。
-  assert.ok(/\bEDGE_FLOAT_BACK\b/.test(endBody) && !/\bHANDLE_GAP\b/.test(endBody),
-    '删除按钮的距离不是命名常量 EDGE_FLOAT_BACK（或与中点那个互换了）');
-  assert.ok(/offsetAlong\(/.test(midBody) && /\bHANDLE_GAP\b/.test(midBody) && !/\bEDGE_FLOAT_BACK\b/.test(midBody),
-    '中点浮层没有走命名常量 HANDLE_GAP（会压住 Y/N 标签）');
+  // 删除按钮 → 往 source 退 `EDGE_FLOAT_BACK`（**不许**退回「起点→终点」直线近似那种偏移）。
+  assert.match(endBody, /\bEDGE_FLOAT_BACK\b/, '删除按钮的距离不是命名常量 EDGE_FLOAT_BACK');
+  assert.ok(!/\boffsetAlong\(/.test(endBody), '删除按钮退回了「起点→终点」直线近似（拐弯的边上会偏出线外）');
+  assert.ok(!/\bHANDLE_GAP\b/.test(live), '已经把中点浮层那份偏移加回来了（`HANDLE_GAP` 随中点句柄一起删掉了）');
+  // 🔴 中点浮层（就地输入框）**必须落在裸标签点上**：不许再有任何「沿中点→目标端推开」的偏移。
+  //    这是本轮删掉自定义边之后**行为上真正变了**的那一处（实测：改前锚点 = 标签点 + 27 屏幕 px，
+  //    改后 = 标签点本身），所以判据盯的是「这一块里没有偏移」而不是某个函数名。
+  assert.ok(!/offsetAlong|EDGE_FLOAT_BACK|clampOffset/.test(midBody),
+    '中点浮层又被推离了标签点（就地输入框会与它要改的那个字分家）');
   // ★ 删除按钮的退向必须是**目标句柄轴**（`backX/backY` = smoothstep 末段方向），**不许**退回
   //   「起点→终点」直线近似 —— 直线近似在拐弯的边上会偏出线外 ~21px（见 `backAxis` 的注释）。
   //   轴映射本身另有**几何用例**（backAxis 四个方位 + 短边 clamp）。
   assert.match(endBody, /backX|backY/, '删除按钮没有沿目标句柄轴退（拐弯的边上会偏出线外）');
-  assert.ok(!/\boffsetAlong\(/.test(endBody), '删除按钮退回了「起点→终点」直线近似（拐弯的边上会偏出线外）');
   // 距离必须过**上限**（否则极短边上会越过中点）。clamp 的数值行为由下面的几何用例喂短边验算。
   assert.match(endBody, /clampOffset\(/, '删除按钮的偏移没有上限（极短边上会越过中点）');
   // 退的方向/长度都取自锚点表：起点锚点算段长 + 目标句柄轴定方向。
@@ -578,26 +603,25 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   const convertY = /viewport\.y \+ [\w.]+ \* viewport\.zoom/;
   assert.ok(convertX.test(midBody) && convertY.test(midBody), '中点浮层没有做视口换算（浮层会飘）');
   assert.ok(convertX.test(endBody) && convertY.test(endBody), '终点浮层没有做视口换算（浮层会飘）');
-  // ⚠️ 反面：**交点节点**必须用**精确中点**（`anchors.midX - junctionHalf`），偏移不许卷进 `onConnect` ——
+  // ⚠️ 反面：**交点节点**必须用**精确中点**（`anchors.midX - junctionHalf`），偏移不许卷进取交点那一句 ——
   //    否则拆出来的两段与原来那条线对不上（当初正是按精确中点实测出「完全重合」）。
-  //    判据**圈在 `onConnect` 体内**，不是「offsetAlong 后 200 字内有没有 junctionHalf」那种靠距离的写法
+  //    判据**圈在拆线那一份实现体内**，不是「某函数后 200 字内有没有 junctionHalf」那种靠距离的写法
   //    （距离一变就恒真/恒假）。
   const onConnectBody = onConnectSource(live);
-  assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  // ★ 2026-10-06：插交点 + 拆线搬进了**共用的那一份实现**（`splitEdgeAt`，两条入口共用）
-  //   ⇒ 「交点落在精确中点」要在**那一份**里判（`onConnect` 现在只负责认出落点是边）。
-  //   下面那条反面对照仍然拿 `onConnect` 当靶子：往它里面塞 offsetAlong 也要红（它自己不许有偏移）。
+  assert.ok(onConnectBody.length > 200, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
   const splitBody = splitEdgeSource(live);
   assert.ok(splitBody.length > 400, '拆线那一份实现没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.match(splitBody, /position: \{ x: anchors\.midX - junctionHalf, y: anchors\.midY - junctionHalf \}/, '交点没有落在精确中点上');
   assert.ok(!/offsetAlong/.test(splitBody), '交点被卷进了浮层偏移（拆出来的两段会与原线对不上）');
   assert.ok(!/offsetAlong/.test(onConnectBody), '交点被卷进了浮层偏移（拆出来的两段会与原线对不上）');
-  // 反面对照：往拆线那一份实现里塞一句 offsetAlong ⇒ 上面那句必须红（证明它不是恒真）。
-  // ⚠️ 靶子必须选**有那两行**的那一块（`splitBody`）：拿 `onConnect` 当靶子会 replace 不上，
+  // 反面对照：往拆线那一份实现里塞一句浮层偏移 ⇒ 上面那句必须红（证明它不是恒真）。
+  // ⚠️ 靶子必须选**有那一行**的那一块（`splitBody`）：拿 `onConnect` 当靶子会 replace 不上，
   //   于是「造不出反面对照」自己先红 —— 那是判据写错，不是实现坏。
-  const poisonedConnect = splitBody.replace('const junctionHalf = 6;', 'const junctionHalf = offsetAlong({ x: 1, y: 1 }, { x: 2, y: 2 }, 6);');
+  // ⚠️ 毒药从 `offsetAlong`（已随自定义边删掉、现在是死符号）换成**还活着**的 `clampOffset`：
+  //    这样反面对照证明的仍是「这一块里不许出现偏移」这条真判据，而不是「一个字面量不在」。
+  const poisonedConnect = splitBody.replace('const junctionHalf = 6;', 'const junctionHalf = clampOffset(6, 100);');
   assert.notEqual(poisonedConnect, splitBody, '反面对照没造出来 —— 这条判据会变成恒真');
-  assert.ok(/offsetAlong/.test(poisonedConnect), '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(/offsetAlong|clampOffset/.test(poisonedConnect), '反面对照没造出来 —— 这条判据会变成恒真');
 
   // ⑤ 浮层靠**视口换算**跟随（不引 Provider、也不复刻折线算法）。
   assert.match(live, /onMove=\{\(_, next\) => setViewport\(next\)\}/, '没有跟视口');
@@ -615,74 +639,50 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   assert.match(css, new RegExp(`\\.flowEdgeInput \\{[\\s\\S]{0,260}?min-height: ${floatSize}px;`), '就地输入框太矮（与 FLOAT_SIZE 不一致）');
 });
 
-test('★ 2026-10-06（教师，A 方案）：连接线中点可以连 —— 中点句柄 + 插交点 + 拆线', () => {
+test('★ 2026-10-06：连到线中点 —— **自定义边 / 中点句柄已删干净**，插交点 + 拆线只留一份', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   const css = stripComments(CSS);
   /*
-    ⚠️ 这一条盯的是**机制**（每一句都能在实现被改坏时变红），不是手感。
-    🔴 下面这两件事是**实测**出来的（无头 Chrome 154 + 本仓 React Flow 12.11.6，用合成鼠标事件真拖过）：
-       · 句柄必须住在 `EdgeLabelRenderer` 里 —— 边是 SVG，直接往里塞 `<div>` 渲染不出来；
-       · 还必须自己补 `data-nodeid` = **边 id**（库的 `Handle` 在边里 `useNodeId()` 拿到 null）
-         —— 不补的话拖上去 `onConnect` **一次都不响**（只有 onConnectEnd），控制台报 error#010。
+    🔴 这一条盯的是**这一轮删掉了什么**，以及删完之后「连到线中点」还剩哪一条路。
+    🔴 删它的硬理由（读 `@xyflow/system@0.0.82` + 无头 Chrome 154 实测，不是审美）：
+       · 那颗中点句柄住在 `EdgeLabelRenderer` 里 ⇒ 库的 `useNodeId()` 拿到 **null**
+         ⇒ `XYHandle.onPointerDown` 里 `getHandle()` 拿 `nodeLookup.get(null)` 得 undefined
+         ⇒ **在挂任何监听之前就 return** ⇒ 它只能「接」、**不能「起」**（边中点 → 框结构性不通）；
+       · 它还得自己补 `data-nodeid = 边 id`（不补的话连「接」都接不上，库报 error#010）；
+       · 而「接」这一侧已经有更好的一份（几何吸附，见 `EDGE_SNAP_RADIUS`），两条并存只会
+         「精确命中」与「附近松手」走两套判据；
+       · 它还**压住线上的 Y/N 标签**、并且会**吞掉正落在中点的单击/双击**（所以才要 `HANDLE_GAP`)。
+    ⚠️ 反面判据要**逐条**钉：只把组件名删掉、把句柄留在那儿，或者只删句柄、把 `data-nodeid`
+      那种凭据留在别处，都必须判红。
   */
-  assert.match(live, /function FlowEdgeLine\(/, '没有自定义边组件');
-  assert.match(live, /const \[path, labelX, labelY\] = getSmoothStepPath\(\{/, '自定义边没有用库的路径函数取标签点');
-  // ① 句柄：住在 EdgeLabelRenderer 里、是 target/Top/edge-mid、位置取自标签点。
-  const labelRendererAt = live.indexOf('<EdgeLabelRenderer>');
-  const midHandleAt = live.indexOf('id="edge-mid"');
-  assert.ok(labelRendererAt !== -1 && midHandleAt !== -1 && labelRendererAt < midHandleAt, '中点句柄没有住在 EdgeLabelRenderer 里（边是 SVG，<div> 塞进去渲染不出来）');
-  assert.match(live, /type="target"/, '中点句柄不是 target');
-  assert.match(live, /position=\{Position\.Top\}/, '中点句柄没有用 Position.Top');
-  // ★ 教师认可：句柄**不再**停在标签点上，而是沿「标签点 → 目标端」方向挪 `HANDLE_GAP`
-  //   （原来与 Y/N 标签同点 ⇒ 悬停变实会盖字，且正落在中点的单击/双击被它吞掉）。
-  // ⚠️ 判据按**语义**判，不逐字钉算术写法（上一版钉的是 `const handleX = labelX + ((targetX - labelX) / shiftLen) * <那个常量>`
-  //    那种整句正则 —— 换个变量名/换成多行就红，正是今天连红五次的那类断言）。这里拆成两条**行为**：
-  //    ① 位移必须从**库回的标签点**出发、朝**目标端**、距离取命名常量（来源判据保留，不能因为挪了就丢掉来源）；
-  //    ② 样式必须用**位移后**的坐标（不能再是裸的 labelX/labelY）。
-  const lineAt = live.indexOf('function FlowEdgeLine(');
-  // ⚠️ 结束标记必须是 `\n}\n`：props 解构的结尾是 `\n}: EdgeProps)`（也是行首的 `}`），
-  //    用 `\n}` 会在 134 字处就切断 ⇒ 下面几条会在**半个函数**上判，或者干脆判空。
-  const lineBody = lineAt === -1 ? '' : live.slice(lineAt, live.indexOf('\n}\n', lineAt));
-  assert.ok(lineBody.length > 400, '边组件没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  const shiftArgs = lineBody.match(/offsetAlong\(([\s\S]{0,160}?)\)/);
-  assert.ok(shiftArgs, '句柄没有用 offsetAlong 做位移');
-  assert.match(shiftArgs[1], /\blabelX\b/, '句柄的位移不是从库回的标签点（labelX）出发的');
-  assert.match(shiftArgs[1], /\blabelY\b/, '句柄的位移不是从库回的标签点（labelY）出发的');
-  assert.match(shiftArgs[1], /\btargetX\b/, '句柄的位移方向不是朝目标端（targetX）');
-  assert.match(shiftArgs[1], /\btargetY\b/, '句柄的位移方向不是朝目标端（targetY）');
-  // ★ 第 2 步整理：距离认**命名常量** `HANDLE_GAP`（数值只在组件里声明一次；短边验算在几何用例里）。
-  assert.match(shiftArgs[1], /\bHANDLE_GAP\b/, '句柄的位移距离不是命名常量 HANDLE_GAP');
-  const handleStyle = lineBody.match(/style=\{\{ left: ([\w.]+), top: ([\w.]+) \}\}/);
-  assert.ok(handleStyle, '句柄的 style 没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  assert.ok(!/\blabel[XY]\b/.test(handleStyle[1]) && !/\blabel[XY]\b/.test(handleStyle[2]),
-    '句柄仍停在标签点上（style 用的还是裸的 labelX/labelY，没有被位移后的坐标取代）');
-  assert.match(live, /'data-nodeid': edgeId/, '句柄没有补 data-nodeid（没补 ⇒ 库在边里取不到 node id，拖上去 onConnect 不响）');
-  // ② 线上的字自己画，且类名与库**逐字相同**（我们的配色 CSS 就是按这两个类写的）。
-  assert.match(live, /className="react-flow__edge-textbg"/, '边的标签白底没有用库那个类名（配色会失效）');
-  assert.match(live, /className="react-flow__edge-text"/, '边的标签文字没有用库那个类名（配色会失效）');
-  // ③ 注册自定义边 + 每条边强制 type: 'flow'（老作答存的是 'smoothstep'，不强制老图就没有中点句柄）。
-  assert.match(live, /const edgeTypes = useMemo\(\(\) => \(\{ flow: FlowEdgeLine \}\), \[\]\)/, '自定义边没有注册');
-  assert.match(live, /edgeTypes=\{edgeTypes\}/, 'ReactFlow 没有用上自定义边');
-  assert.match(live, /\.map\(\(edge\) => \(\{ \.\.\.edge, type: 'flow' \}\)\)/, "visibleEdges 没有给每条边强制 type: 'flow'（老作答的 'smoothstep' 就没有中点句柄）");
-  // ④ onConnect：target 是**已存在的边 id** ⇒ 插一个交点 + 把原边拆成两段。
-  // ⚠️ 切片走 `onConnectSource()`，它的**结束标记是代码**（useCallback 的 deps 那一行）：注释早就被
-  //    `stripComments` 剥掉了，拿注释当标记会切出一个空串或者切到文件末尾（那会让下面几条在错误的范围上"全绿"）。
-  const onConnectBody = onConnectSource(live);
-  assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  // ⚠️ 判据**圈在 `const hitEdge = …` 那一句里**：只断言「全函数里同时出现 connection 的两端」
-  //    会漏 —— 下面那句 `connection.source === hitEdge.id` 正好把 source 带进来，于是「只认 target」
-  //    的坏版本照样绿（变异测试实测过）。
-  const hitGuard = onConnectBody.match(/const hitEdge = ([^;]+);/);
-  assert.ok(hitGuard, 'hitEdge 那一句没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  assert.match(hitGuard[1], /connection\.target/, '没有判「connection 的 target 是已存在的边 id」');
-  assert.match(hitGuard[1], /connection\.source/, '没有判「connection 的 source 是已存在的边 id」—— 从节点的 target 句柄（菱形左侧那种）拖到中点那一路会漏（实测：会造出一条 source 是边 id 的悬空边，它渲染不出来、却写进作答）');
-  // ★ 2026-10-06：插交点 + 拆线只留了**一份**实现（`const splitEdgeAt = useCallback(`），
-  //   因为它现在要服务**两条入口**：① 库自己判定的精确命中（`onConnect`）、
-  //   ② 落点吸附的兜底（`onConnectEnd`，见下面那条用例）。留两份必然分叉 ⇒ 这里必须抠出来判。
+  assert.ok(!/FlowEdgeLine|EdgeLabelRenderer|edge-mid\b/.test(live),
+    '自定义边 / 中点句柄又回来了（它们是库的结构限制：「只能接不能起」+ 吞掉中点单击，见上面那段）');
+  assert.ok(!/'data-nodeid': edgeId/.test(live), '中点句柄那颗 `data-nodeid = 边 id` 的补丁又回来了（它是已删机制的唯一凭据）');
+  assert.ok(!/edgeTypes/.test(live), '又把自定义边类型注册回 `<ReactFlow>` 了（库内置边已经够用：标签与箭头都由库画）');
+  assert.ok(!/\bHANDLE_GAP\b/.test(live), '`HANDLE_GAP` 又回来了 —— 它的唯一用途就是避让那颗已删的中点句柄');
+  // ① 边改回**库内置**的类型，而且**旧数据里那个自定义类型记号要被换掉**。
+  //    🔴 库的 `EdgeWrapper` 对未知类型 `onError('011')` 并退回 `default`（贝塞尔）：
+  //    老作答 / 老底稿里全是 `type: 'flow'` ⇒ 不换的话线会由折线变弯线 + 控制台每条刷一次警告。
+  const builtinType = live.match(/const FLOW_EDGE_TYPE = '([^']+)'/);
+  assert.ok(builtinType, '没有命名常量 FLOW_EDGE_TYPE（边该用哪种内置类型会变成散落的字面量）');
+  assert.ok(['smoothstep', 'default', 'step', 'straight', 'simplebezier'].includes(builtinType[1]),
+    `FLOW_EDGE_TYPE=${builtinType[1]} 不是库的内置边类型 —— 库会 onError('011') 并退回 default`);
+  assert.match(live, /const LEGACY_EDGE_TYPE = 'flow'/, '没有命名常量 LEGACY_EDGE_TYPE（旧数据里那个自定义类型记号没有名字）');
+  assert.match(live, /edge\.type === LEGACY_EDGE_TYPE \? \{ \.\.\.edge, type: FLOW_EDGE_TYPE \}/,
+    "旧数据里的 `type: 'flow'` 没有被规范化成库认识的类型 —— 老作答的线会变成贝塞尔、控制台还会每条刷一次 error#011");
+  assert.ok(!/\.map\(\(edge\) => \(\{ \.\.\.edge, type: 'flow' \}\)\)/.test(live),
+    "`visibleEdges` 又给每条边强制 `type: 'flow'` 了（那是已删的自定义边记号）");
+  // ② 线上的字由**库自己**渲染 ⇒ 配色必须继续写在库那两个类名上（删了标签会变成黑块）。
+  assert.match(css, /\.react-flow__edge-textbg\) \{ fill: #ffffff; \}/, '线标签的背景没有钉成白色（库自己渲染时它是那个背景矩形）');
+  assert.match(css, /\.react-flow__edge-text\) \{[\s\S]{0,120}?fill: #263b53;/, '线标签的文字颜色没有钉住');
+  // ③ 拆线只留**一份实现**：声明恰好一处、而且吸附那一路真的调用它（它现在也是唯一一条入口）。
   const splitBody = splitEdgeSource(live);
   assert.ok(splitBody.length > 400, '拆线的那一份实现没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  assert.ok(splitterCallSites(live) >= 2,
-    '拆线还是**多处各写一遍**（或只有一条入口在用）—— 精确命中与吸附松手必须是同一条实现，否则两条路的行为会分叉');
+  assert.equal(splitterDecls(live), 1, '拆线实现不止一份（多处各写一遍必然分叉：一条路一种拆法）');
+  assert.ok(splitterCalls(live) >= 1, '拆线那一份实现根本没人调用 —— 这个交互等于没了');
+  const endBody = onConnectEndSource(live);
+  assert.ok(endBody.length > 300, '落点吸附那段没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(endBody, /splitEdgeAt\(/, '吸附那一路没有走那一份拆线实现');
   assert.match(splitBody, /kind: 'junction'/, '没有插 junction 节点');
   assert.match(splitBody, /position: \{ x: anchors\.midX - junctionHalf, y: anchors\.midY - junctionHalf \}/, '交点没有落在库算出来的标签点上（流坐标）');
   assert.ok(!/viewport/.test(splitBody), '交点的位置用了视口/屏幕坐标（画布一动就飘）');
@@ -691,156 +691,253 @@ test('★ 2026-10-06（教师，A 方案）：连接线中点可以连 —— �
   // ⚠️ 断言到 `filter(...)` 为止，**不钉整句**：这一句后面还要排进学生拉的那根线（见下一条用例），
   //    钉住右括号等于「加了 link 就红」—— 那正是今天红过好几次的那种格式断言。
   assert.match(splitBody, /addEdge\(tail, current\.filter\(\(edge\) => edge\.id !== original\.id\)/, '没有把原边摘掉、再用 addEdge 接上第二段');
+  // ④ `onConnect` 不再认「落点是边」（那条凭据已经不存在）—— 它只处理「落点是节点」。
+  const onConnectBody = onConnectSource(live);
+  assert.ok(onConnectBody.length > 200, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(!/hitEdge/.test(onConnectBody), '`onConnect` 又在认「落点是边」了 —— 自定义边删掉之后没有任何句柄会回一个边 id');
+  assert.match(onConnectBody, /addEdge\(\{[\s\S]{0,40}\.\.\.connection/, '「落点是节点」那一支没有把 connection 交给库的 addEdge（最基本的「框 → 框」连线会断）');
   // ⑤ 交点画成小圆点（不承袭 .flowNode 的 150×54），而且**没有**文字输入框。
   assert.match(css, /\.flowNode_junction \{[\s\S]{0,200}?min-width: 12px;[\s\S]{0,80}?min-height: 12px;/, '交点没有自己的尺寸（会承袭 .flowNode 的 150×54）');
   assert.match(css, /\.flowNode_junction \{[\s\S]{0,260}?border-radius: 50%/, '交点不是圆点');
-  const editorBody = live.slice(live.indexOf('function FlowNodeEditor'), live.indexOf('const edgeHandleNodeId'));
+  const editorBody = editorBodyOf(live);
   assert.ok(editorBody.length > 400, '节点编辑器没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.match(editorBody, /const isJunction = data\.kind === 'junction'/, '没有认出 junction 这一档');
   assert.match(editorBody, /\{!isJunction && \(\s*<input[\s\S]{0,240}?aria-label="节点文字"/, '交点也会渲染「节点文字」输入框（图上会多一个空框）');
-  // ⑥ 中点句柄的可见性：常显但很轻 + 悬停变实；选中那一档由组件按 `selected` 挂类。
-  assert.match(css, /\.thirdPartyCanvas \.flowEdgeHandle \{[\s\S]{0,240}?opacity: \.35;/, '中点句柄没有「常显但很轻」那一档');
-  assert.match(css, /\.thirdPartyCanvas \.flowEdgeHandle:hover \{[\s\S]{0,140}?opacity: 1;/, '悬停中点句柄时没有变实');
-  assert.match(live, /flowEdgeHandleOn/, '选中那条边时中点句柄没有变实（组件没有按 selected 挂类）');
+  // ⑥ 死 CSS / 死类名都不许留在样式表或组件里。
+  assert.ok(!/flowEdgeHandle/.test(css), '`.flowEdgeHandle`（中点句柄的样式）还留在样式表里 —— 那是已删机制的类');
+  assert.ok(!/flowEdgeHandle/.test(live), '组件还在挂中点句柄的类名');
 });
 
 test('★ 2026-10-06（教师报「连线加不上」）：连到线中点时，**学生拉的那根线本身**必须真的接上', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   /*
-    🔴 实测（无头 Chrome 154 + 教师那张真底稿 `q_aac88ed0…`，用 CDP 真合成鼠标事件、跑本仓真组件）：
-      · 修前（HEAD 0bc9609，同一拖、同一落点：从「过程」框的右句柄拖到另一条线中点那颗句柄）：
-        `onConnect` **确实响了**（所以既不是「拖不动」也不是「落点被判无效」）、交点也插了、
-        原线也拆成两段了 —— 但**学生拉的那根线没有被加进去**：交出去的 edges 只从 4 条变 5 条
-        （那 5 条 = 原线拆出来的两段），作答里只有 `junction-…-tail`。
+    🔴 实测（无头 Chrome 154 + 教师那张真底稿 `q_aac88ed0…`，用 CDP 真合成事件、跑本仓真组件）：
+      · 修前（HEAD 0bc9609，同一拖、同一落点：从「过程」框的右句柄拖到另一条线的中点）：
+        交点也插了、原线也拆成两段了 —— 但**学生拉的那根线没有被加进去**：交出去的 edges 只从 4 条
+        变 5 条（那 5 条 = 原线拆出来的两段），作答里只有 `junction-…-tail`。
         ⇒ 屏幕上预览线一松手就没了、原线看上去还是原来那根（只是线上多了个小点）
         ⇒ 教师看到的就是「连线没有出现」。
       · 修后：同一拖、同一落点 ⇒ DOM 里的边 4 **→ 6**，作答里多出 `junction-…-link`
         （过程框 → 交点）—— 学生画的那根线真的出现了。
-    ⚠️ 判据按**语义**判：那一支里必须出现一根「一端是交点、另一端是 connection 的那一端」的边，
-      而且必须真的排进「加边」那句的返回数组里；**不**逐字钉三元表达式或返回语句的写法
+      · ★ 本轮（自定义边删掉之后）复测：鼠标与触屏、source 句柄与 target 句柄四个组合
+        都仍是 DOM 边 1→3、节点 3→4、作答里 `junction-…-tail` + `junction-…-link` 两条都在。
+    ⚠️ 判据按**语义**判：拆线那一份实现里必须出现一根「一端是交点、另一端是学生那一拖的那一端」
+      的边，而且必须真的排进「加边」那句的返回数组里；**不**逐字钉三元表达式或返回语句的写法
       （今天已经因为钉格式红过五六次）。
   */
-  const onConnectBody = onConnectSource(live);
-  assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  // ① 结构：边那一支必须在「落点是节点」那一支**之前**，并且自己提前 return
-  //    （不 return 的话同一拖还会被下面那一支再处理一遍）。
-  const edgeBranchAt = onConnectBody.indexOf('if (hitEdge) {');
-  const nodeBranchAt = onConnectBody.indexOf('const source = nodes.find(');
-  assert.ok(edgeBranchAt !== -1, '没有「落点是边」那一支');
-  assert.ok(nodeBranchAt > edgeBranchAt, '「落点是节点」那一支跑到前面去了 —— 先修这条判据');
-  const edgeBranch = onConnectBody.slice(edgeBranchAt, nodeBranchAt);
-  assert.match(edgeBranch, /return;/, '边那一支没有提前 return —— 同一拖会被「落点是节点」那一支再走一遍');
-  // ② 「学生拉的那根线」接全了吗？（本地判据函数 ⇒ 反面对照能直接复用它。）
-  // ★ 2026-10-06：建 `link` 与「拆线」现在住在**那一份共用实现** `splitEdgeAt` 里（两条入口共用），
-  //   而 `onConnect` 只剩「认出落点是边 + 把两端交给它」。判据因此要**跟到那一份实现里**去 ——
-  //   否则它会在 `onConnect` 里找不到 `const link: Edge` 而**误红**（守的东西一条没少）。
-  //   ⚠️ 仍然按语义判：要同时看到「交点 → 学生拖到的那一端」与「学生拖出的那一端 → 交点」**两向**，
-  //     并且 `link` 必须真的排进 `addEdge` 那句的返回数组里（只声明不排 = 等于没接上）。
-  //     两个方向的**输入名**在共用实现里是 `endpointId` / `endpointDraggedFromEdge`（不再是
-  //     `connection.*`）⇒ 判的是「这一端在不在」，不是某个变量名。
-  const alreadyInBranch = /const link: Edge/.test(edgeBranch);
-  /** 拆线那一份共用实现（`link` 与「拆线」都住在这里）。 */
+  /** 拆线那一份实现 —— 「拆线」与「接上学生那一拖」都住在这里（本轮起它也是**唯一**一条入口的实现）。 */
   const splitBody = splitEdgeSource(live);
+  assert.ok(splitBody.length > 400, '拆线那一份实现没抠出来 —— 先修这条判据，别让它在空串上全绿');
   const missingLink = (branch: string): string[] => {
     const missing: string[] = [];
-    if (!/splitEdgeAt\(/.test(branch)) missing.push('边那一支没有把两端交给共用的拆线实现（splitEdgeAt）');
     const at = branch.indexOf('const link: Edge');
     // ⚠️ 找不到那一句时必须把**已经攒下的缺失**一起返回：`return missing`（空数组）会让反面对照恒真
     //    —— 「拆线那一份里没有 link」这件事就悄悄变成「没有意见」（实测踩过）。
     if (at === -1) return [...missing, '根本没有给学生拉的那根线建边（只拆原线）'];
     const end = branch.indexOf('addEdge(', at);
     const body = end === -1 ? branch.slice(at) : branch.slice(at, end);
-    if (!/junctionId[\s\S]{0,240}?(endpointId|connection\.target)/.test(body)) missing.push('少了「交点 → 学生拖到的那一端」那一向');
-    if (!/(endpointId|connection\.source)[\s\S]{0,240}?junctionId/.test(body)) missing.push('少了「学生拖出的那一端 → 交点」那一向');
+    if (!/junctionId[\s\S]{0,240}?endpointId/.test(body)) missing.push('少了「交点 → 学生拖到的那一端」那一向');
+    if (!/endpointId[\s\S]{0,240}?junctionId/.test(body)) missing.push('少了「学生拖出的那一端 → 交点」那一向');
     const tailAt = branch.indexOf('addEdge(tail,');
     if (tailAt === -1) missing.push('第二段没走 addEdge');
     else if (!/\blink\b/.test(branch.slice(tailAt, branch.indexOf(';', tailAt)))) missing.push('link 只被声明、没排进返回的边数组（等于没接上）');
     return missing;
   };
-  //   ⚠️ 拼接时只用 `onConnect` 的**边那一支**（`edgeBranch`），不要把整个 `onConnectBody` 接进来：
-  //     那里面还有「落点是节点」那一支的 `setEdges`，会把 `addEdge(tail, …)` 之外的内容一起带进来，
-  //     让反面对照（掐掉共用实现那一次调用）**replace 不干净** ⇒ 判据变成恒真（实测踩过）。
-  const linkRegion = alreadyInBranch ? edgeBranch : edgeBranch + splitBody;
-  assert.deepEqual(missingLink(linkRegion), [],
-    `连到线中点时，学生拉的那根线没接上：${missingLink(linkRegion).join('、')}（教师报的「连线加不上」就是它）`);
+  assert.deepEqual(missingLink(splitBody), [],
+    `连到线中点时，学生拉的那根线没接上：${missingLink(splitBody).join('、')}（教师报的「连线加不上」就是它）`);
   // ⚠️ 反面对照：把「接上学生那一拖」整段拿掉（回到修前那种「只拆不接」）⇒ 必须判违规。
-  //    判**共用实现那一份**（`splitBody`）—— 掐掉 `onConnect` 里那句调用是没用的：`link` 在共用
-  //    实现里还会被建出来，判据照样给空数组（反面对照恒真，实测踩过）。
-  const linkDecl = /const link: Edge/;
-  const withoutLink = linkDecl.test(splitBody)
-    ? linkRegion.replace(/const link: Edge[\s\S]*?(?=return \[)/, '')
-    : linkRegion.replace(/splitEdgeAt\([\s\S]*?\);/, '');
-  assert.notEqual(withoutLink, linkRegion, '反面对照没造出来 —— 这条判据会变成恒真');
+  const withoutLink = splitBody.replace(/const link: Edge[\s\S]*?(?=return \[)/, '');
+  assert.notEqual(withoutLink, splitBody, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.notDeepEqual(missingLink(withoutLink), [], '反面对照没被抓住 —— 这条判据是恒真的');
-  // ⚠️ 反向也要认：`connection.source` 是边 id 时（从节点的 target 句柄拖到中点），
-  //    绝不能把那条边的 id 当成 source 节点（实测：那种边渲染不出来，却会写进作答）。
-  assert.ok(!/source: hitEdge\.id/.test(live), '把边 id 当成节点用了 —— 那条边渲染不出来（悬空边）');
+  // ② 唯一的入口（吸附）**必须**把两端交给它（不然拆线永远不响、等于这个交互没了）。
+  const endBody = onConnectEndSource(live);
+  assert.ok(endBody.length > 300, '落点吸附那段没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(endBody, /splitEdgeAt\(/, '吸附那一路没有把两端交给那一份拆线实现');
+  // ⚠️ 反面对照：把那次调用掐掉 ⇒ 必须判违规。
+  assert.ok(!/splitEdgeAt\(/.test(endBody.replace(/splitEdgeAt\([^;]*\);/, '')), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⚠️ 反向也要认：任何地方都绝不能把**边 id** 当成节点 id 用（实测：那种边渲染不出来，却会写进作答）。
+  assert.ok(!/source: hitEdge\.id|target: hitEdge\.id/.test(live), '把边 id 当成节点用了 —— 那条边渲染不出来（悬空边）');
 });
 
-test('★ 2026-10-06（教师：「拖到线附近松手也要能连上」）：落点吸附 —— 几何兜底 + 同一条拆线实现', () => {
+test('★ 2026-10-06（教师：「拖到线附近松手也要能连上」）：落点吸附 —— 几何兜底 + 唯一一份拆线实现', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   const endBody = onConnectEndSource(live);
+  const nearestBody = nearestEdgeSource(live);
   const splitBody = splitEdgeSource(live);
   /*
-    🔴 实测事实（无头 Chrome 154 + CDP 真合成鼠标事件，跑本仓真组件；探针只放 /private/tmp）：
+    🔴 实测（无头 Chrome 154 + CDP 真合成事件，跑本仓真组件；探针只放 /private/tmp）。
+       ★ 本轮复测的是**自定义边删掉之后**的（B）——它现在是「连到线上」唯一的一条路，
+         所以「精确命中线上中点」这一格也归它管（以前那一格由库的句柄接住）。
 
-      中点那颗句柄住在**自定义边**里、不是节点 ⇒ 它**不在库的 `nodeLookup` 里** ⇒ 库给节点句柄的
-      `connectionRadius`（默认 20px）那套几何吸附**对它完全无效**；库对它的落点判定只剩
-      `isValidHandle()` 里那条 `document.elementFromPoint(x, y)`。于是：
-
-        · 改前（`HANDLE_GAP = 14`、句柄 10px、无兜底）：落点偏句柄圆心 0px ⇒ 连上；
-          **偏 5px 就已经什么都不发生**（落点被边上那条 SVG path 抢走）；偏 15 / 20 / 25px 全落空。
-        · 改后（`EDGE_SNAP_RADIUS = 22` 的几何兜底）：偏 0 / 5 / 15 / 20px ⇒ **都连上**
-          （DOM 边 2→4、节点 3→4，作答里 `junction-…-tail` + `junction-…-link` 都在）；
-          偏 **25 / 30px ⇒ 仍然不连**（该连的连上、不该连的不连）。
-        · 拖到空白（中点下方 260px）⇒ DOM 边 2→2、节点 3→3、作答为空 —— **什么都不做**。
+       · 鼠标（从 n3 句柄拖到 e1 中点，落点相对中点偏 dx）：
+         dx = **0 / 15 / 20px ⇒ 都连上**（DOM 边 1→3、节点 3→4、恰好 1 个交点，
+         作答里 `junction-…-tail` + `junction-…-link` 都在）；
+         dx = **25px ⇒ 什么都不做**；拖到空白（中点左 300px）⇒ 什么都不做。
+       · 触屏（`setTouchEmulationEnabled` + `dispatchTouchEvent`，touchStart→touchMove×10→touchEnd）：
+         **同一组数字**：0 / 15 / 20px 连上，25px 不连 —— 0px 那一格是这轮的重点。
+       · 「框的句柄 → 线上」两个子方向（source 句柄 / target 句柄）鼠标 + 触屏四个组合全部连上。
 
     ⚠️ 也试过「先把句柄自己撑大」那条最便宜的路（36 / 40px 的透明命中层）：连接确实好了，但
       探针量出来 `elementFromPoint(线上 Y/N 标签中心)` 会返回**句柄** ⇒「双击线上的字改文字」
-      当场坏掉（那个盒子把标签白底框的下半截吃掉了）⇒ 那条路已废弃（CSS 里留了警告）。
+      当场坏掉（那个盒子把标签白底框的下半截吃掉了）⇒ 那条路废弃，「撑大」不再出现在代码里。
   */
   assert.ok(endBody.length > 300, '落点吸附那段没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(nearestBody.length > 200, '「离最近那条边」那一份算法没抠出来 —— 先修这条判据，别让它在空串上全绿');
   // ① 半径必须是**命名常量**（数值只在组件里声明一次）。
   const radiusRaw = (live.match(/const EDGE_SNAP_RADIUS = ([^;]+);/) ?? [])[1];
   assert.ok(radiusRaw !== undefined, '没有命名常量 EDGE_SNAP_RADIUS（吸附半径会变成散落的魔法数）');
   const radius = Number(new Function(`return (${radiusRaw});`)());
   assert.ok(radius > 0, `EDGE_SNAP_RADIUS 不是正数（读到 ${radiusRaw}）`);
-  assert.ok(endBody.includes('EDGE_SNAP_RADIUS'), '兜底没有用命名常量 EDGE_SNAP_RADIUS 做半径');
-  // ② 「同一次拖拽只能生效一次」：`onConnect` 那条路成功时置位、兜底进来先看它。
+  assert.ok(nearestBody.includes('EDGE_SNAP_RADIUS') && endBody.includes('EDGE_SNAP_RADIUS'),
+    '吸附没有用命名常量 EDGE_SNAP_RADIUS 做半径');
+  // ② 「同一次拖拽只能生效一次」：置位在**那一份拆线实现**里、吸附进来先看它。
   assert.match(live, /handledRef/, '没有「这一拖已经生效过」的记号 —— 同一次拖拽会插两个交点');
-  assert.match(endBody, /handledRef\.current/, '兜底没有先看「已经生效过」这个记号（会与库那一次重复插交点）');
-  assert.match(splitBody, /handledRef\.current = true/, '「已经生效过」的记号没有在**共用的那一份拆线实现**里置位（两条入口都会插交点）');
-  // ⚠️ 反面对照：把兜底那道闸拿掉 ⇒ 上面两条必须红。
+  assert.match(endBody, /handledRef\.current/, '吸附没有先看「已经生效过」这个记号（会与库那一次重复插交点）');
+  assert.match(splitBody, /handledRef\.current = true/, '「已经生效过」的记号没有在**拆线那一份实现**里置位');
+  // ⚠️ 反面对照：把吸附那道闸拿掉 ⇒ 上面那条必须红。
   const headless = endBody.replace('if (handledRef.current) return;', '');
   assert.notEqual(headless, endBody, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.ok(!/handledRef\.current/.test(headless), '反面对照没被抓住 —— 这条判据是恒真的');
-  // ③ 兜底必须走**同一条**拆线实现（不是自己又写一遍）。
+  // ③ 只许有**一份**拆线实现，而且吸附那一路必须走它。
   const usesSplitter = (body: string) => /splitEdgeAt\(/.test(body);
-  assert.ok(usesSplitter(endBody), '兜底没有走共用的拆线实现（自己又写一遍 = 两条路的拆法必然分叉）');
-  assert.ok(splitterCallSites(live) >= 2, '拆线只有一条入口在调用 —— 精确命中与吸附松手必须共用同一份实现');
-  // ⚠️ 反面对照：把兜底那次调用掐掉 ⇒ 必须判违规。
+  assert.equal(splitterDecls(live), 1, '拆线出现了**多份**实现（多处各写一遍必然分叉：一条路一种拆法）');
+  assert.ok(usesSplitter(endBody), '吸附没有走那一份拆线实现（自己又写一遍 = 两条路的拆法必然分叉）');
+  // ⚠️ 反面对照：把吸附那次调用掐掉 ⇒ 必须判违规。
   const noApply = endBody.replace(/splitEdgeAt\([^;]*\);/, '');
   assert.notEqual(noApply, endBody, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.ok(!usesSplitter(noApply), '反面对照没被抓住 —— 这条判据是恒真的');
   // ④ 🔴 拖到空白**不许**插交点：必须有「最近的一条边」这个筛选，而且**找不到就走人**。
+  //    ⚠️ 筛选住在 `nearestEdgeAt` 里（吸附与拖动中高亮**共用**那一份）⇒ 判据要跟过去判，
+  //       留在 `onConnectEnd` 里判会变成「恒假」（那段里已经没有循环了）。
   const blankDropOk = (body: string): boolean => {
     const filterAt = body.search(/distance\s*>\s*EDGE_SNAP_RADIUS/);
     if (filterAt === -1) return false;
     const after = body.slice(filterAt);
-    return /if \(!nearest\) return;/.test(after) && /nearest\s*=/.test(after);
+    return /nearest\s*=/.test(after);
   };
-  assert.ok(blankDropOk(endBody), '兜底没有「离最近那条边还在半径外就不做」这道闸 —— 拖到空白也会插一个交点出来');
+  assert.ok(blankDropOk(nearestBody), '没有「离最近那条边还在半径外就不选它」这道闸 —— 拖到空白也会插一个交点出来');
+  assert.match(endBody, /if \(!nearest\) return;/, '吸附拿到「没有候选」时没有整段走人（拖到空白也会插一个交点出来）');
   // ⚠️ 反面对照：把半径那道筛选改成恒真（永远「够近」）⇒ 必须判违规。
-  const alwaysNear = endBody.replace(/distance\s*>\s*EDGE_SNAP_RADIUS/, 'false');
-  assert.notEqual(alwaysNear, endBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  const alwaysNear = nearestBody.replace(/distance\s*>\s*EDGE_SNAP_RADIUS/, 'false');
+  assert.notEqual(alwaysNear, nearestBody, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.ok(!blankDropOk(alwaysNear), '反面对照没被抓住 —— 这条判据是恒真的');
   // ⑤ 半径筛的是**到那一段的锚点距离**，不是「指针下有没有边」这种 DOM 猜测。
-  assert.match(endBody, /edgeFlowAnchors\(/, '兜底没有用锚点表算距离（拿不到「这条线在哪」）');
-  assert.match(endBody, /midX|midY/, '兜底没有用库算出来的标签点当中点');
-  // ⑥ 交点仍必须落在**精确中点**（吸附只决定「连哪条线」，不许把浮层那 18px 偏移卷进来）。
+  assert.match(nearestBody, /edgeFlowAnchors\(/, '没有用锚点表算距离（拿不到「这条线在哪」）');
+  assert.match(nearestBody, /midX|midY/, '没有用库算出来的标签点当中点');
+  // ⑥ 🔴 **精确命中线上中点**那一格（这轮最容易漏的一条：以前它由库的句柄接住）。
+  //    两条语义：
+  //      · 「落点在线上」**不是**让位的理由 —— 让位条件只认**句柄**（`.react-flow__handle`）。
+  //        实测：正落在中点时 `elementFromPoint` 拿到的是**边**（标签白底框 / 交互 path），
+  //        一旦把让位条件写成「落点是不是边」，0px 那一格当场连不上（而 15/20px 仍好）。
+  //      · 半径只有**上界**：不许出现「太近也不连」的下界（那样恰好把 0px 排除掉）。
+  const onLineBails = /react-flow__edge/.test(endBody);
+  assert.ok(!onLineBails, '吸附把「落点在线上」当成让位条件 —— 正落在中点会连不上（那一格现在是它的责任）');
+  // ⚠️ 判据要**认得出下界**、又不能误伤「比上一个候选更近」那句（`distance < nearest.distance`）：
+  //    下界只会拿**半径常量或数字**去比，所以只认这两种写法。
+  const lowerBound = (body: string) => /distance\s*<\s*(EDGE_SNAP_RADIUS|\d)|distance\s*<=\s*0|distance\s*===\s*0/.test(body);
+  assert.ok(!lowerBound(nearestBody), '「离得最近」那道闸带了**下界** —— 距离为 0（正落在中点）会被排除掉');
+  // ⚠️ 反面对照：给筛选加一条下界 ⇒ 上面那条必须红（证明它不是恒真）。
+  const withLowerBound = nearestBody.replace('if (distance > EDGE_SNAP_RADIUS) continue;', 'if (distance < 1 || distance > EDGE_SNAP_RADIUS) continue;');
+  assert.notEqual(withLowerBound, nearestBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(lowerBound(withLowerBound), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⚠️ 反面对照：往让位那句里塞一条「落点是边就让位」⇒ 上面那条必须红（证明它不是恒真）。
+  const bailOnEdge = endBody.replace("hit.closest('.react-flow__handle')", "hit.closest('.react-flow__edge')");
+  assert.notEqual(bailOnEdge, endBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(/react-flow__edge/.test(bailOnEdge), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⑦ 交点必须落在**精确中点**（吸附只决定「连哪条线」，不许把浮层偏移卷进来）。
   assert.match(splitBody, /position: \{ x: anchors\.midX - junctionHalf, y: anchors\.midY - junctionHalf \}/,
     '吸附那条路把交点挪离了精确中点 —— 拆出来的两段会与原线对不上');
-  assert.ok(!/offsetAlong|HANDLE_GAP/.test(splitBody), '拆线里混进了浮层偏移（交点会跟着浮层走）');
+  assert.ok(!/offsetAlong|HANDLE_GAP|clampOffset/.test(splitBody), '拆线里混进了浮层偏移（交点会跟着浮层走）');
+  // ⑧ ★ 拖动中高亮用的必须是**同一份**距离算法（两份必然分叉：高亮 A、真吸上去 B）。
+  const hlBody = highlightEffectSource(live);
+  assert.ok(hlBody.length > 200, '拖动中高亮那段 effect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.match(hlBody, /nearestEdgeAt\(/, '拖动中高亮没有用与吸附同一份 `nearestEdgeAt`（会高亮到另一条线）');
+});
+
+test('★ 2026-10-06（可发现性补偿）：拖动连线**过程中**高亮「松手会吸上去的那条边」', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  const css = stripComments(CSS);
+  /*
+    ★ 为什么要补这一条：删掉中点句柄之后，「拖到线附近就能连」这件事在屏幕上**看不见**了 ——
+      学生只能靠试。⇒ 拖动过程中把当前会吸附到的那条边先描出来。
+    🔴 三条硬要求（每条都在下面钉住，并且都有反面对照）：
+      ① **只有真的有候选时才挂类**（拖到空白 / 离最近那条线还在半径外 ⇒ 一个类都不挂）；
+      ② **收尾要收干净**：正常松手（`onConnectEnd`）与拖拽被取消（指针抬起/取消那一族）都要清；
+      ③ 样式**克制**：只是描边加粗换色，没有动画、没有发光 —— 学生端是老 iPad。
+  */
+  // ① 状态：候选边（`null` = 现在松手什么也不会发生）+ 「这一拖正在进行」的开关。
+  assert.match(live, /const \[snapCandidateId, setSnapCandidateId\] = useState<string \| null>\(null\)/,
+    '没有「当前会吸到哪条边」的状态（高亮无从谈起）');
+  assert.match(live, /const \[connecting, setConnecting\] = useState\(false\)/,
+    '没有「这一拖正在进行」的开关（高亮会在拖动结束后继续跟着指针跑）');
+  // ② 逐边 `className`：**只在 id 命中时**挂（恒真 = 画布上永远有一条线是加粗的，学生分不出「能连」）。
+  const visibleBody = blockAfter(live, 'const visibleEdges = useMemo', '[edges, snapCandidateId]');
+  assert.ok(visibleBody.length > 120, '`visibleEdges` 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const attachesOnlyWhenHit = (body: string) => /edge\.id\s*===\s*snapCandidateId/.test(body) && /styles\.flowEdgeSnap/.test(body);
+  assert.ok(attachesOnlyWhenHit(visibleBody), '`visibleEdges` 没有「命中候选才挂高亮类」这条判据');
+  // ⚠️ 反面对照：把条件改成恒真（每条边都挂）⇒ 必须判违规。
+  const alwaysSnap = visibleBody.replace(/edge\.id\s*===\s*snapCandidateId/, 'true');
+  assert.notEqual(alwaysSnap, visibleBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!attachesOnlyWhenHit(alwaysSnap), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ③ 正常松手：`onConnectEnd` **在任何一个 return 之前**就把高亮收掉
+  //    （拖到句柄上 / 拿不到落点 / 半径外 / 空白这几格都会提前 return）。
+  const endBody = onConnectEndSource(live);
+  assert.ok(endBody.length > 300, '落点吸附那段没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const clearsHere = (body: string) => /setConnecting\(false\)/.test(body) && /setSnapCandidateId\(null\)/.test(body);
+  assert.ok(clearsHere(endBody), '松手时没有把「拖动中」与候选边清掉（会留下一根永久高亮的线）');
+  const firstReturn = endBody.indexOf('return');
+  const clearAt = endBody.indexOf('setSnapCandidateId(null)');
+  assert.ok(clearAt !== -1 && firstReturn !== -1 && clearAt < firstReturn,
+    '清高亮排在第一个 `return` 之后 —— 「拖到句柄上 / 拿不到落点 / 半径外」那几格会留下永久高亮');
+  // ④ 拖拽被取消：指针抬起 / 取消那一族也要清（`onConnectEnd` 不一定来）。
+  const hlBody = highlightEffectSource(live);
+  assert.ok(hlBody.length > 200, '拖动中高亮那段 effect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(clearsHere(hlBody), '拖拽被取消时没有把高亮收掉 —— 取消一次就留下一根永久高亮的线');
+  // ⚠️ 判据**不认变量名**：先认出「会清状态的那个回调」，再看四个取消事件是不是都接到它身上。
+  const stopDecl = hlBody.match(/const (\w+)\s*=\s*\(\)\s*=>\s*\{[^}]*setConnecting\(false\)[^}]*setSnapCandidateId\(null\)[^}]*\}/);
+  assert.ok(stopDecl, '没有「清掉高亮」那一个回调（收尾只剩 onConnectEnd 一条路）');
+  for (const ev of ["'pointerup'", "'pointercancel'", "'touchend'", "'touchcancel'"]) {
+    assert.match(hlBody, new RegExp(`addEventListener\\(${ev},\\s*${stopDecl[1]}\\b`),
+      `${ev} 没有接到「清掉高亮」那个回调上 —— 触屏/CDP 抬起指针的那一格会留下永久高亮`);
+    assert.match(hlBody, new RegExp(`removeEventListener\\(${ev},\\s*${stopDecl[1]}\\b`),
+      `清理里没有摘掉 ${ev} 的监听（拖完还被别人拿着引用）`);
+  }
+  // ⚠️ 反面对照：把 `pointerup` 从「清」改接成「跟踪」⇒ 上面那条必须红。
+  const upTracks = hlBody.replace(/'pointerup',\s*(\w+)/, "'pointerup', track");
+  assert.notEqual(upTracks, hlBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!new RegExp(`addEventListener\\('pointerup',\\s*${stopDecl[1]}\\b`).test(upTracks), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⑤ 拖动中跟踪指针：`pointermove` 与 `touchmove` **两个都听**（少一个，那类设备上高亮永远不出来）；
+  //    坐标与距离都走**与吸附同一份**的东西（`pointerClientPoint` / `nearestEdgeAt`）。
+  for (const ev of ["'pointermove'", "'touchmove'"]) {
+    assert.match(hlBody, new RegExp(`addEventListener\\(${ev},\\s*\\w+`),
+      `${ev} 没有听 —— 那类设备（鼠标 / 触屏）上「会吸到哪条边」高亮永远不出来`);
+  }
+  assert.match(hlBody, /pointerClientPoint\(event\)/, '拖动中高亮没有走坐标纯函数（触屏上拿不到落点）');
+  assert.match(hlBody, /nearestEdgeAt\(/, '拖动中高亮没有用与吸附同一份 `nearestEdgeAt`（会高亮到另一条线）');
+  // ⚠️ 反面对照：把触屏那一路摘掉 ⇒ 必须判违规。
+  const noTouchMove = hlBody.replace(/window\.addEventListener\('touchmove',[^;]*;/, '');
+  assert.notEqual(noTouchMove, hlBody, '反面对照没造出来 —— 这条判据会变成恒真');
+  assert.ok(!/addEventListener\('touchmove'/.test(noTouchMove), '反面对照没被抓住 —— 这条判据是恒真的');
+  // ⑥ 样式：打在 `.react-flow__edge-path` 上（库给路径自己定了 stroke，写在外层 `<g>` 上会被盖掉），
+  //    而且**没有动画 / 发光**（老 iPad 上拖动本来就在重绘）。
+  const snapRuleAt = css.indexOf('.flowEdgeSnap');
+  assert.notEqual(snapRuleAt, -1, '样式表里没有拖动中高亮那条规则（学生看不到「这条线能接」）');
+  // ⚠️ 只取**那一条规则**（到它自己的 `}` 为止）：多取 400 字会把隔壁 `.drawingToolbarEdgeLabel`
+  //    的 `box-shadow` 也吞进来 ⇒ 「没有动画/发光」那条判据会**恒假**（自己把自己判红）。
+  const snapRuleEnd = css.indexOf('}', snapRuleAt);
+  assert.ok(snapRuleEnd > snapRuleAt, '高亮那条规则没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const snapRule = css.slice(snapRuleAt, snapRuleEnd + 1);
+  assert.match(snapRule, /react-flow__edge-path/,
+    '高亮没有打到 `.react-flow__edge-path` 上 —— 库给那条路径自己定了 stroke，写在外层 `<g>` 上会被盖掉');
+  assert.match(snapRule, /stroke-width:\s*[2-9]/, '高亮没有把描边加粗（学生看不出是哪条线）');
+  assert.ok(!/animation|@keyframes|box-shadow|transition/.test(snapRule),
+    '高亮带了动画 / 发光 / 过渡 —— 学生端是老 iPad，拖动时的画布动画是已知的卡顿来源');
+  // ⚠️ 反面对照：把高亮打到外层 `<g>` 上（去掉路径那一截）⇒ 必须判违规。
+  const gOnly = css.replace(/\.flowEdgeSnap[^{]*\{/, '.flowEdgeSnap {');
+  assert.notEqual(gOnly, css, '反面对照没造出来 —— 这条判据会变成恒真');
+  const gOnlyAt = gOnly.indexOf('.flowEdgeSnap');
+  const gOnlyRule = gOnly.slice(gOnlyAt, gOnly.indexOf('}', gOnlyAt) + 1);
+  assert.ok(!/react-flow__edge-path/.test(gOnlyRule), '反面对照没被抓住 —— 这条判据是恒真的');
 });
 
 test('★ 2026-10-06（教师：「拖到线附近松手也要能连上」）：落点坐标必须认**触屏**（iPad 才是主设备）', () => {
@@ -858,8 +955,10 @@ test('★ 2026-10-06（教师：「拖到线附近松手也要能连上」）：
          · 改后：偏 **0 / 15 / 20px ⇒ 都连上**（DOM 边 2→4、节点 4→5、**恰好 1 个交点**，
                  作答里 `junction→n2` 与 `junction→n3` 都在）；
                  偏 **25px 不连**、**拖到空白不插交点**（两条反面仍然成立）。
-       ⚠️ 「0px 也连不上」那一格最刺眼：触屏下学生**正正落在线上**也连不上，只因为中点句柄
-          按 `HANDLE_GAP` 挪开了 —— 教师说的「小学课堂上会大量发生」在 iPad 上是 100% 发生。
+       ★ 本轮（自定义边 / 中点句柄删掉之后）复测：触屏 0 / 15 / 20px **仍然都连上**，
+         25px 与空白仍然什么都不做 —— 0px 那一格现在完全由几何吸附负责。
+       ⚠️ 「0px 也连不上」那一格最刺眼：触屏下学生**正正落在线上**也连不上，只因为当时那颗
+          中点句柄被挪开了 18px —— 教师说的「小学课堂上会大量发生」在 iPad 上是 100% 发生。
   */
   // ① 源码级：坐标读取必须是**模块级的命名纯函数**（下面要把它抠出来真跑）。
   const decl = live.indexOf('const pointerClientPoint: ');
@@ -924,15 +1023,17 @@ test('★ 2026-10-06（教师：「拖到线附近松手也要能连上」）：
     '除坐标纯函数之外还有人直接读 event.clientX/clientY —— TouchEvent 上没有这两个属性，触屏那一格会拿到 undefined');
 });
 
-test('★ 2026-10-06（教师报「连线加不上」）：落点约定 —— Loose 模式 / 中点句柄是 target / data-nodeid=边 id', () => {
+test('★ 2026-10-06（教师报「连线加不上」）：落点约定 —— Loose 模式 / 落点只可能是节点', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   const onConnectBody = onConnectSource(live);
-  assert.ok(onConnectBody.length > 400, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  assert.ok(onConnectBody.length > 200, 'onConnect 没抠出来 —— 先修这条判据，别让它在空串上全绿');
   /*
-    ⚠️ 这一条钉的是**三条相互咬合的约定**（每一条的「为什么」都写在断言消息里）：
+    ⚠️ 这一条钉的是**两条相互咬合的约定**（每一条的「为什么」都写在断言消息里）：
       ① 普通连线（落点是**节点**）仍然要被加进去，而且那一支必须**走得到**；
-      ② `connectionMode` 必须是 Loose；
-      ③ 中点句柄必须是 `target`，并且自己补 `data-nodeid = 边 id`。
+      ② `connectionMode` 必须是 Loose。
+    ⊘ 原来还有第③条「中点句柄必须是 `target` 且自己补 `data-nodeid = 边 id`」—— 那颗句柄随
+      **自定义边**一起删了（它只能接不能起、还吞掉中点单击）。它留下的那条约定现在由
+      「落点只可能是节点」这条**反面**判据守：`onConnect` 里不许再出现认「边 id」的分支。
   */
   // ① 普通连线：那一支把 connection 交给库的 addEdge（这是最基本的「框 → 框」那条路）。
   const nodeBranchAt = onConnectBody.indexOf('const source = nodes.find(');
@@ -948,13 +1049,11 @@ test('★ 2026-10-06（教师报「连线加不上」）：落点约定 —— L
   //    上/左是 target、右/下是 source（见 `FlowNodeEditor`）—— 学生不会管这个。
   assert.match(live, /connectionMode=\{ConnectionMode\.Loose\}/,
     '不是 Loose 模式 —— 学生从 target 句柄（判定框左侧那种）拖到另一个 target 句柄会被库直接判无效');
-  // ③ 中点句柄（住在边里）必须是 `target` + 自己补 `data-nodeid = 边 id`：
-  //    `isValidHandle` 就是靠「`elementFromPoint` 拿到这颗句柄」+「读它的 data-nodeid 当 target」
-  //    才认出「连到线上」的（库的 `Handle` 在边里 `useNodeId()` 拿到 null，不补就没有这个属性）
-  //    —— 这是整条路**唯一**的凭据，也是 `onConnect` 里认出「那是边 id」的唯一来源。
-  assert.match(live, /id="edge-mid"/, '中点句柄的 id 不是 edge-mid');
-  assert.match(live, /type="target"/, '中点句柄不是 target（库在到达端只认 target/source 的类名）');
-  assert.match(live, /'data-nodeid': edgeId/, '中点句柄没有补 data-nodeid=边 id —— 库读不到 node id，往它上面拖 `onConnect` 一次都不响');
+  // ③ 反面：**落点只可能是节点**。自定义边删掉之后，没有任何句柄会回一个「边 id」当落点
+  //    ⇒ `onConnect` 里再出现认边 id 的分支就是死代码（而它一次都不会响，谁也看不出来）。
+  assert.ok(!/connection\.(target|source)\b[\s\S]{0,60}edges\.find/.test(onConnectBody),
+    '`onConnect` 又在认「落点是某条边」了 —— 那条凭据（句柄上的 data-nodeid=边 id）已经删掉了');
+  assert.ok(!/hitEdge/.test(onConnectBody), '`onConnect` 里又长出 `hitEdge` 那一支了（死分支：永远进不去）');
 });
 
 test('★ 2026-10-06（教师）：选中一个图形 ⇒ 浮出删除按钮，删它**连带删掉相连的线**（与选中连线共用一处浮层）', () => {
@@ -1086,7 +1185,7 @@ test('★ 2026-10-06（教师）：「选中一个图形准备移动时，后面
     ⚠️ 判据只盯**节点编辑器里那一格**：将来别处若合法地需要 `.nodrag`（按钮/工具条之类），
       不该被这条判据误伤 —— 所以先抠出 `FlowNodeEditor` 的函数体再断言。
   */
-  const editorBody = live.slice(live.indexOf('function FlowNodeEditor'), live.indexOf('const edgeHandleNodeId'));
+  const editorBody = editorBodyOf(live);
   assert.ok(editorBody.includes('aria-label="节点文字"'), '节点编辑器没抠出来 —— 先修这条判据，别让它在空串上全绿');
   assert.ok(!/nodrag/.test(editorBody), '节点里的输入框又挂上了 nodrag —— 「拖框」会变成「拖画布」（教师 2026-10-06 报的就是它）');
   // 反面对照：把那个类名塞回同一个函数体 ⇒ 上面那句必须红（这条判据不是恒真的）。
@@ -1177,13 +1276,16 @@ test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就�
  *   不能只靠正则猜实现（「有没有 clampOffset 这个调用」挡不住「比例写成 0.9」）。
  *
  * 🔴 为什么必须有这一条：「极短边」在源码级断言里没法验。学生把两个框拖到几乎贴住时，这一段
- *    可能只剩 ~20px —— `EDGE_FLOAT_BACK` / `HANDLE_GAP` 会越过中点、甚至在极短边上越过 source 端
+ *    可能只剩 ~20px —— `EDGE_FLOAT_BACK` 会越过中点、甚至在极短边上越过 source 端
  *    ⇒ 只能把纯函数抠出来**喂一条短边**量。这是上一轮报告里「拿不准」第 (C) 条的正式补丁。
  * ⚠️ 为什么抠文本求值、而不是 import：这个文件是 `'use client'` 的 React 组件，import 会把
- *    React Flow + React 一起拖进来（本仓没有 jsdom）。下面这三个函数只做加减乘除、不碰
+ *    React Flow + React 一起拖进来（本仓没有 jsdom）。下面这几个函数只做加减乘除、不碰
  *    React/state，**类型都写在 `const` 那一侧** ⇒ 抠出来的 `(a, b) => { … }` 本身就是合法 JS。
- * ★ 第 2 步整理：喂进来的距离**从组件源码里读它自己的命名常量**（不在测试里再抄一遍 `EDGE_FLOAT_BACK` / `HANDLE_GAP`），
+ * ★ 第 2 步整理：喂进来的距离**从组件源码里读它自己的命名常量**（不在测试里再抄一遍 `EDGE_FLOAT_BACK`），
  *    测的就是生产代码真正在用的那个数。
+ * ⊘ 2026-10-06：`offsetAlong` 与它服务的 `HANDLE_GAP`、以及那条「句柄脱开 Y/N 标签」的像素规则
+ *    （从 JSX 读 `<rect height={22}>` + 从 CSS 读句柄 width）**随自定义边一起删掉**了 ——
+ *    句柄不存在，就没有「脱开它」这件事。`clampOffset` + `backAxis` 的验算一条没少。
  * ⚠️ 反面对照（变异测试，见本轮报告）：把 clamp 去掉、或把某个方位的轴写反 ⇒ 下面这几条必须红。
  */
 test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂一条短边验算（几何函数级）', () => {
@@ -1211,50 +1313,20 @@ test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂�
   const FLOAT_SIZE = constOf('FLOAT_SIZE');
   const NODE_FLOAT_GAP = constOf('NODE_FLOAT_GAP', { FLOAT_SIZE });
   const EDGE_FLOAT_BACK = constOf('EDGE_FLOAT_BACK');
-  const HANDLE_GAP = constOf('HANDLE_GAP');
-  assert.ok(EDGE_FLOAT_BACK > 0 && HANDLE_GAP > 0, '两个偏移常量必须是正数');
-  /*
-    ★ 2026-10-06（教师按 CSS 算过像素）：`HANDLE_GAP` 的**数值下限**不是拍脑袋来的 —— 它是
-      「中点句柄脱开线上的 Y/N 标签白底框」这条像素规则算出来的，所以这里把它**当成规则来验**：
-        · 白底框高取自组件里那一句 `<rect className="react-flow__edge-textbg" … height={22}>`
-          （以标签点为中心 ⇒ 上下各 11px）；
-        · 句柄本体尺寸取自样式表 `.thirdPartyCanvas .flowEdgeHandle` 的 width（10px ⇒ ±5px）；
-        · 竖直边：句柄只往**下方**挪 ⇒ 上沿离标签点 `HANDLE_GAP - 半个句柄`，要 ≥ 11；
-        · 45° 斜边：位移的竖直分量只有 `HANDLE_GAP / √2`，也要 ≥ 11。
-      ⇒ 两式都成立才算「脱开」。**14 两式都不成立**（9 < 11、9.9 < 11）；16 只过第一式；18 两式都过。
-      ⚠️ 这样写而不是 `assert.equal(HANDLE_GAP, 18)`：钉的是**规则**（CSS/JSX 里的真实尺寸变了，
-        这条下限会跟着重新算），而不是某个数字 —— 但谁把 18 改回 14，它一定红。
-  */
-  const bgRectHeight = Number((src.match(/react-flow__edge-textbg[\s\S]{0,300}?height=\{(\d+)\}/) ?? [])[1]);
-  assert.ok(Number.isFinite(bgRectHeight) && bgRectHeight > 0,
-    `没读到线上标签白底框的高度（读到 ${bgRectHeight}）—— 先修这条判据，别让它在 NaN 上全绿`);
-  const handleDotSize = Number((CSS.match(/\.thirdPartyCanvas \.flowEdgeHandle \{[\s\S]{0,200}?width: (\d+)px;/) ?? [])[1]);
-  assert.ok(Number.isFinite(handleDotSize) && handleDotSize > 0,
-    `没读到中点句柄的尺寸（读到 ${handleDotSize}）—— 先修这条判据，别让它在 NaN 上全绿`);
-  const labelHalf = bgRectHeight / 2;
-  const dotHalf = handleDotSize / 2;
-  /** 「中点句柄脱开 Y/N 标签」这条像素规则：竖直边与 45° 斜边**都要**成立。 */
-  const clearsLabel = (gap: number) => gap - dotHalf >= labelHalf && gap / Math.SQRT2 >= labelHalf;
-  assert.ok(clearsLabel(HANDLE_GAP),
-    `HANDLE_GAP=${HANDLE_GAP} 会让中点句柄压住线上的 Y/N 标签（竖直边只剩 ${(HANDLE_GAP - dotHalf).toFixed(1)}px、45° 斜边只剩 ${(HANDLE_GAP / Math.SQRT2).toFixed(1)}px，而白底框半径是 ${labelHalf}px）`);
-  // ⚠️ 反面对照：回到改前那个 14px（= 现在这个值再减 4）⇒ 必须判违规。
-  assert.ok(!clearsLabel(HANDLE_GAP - 4),
-    '反面对照没被抓住 —— 这条判据是恒真的（14px 那种取值必须判「压住标签」）');
+  assert.ok(EDGE_FLOAT_BACK > 0, '偏移常量 EDGE_FLOAT_BACK 必须是正数');
   // ⚠️ 规则里那句「永不压住句柄」的数值落点：按钮要以自己中心定位，所以往上至少要半个按钮。
   assert.ok(NODE_FLOAT_GAP >= FLOAT_SIZE / 2, `删除图形的按钮会压住节点上边缘（NODE_FLOAT_GAP=${NODE_FLOAT_GAP} < 半个按钮 ${FLOAT_SIZE / 2}）`);
-  const code = ['clampOffset', 'offsetAlong', 'backAxis'].map((name) => `const ${name} = ${grab(name)}`).join('\n');
+  const code = ['clampOffset', 'backAxis'].map((name) => `const ${name} = ${grab(name)}`).join('\n');
   // ⚠️ 只喂给 `backAxis`：它内部拿 `Position.某` 做比较，所以给一份**同一个对象**即可（具体值不重要）。
   const Position = { Top: 'top', Bottom: 'bottom', Left: 'left', Right: 'right' } as const;
-  const makeGeometry = new Function('Position', `${code}\nreturn { clampOffset, offsetAlong, backAxis };`);
+  const makeGeometry = new Function('Position', `${code}\nreturn { clampOffset, backAxis };`);
   const geom = makeGeometry(Position) as {
     clampOffset: (distance: number, span: number) => number;
-    offsetAlong: (point: { x: number; y: number }, toward: { x: number; y: number }, distance: number) => { x: number; y: number };
     backAxis: (position: string) => { x: number; y: number };
   };
 
   // ① 上限：**不超过段长的一半**（这正是不越过中点的理由），常见边长下不许打折。
   assert.equal(geom.clampOffset(EDGE_FLOAT_BACK, 1000), EDGE_FLOAT_BACK, '常见边长下删除按钮的距离被打了折（按钮会缩水）');
-  assert.equal(geom.clampOffset(HANDLE_GAP, 1000), HANDLE_GAP, '常见边长下中点浮层的距离被打了折（句柄会缩水）');
   assert.ok(geom.clampOffset(EDGE_FLOAT_BACK, 20) < EDGE_FLOAT_BACK, '极短边上没有生效任何上限');
   assert.ok(geom.clampOffset(EDGE_FLOAT_BACK, 20) <= 10, '极短边上偏移没被压到中点之前（会越过中点）');
   assert.ok(geom.clampOffset(1000, 100) <= 50, '上限比例 ≥ 一半 —— 会越过中点');
@@ -1268,24 +1340,13 @@ test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂�
   assert.ok(movedEnd.y < endPt.y, '删除按钮没有往 source 退（方向反了）');
   assert.ok(movedEnd.y > (endPt.y + fromPt.y) / 2, '短边上删除按钮退过了中点（44px 的它会盖住另一半线）');
 
-  // ③ 短边上的**中点浮层**：中点 (0,190) → 目标 (0,200)（该段只有 10px）⇒ 挪完不许到达/越过目标端。
-  const midPt = { x: 0, y: 190 };
-  const shiftedMid = geom.offsetAlong(midPt, { x: 0, y: 200 }, HANDLE_GAP);
-  assert.ok(shiftedMid.y > midPt.y, '中点浮层没有往目标端挪（方向反了）');
-  assert.ok(shiftedMid.y < 200, '短边上中点浮层挪到了目标端（会压住目标节点的连接点）');
-
-  // ④ **目标句柄轴**：四个方位各退到**远离目标节点**的一侧 —— 写反一个，删除按钮就压在箭头上。
+  // ③ **目标句柄轴**：四个方位各退到**远离目标节点**的一侧 —— 写反一个，删除按钮就压在箭头上。
   assert.deepEqual(geom.backAxis(Position.Top), { x: 0, y: -1 }, 'Top 的退向不对（线从上方进 ⇒ 该往 -y 退）');
   assert.deepEqual(geom.backAxis(Position.Bottom), { x: 0, y: 1 }, 'Bottom 的退向不对（该往 +y 退）');
   assert.deepEqual(geom.backAxis(Position.Left), { x: -1, y: 0 }, 'Left 的退向不对（该往 -x 退）');
   assert.deepEqual(geom.backAxis(Position.Right), { x: 1, y: 0 }, 'Right 的退向不对（该往 +x 退）');
   const axes = [Position.Top, Position.Bottom, Position.Left, Position.Right].map((p) => JSON.stringify(geom.backAxis(p)));
   assert.equal(new Set(axes).size, 4, '四个方位的退向有重复（有方位没被区分开）');
-
-  // ⑤ 生产代码真的**接上**了这两个纯函数（不是只在测试里算了一遍）：中点那一段也必须吃上限。
-  assert.match(grab('offsetAlong'), /clampOffset\(/, 'offsetAlong 没有接上 clampOffset（中点那一段就没有上限）');
-  // ★ 第 2 步整理：**两个距离不许互换**（起点不同、方向不同、目的不同）—— 数值上也要能区分。
-  assert.notEqual(EDGE_FLOAT_BACK, HANDLE_GAP, '两个偏移常量变成同一个数了 —— 「沿句柄轴退」与「往目标端挪」是两件事');
 });
 
 

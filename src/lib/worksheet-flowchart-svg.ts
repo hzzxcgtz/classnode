@@ -26,6 +26,34 @@ const PADDING = 18;
 const MIN_WIDTH = 96;
 const MAX_WIDTH = 240;
 
+/*
+  ── ★ 2026-10-06（教师上传的标准流程图）：快照里两处**必须与画板逐项对齐** ─────────────
+  🔴 这是本仓最防的那类不一致：**别处看见的（快照 / 报告 / AI 联系表）与画板不一样，
+     而两边都不报错**。所以这两个数都**读画板的真源**、不各自猜一份：
+      · 交点的外框尺寸 —— 画板 CSS `.flowNode_junction` 的 `width`（8×8，`box-sizing: border-box`）；
+        `readFlowRaster` 里那个 `12` 也得跟着它走（节点盒子 = 尺寸，`position` 是左上角）。
+      · 标签离线多远 —— 画板 `flowchart-drawing.tsx` 的 `EDGE_LABEL_GAP`（≡ 8，流坐标）。
+     `worksheet-flowchart-svg.test.ts` 会把这三处对起来（改任一边 ⇒ 红）。
+     ⚠️ 真源在**另一个模块**里 ⇒ 只能用**字符串/注释**指过去，不在编译期耦合
+        （这个文件是纯序列化器，别把 React 组件那一坨拖进依赖图）。
+*/
+/** 交点外框边长（画板 CSS `.flowNode_junction`：8×8 的描边空心小环，白底 + 2px 描边）。 */
+const JUNCTION_DIAMETER = 8;
+/**
+ * 交点半径（SVG 画的是圆心 + r ⇒ 直径的一半）。
+ * 🔴 **由 `JUNCTION_DIAMETER` 现算**，不另写一个 `4`：只改直径、忘了改半径 ⇒ 快照上那颗圆
+ *    就会与画板差一圈，而两边都不报错（`worksheet-flowchart-svg.test.ts` 也钉住这条关系）。
+ */
+const JUNCTION_RADIUS = JUNCTION_DIAMETER / 2;
+/** 交点描边宽（画板 CSS `border: 2px solid …`）。 */
+const JUNCTION_STROKE_WIDTH = 2;
+/** 交点描边色 = 画板 `.flowNode_junction` 的 border 色（也与线的箭头 `COLORS.edge` 同色）。 */
+const JUNCTION_STROKE = '#6b86a5';
+/** 交点填充 = 画板 `.flowNode_junction` 的 `background` —— **空心**（原来是 `COLORS.stroke` 实心）。 */
+const JUNCTION_FILL = '#fff';
+/** 线标签离线多远（流坐标）—— 与画板 `EDGE_LABEL_GAP` 同值、同义。 */
+const FLOW_LABEL_OFFSET = 8;
+
 export interface FlowRasterNode {
   id: string;
   position: { x: number; y: number };
@@ -160,9 +188,14 @@ function nodeShape(node: FlowRasterNode): string {
       ★ 2026-10-06（教师，A 方案）：**交点** —— 连到线上时插进那条线里的小圆点。
       ⚠️ 它必须在这一支里 return：落进下面那个默认分支就会被画成一个**空矩形**
          （AI / 教师 / Word 报告里凭空多出一个框，而编辑器里根本没有那个框）。
-      ⚠️ 用该文件既有的描边色常量做实心填充，与编辑器里那颗 `#365b82` 的点同色系。
+      ★ 2026-10-06（对齐画板）：原来画的是 `r="5"`（10px）**实心** `#527198`，
+         画板已改成 **8×8 的描边空心小环**（`.flowNode_junction`：`background:#fff` +
+         `border:2px solid #6b86a5`）⇒ 快照跟着改：r = 8/2 = 4、白底、2px 描边、同色。
+      ⚠️ 圆心在节点中心（`position` 是左上角 ⇒ + 边长/2），与画板那颗
+         （`anchors.midX - junctionHalf` 放左上角）落在**同一个点**上。
     */
-    return `<circle cx="${x + w / 2}" cy="${y + h / 2}" r="5" fill="${COLORS.stroke}" stroke="${COLORS.stroke}" stroke-width="1"/>`;
+    return `<circle cx="${x + w / 2}" cy="${y + h / 2}" r="${JUNCTION_RADIUS}" fill="${JUNCTION_FILL}" `
+      + `stroke="${JUNCTION_STROKE}" stroke-width="${JUNCTION_STROKE_WIDTH}"/>`;
   }
   return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" ry="8" ${common}/>`;
 }
@@ -197,15 +230,29 @@ export function flowchartSvg(raw: unknown): { svg: string; width: number; height
     const [x2, y2] = anchorOf(target, edge.targetHandle, source);
     parts.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COLORS.edge}" `
       + `stroke-width="1.8" marker-end="url(#flow-arrow)"/>`);
-    // 线上的字：白底圆角垫一层，压在线上也读得清（与编辑器里那个标签同一个位置：中点）。
+    /*
+      ★ 2026-10-06（教师上传的标准流程图）：线上的字画在**线的旁边**，不压线 ——
+        与画板 `FlowLabelEdge` **同一条规则**（同一个判据来源：`targetHandle` 的方位）：
+          · 进目标那一侧是上/下 ⇒ 末段**竖直** ⇒ 文字在**右侧**：`text-anchor="start"` +
+            `x = 中点 + 偏移` ⇒ 不管标签多长，**左边缘**都贴在线右侧，永不压线；
+          · 是左/右 ⇒ 末段**水平** ⇒ 文字在**上方**且水平居中：`y = 中点 - 偏移`。
+      ⊘ 2026-10-06：原来这里是「居中压线 + 白底圆角框（`<rect fill="#ffffff">`）」——
+        与画板现在的摆法不一致（画板已去掉白底框）。**别再画那个 `<rect>`**。
+      ⚠️ 快照里的字是 SVG `<text>`（不是 HTML）⇒ CSS 那套 `dy` 用不了，两个方向各取一个
+         `text-anchor`，位置靠 `x` / `y` 的偏移表达（画板那两处也是这么摆的）。
+      ⚠️ **基线**：不用 `dominant-baseline`（Safari 15 对它的支持不可靠），竖线那一支用
+         与画板同值的 `dy="0.35em"`（`em` 相对字号 ⇒ 与 `font-size` 一起缩放）；
+         横线那一支靠 `y` 抬到线的上方，字形整体在线之上，不依赖任何基线属性。
+    */
     if (edge.label) {
-      const mx = (x1 + x2) / 2;
-      const my = (y1 + y2) / 2;
-      const w = 14 + edge.label.length * 11;
-      parts.push(`<rect x="${mx - w / 2}" y="${my - 12}" width="${w}" height="24" rx="6" fill="#ffffff" `
-        + `stroke="${COLORS.stroke}" stroke-width="1"/>`);
-      parts.push(`<text x="${mx}" y="${my}" text-anchor="middle" dominant-baseline="middle" `
-        + `font-family="${FONT}" font-size="${FONT_SIZE}" fill="${COLORS.text}">${escapeXml(edge.label)}</text>`);
+      const midX = (x1 + x2) / 2;
+      const midY = (y1 + y2) / 2;
+      const vertical = edge.targetHandle === 'top' || edge.targetHandle === 'bottom';
+      const anchor = vertical ? 'start' : 'middle';
+      const tx = vertical ? midX + FLOW_LABEL_OFFSET : midX;
+      const ty = vertical ? midY : midY - FLOW_LABEL_OFFSET;
+      parts.push(`<text x="${tx}" y="${ty}" dy="${vertical ? '0.35em' : '0'}" text-anchor="${anchor}" `
+        + `font-family="${FONT}" font-size="${FONT_SIZE}" fill="#263b53">${escapeXml(edge.label)}</text>`);
     }
   }
   for (const node of nodes) parts.push(nodeShape(node));

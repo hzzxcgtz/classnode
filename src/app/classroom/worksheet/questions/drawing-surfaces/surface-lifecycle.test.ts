@@ -1455,7 +1455,7 @@ test('★ 2026-10-06（教师）：选中一个图形 ⇒ 浮出删除按钮，�
   assert.ok(!/junction/.test(selectedAnchorBody), '锚点解析给交点开了特例 —— 交点与普通框走同一条锚点');
 });
 
-test('★ 2026-10-06（教师，A 方案）：快照要认「交点」——一颗小圆点，不能落进默认的空矩形', async () => {
+test('★ 2026-10-06（教师，A 方案）：快照要认「交点」——一颗小圆点（现在是与画板一致的**空心小环**），不能落进默认的空矩形', async () => {
   const svg = stripComments(fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', '..', 'lib', 'worksheet-flowchart-svg.ts'), 'utf8'));
   // ① 源码级：junction 那一支必须**排在默认矩形之前**（排在后面 = 永远走不到）。
   const junctionAt = svg.indexOf("if (node.kind === 'junction') {");
@@ -1472,7 +1472,9 @@ test('★ 2026-10-06（教师，A 方案）：快照要认「交点」——一�
     edges: [{ id: 'e1', source: 'a', target: 'j', sourceHandle: 'bottom', targetHandle: 'top' }],
   });
   assert.ok(out, '带交点的数据应当画得出图');
-  assert.match(out.svg, /<circle[^>]*r="5"[^>]*fill="#527198"/, '交点没有画成一个实心小圆点');
+  // ★ 2026-10-06：画板把交点改成了 8×8 的描边空心小环（白底 + 2px #6b86a5 描边 ⇒ 半径 4），
+    //   快照已同步 ⇒ 这条旧断言（钉 10px 实心 r=5）随之过期，改成与画板一致的样子。
+    assert.match(out.svg, /<circle[^>]*r="4"[^>]*fill="#fff"[^>]*stroke="#6b86a5"/, '交点没有画成画板那样的空心小环');
   assert.ok(!/<rect[^>]*rx="8"/.test(out.svg), '交点被画成了默认矩形（AI 看到的图上会凭空多一个空框）');
 });
 

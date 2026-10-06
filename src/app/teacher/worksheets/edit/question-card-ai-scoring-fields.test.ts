@@ -33,6 +33,14 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CARD = path.join(HERE, 'question-card.tsx');
 const FILL_BODY = path.join(HERE, 'bodies', 'fill-blanks-body.tsx');
 const FILL_MODES = path.resolve(HERE, '../../../../lib/worksheet-fill-modes.ts');
+/**
+ * 画板的**默认分支标注**那一份真源（`DECISION_BRANCH_LABELS`）。
+ * ⚠️ 只读**这一个常量**、只为了对「模板里那个标注写法」—— 不去读画板别的实现
+ *    （那有它自己的网，见 `drawing-surfaces/surface-lifecycle.test.ts`）。
+ */
+const CANVAS_FLOWCHART = path.resolve(
+  HERE, '../../../classroom/worksheet/questions/drawing-surfaces/flowchart-drawing.tsx',
+);
 
 test('🔴 填空题的 AI 评分改由**每一空**的评分方式开启（裁定 B 之后整题那块不服务填空题）', () => {
   // ⚠️ 这一条原先是 ChatGPT 在 `1f107fa` 写的（「普通填空可开启 AI 评分，且与本地自动评分互斥」），
@@ -151,7 +159,7 @@ function stripComments(source: string): string {
 
 /** 那段要点就是**进提示词的那一句**（教师要求逐字），所以只有它逐字钉；常量名/类名一律不钉。 */
 const STRUCTURE_POINTS_TEMPLATE_TEXT =
-  '判断框必须有两分出边并标注 Y/N；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。';
+  '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。';
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -199,4 +207,31 @@ test('① 结构要点模板：常量在、按钮只服务流程图、点击是*
     /aiScoringCriteria:\s*undefined/,
     '写回时没有清掉旧字段 `aiScoringCriteria` —— 教师把框删空后那段旧标准会重新出现（像「删不掉」）',
   );
+});
+
+/**
+ * 上面那条断言把模板钉成**逐字**（教师要求进提示词的就是那一句）—— 这是「文案逐字」的语义，
+ * 逐字钉是对的。但**光有逐字钉不住「它与画板说的是同一件事」**：模板、画板默认标注、快照三处
+ * 只要有一处单独改（今天就是画板默认从 `Y/N` 改成 `是 / 否`），逐字断言只会跟着一起改，
+ * 矛盾照样留在教师与 AI 看见的文案里，而**两边都不报错**（本仓最防的那一类）。
+ * ⇒ 这里再加一条**语义**的：模板里那个标注写法必须是**画板真正用的默认标注**，且不许再出现 `Y/N`。
+ */
+test('★ 结构要点模板里那个标注写法 = 画板的默认分支标注（不许再写 Y/N）', () => {
+  const code = stripComments(fs.readFileSync(CARD, 'utf8'));
+  // 模板文本从源码里**现读**（不是把常量再抄一遍 —— 抄一份就又成了「各写各的」）。
+  const template = (code.match(/const\s+[A-Za-z_$][\w$]*\s*=\s*'([^']*两分出边[^']*)'/) ?? [])[1];
+  assert.ok(template, '从题卡源码里读不到结构要点模板那段文字 —— 先修这条判据');
+
+  // 画板的默认分支标注（`DECISION_BRANCH_LABELS = ['是', '否']`）—— 那才是「画板默认」的真源。
+  const canvas = stripComments(fs.readFileSync(CANVAS_FLOWCHART, 'utf8'));
+  const branchRaw = (canvas.match(/const\s+DECISION_BRANCH_LABELS\s*=\s*\[([^\]]*)\]/) ?? [])[1];
+  assert.ok(branchRaw !== undefined, '画板里没有 `DECISION_BRANCH_LABELS` —— 判据的靶子没了');
+  const branches = [...branchRaw.matchAll(/'([^']*)'/g)].map((match) => match[1]);
+  assert.deepEqual(branches, ['是', '否'], `画板默认分支标注不是「是 / 否」（读到 ${JSON.stringify(branches)}）`);
+
+  const wording = `${branches[0]}/${branches[1]}`; // 「是/否」
+  assert.ok(template.includes(`标注 ${wording}`),
+    `结构要点模板里的标注写法与画板默认（${wording}）对不上 —— 学生照模板写，画板给的是另一样，两边都不报错`);
+  assert.ok(!/Y\s*\/\s*N/i.test(template),
+    '结构要点模板里还写着 `Y/N`（画板默认已经是「是 / 否」—— 文案与画板自相矛盾）');
 });

@@ -2,7 +2,6 @@
 
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
-import { createPortal } from 'react-dom';
 
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import { readDrawingBackground, readDrawingTool } from '@/lib/worksheet-drawing';
@@ -114,7 +113,18 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
       />
     </div>
   );
-  return maximized && typeof document !== 'undefined' ? createPortal(content, document.body) : content;
+  /*
+   * ★ M4（审查留下的）：**不再用 `createPortal` 换渲染位置**。
+   * 原来全屏时走 `createPortal(content, document.body)` —— 同一个 JSX 元素换个位置渲染，React 会
+   * **卸载再挂载**整棵子树 ⇒ 画板实例重建 ⇒ **撤销历史（住在 ref 里）归零**：学生画了半天、
+   * 切一下全屏，撤销键就灰了，而且没有任何提示。
+   * ✅ 全屏本来就该由 CSS 负责：`.thirdPartyWorkspaceMaximized` 已经是 `position: fixed; inset: 0`
+   * （在「portal 到 body」的前提下那句其实是冗余的 —— 它的存在恰好说明当初的意图就是 CSS 全屏）。
+   * ⚠️ `position: fixed` 在祖先链带 `transform` / `filter` / `will-change` 时会退化成相对那个祖先。
+   * 若真机上发现全屏没铺满，就是撞上了这一条 —— 那要另想办法，**别默默把 portal 加回来**：
+   * 加回来等于重新接受「切全屏丢历史」。
+   */
+  return content;
 }
 
 function documentBodyOverflow(): string {

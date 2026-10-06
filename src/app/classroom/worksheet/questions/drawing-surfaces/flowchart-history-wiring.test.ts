@@ -82,6 +82,19 @@ for (const [label, pick] of [['撤销', undoSource], ['重做', redoSource]] as 
     assert.match(block, /setSelected\(null\)/, `${label}后选择态要清掉`);
     assert.match(block, /setLabelingEdge\(null\)/, `${label}后「正在改标注」也要清掉`);
   });
+
+  /*
+    ★ 2026-10-06（**审查留下的 M2**）：`setSelected(null)` 清的是**本组件那份单选槽位**，
+    而节点上的 `selected` 是 **React Flow 自己的字段**（渲染成 `data-selected`）。
+    快照里那个框当时若是选中的，撤销后它会带着蓝框渲染，而删除浮层与提示文字都没了 ——
+    学生看到的是「一个亮着的框，但什么按钮都没有」。
+    ⚠️ 只在 setNodes 时清，**不动快照本身**：快照记的是「当时的样子」，那是事实。
+  */
+  test(`${label}后要清掉节点上的 selected —— 否则留下「发光但没按钮」的框`, () => {
+    const block = pick(SOURCE);
+    assert.ok(block.length > 100, `${label}函数的切片太短（${block.length}）`);
+    assert.match(block, /selected: false/, `${label}恢复节点时要一并清掉 React Flow 的 selected`);
+  });
 }
 
 test('两颗按钮的禁用态跟着 canUndo / canRedo', () => {
@@ -128,6 +141,41 @@ test('快捷键在输入框里让位给浏览器原生撤销', () => {
   这类「改到别处」的错最难被发现。
   ✅ 判据收进本实例：`rootRef` 记根元素，window 上的 `pointerdown`（捕获相）记「最后被碰的是不是我」。
 */
+/*
+  ★ 2026-10-06（**审查留下的 M4**）：全屏画板**不许换渲染位置**。
+
+  `drawing-tool-body.tsx` 原来在全屏时走 `createPortal(content, document.body)` —— 同一个 JSX 元素
+  换个位置渲染，React 会**卸载再挂载**整棵子树 ⇒ 画板实例重建 ⇒ **撤销历史（住在 ref 里）归零**。
+  学生画了半天、切一下全屏，撤销键就灰了，而且没有任何提示。
+
+  ✅ 全屏本来就该由 CSS 负责：`.thirdPartyWorkspaceMaximized` 已经是 `position: fixed; inset: 0`
+  （在「portal 到 body」的前提下那句其实是冗余的 —— 它的存在恰好说明当初的意图就是 CSS 全屏）。
+
+  🔴 这条判据**证明不了**的事：`position: fixed` 在祖先链带 `transform` / `filter` / `will-change`
+  时会退化成相对那个祖先，那种情况下全屏会坏。**必须真机确认一次。**
+*/
+test('全屏不许换渲染位置 —— 换位置会把整棵子树重挂、撤销历史归零', () => {
+  // ⚠️ 宿主文件在**上一层**（`questions/`），不在 `drawing-surfaces/` —— 写错路径的表现是 ENOENT，
+  //    而那条错误同样让判据「红」，很容易被误当成「变异命中」（施工时踩过：连着几次假红）。
+  const HOST = fs.readFileSync(path.join(HERE, '..', 'drawing-tool-body.tsx'), 'utf8');
+  assert.ok(HOST.length > 500, '宿主文件读空了');
+  /*
+    ⚠️ **必须只看代码行**：上面那段说明注释里就写着 `createPortal` 这个词 —— 直接对整个文件做正则，
+    判据会被自己的注释绊倒（施工时实测：修好之后它仍然红）。剥注释在本仓有先例，但这里不需要那么重：
+    本文件的注释都是独立行，按行首过滤即可。
+  */
+  const codeLines = HOST.split('\n').filter((line) => {
+    const t = line.trim();
+    return t !== '' && !t.startsWith('*') && !t.startsWith('/*') && !t.startsWith('//');
+  });
+  assert.ok(codeLines.length > 10, `过滤后只剩 ${codeLines.length} 行代码，判据可能在空集上假绿`);
+  assert.ok(
+    !codeLines.some((line) => line.includes('createPortal')),
+    '全屏切换不许用 portal 换位置（重挂子树 ⇒ 清空撤销历史）',
+  );
+  assert.match(HOST, /thirdPartyWorkspaceMaximized/, '全屏要靠 CSS 类，不靠换容器');
+});
+
 test('快捷键的作用域收在这台画板里 —— 多道流程图题不会一起撤销', () => {
   const block = blockBetween(SOURCE, 'const onKeyDown = (event: KeyboardEvent)', 'window.addEventListener');
   assert.ok(block.length > 100, `快捷键处理器的切片太短（${block.length}）`);

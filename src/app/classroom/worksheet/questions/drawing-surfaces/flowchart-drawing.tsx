@@ -766,7 +766,15 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     if (!step) return; // 栈底：什么都不做（按钮此时也是灰的）
     historyRef.current = step.history;
     const snap = step.snapshot;
-    setNodes(snap.nodes);
+    /*
+      ★ M2（审查留下的）：一并清掉节点上 **React Flow 自己的** `selected`。
+      `setSelected(null)` 清的是本组件那份单选槽位，而节点上的 `selected` 是库的字段
+      （渲染成 `data-selected`）⇒ 快照里那个框当时若是选中的，恢复后它会带着蓝框渲染，
+      而删除浮层与提示文字都没了 —— 学生看到「一个亮着的框，但什么按钮都没有」。
+      ⚠️ 只在**这次恢复的副本**上清，`lastSnapshotRef` 仍然收原样的 `snap`：
+      快照记的是「当时的样子」，那是事实，不该被改写。
+    */
+    setNodes(snap.nodes.map((node) => (node.selected ? { ...node, selected: false } : node)));
     setEdges(snap.edges);
     setSelected(null);
     setLabelingEdge(null);
@@ -781,7 +789,15 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     if (!step) return;
     historyRef.current = step.history;
     const snap = step.snapshot;
-    setNodes(snap.nodes);
+    /*
+      ★ M2（审查留下的）：一并清掉节点上 **React Flow 自己的** `selected`。
+      `setSelected(null)` 清的是本组件那份单选槽位，而节点上的 `selected` 是库的字段
+      （渲染成 `data-selected`）⇒ 快照里那个框当时若是选中的，恢复后它会带着蓝框渲染，
+      而删除浮层与提示文字都没了 —— 学生看到「一个亮着的框，但什么按钮都没有」。
+      ⚠️ 只在**这次恢复的副本**上清，`lastSnapshotRef` 仍然收原样的 `snap`：
+      快照记的是「当时的样子」，那是事实，不该被改写。
+    */
+    setNodes(snap.nodes.map((node) => (node.selected ? { ...node, selected: false } : node)));
     setEdges(snap.edges);
     setSelected(null);
     setLabelingEdge(null);

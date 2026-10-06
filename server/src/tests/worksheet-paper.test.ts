@@ -201,7 +201,11 @@ test('🔴 任务与散题的结构：任务带标题块，**连续散题不带�
   const doc = paper(nodes);
   const kinds = doc.blocks.map((block) => (block.kind === 'task' ? `task:${block.title}` : `q:${block.question.heading}`));
   // 散题**不合成一段**、也不带标题块（与客户端 `groupAnswerable` 的「连续」规则同一条）。
-  assert.deepEqual(kinds, ['q:1', 'task:任务一', 'q:任务一 · 1', 'q:任务一 · 2', 'q:2']);
+  // ⚠️ 题号是**全卷连续**的（2026-10-01 起的规则，前端 `src/lib/worksheet-questions.ts` 开头写着，
+  //    服务端 `worksheet-heading.ts` 是它的镜像）：任务里的两道题**接着**前面那道散题往下编，
+  //    所以是「任务一 · 2」「任务一 · 3」，任务后面那道散题是第 4 题。
+  //    不是「任务内从 1 重新数」—— 那个旧规矩已被 `0af140c` 连同矩阵那边的判据一起改掉了。
+  assert.deepEqual(kinds, ['q:1', 'task:任务一', 'q:任务一 · 2', 'q:任务一 · 3', 'q:4']);
   const firstTask = doc.blocks.filter((block) => block.kind === 'task')[0];
   assert.ok(firstTask && firstTask.kind === 'task');
   assert.equal(firstTask.description, '读下面的材料');

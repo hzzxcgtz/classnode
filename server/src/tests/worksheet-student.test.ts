@@ -155,7 +155,12 @@ const SAMPLE_CONTENT = {
       type: 'short-answer',
       prompt: '说说你观察到的现象。',
       inputMode: 'keyboard',
-      data: {},
+      // ★ 评分标准（`rubricText` / `rubricImageUrl`）同样在 `ANSWER_KEYS` 里：
+      //   只给教师与 AI 分析看，不能随学生版下发。
+      //   ⚠️ 夹具里**必须真的建一份** —— 红线用例的中间那层是「教师端读同一份时每个答案键都在」，
+      //   它遍历的是整个 `ANSWER_KEYS`。夹具里没有 ⇒ 那层对照塌了，
+      //   剩下的「学生端搜不到」就什么都证明不了（没有的东西当然搜不到）。
+      data: { rubricText: '要点完整 3 分，能举出实例再加 2 分', rubricImageUrl: '/uploads/rubric/photosynthesis.png' },
       children: [],
     },
     {

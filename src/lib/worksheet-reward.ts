@@ -9,7 +9,7 @@
  *            isCorrect:  boolean | null   ← M3 及更早的旧字段：语义已收窄为「全对」，
  *                                           只增不改（协议字段），**未回填的旧行仍靠它兜底**
  *               │
- * 呈现层        ├─ 十种卡通收藏图标 ×N
+ * 呈现层        ├─ 十一种卡通收藏图标 ×N
  *               └─ 分数 +N
  * ```
  *
@@ -42,7 +42,7 @@
  */
 
 /**
- * 奖励形式：十种收藏型图标 + 分数。
+ * 奖励形式：十一种收藏型图标 + 分数。
  *
  * ⚠️ 取值与服务端 `routes/worksheets.ts` 的 `REWARD_STYLES` 是**同一套字面量**，
  * 而服务端复制了一份自己的（它读不到 `src/`）。与题型注册表（`QUESTION_TYPE_OPTIONS`
@@ -50,6 +50,7 @@
  * 服务端存的样式」——而那种失效是静默的（落到默认档，画出来的是另一种奖励）。
  */
 export type RewardStyle =
+  | 'classnode'
   | 'star'
   | 'flower'
   | 'trophy'
@@ -76,6 +77,13 @@ export interface RewardStyleOption {
 
 /** 教师端从左到右的显示顺序，分数保留在最后。 */
 export const REWARD_STYLE_OPTIONS: readonly RewardStyleOption[] = [
+  {
+    value: 'classnode',
+    label: 'ClassNode 学霸',
+    symbol: '智',
+    unit: '枚',
+    hint: '每答对一题获得几枚 ClassNode 学霸徽章，答错不给。',
+  },
   {
     value: 'star',
     label: '五角星',
@@ -183,6 +191,7 @@ export function pointsUnitLabel(style: RewardStyle): string {
   // 🔴 **按档位分支，不要按「有没有 `symbol`」判**：分数档（`points`）的 `symbol` 是
   // `'+'`，但它是**前缀**（学生端画的是 `+3`，见 `rewardMark`），不是跟在数字后面的量词。
   // 拿它去拼量词会得到「分 +」—— 2026-09-26 我第一版就是这么写的，用例当场抓住。
+  if (style === 'classnode') return '枚学霸徽章';
   if (style === 'star') return '颗星星';
   if (style === 'flower') return '朵花';
   if (style === 'trophy') return '座奖杯';
@@ -224,7 +233,7 @@ export const DEFAULT_HALF_STEP = 0;
 export const HALF_STEPS: readonly number[] = [0, 1, 2, 3, 5];
 
 /**
- * 一份学习单上的奖励配置：**哪一档**（十种收藏图标 + 分数）。
+ * 一份学习单上的奖励配置：**哪一档**（十一种收藏图标 + 分数）。
  *
  * ── ★ M4a：这里曾经还有 `step` / `halfStep` 两个数，**已删** ────────────────
  *
@@ -263,7 +272,7 @@ export const HALF_STEPS: readonly number[] = [0, 1, 2, 3, 5];
  * `normalizeRewardStep` / `normalizeHalfStep` 归一化的是那一份，**不是**本类型）。
  */
 export interface RewardScale {
-  /** 哪一档：十种收藏图标之一或分数。**只有它决定画什么**；画几个由得分定。 */
+  /** 哪一档：十一种收藏图标之一或分数。**只有它决定画什么**；画几个由得分定。 */
   style: RewardStyle;
 }
 

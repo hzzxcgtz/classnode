@@ -155,7 +155,7 @@ const TITLE_MAX = 200;
 const DESCRIPTION_MAX = 2000;
 
 /**
- * 奖励形式的**取值域**（十种收藏型图标 + 分数）。
+ * 奖励形式的**取值域**（十一种收藏型图标 + 分数）。
  *
  * ⚠️ 这些字面量与标签/符号/取值函数在**前端**（`src/lib/worksheet-reward.ts`）各有一份：
  * 服务端读不到 `src/`，而前端也不该把「什么值合法」的判据放在只有自己看得见的地方。
@@ -163,13 +163,14 @@ const DESCRIPTION_MAX = 2000;
  * **两处必须一起改**。改一处不会报错，只会让存进去的档在学生端落到默认档（画成星星）。
  */
 const REWARD_STYLES: readonly string[] = [
-  'star', 'flower', 'trophy', 'bear',
+  'classnode', 'star', 'flower', 'trophy', 'bear',
   'rocket', 'gem', 'crown', 'lightning', 'bulb', 'key',
   'points',
 ];
 
 /** AI 评分沿用学习单奖励形式；服务端不能运行时导入前端模块，所以与前端映射逐值对齐。 */
 function aiScoringUnitForRewardStyle(style: unknown): string {
+  if (style === 'classnode') return '枚学霸徽章';
   if (style === 'flower') return '朵花';
   if (style === 'trophy') return '座奖杯';
   if (style === 'bear') return '只小熊';

@@ -14,7 +14,7 @@ interface RewardIconProps {
   label?: string;
 }
 
-/** 十种收藏型奖励分为两张 PNG 雪碧图；分数保持清晰的矢量加分徽章。 */
+/** ClassNode 徽章单独成图，其他十种收藏型奖励分为两张雪碧图；分数保持清晰的矢量加分徽章。 */
 export function RewardIcon({
   kind,
   state = 'earned',
@@ -25,6 +25,18 @@ export function RewardIcon({
   const accessible = label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true as const };
   const commonClassName = `${styles.icon}${className ? ` ${className}` : ''}`;
   const style = { '--reward-icon-size': `${size}px` } as CSSProperties;
+
+  if (kind === 'classnode') {
+    return (
+      <span
+        className={`${commonClassName} ${styles.classnodeIcon}`}
+        data-kind={kind}
+        data-state={state}
+        style={style}
+        {...accessible}
+      />
+    );
+  }
 
   if (kind === 'star' || kind === 'flower' || kind === 'trophy' || kind === 'bear') {
     return (

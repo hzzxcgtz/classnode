@@ -10,7 +10,13 @@ import type { AgentSummary, WorksheetQuestionNode, WorksheetSettings } from '@/l
 import { api } from '@/lib/api';
 // 奖励形式的取值域 / 可选步长只有一份（`src/lib/worksheet-reward.ts`）—— 教师端这四行
 // 与学生端那个徽章用的是同一份，加一档只改那一处。
-import { pointsUnitLabel, DEFAULT_HALF_STEP, DEFAULT_REWARD_STEP, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
+import {
+  pointsUnitLabel,
+  DEFAULT_HALF_STEP,
+  DEFAULT_REWARD_STEP,
+  DEFAULT_REWARD_STYLE,
+  REWARD_STYLE_OPTIONS,
+} from '@/lib/worksheet-reward';
 import { QuestionCard } from './question-card';
 import { TaskCard } from './task-card';
 import { dropIndexAt, editorRenderBlocks, hoverPreviewSize, placeHoverPreview, scoreSummary } from './worksheet-editor-core';
@@ -801,7 +807,7 @@ function AddQuestionPicker({ onPick, onClose }: {
  *   · 自动判分（学习单级开关，规格 §3-L）
  *   · 提交后可否修改（`allowResubmit`，规格 §8.4）
  *   · 分析型智能体（课堂分析，M7b）
- *   · 学生奖励：奖励形式（十种卡通奖励 / 分数）（规格 §9.2 与 §12 裁定 3 ——
+ *   · 学生奖励：奖励形式（十一种卡通奖励 / 分数）（规格 §9.2 与 §12 裁定 3 ——
  *     2026-09-23 用户裁定：奖励是**学习单级**的，不做全局设置）
  *   · 外观：学生端主题背景 + 卡片透度（后者只对背景图有意义，紧挨着）
  *
@@ -924,7 +930,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
   // 每个形式的符号与量词都从那一份取值域里取（规格 §9.2：星星/花朵论「个/朵」、
   // 分数论「分」、对错没有步长）。这里**不写**任何一档的字面量。
   const currentStyle = REWARD_STYLE_OPTIONS.find(option => option.value === settings.rewardStyle)
-    ?? REWARD_STYLE_OPTIONS[0];
+    ?? REWARD_STYLE_OPTIONS.find(option => option.value === DEFAULT_REWARD_STYLE)!;
 
   // ★ M7b：分析型智能体的候选。**在模态挂载时按需取**（`{settingsOpen && <SettingsModal/>}`
   // ⇒ 挂载 = 打开）—— 这个列表只有打开设置才用得上，跟着页面一起取是白取。
@@ -1256,7 +1262,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
           （`routes/worksheets.ts` 的 `resolvePoints(node, DEFAULT_POINTS)`）。
           ⚠️ **不要顺手把 `settings` 里的那两个键也删掉**：老行的 JSON 里还带着它们，
           删类型会让读旧行出错；它们只是**不再被读**。
-          ⚠️ 上面那块「奖励形式」（十种卡通奖励 / 分数）**留着** —— 那是**呈现形式**。
+          ⚠️ 上面那块「奖励形式」（十一种卡通奖励 / 分数）**留着** —— 那是**呈现形式**。
         */}
 
         </div>

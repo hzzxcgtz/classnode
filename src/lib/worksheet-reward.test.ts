@@ -47,10 +47,11 @@ function scale(over: Partial<RewardScale> = {}): RewardScale {
 
 // ── 1. 取值域与默认档 ────────────────────────────────────────────────────
 
-test('十种卡通奖励加分数的取值两两不同，分数保留、对错不再出现在教师选项中', () => {
+test('十一种卡通奖励加分数的取值两两不同，分数保留、对错不再出现在教师选项中', () => {
   const values = REWARD_STYLE_OPTIONS.map(option => option.value);
+  assert.equal(values[0], 'classnode', 'ClassNode 学霸机器人必须放在教师端的第一个选择位置');
   assert.deepEqual([...values].sort(), [
-    'bear', 'bulb', 'crown', 'flower', 'gem', 'key',
+    'bear', 'bulb', 'classnode', 'crown', 'flower', 'gem', 'key',
     'lightning', 'points', 'rocket', 'star', 'trophy',
   ]);
   assert.equal(new Set(values).size, values.length, '取值重复会让单选按钮选中两个');
@@ -222,6 +223,7 @@ test('累计 = 每题之和：同一份配置下，逐个求和的桶与逐步�
 test('🔴 pointsUnitLabel：量词与图标跟着学习单的奖励档走 —— 不能一直是「分」', () => {
   // 教师原话：「这里要根据学习单的设置来调整，比如几朵花，几颗五角星，
   // **不能一直使用「分」**。」+「后面要加 🌸 或 ⭐ 图标」。
+  assert.equal(pointsUnitLabel('classnode'), '枚学霸徽章');
   assert.equal(pointsUnitLabel('star'), '颗星星', '教师原话是「几颗五角星」—— 不是「个」');
   assert.equal(pointsUnitLabel('flower'), '朵花');
   assert.equal(pointsUnitLabel('trophy'), '座奖杯');

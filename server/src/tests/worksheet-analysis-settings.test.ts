@@ -71,9 +71,9 @@ test('★ 2026-09-30：「提交后可以修改」的默认是**关**（教师�
   assert.equal((normalizeSettings({ allowResubmit: false }) as Record<string, unknown>).allowResubmit, false);
 });
 
-test('十种卡通奖励都会原样落库，坏值仍回落星星', () => {
+test('十一种卡通奖励都会原样落库，坏值仍回落星星', () => {
   for (const rewardStyle of [
-    'star', 'flower', 'trophy', 'bear', 'rocket',
+    'classnode', 'star', 'flower', 'trophy', 'bear', 'rocket',
     'gem', 'crown', 'lightning', 'bulb', 'key',
   ]) {
     const out = normalizeSettings({ rewardStyle }) as Record<string, unknown>;

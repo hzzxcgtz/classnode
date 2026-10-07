@@ -1384,3 +1384,111 @@ test('🔴 题目包在任务里时，小题全交完 ⇒ 整卷照样 submitted
   const whole = await db.prisma.worksheetResponse.findFirstOrThrow();
   assert.equal(whole.status, 'submitted', '两道小题都交了 ⇒ 整卷必须 submitted（任务不算一道题）');
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ★ 2026-10-07（教师：「AI 的评分是要写回的，要参与总分的统计」）
+   🔴 **两个会把写回去的分抹掉的口子**，不堵住就是「写回去了、学生一保存就没了」：
+      ① 存草稿时把判分三列清成 null；
+      ② 再次提交时用本地 `grade()` 的结果覆盖（绘图题 `grade()` 回 null ⇒ 清空）。
+   规则：**本地判分对这道题没有结论**时，行里非空的三列**只可能来自 AI** ⇒ 两处都不许清。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * 一道**绘图题**（本地判分对它恒回 `null`：`judge` 认 ink 值 ⇒ 不判）。
+ * ⚠️ 别把它塞进 `SAMPLE_CONTENT` —— 那个文件里「答案键必须都在夹具里」那几条判据会跟着变。
+ */
+const DRAWING_CONTENT = {
+  schemaVersion: 1,
+  nodes: [{
+    id: 'q_draw', type: 'drawing', prompt: '画一画水循环', inputMode: 'handwriting',
+    points: { full: 10, half: 5 }, data: {}, children: [],
+  }],
+};
+const INK = {
+  format: 'ink/v1', canvas: { w: 320, h: 240 },
+  strokes: [{ points: [[0.1, 0.1], [0.9, 0.9]], width: 0.01, color: '#111111' }],
+};
+
+/** 一间课 + 一份**绘图**学习单 + 一个参与者。 */
+async function seedDrawingClassroom(prisma: PrismaClient, code: string) {
+  const worksheet = await prisma.worksheet.create({
+    data: { title: '绘图学习单', content: DRAWING_CONTENT, settings: SAMPLE_SETTINGS as never },
+  });
+  const { classroom, participant } = await seedClassroom(prisma, code);
+  await prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  return { worksheet, classroom, participant };
+}
+
+/** 库里那一行的判分三列（**整组**读 —— 只读一个会把「三列不一致」漏过去）。 */
+async function rowGrade(prisma: PrismaClient) {
+  const row = await prisma.worksheetAnswer.findFirstOrThrow();
+  return { isCorrect: row.isCorrect, gradeState: row.gradeState, score: row.score, status: row.status };
+}
+
+test('★ AI 写回的分不会被「改回草稿」抹掉（口子 ①）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const { worksheet, classroom, participant } = await seedDrawingClassroom(db.prisma, '9101');
+  const token = createStudentToken(classroom.id, participant.id);
+
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_draw', value: INK }, bearer(token));
+  await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'q_draw' }, bearer(token));
+  // 分析跑完，AI 的分写回来了（这里直接改库 —— 那条链路由 analysis-run-endpoint 的用例管）
+  await db.prisma.worksheetAnswer.updateMany({ data: { isCorrect: false, gradeState: 'partial', score: 8 } });
+
+  // 学生继续编辑（存草稿）
+  const save = await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_draw', value: INK }, bearer(token));
+  assert.equal(save.status, 200, await save.text());
+
+  assert.deepEqual(
+    await rowGrade(db.prisma),
+    { isCorrect: false, gradeState: 'partial', score: 8, status: 'draft' },
+    '学生一保存，AI 刚写回的分就没了 —— 这正是要修的（本地判分对绘图题本来就没有结论）',
+  );
+});
+
+test('★ AI 写回的分不会被「再次提交」抹掉（口子 ②）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const { worksheet, classroom, participant } = await seedDrawingClassroom(db.prisma, '9102');
+  const token = createStudentToken(classroom.id, participant.id);
+
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_draw', value: INK }, bearer(token));
+  await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'q_draw' }, bearer(token));
+  await db.prisma.worksheetAnswer.updateMany({ data: { isCorrect: false, gradeState: 'partial', score: 8 } });
+
+  // 学生改了画、再交一次
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_draw', value: INK }, bearer(token));
+  const again = await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'q_draw' }, bearer(token));
+  assert.equal(again.status, 200, await again.text());
+
+  assert.deepEqual(
+    await rowGrade(db.prisma),
+    { isCorrect: false, gradeState: 'partial', score: 8, status: 'submitted' },
+    '再次提交时本地 grade() 回 null ⇒ 把 AI 写回的分清空了 —— 这正是要修的',
+  );
+});
+
+test('🔴 反面对照：本地判分**有**结论的题，改回草稿**仍然**清三列', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const worksheet = await seedWorksheet(db.prisma);
+  const { classroom, participant } = await seedClassroom(db.prisma, '9103');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+
+  // q_1 是单选、autoGrade 开着 ⇒ 本地判分**有**结论
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_1', value: CHOICE(['B']) }, bearer(token));
+  await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'q_1' }, bearer(token));
+  assert.equal((await rowGrade(db.prisma)).gradeState, 'correct', '前置：先要有一次真的本地判分');
+
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_1', value: CHOICE(['A']) }, bearer(token));
+  assert.deepEqual(
+    await rowGrade(db.prisma),
+    { isCorrect: null, gradeState: null, score: null, status: 'draft' },
+    '这道题本地判分有结论 ⇒ 三列必须照旧清干净（不清的话看板会画出一个库里已经不成立的 ✓）',
+  );
+});

@@ -2513,7 +2513,8 @@ router.put('/:id/answers', async (req, res) => {
     if (!questionId) return res.status(400).json({ error: '缺少 questionId' });
     // `questionId` 必须**属于这份 content**：题目 id 是答案行的关联键（规格 §3-P），
     // 收下一个不属于它的 id 会在看板上凭空多出一道题。
-    if (!findQuestion(ctx.worksheet.content, questionId)) {
+    const node = findQuestion(ctx.worksheet.content, questionId);
+    if (!node) {
       return res.status(400).json({ error: '该题不属于这份学习单' });
     }
 
@@ -2570,7 +2571,7 @@ router.put('/:id/answers', async (req, res) => {
     //
     // ⚠️ 这一步排在 `ensureResponse` **之前**：被拒的保存不留任何痕迹
     // （建会话/把整卷从 submitted 拨回 in-progress 都算痕迹）。
-    const { allowResubmit } = readStudentSettings(ctx.worksheet.settings);
+    const { allowResubmit, autoGrade } = readStudentSettings(ctx.worksheet.settings);
     if (!allowResubmit) {
       const current = await ctx.prisma.worksheetAnswer.findFirst({
         where: {
@@ -2590,6 +2591,26 @@ router.put('/:id/answers', async (req, res) => {
 
     const now = new Date();
     const response = await ensureResponse(ctx, now);
+    /*
+     * ★ 2026-10-07（教师：「AI 的评分是要写回的」）—— **别把 AI 写回的分清掉。**
+     *
+     * 🔴 判据是「**本地判分对这道题有没有结论**」，拿**新的**值去问判分器
+     *   （保存之后行里就是这个值 ⇒ 提交那一次会按同一个值判断，两处一致）：
+     *   · 有结论（选择题、填空……）⇒ 照旧清三列，那是「上一次本地判分的结果」；
+     *   · 没结论（绘图 / 手写 / 关掉自动评分）⇒ 行里非空的三列**只可能来自 AI**，
+     *     而 AI 判的是一份**快照**，学生接着画画并不使它失效（要不要重判由教师重跑决定）。
+     * ⚠️ 保留的是**整组**三列（同生共死）：只留 `score` 会让这一行变成
+     *   「没判对、但有分」的自相矛盾形状。
+     */
+    const localHasVerdict = autoGrade
+      && grade(node, body.value, resolvePoints(node, DEFAULT_POINTS)) !== null;
+    // ⚠️ 只在**需要保留**时才多查一次（普通题一个字都不多查 —— 保存是防抖之后频繁发的）。
+    const previous = localHasVerdict ? null : await ctx.prisma.worksheetAnswer.findUnique({
+      where: { responseId_questionId: { responseId: response.id, questionId } },
+      select: { isCorrect: true, gradeState: true, score: true },
+    });
+    const keepAi = previous && previous.score !== null ? previous : null;
+
     const answer = await ctx.prisma.worksheetAnswer.upsert({
       where: { responseId_questionId: { responseId: response.id, questionId } },
       // ★ 2026-09-28：首次落库写全三列。`saveCount` 必须是 **1**（不是 null）——
@@ -2598,7 +2619,7 @@ router.put('/:id/answers', async (req, res) => {
         responseId: response.id, questionId, value: toJsonValue(body.value), status: 'draft',
         createdAt: now, savedAt: now, saveCount: 1,
       },
-      // ⚠️ `isCorrect: null` 不是顺手清一下：`WorksheetAnswer.isCorrect` 的语义是
+      // ⚠️ 这里清三列（而不是留 `null`）不是顺手：`WorksheetAnswer.isCorrect` 的语义是
       // 「autoGrade 开启**且已提交**时才有值」（规格 §4.1）。改回 draft 却留着上次的
       // `true`，看板会显示成「这题刚判对」，而学生此刻正在把它改错。
       //
@@ -2607,13 +2628,15 @@ router.put('/:id/answers', async (req, res) => {
       // 学生端会照 `score` 画出一个**库里已经不成立**的奖励，而看板照 `gradeState` 画一个 ✓/½/✗。
       // 三列一起清是唯一的自洽写法 —— 这与 `use-worksheet-answers.ts:327` 那条
       // 「得分必须跟着清」是同一件事的两端。
+      // ⚠️ `keepAi` 见上面：本地判分对这道题**没有结论**时，那三列是 AI 的（不是本地判分的
+      // 残留），学生这次保存**不使它失效** —— 所以整组原样留着，而不是清成 null。
       update: {
         value: toJsonValue(body.value),
         status: 'draft',
         submittedAt: null,
-        isCorrect: null,
-        gradeState: null,
-        score: null,
+        isCorrect: keepAi ? keepAi.isCorrect : null,
+        gradeState: keepAi ? keepAi.gradeState : null,
+        score: keepAi ? keepAi.score : null,
         // ★ 2026-09-28：作答活动。⚠️ **`createdAt` 刻意不在 update 里** ——
         // 它是「这一题第一次落库」的时刻，每次保存都写它等于每次把它抹掉，
         // 而屏幕上的「首次作答 X 分钟前」就会永远是「刚刚」，且没有任何报错。
@@ -2687,7 +2710,9 @@ router.post('/:id/answers/submit', async (req, res) => {
           participantId: ctx.participantId,
         },
       },
-      select: { responseId: true, value: true },
+      // ★ 2026-10-07：三列一起取回来 —— 本地判分对这道题**没有结论**时（主观题 /
+      //   关掉自动评分），它们**只可能来自 AI 写回**，提交这一下不许把它们覆盖没。
+      select: { responseId: true, value: true, isCorrect: true, gradeState: true, score: true },
     });
     if (!answer) return res.status(400).json({ error: '请先作答再提交本题' });
 
@@ -2723,12 +2748,21 @@ router.post('/:id/answers/submit', async (req, res) => {
     // 那句在 D1+D2 改了入参（收**整行**而不是一个布尔）、D3 把 `score` 提为第一优先级之后
     // **已经不成立**（新行有 `score`，兜底那两行根本走不到）。理由换成了上面那条**旧行**的理由 ——
     // 「不许改名」这个结论没变，因为它从来不只是关于奖励的。
-    const isCorrect = verdict ? verdict.state === 'correct' : null;
-    const gradeState = verdict ? verdict.state : null;
-    // ⚠️ `score` 与 `gradeState` **同生共死**：`verdict` 为 null 时两个都是 null。
+    /*
+     * ★ 2026-10-07（教师：「AI 的评分是要写回的」）—— **别把 AI 写回的分覆盖没。**
+     * 🔴 `verdict === null` = 本地判分对这道题**没有结论**（绘图 / 手写 / 关掉自动评分）
+     *   ⇒ 行里非空的三列**只可能来自 AI**（教师 2026-10-07 决定 2），原样保留。
+     * ⚠️ `verdict` 有结论时照旧覆盖 —— 那一行归本地。**混合填空题**就是这种：
+     *   它的 `grade()` 有结论，而算的只是本地那几个空 ⇒ AI 的整题分本来就不该写进去。
+     */
+    const keepAi = verdict === null && answer.score !== null;
+    const isCorrect = verdict ? verdict.state === 'correct' : keepAi ? answer.isCorrect : null;
+    const gradeState = verdict ? verdict.state : keepAi ? answer.gradeState : null;
+    // ⚠️ `score` 与 `gradeState` **同生共死**：`verdict` 为 null 时两个都是 null
+    //（保留 AI 那份时两者一起保留）。
     // 只写一个会让读的一侧在「有分无态」与「有态无分」之间猜（D3 的兜底就是按
     // 「`score` 是 null 才回落到 `gradeState` 推导」写的）。
-    const score = verdict ? verdict.score : null;
+    const score = verdict ? verdict.score : keepAi ? answer.score : null;
 
     const updated = await ctx.prisma.worksheetAnswer.update({
       where: { responseId_questionId: { responseId: response.id, questionId } },

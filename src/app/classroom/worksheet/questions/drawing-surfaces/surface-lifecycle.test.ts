@@ -714,9 +714,12 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   // ⑤ 浮层靠**视口换算**跟随（不引 Provider、也不复刻折线算法）。
   assert.match(live, /onMove=\{\(_, next\) => setViewport\(next\)\}/, '没有跟视口');
   // ★ 教师 2026-10-06：「距离太远，应该就在那根连接线上」——第一版取两节点中心的中点，
-  //   而 `smoothstep` 是折线，中心点经常不在路径上。现在必须用库自己的路径函数取**标签点**。
-  assert.match(live, /getSmoothStepPath\(\{/, '锚点没有用库的路径函数（第一版就是这里飘的）');
-  assert.match(live, /const \[, labelX, labelY\] = getSmoothStepPath/, '没有取标签点 labelX/labelY');
+  //   而 `smoothstep` 是折线，中心点经常不在路径上。锚点必须用库自己的路径函数取**标签点**。
+  // ★ 教师 2026-10-07：「控制点必须**永远压在线上面**」——于是更进一步：锚点走的必须是
+  //   **画线那一路同一个函数**（`flowEdgeGeometry`），否则线一动、浮层与把手就留在原地。
+  //   ⚠️ 上一版这里是**裸的** `getSmoothStepPath`（绕行点一个都不带）⇒ 算的是**默认路**的中点。
+  assert.match(live, /const \[, labelX, labelY\] = flowEdgeGeometry\(/, '锚点没有取那条**画出来的路径**的标签点（第一版就是这里飘的）');
+  assert.match(live, /const smoothStepPath: SmoothStepFn = \(params\) => \{[\s\S]{0,160}?getSmoothStepPath\(/, '那个路径函数没有真的落到库上');
   /*
    * ⑤ 浮层命中区的尺寸**只有一个真源：样式表**。
    * ⊘ 2026-10-07：这里原来拿组件里的 `FLOAT_SIZE` 与 CSS 对（「两份必须一致」）。
@@ -1519,20 +1522,22 @@ test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就�
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
   /*
     ⚠️ 两个锚点必须**分开存在**、且分别被引用 —— 谁把它们换回来都要变红：
-      · 中点（`midX/midY`）＝ `getSmoothStepPath` 回的**标签点**（线上的字就画在那儿）⇒ 就地输入框；
+      · 中点（`midX/midY`）＝ **画出来的那条路径**的标签点（线上的字就画在那儿）⇒ 就地输入框；
+        ★ 2026-10-07 起它由 `flowEdgeGeometry` 给（与画线同一个函数，绕行点一起算进去）——
+          上一版是裸的 `getSmoothStepPath`，学生一拖控制柄，这个点就留在原地。
       · 终点（`endX/endY`）＝ **目标节点那一侧**的句柄点（`to`）＝ 箭头落点 ⇒ 选中后浮出的删除图标。
     ⚠️ 别拿起点（source 那端）当终点：教师指的是**箭头**落下的那一端。
   */
   // ⚠️ 判据**按语义**判（抠出 `edgeFlowAnchors` 的函数体，看**每个锚点是从哪个数据来的**），
   //    不逐字钉 `const { midX: labelX … } = anchors;` / 整条 `return { … }` —— 实现刚从单行
   //    解构改成了多行 offsetAlong，这类判据连红五次、还两次只同步一半 ✗。变量叫什么名字都行：
-  //    先认出「库回的标签点」与「目标侧/起点侧的句柄点」这三个来源，再看锚点表用了谁。
+  //    先认出「那条路径的标签点」与「目标侧/起点侧的句柄点」这三个来源，再看锚点表用了谁。
   const anchorsAt = live.indexOf('const edgeFlowAnchors = useCallback');
   const anchorsBody = anchorsAt === -1 ? '' : live.slice(anchorsAt, live.indexOf('\n  const ', anchorsAt + 1));
   assert.ok(anchorsBody.length > 400, '锚点函数没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  const labelPoint = anchorsBody.match(/const \[, (\w+), (\w+)\] = getSmoothStepPath/) || [];
-  assert.ok(labelPoint[1] && labelPoint[2], '没有取库回的标签点 labelX/labelY');
-  assert.match(anchorsBody, new RegExp(`midX: ${labelPoint[1]}[\\s\\S]{0,80}?midY: ${labelPoint[2]}`), '中点锚点没有取自 getSmoothStepPath 的标签点');
+  const labelPoint = anchorsBody.match(/const \[, (\w+), (\w+)\] = flowEdgeGeometry\(/) || [];
+  assert.ok(labelPoint[1] && labelPoint[2], '没有取那条路径的标签点');
+  assert.match(anchorsBody, new RegExp(`midX: ${labelPoint[1]}[\\s\\S]{0,80}?midY: ${labelPoint[2]}`), '中点锚点没有取自那条路径的标签点');
   // ⚠️ ★ 2026-10-06：「句柄点在节点那一侧的哪儿」抽成了模块级 `handleFlowPoint(node, handleId, fallback)`
   //    （锚点表与 `onConnectEnd` 的几何兜底共用同一份 —— 两份必然分叉）。判据因此认**语义**：
   //    端点必须由「**目标**节点 + 那条边的 targetHandle」算出来；变量名/调用形状随便改。

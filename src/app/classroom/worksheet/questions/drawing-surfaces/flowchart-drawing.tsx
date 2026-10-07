@@ -44,7 +44,13 @@ import {
   type FlowHistory,
   type FlowSnapshot,
 } from '@/lib/worksheet-flowchart-history.ts';
-import { flowEdgeGeometry } from '@/lib/worksheet-flowchart-edge.ts';
+import {
+  clampToTrack,
+  flowEdgeGeometry,
+  flowRouteTrack,
+  type FlowRouteTrack,
+  type SmoothStepFn,
+} from '@/lib/worksheet-flowchart-edge.ts';
 import { tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
 import { flowchartSvg } from '@/lib/worksheet-flowchart-svg.ts';
 import { svgToPngBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
@@ -516,6 +522,41 @@ function toFlowPayload(nodes: FlowNode[], edges: Edge[]) {
 
 
 /**
+ * 库那个算路径的函数，**包一层收窄成三元组** —— `FlowEdge`（画线）与锚点表（`edgeFlowAnchors`，
+ * 算控制柄/浮层/交点节点停在哪儿）**共用这一份**。
+ *
+ * 🔴 两处各包一次必然分叉，而分叉的表现是「浮层停在一条屏幕上并不存在的线上」——**不报错**。
+ * ⚠️ 库返回的是 **5 元组**（`[path, labelX, labelY, offsetX, offsetY]`），这里只关心前三个。
+ */
+const smoothStepPath: SmoothStepFn = (params) => {
+  const [path, labelX, labelY] = getSmoothStepPath(params as Parameters<typeof getSmoothStepPath>[0]);
+  return [path, labelX, labelY];
+};
+
+/**
+ * 一份「算这条边要用的数」—— `FlowEdge`（画线）与锚点表（`edgeFlowAnchors`）**必须用同一份**。
+ *
+ * ⚠️ 画板这边**没有** `pathOptions`（既没设 `defaultEdgeOptions`，也不落盘），所以锚点表传
+ *    `undefined` 与边组件收到的是同一套默认值。将来谁要加 `pathOptions`，**两边一起加**。
+ */
+function edgeGeometryParams(
+  ends: {
+    sourceX: number; sourceY: number; sourcePosition: string;
+    targetX: number; targetY: number; targetPosition: string;
+  },
+  route: FlowEdgeData | undefined,
+  pathOptions: EdgeProps['pathOptions'],
+): Parameters<typeof flowEdgeGeometry>[0] {
+  return {
+    ...ends,
+    ...(route?.routeX !== undefined ? { centerX: route.routeX } : {}),
+    ...(route?.routeY !== undefined ? { centerY: route.routeY } : {}),
+    ...(pathOptions?.offset !== undefined ? { offset: pathOptions.offset } : {}),
+    ...(pathOptions?.borderRadius !== undefined ? { borderRadius: pathOptions.borderRadius } : {}),
+  };
+}
+
+/**
  * ★ 2026-10-07（教师）：这一份自定义边**只做两件事**，其余**全部**交给库的 `BaseEdge`。
  *
  *   ① **「折线太短就画成直线」** —— 教师：「在移动某个图形时，连接线接近直线时需要吸附成
@@ -533,20 +574,10 @@ function FlowEdge({
   markerEnd, markerStart, style, pathOptions, interactionWidth, data,
 }: EdgeProps) {
   const route = data as FlowEdgeData | undefined;
-  const [path, labelX, labelY] = flowEdgeGeometry({
-    sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
-    ...(route?.routeX !== undefined ? { centerX: route.routeX } : {}),
-    ...(route?.routeY !== undefined ? { centerY: route.routeY } : {}),
-    ...(pathOptions?.offset !== undefined ? { offset: pathOptions.offset } : {}),
-    ...(pathOptions?.borderRadius !== undefined ? { borderRadius: pathOptions.borderRadius } : {}),
-    /*
-     * ⚠️ 库那个函数返回的是 **5 元组**（`[path, labelX, labelY, offsetX, offsetY]`），
-     * 而这里只关心前三个 ⇒ 包一层收窄，别把它整个塞进那个三元的形状里（`tsc` 会当场报）。
-     */
-  }, (params) => {
-    const [path, centerX, centerY] = getSmoothStepPath(params as Parameters<typeof getSmoothStepPath>[0]);
-    return [path, centerX, centerY];
-  });
+  const [path, labelX, labelY] = flowEdgeGeometry(
+    edgeGeometryParams({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition }, route, pathOptions),
+    smoothStepPath,
+  );
   return (
     <BaseEdge
       id={id}
@@ -570,46 +601,60 @@ function FlowEdge({
 /**
  * ★ 2026-10-07（教师）：「这个区域的折线上还是需要出现一个**控制柄**，可以让用户上下拖动这条
  *   横线，或者是左右拖动一条竖线，但是**这个控制柄本身不允许移动位置**」。
+ *   ★ 紧接着第二次报障：「连线的控制点必须**永远压在线上面**，不能漂移到线外」。
  *
  * 🔴 最后那半句是整个设计的钥匙 —— 它**不是**自由浮层（不是「拖到哪儿算哪儿」），
- *    而是**长在折线上的一个把手**：拖它只是**移动那一段线**，把手自己**永远在线上面**
- *    （因为它就画在库算出来的路径点上，线一动它跟着动，不需要任何额外约束）。
- * ✅ **一个轴**：`axis` 由边的走向定 ——
- *      · 竖直的边（`bottom→top`）中间是**横线** ⇒ 拖它 = **上下** ⇒ 改 `routeY`；
- *      · 水平的边（`right→left`）中间是**竖线** ⇒ 拖它 = **左右** ⇒ 改 `routeX`。
- *    这正是教师说的「上下拖动这条横线，或者左右拖动一条竖线」。
- * ⚠️ 另一个轴保持**两端中点**（= 库的默认值）—— 给了 `centerX` 就必须同时给 `centerY`，
- *    否则库会拿 `undefined` 去比（见 `getPoints` 里那句 `center.x ?? …`）。
+ *    而是**长在折线上的一个把手**：拖它只是**移动那一段线**，把手自己**永远在线上面**。
+ *
+ * 🔴 上一版没做到，正是教师截图里那颗飘在线外的空心圆：锚点取自 `data.routeX/routeY`，
+ *    而拖动**只写一个轴**（`axis='y'` 只写 `routeY`）⇒ 那句
+ *    `routeX !== undefined && routeY !== undefined` 不成立 ⇒ 退回「库算的**默认中点**」
+ *    —— 线已经跟着手指走了，把手还钉在原来那儿。
+ * ✅ 现在把手的坐标**一律由锚点表给**（`anchors.midX/midY` = **画出来的那条路径**的中点），
+ *    与线同源 ⇒ 线一动它跟着动，不需要任何额外约束。
+ *
+ * 轴与范围都来自 `track`（`flowRouteTrack`）：
+ *   · `axis` 由**边自己的走向**定（不是句柄 id）—— 中段横着就上下拖、竖着就左右拖；
+ *   · `min/max` 是**能走到哪儿**：越过去中段就会折返（教师 2026-10-07 那张图的「最低位置」）。
+ * ⚠️ `track` 为 `null`（拐弯的边）时**调用方不渲染它** —— 那种边库压根不读绕行点，
+ *    给了把手就是「拖了没反应」（教师刚报过的那类错）。
  */
 function FlowRouteHandle({
-  edgeId, anchor, axis, vertical, disabled,
+  edgeId, anchor, track, disabled, onDragStateChange,
 }: {
   edgeId: string;
   anchor: { x: number; y: number };
-  axis: 'x' | 'y';
-  vertical: boolean;
+  track: FlowRouteTrack;
   disabled: boolean;
+  /** 拖动起止告诉画板一声 —— 历史那条 effect 靠它把**整段拖动合成一步**（见那边的注释）。 */
+  onDragStateChange: (dragging: boolean) => void;
 }) {
   const { setEdges, screenToFlowPosition } = useReactFlow<FlowNode, Edge>();
   const onPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (disabled) return;
     event.preventDefault();
     event.stopPropagation();
+    onDragStateChange(true);
+    const key = track.axis === 'x' ? 'routeX' : 'routeY';
     const move = (pointer: PointerEvent) => {
       const point = screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY });
+      /* 🔴 夹进 `track` 的范围 —— 教师那张图说的「最低位置」就是 `track.max`（见 `flowRouteTrack`）。 */
+      const value = clampToTrack(track, track.axis === 'x' ? point.x : point.y);
       setEdges((current) => current.map((edge) => (edge.id === edgeId
-        ? { ...edge, data: { ...(edge.data as FlowEdgeData | undefined), [axis === 'x' ? 'routeX' : 'routeY']: axis === 'x' ? point.x : point.y } }
+        ? { ...edge, data: { ...(edge.data as FlowEdgeData | undefined), [key]: value } }
         : edge)));
     };
     const stop = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', stop);
       window.removeEventListener('pointercancel', stop);
+      onDragStateChange(false);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', stop, { once: true });
     window.addEventListener('pointercancel', stop, { once: true });
   };
+  const vertical = track.axis === 'y';
   return (
     <button
       className={styles.flowRouteHandle}
@@ -689,6 +734,37 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    * 聚焦置位、失焦清位 ⇒ 整段打字合成一步（与节点文字那套「本地草稿 + 提交一次」同一个口径）。
    */
   const typingRef = useRef(false);
+  /**
+   * ★ 2026-10-07：**控制柄正在被拖**（见 `setRouteDragging`）。
+   *
+   * 🔴 没有它的话，拖一次控制柄会**把整个撤销栈吃光**：拖动期间每个 `pointermove` 都写一次
+   *    `edges` ⇒ 指纹每次都变 ⇒ 那条变化检测 effect 每帧压一步（50 步的栈，一次拖动就没了）。
+   *    这正是审查报过的 **C2**（当时那颗「路径调整圆点」也是这个毛病），
+   *    「全回原版」把它连同守卫一起删了，后来控制柄回来、守卫却没回来 —— 于是同一个坑又开了一次。
+   * ⚠️ 与节点拖动那条守卫**判据不同**：那条必须读库自己的 `node.dragging`（库有两条路径结束
+   *    拖动时不回调 ⇒ 自己置的标记会永久卡住，见那里的注释）。这一条是**我们自己的**
+   *    `pointerdown → pointerup/pointercancel` 配对，两条收尾都会走到；而且组件一卸载这个 ref
+   *    就没了。所以这里自己置位是安全的。
+   */
+  const routeDragRef = useRef(false);
+  /**
+   * 松手时**主动催一次**变化检测（见 `setRouteDragging`）。
+   * ⚠️ 它只负责「让那条 effect 再跑一次」，不参与任何判据 —— 别拿它当「拖过了」的记号。
+   */
+  const [dragEpoch, setDragEpoch] = useState(0);
+  /**
+   * 控制柄的拖动起止。
+   *
+   * 拖动期间置位 ⇒ 变化检测整段跳过（`lastSigRef` 停在这一拖**之前**，于是松手后它比的正好是
+   * 「拖动前 vs 拖动后」，**恰好压一步** —— 与节点拖动那一路同一个口径）。
+   * 🔴 松手那一下**必须自己催一次**：只把标记清掉**不会再触发任何 state 变化**，
+   *    那条 effect 的依赖（`nodes`/`edges`）也没变 ⇒ 不催的话这一拖**一步都不记**（撤销退不回去）。
+   *    （节点拖动不需要这一句，是因为库会把 `node.dragging` 置回 false —— 那本身就是一次 state 变化。）
+   */
+  const setRouteDragging = useCallback((dragging: boolean) => {
+    routeDragRef.current = dragging;
+    if (!dragging) setDragEpoch((value) => value + 1);
+  }, []);
   /** ★ 2026-10-06（审查发现 I2）：这棵画板的根元素 —— 用来判定「这个快捷键该不该由我响应」。 */
   const rootRef = useRef<HTMLDivElement | null>(null);
   /** 最后一次 pointerdown 落在这台画板里吗（见下面那条捕获相监听）。 */
@@ -777,8 +853,11 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
       **自愈** —— 库在 `updateNodePositions(dragItems, false)` 里会把它置回 false，
       **abort 路径也走那一句**。（★ 审查发现 I1。）
       ⚠️ `typingRef` 是另一条：工具条那颗「自定义」标注框**打字期间**先别记历史（M1）。
+      ⚠️ `routeDragRef` 是第三条：**拖控制柄**期间先别记（见 `setRouteDragging`）——
+        没有它，拖一下就把 50 步的撤销栈吃光（一次拖动 = 每帧一步）。
+        松手那一下由 `dragEpoch` 催一次，所以**依赖里必须带着它**。
     */
-    if (typingRef.current || nodes.some((node) => node.dragging)) return;
+    if (typingRef.current || routeDragRef.current || nodes.some((node) => node.dragging)) return;
     const sig = flowchartSignature(nodes, edges);
     if (lastSigRef.current === null) { lastSigRef.current = sig; return; } // 首帧：只立基线
     if (lastSigRef.current === sig) return;                                 // 没有实质变化
@@ -787,7 +866,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     lastSigRef.current = sig;
     persistHistory(); // ★ 存回模块级的表（没传 historyKey 时是空操作）
     setHistoryVersion((v) => v + 1); // 让两颗按钮的 disabled 跟着刷新
-  }, [nodes, edges, persistHistory]);
+  }, [nodes, edges, persistHistory, dragEpoch]);
 
   /**
    * ★ 2026-10-06（教师）：「连接线默认没箭头的吗？」
@@ -983,17 +1062,25 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
        同一张表，只是喂 `sourcePosition`（`smoothstep` 的首段一定沿它出来）。 */
     const out = handleOutwardAxis(sourcePosition);
     /*
-     * ⚠️ 这里**不再**把 `data.routeX/routeY` 传给 `centerX/centerY`：教师定了「全回原版」之后，
-     * 边就是库内置的 `smoothstep`（它压根不认 `centerX/centerY`，见 `FLOW_EDGE_TYPE` 的注释），
-     * 而写路由点的那颗圆点也删了。这里算的必须是**库画出来的那条路径**上的中点 ——
-     * 否则浮层会停在一条屏幕上并不存在的线上。
+     * ★ 2026-10-07（教师：「连线的控制点必须**永远压在线上面**，不能漂移到线外」）：
+     *   中点**照着画出来的那条路径**算 —— 走 `flowEdgeGeometry`（与 `FlowEdge` **同一个函数、
+     *   同一份入参**），于是它一定落在线段正中：线上文字、就地输入框、控制柄、新插的交点节点
+     *   全都锚在这一个点上。
+     * 🔴 上一版这里是**裸的** `getSmoothStepPath`（绕行点一个都不带）⇒ 算的是**默认那条路**的中点。
+     *    学生一拖控制柄，线走了、这个点还留在原地 ⇒ 控制柄飘到线外（教师截图那颗空心圆），
+     *    就地输入框同样会歪到别的线上。
+     * ⚠️ 只算一次、两处共用：路径函数调用两次必然分叉，而分叉**不报错**。
      */
-    const [, labelX, labelY] = getSmoothStepPath({
-      sourceX: from.x, sourceY: from.y, sourcePosition,
-      targetX: to.x, targetY: to.y, targetPosition,
-    });
+    const params = edgeGeometryParams(
+      { sourceX: from.x, sourceY: from.y, sourcePosition, targetX: to.x, targetY: to.y, targetPosition },
+      edge.data as FlowEdgeData | undefined,
+      /* ⚠️ 画板没有 `pathOptions`（见 `edgeGeometryParams`）—— 边组件收到的也是默认值。 */
+      undefined,
+    );
+    const [, labelX, labelY] = flowEdgeGeometry(params, smoothStepPath);
     return {
-      midX: labelX, midY: labelY, endX: to.x, endY: to.y, fromX: from.x, fromY: from.y,
+      midX: labelX, midY: labelY, track: flowRouteTrack(params),
+      endX: to.x, endY: to.y, fromX: from.x, fromY: from.y,
       backX: back.x, backY: back.y,
       outX: out.x, outY: out.y,
     };
@@ -1611,22 +1698,19 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
         */}
         {selectedEdgeId && !labelingEdge && (() => {
           const anchors = edgeFlowAnchors(selectedEdgeId);
-          if (!anchors) return null;
-          const edge = edges.find((item) => item.id === selectedEdgeId);
-          const route = edge?.data as FlowEdgeData | undefined;
-          const vertical = edge?.sourceHandle === 'bottom' || edge?.sourceHandle === 'top';
-          // 有绕行点就画在绕行点上（那是横线 / 竖线所在），否则画在库算出来的路径中点。
-          const flowPoint = route?.routeX !== undefined && route?.routeY !== undefined
-            ? { x: route.routeX, y: route.routeY }
-            : { x: anchors.midX, y: anchors.midY };
+          /*
+           * 🔴 `track` 为 `null` ⇒ **不画把手**：两端句柄相邻（拐弯的边）时库压根不读绕行点，
+           *    给了把手就是「拖了没反应」（教师刚报过的那类错）。宁可没有，也不给一个骗人的。
+           */
+          if (!anchors?.track) return null;
           return (
             <FlowRouteHandle
               edgeId={selectedEdgeId}
-              anchor={{ x: viewport.x + flowPoint.x * viewport.zoom, y: viewport.y + flowPoint.y * viewport.zoom }}
-              /* 竖直的边中间是**横线** ⇒ 拖它上下走；水平的边中间是**竖线** ⇒ 拖它左右走。 */
-              axis={vertical ? 'y' : 'x'}
-              vertical={vertical}
+              /* ★ 锚点就是**那条画出来的路径**的中点 —— 把手与线同源，永远压在线上面。 */
+              anchor={{ x: viewport.x + anchors.midX * viewport.zoom, y: viewport.y + anchors.midY * viewport.zoom }}
+              track={anchors.track}
               disabled={disabled}
+              onDragStateChange={setRouteDragging}
             />
           );
         })()}

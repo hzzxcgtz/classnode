@@ -100,15 +100,48 @@ test('ReactFlow 的核心回调一个都不能少（删代码时切块切掉过�
   「不允许移动位置」= 它**长在折线上**（画在库算出来的路径点上），而不是一个自由浮层。
   轴由边的走向定：竖直的边中间是**横线** ⇒ 上下；水平的边中间是**竖线** ⇒ 左右。
 */
-test('折线上的控制柄：画在路径点上、而且只动一个轴', () => {
+test('折线上的控制柄：压在线上、轴由走向定、拖的位置夹在合法范围里', () => {
   assert.match(SOURCE, /<FlowRouteHandle/, '没有渲染那个控制柄');
+  /*
+   * ★ 2026-10-07（第二次报障）：「连线的控制点必须**永远压在线上面**，不能漂移到线外」。
+   * 🔴 上一版锚点取自 `data.routeX/routeY`，而且要求**两个轴都在**才用它 —— 可拖动只写一个轴
+   *    ⇒ 它退回「库算的**默认**中点」：线已经跟着手指走了，把手还钉在原来那儿
+   *    （教师截图里那颗飘在线外的空心圆就是这么来的）。
+   * ✅ 现在锚点**一律**取锚点表里那个**画出来的路径**的中点 —— 与线同源，漂不了。
+   */
   assert.match(
     SOURCE,
-    /axis=\{vertical \? 'y' : 'x'\}/,
-    '轴没有按线的走向定 —— 「上下拖横线 / 左右拖竖线」就是这一句',
+    /anchor=\{\{ x: viewport\.x \+ anchors\.midX \* viewport\.zoom/,
+    '把手不是画在**画出来的那条路径**的中点上 —— 那就还会漂',
+  );
+  assert.ok(
+    !/route\?\.routeX !== undefined && route\?\.routeY !== undefined/.test(SOURCE),
+    '把手又回去读绕行点的原值了 —— 那条路要求**两个轴都在**，正是漂移的根',
+  );
+  /*
+   * ★ 2026-10-07（教师）：「这是这条横线往下移动的**最低位置**，再往下移…会导致弧线折返」。
+   * 轴与范围都来自 `track`（`flowRouteTrack` —— 复刻库 `getPoints` 的判据）。
+   * ⚠️ 轴**不能**由句柄 id 定：同一个 `bottom→top`，源在上面时中段是**横**的、在下面时是**竖**的
+   *    —— 看句柄 id 的那种写法在后者上就是「拖了没反应」（教师刚报过的同一类错）。
+   */
+  assert.match(SOURCE, /track=\{anchors\.track\}/, '没有把「能走的那条线 + 范围」交给把手');
+  assert.ok(
+    !/axis=\{vertical \? 'y' : 'x'\}/.test(SOURCE),
+    '轴又回去看句柄 id 了 —— 源在目标下面时会「拖了没反应」',
+  );
+  assert.match(
+    SOURCE,
+    /if \(!anchors\?\.track\) return null/,
+    '拐弯的边上也画了把手 —— 那种边库压根不读绕行点，拖了没反应；宁可没有，也不给一个骗人的',
   );
   const handleFn = blockBetween(SOURCE, 'function FlowRouteHandle(', '\n}\n');
   assert.ok(handleFn.length > 300, `控制柄那段没抠出来（${handleFn.length}）—— 先修这条判据`);
+  assert.match(handleFn, /clampToTrack\(/, '拖它没有夹进合法范围 —— 越过去中段就会折返（教师那张图的「最低位置」）');
   assert.match(handleFn, /routeX|routeY/, '拖它没有写回绕行点');
   assert.match(handleFn, /screenToFlowPosition/, '没有把屏幕坐标换算成流坐标（拖起来会飘）');
+  /*
+   * ⊘ 2026-10-07：`onDragStateChange` 那条守卫（拖动期间不记历史）**故意不在这里判** ——
+   *   它已经在 `flowchart-history-wiring.test.ts` 里有一条更结实的判据
+   *   （读变化检测 effect 的守卫 + 依赖），在这里再来一条只会是同一件事的副本。
+   */
 });

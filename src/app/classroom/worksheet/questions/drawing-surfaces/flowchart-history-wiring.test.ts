@@ -84,6 +84,44 @@ test('「正在拖节点」的信号要能自愈 —— 读 nodes 上的 draggin
 });
 
 /*
+  ★ 2026-10-07（教师第二次报障那一轮、施工时顺手发现的）：**拖控制柄**必须与拖节点同一个口径
+  ——「一次拖动只记一步」。
+
+  🔴 没有这条守卫时：拖动期间每个 `pointermove` 都写一次 `edges` ⇒ 指纹每次都变 ⇒ 那条 effect
+     **每帧压一步**。50 步的撤销栈，拖一下（约 1 秒、60 帧）就**整个吃光**。
+  🔴 这正是审查报过的 **C2**（当时那颗「路径调整圆点」就是这个毛病）。「全回原版」把它连同守卫
+     一起删了；后来控制柄回来、**守卫却没回来** ⇒ 同一个坑又开了一次。
+  ⚠️ 与节点那条**判据不同**：那条必须**自愈**（读库的 `dragging`，见上一条 —— 库有两条路径结束
+     拖动时不回调）；这一条是**我们自己的** `pointerdown → pointerup/pointercancel` 配对，
+     而且组件一卸载 ref 就没了 ⇒ 自己置位是安全的。
+  🔴 但它有**自己的**坑：松手只把标记清掉**不会再触发任何 state 变化**，那条 effect 的依赖
+     （`nodes`/`edges`）也没变 ⇒ 不主动催一次的话，这一拖**一步都不记**（撤销退不回去）。
+     所以既要有 `dragEpoch` 去催，**又**要它在依赖数组里（否则催了也不重跑 —— 依赖数组就在
+     切片里，那条 `assert.match(block, /dragEpoch/)` 同时管着这两件事）。
+*/
+test('拖控制柄期间不压栈，而且松手要主动催一次（否则这一拖一步都不记）', () => {
+  const block = detectSource(SOURCE);
+  assert.ok(block.length > 100, `切片太短（${block.length}），判据可能在空串上假绿`);
+  assert.match(block, /routeDragRef\.current/, '拖控制柄期间没有提前 return —— 一次拖动会把整个撤销栈吃光（C2 重现）');
+  /*
+   * ⚠️ 「催」要**两件事都对**才成立：`dragEpoch` 得被 `setDragEpoch` 改（下面那段），
+   *    而且得在**依赖数组**里 —— 否则催了 effect 也不会重跑。
+   *    ⚠️ 依赖数组不在 `detectSource` 的切片里（那个结束标记就停在 `[nodes, edges` 之前）；
+   *    也不能拿 `}, [nodes, edges` 去 `blockBetween` —— 文件里**前面还有一条**同样开头的
+   *    依赖数组（落盘那条 effect），切出来的是它，判据会红在一个跟本判据无关的地方（施工时实测）。
+   */
+  assert.match(
+    SOURCE,
+    /\}, \[nodes, edges,[^\]]{0,80}dragEpoch\]/,
+    '`dragEpoch` 不在变化检测那条 effect 的依赖数组里 —— 松手催了也不会重跑，这一拖照样一步不记',
+  );
+  const setter = blockBetween(SOURCE, 'const setRouteDragging = useCallback', '}, []);');
+  assert.ok(setter.length > 100, `控制柄拖动起止那段没抠出来（${setter.length}）—— 先修这条判据`);
+  assert.match(setter, /routeDragRef\.current = dragging/, '没有按拖动状态置位/清位');
+  assert.match(setter, /if \(!dragging\) setDragEpoch\(/, '催的时机不对 —— 必须在**松手**那一下催；拖动中催等于每帧压一步');
+});
+
+/*
   ⚠️ 下面这三条测的是 Task 3 才写出来的 `undo` / 两颗按钮。
   第四条（「撤销后必须同步指纹」）原属 Task 2 的 brief，施工时挪到了这里 —— 原因见
   `.superpowers/sdd/…-plan/progress.md` 的 pre-flight 裁定：它引用 `const undo = `，

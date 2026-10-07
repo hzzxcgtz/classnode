@@ -49,3 +49,27 @@ test('★ 图自己不许超过框（快照 <img> 与四个近似渲染都要有
   const ink = read('ink-preview.tsx');
   assert.match(ink, /height="100%"/, '手写那一支的 SVG 没有跟着框缩放');
 });
+
+/*
+  ★ 2026-10-07（教师两条，其实是**同一个根因**）：
+   ①「教师的**初始图还是没有一次性出来**……期望的是：如果教师有初始图，
+      那么学生在真正画图之前，初始图已经出现在了监控面板里」；
+   ②「刚开始显示的**菱形图形会显示成矩形**，刷新几次后就变成正常的菱形了」。
+
+  🔴 两条都出在**近似渲染**（`FlowPreview`）上 —— 那一格本来该显示的是**快照**，
+     而快照要等学生端抓图 + 上传（一两秒）。在那之前：
+       · 它只会画**圆角矩形**（菱形看起来当然就是矩形）；
+       · 它拿到的只有**学生自己那份数据**，而底稿按设计不在里面（「底稿不算学生的作答」）——
+         学生还没动笔时，那是一张白纸。
+     「刷新几次就正常」= 快照终于到了 ⇒ 与这两条一一对上。
+*/
+test('★ 没有快照时走的是**与快照同一个渲染器**（不再有第二套画法）', () => {
+  const ink = read('ink-preview.tsx');
+  // 底稿要**递到渲染器**那一侧（合并与渲染都住在那儿，与快照共用）。
+  assert.match(ink, /starter=\{node \? readDrawingStarter\(node\) : null\}/, '没有把底稿递给渲染器 —— 学生没动笔时那一格会是白纸');
+  const preview = read('drawing-document-preview.tsx');
+  assert.match(preview, /flowchartPreviewImage\(props\.starter, data\)/, '流程图那一支没有走共用的渲染器');
+  assert.ok(!/function FlowPreview\(/.test(preview), '那套「只会画圆角矩形」的近似渲染还在 —— 菱形会又变成矩形');
+});
+
+

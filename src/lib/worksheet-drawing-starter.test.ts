@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 
 import * as starterModule from './worksheet-drawing-starter.ts';
 import {
+  flowchartPreviewImage,
   mergeFlowchart,
   restoreFlowchart,
   readDrawingStarter,
@@ -179,4 +180,35 @@ test('★ 教师 2026-10-06：「初始图中有的东西我改不了」——�
   assert.equal(mine.nodes[0].draggable, undefined, '学生自己的框还带着老数据的 draggable:false');
   assert.equal((mine.nodes[0].data as Record<string, unknown>).locked, undefined, '学生自己的框文字还只读');
   assert.equal(mine.edges[0].deletable, undefined, '学生自己的线还带着老数据的 deletable:false');
+});
+
+/*
+  ★ 2026-10-07（教师两条，同一根因）：①「教师的**初始图还是没有一次性出来** —— 期望的是，
+  如果教师有初始图，那么学生在真正画图之前，初始图已经出现在了监控面板里」；
+  ②「刚开始显示的**菱形图形会显示成矩形**，刷新几次后才正常」。
+
+  🔴 那两条都出在**教师看板在快照还没到时的兜底画法**上：它原来是自己一套「近似渲染」，
+     只会画圆角矩形、而且**不含底稿**（底稿按设计不在学生交的那份数据里）。
+  ✅ 现在兜底与快照**共用同一个渲染器**、输入是「底稿 + 学生画的」——
+     下面这条用例验的就是它（**行为**判据：把 SVG 解出来看里面有什么）。
+*/
+test('★ 快照没到时的兜底：底稿要画出来、菱形要是菱形（教师 2026-10-07）', () => {
+  const starter = {
+    tool: 'flowchart',
+    data: {
+      nodes: [{ id: 's1', position: { x: 0, y: 0 }, measured: { width: 220, height: 110 }, data: { label: '判断条件', kind: 'decision' } }],
+      edges: [],
+    },
+  };
+  const decode = (src: string | null) => decodeURIComponent(String(src).split(',')[1] ?? '');
+  const onlyStarter = decodeURIComponent(String(flowchartPreviewImage(starter, { nodes: [], edges: [] })).split(',')[1] ?? '');
+  assert.ok(onlyStarter.includes('判断条件'), '底稿里的节点没画出来 —— 学生还没动笔时教师看到的是白纸（①）');
+  assert.match(onlyStarter, /<polygon/, '菱形被画成了矩形（②）');
+
+  const withMine = decode(flowchartPreviewImage(starter, {
+    nodes: [{ id: 'm1', position: { x: 320, y: 0 }, measured: { width: 150, height: 54 }, data: { label: '我加的框', kind: 'process' } }],
+    edges: [],
+  }));
+  assert.ok(withMine.includes('我加的框'), '学生自己画的那份也要合进来（底稿 + 他画的）');
+  assert.ok(withMine.includes('判断条件'), '合上之后底稿仍然要在');
 });

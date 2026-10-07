@@ -18,6 +18,7 @@
  */
 
 import type { DrawingMode } from './worksheet-drawing.ts';
+import { flowchartSvg } from './worksheet-flowchart-svg.ts';
 
 /** 流程图那一份数据的形状（`{nodes, edges}`，与 React Flow / 预览器共用）。 */
 export interface FlowchartPayload {
@@ -165,4 +166,35 @@ export function subtractFlowchart(all: FlowchartPayload, starter: FlowchartPaylo
     ...(deletedNodeIds.length > 0 ? { deletedNodeIds } : {}),
     ...(deletedEdgeIds.length > 0 ? { deletedEdgeIds } : {}),
   };
+}
+
+/**
+ * 教师看板那一格在**快照还没到**时画什么（★ 2026-10-07 教师两条报障）。
+ *
+ * 教师：「① 教师的**初始图还是没有一次性出来**……期望的是：如果教师有初始图，那么学生在真正
+ * 画图之前，初始图已经出现在了监控面板里」；「② 刚开始显示的**菱形图形会显示成矩形**，
+ * 刷新几次后就变成正常的菱形了」。
+ *
+ * 🔴 两条都出在那块**近似渲染**上（`drawing-document-preview.tsx` 的 `FlowPreview`）：
+ *     那一格本来该显示**快照**，而快照要等学生端抓图 + 上传（一两秒）；在那之前走近似渲染，它
+ *       · 只会画**圆角矩形** ⇒ 菱形看起来就是矩形（「刷新几次就正常」= 快照终于到了）；
+ *       · 拿到的只有**学生自己那份数据**，而底稿按设计不在里面（「底稿不算学生的作答」）
+ *         ⇒ 学生还没动笔时是一张白纸。
+ *
+ * ✅ 换成正解：**和快照用同一个渲染器**（`flowchartSvg`），输入是「底稿 + 学生画的」
+ *    （`mergeFlowchart`，与画板读数据时同一个函数）⇒ 这块与最终那张图**长得一模一样**，
+ *    而且**没有第二套画法**（近似渲染那 40 行连同它的分叉一起删掉）。
+ * ⚠️ 返回 data URL（不落盘、不占网络）—— 它只是一张临时的占位图，快照一到就被替掉。
+ */
+export function flowchartPreviewImage(starter: unknown, mine: unknown): string | null {
+  /*
+   * ⚠️ `starter` 是**信封**（`{ tool, data }`，`readDrawingStarter` 给的那个），
+   *    而 `readFlowchartPayload` 要的是**里层的 payload**（`{ nodes, edges }`）——
+   *    直接把信封喂进去会读成「一个节点都没有」的白图（本仓那条用例当场抓到过）。
+   * `mine` 那一侧来的已经是 payload（`document.data`）⇒ 只有信封这一边要拆。
+   */
+  const envelope = starter as { tool?: unknown; data?: unknown } | null | undefined;
+  const starterPayload = envelope?.tool === 'flowchart' ? envelope.data : null;
+  const shot = flowchartSvg(mergeFlowchart(readFlowchartPayload(starterPayload), readFlowchartPayload(mine)));
+  return shot ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(shot.svg)}` : null;
 }

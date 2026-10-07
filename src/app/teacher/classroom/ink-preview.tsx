@@ -2,6 +2,7 @@
 
 import { strokePath, strokeWidthPx, textBoxOf, type InkValue } from '@/lib/worksheet-ink';
 import { readDrawingBackground } from '@/lib/worksheet-drawing';
+import { readDrawingStarter } from '@/lib/worksheet-drawing-starter.ts';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { DrawingDocumentPreview } from './drawing-document-preview';
@@ -31,9 +32,14 @@ export function InkPreview({ value, node }: { value: InkValue; node?: WorksheetQ
   const background = node ? readDrawingBackground(node) : { url: null };
   const backgroundUrl = background.url ? worksheetAssetUrl(background.url) : null;
   if (value.drawing) {
+    /*
+     * ★ 2026-10-07（教师）：底稿要交给渲染器 —— 学生交上来的 `data` **不含底稿**
+     *   （「底稿不算学生的作答」），而那一格在快照到之前画的是「底稿 + 学生画的」。
+     *   ⚠️ 合并与渲染都在渲染器那一侧（与快照**共用同一个渲染器**），这里只管把底稿递过去。
+     */
     return (
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid #e2e8f0', borderRadius: 4, background: '#fff' }}>
-        <DrawingDocumentPreview document={value.drawing} width={box.w} height={box.h} backgroundUrl={backgroundUrl} />
+        <DrawingDocumentPreview document={value.drawing} starter={node ? readDrawingStarter(node) : null} width={box.w} height={box.h} backgroundUrl={backgroundUrl} />
       </div>
     );
   }

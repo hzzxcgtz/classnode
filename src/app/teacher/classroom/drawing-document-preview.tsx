@@ -1,6 +1,7 @@
 'use client';
 
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { flowchartPreviewImage } from '@/lib/worksheet-drawing-starter.ts';
 import type { DrawingDocument } from '@/lib/worksheet-drawing-document';
 
 type Pair = [number, number];
@@ -9,6 +10,8 @@ type PreviewProps = {
   width: number;
   height: number;
   backgroundUrl: string | null;
+  /** ★ 2026-10-07：题目自带的**初始化图**（底稿）—— 只有流程图那一档有；渲染时要合进来。 */
+  starter?: unknown;
 };
 
 /*
@@ -127,32 +130,6 @@ function MathPreview({ data, width, height, backgroundUrl }: PreviewProps & { da
   );
 }
 
-function FlowPreview({ data, width, height, backgroundUrl }: PreviewProps & { data: Record<string, unknown> }) {
-  const nodes = (Array.isArray(data.nodes) ? data.nodes : []).map(row).filter((item): item is Record<string, unknown> => !!item);
-  const edges = (Array.isArray(data.edges) ? data.edges : []).map(row).filter((item): item is Record<string, unknown> => !!item);
-  const byId = new Map(nodes.map((node) => [String(node.id), node]));
-  const positions = nodes.map((node) => row(node.position)).filter((item): item is Record<string, unknown> => !!item);
-  const maxX = Math.max(500, ...positions.map((position) => typeof position.x === 'number' ? position.x + 190 : 0));
-  const maxY = Math.max(360, ...positions.map((position) => typeof position.y === 'number' ? position.y + 130 : 0));
-  return (
-    <svg viewBox={`0 0 ${maxX} ${maxY}`} style={{ ...SVG_STYLE, aspectRatio: `${width}/${height}` }} role="img" aria-label="学生的流程图作答">
-      <Background url={backgroundUrl} width={maxX} height={maxY} />
-      {edges.map((edge, index) => {
-        const source = byId.get(String(edge.source)); const target = byId.get(String(edge.target));
-        const a = row(source?.position); const b = row(target?.position);
-        if (!a || !b || typeof a.x !== 'number' || typeof a.y !== 'number' || typeof b.x !== 'number' || typeof b.y !== 'number') return null;
-        return <line key={index} x1={a.x + 75} y1={a.y + 32} x2={b.x + 75} y2={b.y + 32} stroke="#607d9e" strokeWidth="2" />;
-      })}
-      {nodes.map((node, index) => {
-        const position = row(node.position); const nodeData = row(node.data);
-        if (!position || !nodeData || typeof position.x !== 'number' || typeof position.y !== 'number') return null;
-        const kind = String(nodeData.kind ?? 'process'); const x = position.x; const y = position.y;
-        return <g key={String(node.id ?? index)} transform={`translate(${x} ${y})`}><rect width="150" height="64" rx={kind === 'terminator' ? 32 : 9} fill="#fff" stroke="#7895b3" strokeWidth="2" /><text x="75" y="34" dominantBaseline="middle" textAnchor="middle" fill="#263b53" fontSize="14" fontWeight="600">{String(nodeData.label ?? '')}</text></g>;
-      })}
-    </svg>
-  );
-}
-
 function MindBranch({ node }: { node: Record<string, unknown> }) {
   const children = Array.isArray(node.children) ? node.children.map(row).filter((item): item is Record<string, unknown> => !!item) : [];
   return <li><span>{String(node.topic ?? '主题')}</span>{children.length > 0 && <ul>{children.map((child, index) => <MindBranch key={String(child.id ?? index)} node={child} />)}</ul>}</li>;
@@ -188,6 +165,17 @@ export function DrawingDocumentPreview(props: PreviewProps) {
   }
   if (props.document.tool === 'math') return <MathPreview {...props} data={data} />;
   if (props.document.tool === 'mind-map') return <MindPreview {...props} data={data} />;
-  if (props.document.tool === 'flowchart') return <FlowPreview {...props} data={data} />;
+  /*
+   * ★ 2026-10-07（教师）：「初始图没有一次性出来」「菱形被显示成矩形」——
+   *   原来这里有**自己一套**近似渲染（只会画圆角矩形、也不含底稿）。
+   * ✅ 现在与**快照共用同一个渲染器**（`flowchartPreviewImage` ⇒ `flowchartSvg`），
+   *   输入是「底稿 + 学生画的」⇒ 与最终那张图长得一模一样，而且**只剩一套画法**。
+   */
+  if (props.document.tool === 'flowchart') {
+    const src = flowchartPreviewImage(props.starter, data);
+    return src
+      ? <img src={src} alt="学生的流程图作答" style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', background: '#fff' }} />
+      : null;
+  }
   return <BasicPreview {...props} data={data} />;
 }

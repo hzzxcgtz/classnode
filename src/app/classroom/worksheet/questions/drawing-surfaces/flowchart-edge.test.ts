@@ -53,18 +53,27 @@ test('自定义边注册在 ReactFlow 上，而且标签是**转交**给 BaseEdg
   必须拦在 `onNodesChange`（位置变化的**入口**）、只处理**正在拖**的那条、而且 `<ReactFlow>` 真的挂上了。
   ⚠️ 挂在 `onNodeDrag` 里事后修正的话，学生会看到它**先歪一下再被拽正**。
 */
-test('拖动时的同列吸附：拦在 onNodesChange，且只对「正在拖」的那条生效', () => {
-  assert.match(SOURCE, /const onNodesChangeSnapped = useCallback/, '没有包那一层');
-  assert.match(SOURCE, /alignSnapX\(nodes, edges, change\.id\)/, '没有算吸附');
+test('同列吸附挂在**拖动结束**那一下 —— 拖动中吸会与 React Flow 打架', () => {
   assert.match(
     SOURCE,
-    /change\.dragging !== true/,
-    '要只处理**正在拖**的那条 —— 程序化改位置（撤销 / 一键整理）不该再被吸一次',
+    /onNodeDragStop=\{disabled \? undefined : \(_, node\) =>/,
+    '`<ReactFlow>` 上没有接拖动结束这个钩子',
   );
-  assert.match(
-    SOURCE,
-    /onNodesChange=\{disabled \? undefined : onNodesChangeSnapped\}/,
-    '`<ReactFlow>` 没挂上包过的那个（拦了等于没拦）',
+  const body = blockBetween(SOURCE, 'onNodeDragStop={disabled ? undefined : (_, node) =>', 'onConnect');
+  assert.ok(body.length > 100, `那一小段没抠出来（${body.length}）—— 先修这条判据`);
+  assert.match(body, /alignSnapX\(current, edges, node\.id\)/, '没有算吸附');
+  assert.match(body, /setNodes\(\(current\) =>/, '要用**函数式** setNodes —— 闭包里的 nodes 在拖动期间是旧的');
+
+  /*
+   * 🔴 **绝不要**改回「拖动中吸附」。
+   * React Flow 拖动时每帧都按「按下时的位置 + 指针位移」重算 ⇒ 我们在 `onNodesChange` 里改掉的 x
+   * **它不知道**，下一帧又算出一个「没吸住」的位置、我们再吸一次…… 在吸附区边缘来回，
+   * 屏幕上是**框在乱跳**（教师 2026-10-07 报的原话：「我现在在拖的时候，感觉这个上面的矩形框乱跳」）。
+   * 阈值越大（现在是半个节点宽）跳得越凶。
+   */
+  assert.ok(
+    !/onNodesChangeSnapped/.test(SOURCE),
+    '又把吸附挪回 `onNodesChange` 了 —— 那会与 React Flow 的拖动每帧打架、框会乱跳',
   );
 });
 

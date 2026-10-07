@@ -15,11 +15,21 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  MARK_ARROW_LEN,
+  MARK_ARC_RADIUS,
+  MARK_ARC_SEGMENTS,
+  MARK_SQUARE_SIDE,
+  MARK_TICK_LEN,
   MATH_TOOL_GROUPS,
   MATH_TOOL_ICONS,
   MATH_TOOLS,
+  arcLabelAt,
+  arcPathOf,
+  equalMarkOf,
+  parallelMarkOf,
   parallelogramOf,
   rectangleOf,
+  rightAngleOf,
   toolHintOf,
   toolsInGroup,
   trapezoidOf,
@@ -97,4 +107,121 @@ test('★ 2026-10-06（教师）：每个工具都要有**图标**，且分组�
   // ④ 「选择」排在**第一个**（它是每一个工具的出口：画错了要能选、能删）。
   //    ★ 2026-10-07 教师在这份设计里看到的排法就是 [选择][点][线段][射线][圆]…
   assert.equal(MATH_TOOLS[0].value, 'select');
+});
+
+/**
+ * ★ 2026-10-07（教师）：「这是几何题的行话」—— 四个记号。
+ *
+ * 🔴 断言里刻意用**整数/半整数**坐标（与文件头那条纪律同一条）：等号的中点与法向、
+ *    直角方块的三点、角弧的半径，都要能一眼心算出来 —— 写一堆小数只会让人核对不了。
+ * 🔴 四个函数**都要在退化输入上回 null**（两点重合 ⇒ 方向是 [0,0] ⇒ 算出来是 NaN，
+ *    而 NaN 会把整张图画没且不报错）。这是本模块里"宁可不画"那条老规矩的延续。
+ */
+test('等号：中点上一道**垂直于边**的短斜线', () => {
+  const tick = equalMarkOf([0, 0], [4, 0]);
+  assert.ok(tick, '没画出来');
+  // 中点 (2,0)，法向是竖直 ⇒ 两个端点的 x 相同、y 上下各半个长度。
+  assert.equal(tick[0][0], 2);
+  assert.equal(tick[1][0], 2);
+  assert.equal(tick[0][1], -MARK_TICK_LEN / 2);
+  assert.equal(tick[1][1], MARK_TICK_LEN / 2);
+});
+
+test('平行记号：中点上一根**沿着边**的短线（两端各一个箭头）', () => {
+  const bar = parallelMarkOf([0, 0], [4, 0]);
+  assert.ok(bar, '没画出来');
+  assert.equal(bar[0][1], 0);
+  assert.equal(bar[1][1], 0, '平行记号应当是沿着边的（y 不变）');
+  /*
+   * ⚠️ **别用两个端点相减去比总长** —— 它们是 `round3` **舍入过**的，
+   *   而 `2.7 - 1.3` 在浮点下是 `1.4000000000000001`，判据会**假红**（实测踩过）。
+   *   ⇒ 直接比端点（`2 ± MARK_ARROW_LEN / 2` 这两个数在双精度下是**精确**的）。
+   */
+  assert.deepEqual(bar, [[2 - MARK_ARROW_LEN / 2, 0], [2 + MARK_ARROW_LEN / 2, 0]]);
+});
+
+test('直角：从顶点沿两条边各走一个边长 ⇒ 角内那三个拐点', () => {
+  // 直角在原点：一边沿 x 轴、一边沿 y 轴。
+  assert.deepEqual(rightAngleOf([0, 0], [4, 0], [0, 3]),
+    [[MARK_SQUARE_SIDE, 0], [MARK_SQUARE_SIDE, MARK_SQUARE_SIDE], [0, MARK_SQUARE_SIDE]]);
+  // ⚠️ 边长是**沿边方向**量的，与那条边有多长无关 —— 换个长度也是同一个方块。
+  assert.deepEqual(rightAngleOf([0, 0], [9, 0], [0, 2]),
+    [[MARK_SQUARE_SIDE, 0], [MARK_SQUARE_SIDE, MARK_SQUARE_SIDE], [0, MARK_SQUARE_SIDE]]);
+});
+
+test('角弧：一段**半径固定**的弧，两端正好落在两条边上', () => {
+  const arc = arcPathOf([0, 0], [4, 0], [0, 4]);
+  assert.ok(arc, '没画出来');
+  assert.equal(arc.length, MARK_ARC_SEGMENTS + 1, '采样 8 段 ⇒ 9 个点');
+  // 每个点都在半径上（这是"弧"的定义，也是最容易算错的地方）。
+  for (const [x, y] of arc) {
+    assert.ok(Math.abs(Math.hypot(x, y) - MARK_ARC_RADIUS) < 0.01, `不在半径上：${x},${y}`);
+  }
+  // 两端分别贴着两条边。
+  assert.ok(Math.abs(arc[0][1]) < 0.01 && arc[0][0] > 0, '起点不在第一条边上');
+  assert.ok(Math.abs(arc[arc.length - 1][0]) < 0.01 && arc[arc.length - 1][1] > 0, '终点不在第二条边上');
+  // 90° 的角 ⇒ 走的是**小弧**（不许绕远路 270°）。
+  const mid = arc[4];
+  assert.ok(mid[0] > 0 && mid[1] > 0, '弧跑到角外面去了（走了 270° 那条）');
+  // ⚠️ 两个方向点，得到的必须是**同一段弧**（学生先点哪条边不该改变结果）。
+  assert.deepEqual(arcPathOf([0, 0], [0, 4], [4, 0]), arc.slice().reverse().map(([x, y]) => [x, y]));
+});
+
+test('度数写在角平分线上（45° 时 x 与 y 必须相等）', () => {
+  const at = arcLabelAt([0, 0], [4, 0], [0, 4]);
+  assert.ok(at, '没算出来');
+  assert.equal(at[0], at[1], '45° 的角平分线上 x 与 y 必须相等');
+  assert.ok(at[0] > 0 && at[1] > 0, '要落在角的内侧');
+  // 平角（两条边反向）⇒ 单位向量之和是零向量 ⇒ 宁可不写，不许算出 NaN。
+  assert.equal(arcLabelAt([0, 0], [1, 0], [-1, 0]), null);
+});
+
+test('★ 四个记号在退化输入上一律回 null（两点重合 ⇒ 不许算出 NaN）', () => {
+  assert.equal(equalMarkOf([1, 1], [1.05, 1]), null);
+  assert.equal(parallelMarkOf([1, 1], [1, 1]), null);
+  assert.equal(rightAngleOf([0, 0], [0, 0], [0, 3]), null, '一条边退化 ⇒ null');
+  assert.equal(rightAngleOf([0, 0], [4, 0], [0.05, 0]), null, '两条边几乎同向 ⇒ 仍然要有两个方向');
+  assert.equal(arcPathOf([0, 0], [0, 0], [0, 4]), null);
+});
+
+test('★ 工具表里四个记号都在，clicks 与需求一致，且各有图标与提示', () => {
+  assert.equal(MATH_TOOLS.find((t) => t.value === 'equalMark')?.clicks, 2);
+  assert.equal(MATH_TOOLS.find((t) => t.value === 'parallelMark')?.clicks, 2);
+  assert.equal(MATH_TOOLS.find((t) => t.value === 'rightAngle')?.clicks, 3);
+  assert.equal(MATH_TOOLS.find((t) => t.value === 'angleArc')?.clicks, 3);
+  for (const value of ['angleArc', 'rightAngle', 'equalMark', 'parallelMark'] as const) {
+    const icon = MATH_TOOL_ICONS[value];
+    assert.ok(typeof icon === 'string' && icon.length > 8, `${value} 没有图标`);
+    assert.ok(toolHintOf(value).length > 0, `${value} 没有提示语`);
+  }
+  // 两个三击记号的提示语要说的是**同一件事的顺序**（顶点在第二下）——
+  // 两种顺序共存的话，学生点错的表现是"记号长到了错的地方"，不报错。
+  assert.match(toolHintOf('angleArc'), /顶点/);
+  assert.match(toolHintOf('rightAngle'), /顶点/);
+});
+
+test('★ 角弧走的一定是**小弧**：两条边都指向左边时不许绕一大圈（两个方向都要）', () => {
+  /*
+   * 两条边都指向 ≈180°（一条略偏上、一条略偏下）：夹角只有 ~1.1°，
+   * 而 `atan2` 给出的**原始差值**是 ±358.9° ⇒ 没有归一化的话会画出那条 359° 的大弧。
+   *
+   * 🔴 为什么必须补这一条：上面那条「角弧」用的两个方向**本来就在 `(-π, π]` 里**
+   *   （0° 与 90°），归一化那两句**一次都不会被触发** ⇒ 把它们删掉判据照样全绿。
+   *   实测踩过这条假绿（变异验证时发现的）。
+   * ⚠️ **两个方向都要走一遍**：`delta` 是正是负由两个 `while` 各管一边，
+   *   只测一个方向的话，另一个 `while` 删掉也照样绿。
+   */
+  const pairs: Array<[[number, number], [number, number]]> = [
+    [[-4, 0.04], [-4, -0.04]],
+    [[-4, -0.04], [-4, 0.04]],
+  ];
+  for (const [a, b] of pairs) {
+    const arc = arcPathOf([0, 0], a, b);
+    assert.ok(arc, '没画出来');
+    for (const [x, y] of arc) {
+      assert.ok(x < 0, `弧绕了大圈（跑到右半边去了）：${x},${y}`);
+    }
+    const d = Math.hypot(arc[arc.length - 1][0] - arc[0][0], arc[arc.length - 1][1] - arc[0][1]);
+    assert.ok(d < 0.05, `弧太长（绕了大圈）：两个端点相距 ${d}`);
+  }
 });

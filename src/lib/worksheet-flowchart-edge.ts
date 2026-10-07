@@ -1,14 +1,20 @@
 /**
- * 流程图**边**的几何 —— 两件事，都是教师 2026-10-07 提的：
+ * 流程图**边**的几何 —— 两件事：
  *
- *   ① **「折线太短就画成直线」**。教师：「在移动某个图形时，**连接线接近直线时需要吸附成直线**，
- *      否则可能会出现一个**非常小的拐角**，很难看」——「相当于是一个**微调**」。
- *      🔴 那个「很小的拐角」是 `smoothstep` 的固有表现：两端 **x 差一点点**时中间那段横线只有
- *         几个像素，看起来像打了个结。短到一定程度干脆画一条直线，视觉上就干净了。
- *   ② **绕行点（那颗控制柄拖出来的点）**：它**只能待在库画出来的那条线上**，而且**只能走到头**。
+ *   ① **绕行点（那颗控制柄拖出来的点）**：它**只能待在库画出来的那条线上**，而且**只能走到头**。
  *      教师原话：「连线的控制点必须**永远压在线上面**，不能漂移到线外」；
  *      「这是这条横线往下移动的**最低位置**，再往下移会超过最右侧竖线的最低高度，
  *       会导致两条线交叉点的**弧线折返**」。
+ *   ② **线上文字摆在哪**（默认贴线旁边 + 贴着线拖）—— 见下面那一节。
+ *
+ * ⊘ 2026-10-07（同一天里**第二次**改主意）：这里曾经有第三条规则 **「折线太短就画成直线」**
+ *   （`FLOW_STRAIGHT_SNAP`）—— 教师先要「接近直线时吸附成直线，别留一个很小的拐角」，
+ *   我做成「短到看不见就画一条**可能是斜的**直线」，他当时接受了（「斜线就斜线吧」）；
+ *   紧接着他看到实物就否掉了：「**这里还是取消自动变换成斜线吧，很怪异。所有的线条要不就是
+ *   竖线，要不就是横线**」。
+ *   ⇒ 现在**一条斜线都不画**：路径一律交回库（`smoothstep` 的每一段本来就是横的或竖的），
+ *     哪怕中间那段只有几个像素。**别再把它加回来** —— 那 5 轮来回的教训在这里收尾：
+ *     「自动矫正」每加一层都会带出新的偏差，而库原本那套折线才是这东西的本相。
  *
  * ⚠️ 这个模块**不 import `@xyflow/react`**：库那一份 import 了 React，纯 Node 下加载不了
  *    （本仓没有 jsdom，判据是纯函数级的）。真实的路径函数由调用方**注入**（见 `SmoothStepFn`）。
@@ -26,15 +32,6 @@
  *  ⇒ 「中段横着 ⇒ 上下拖」「中段竖着 ⇒ 左右拖」；而且**另一个轴的 center 只影响标签的坐标**，
  *    不进路径。这就是这里要复刻的全部。
  */
-
-/**
- * 「短到看不见」的阈值（流坐标）。
- *
- * 12px 大致是「一眼看得出是个拐弯」的下限：比它更短的横线（或竖线）在屏幕上就是个疙瘩。
- * ⚠️ 别拿它当 `ALIGN_TOLERANCE`（24，那个管的是「一键整理时的对齐」）—— 两件事的取舍不同：
- *    整理时宁可少吸，这里则是「短到看不清就不画」。
- */
-export const FLOW_STRAIGHT_SNAP = 12;
 
 /**
  * 库的默认拐角留白（`getSmoothStepPath` 里 `offset = 20`）。
@@ -298,16 +295,12 @@ export function flowLabelOffset(
   return offset ? clampLabelOffset(offset) : flowLabelDefaultOffset(params, label);
 }
 
-/** 两端句柄是不是**同一条轴**上对着的（`bottom→top` / `top→bottom` / `right→left` / `left→right`）。 */
-function isStraightPair(sourcePosition: string, targetPosition: string): 'v' | 'h' | null {  const pair = `${sourcePosition}->${targetPosition}`;
-  if (pair === 'bottom->top' || pair === 'top->bottom') return 'v';
-  if (pair === 'right->left' || pair === 'left->right') return 'h';
-  return null;
-}
-
 /**
- * 算一条边的路径：**有绕行点就按绕行点走**；**几乎是直线（而且两端同向）就真的画成直线**；
- * 其余一律交给注入的库函数。返回值与 `getSmoothStepPath` 同形：`[path, labelX, labelY]`。
+ * 算一条边的路径：**有绕行点就按绕行点走**（认轴 + 夹范围），**其余一律交给库**。
+ * 返回值与 `getSmoothStepPath` 同形：`[path, labelX, labelY]`。
+ *
+ * 🔴 这里**没有**任何「把折线拉直」的规则 —— 教师 2026-10-07 明确要求
+ *    「所有的线条要不就是竖线，要不就是横线」（见文件头那条 ⊘）。
  */
 export function flowEdgeGeometry(
   params: FlowEdgeGeometryParams,
@@ -328,25 +321,5 @@ export function flowEdgeGeometry(
    * 没有可用的绕行点（没拖过 / 轴不对 / 拐弯的边）⇒ **一个都不传**。
    * ⚠️ 不能「原样透传」：轴不对的那个值会被库当成标签坐标（见 `flowRoutePoint`）。
    */
-  const bare: FlowEdgeGeometryParams = { ...params, centerX: undefined, centerY: undefined };
-
-  const axis = isStraightPair(params.sourcePosition, params.targetPosition);
-  if (axis !== null) {
-    const delta = axis === 'v'
-      ? Math.abs(params.targetX - params.sourceX)
-      : Math.abs(params.targetY - params.sourceY);
-    if (delta < FLOW_STRAIGHT_SNAP) {
-      /*
-       * 折线太短 ⇒ 直接连一条直线。
-       * ⚠️ 它**可能是斜的**（两端 x 差那几像素）—— 教师 2026-10-07 明确接受：
-       *   「还是不要自动校正那个矩形框了，**斜线就斜线吧**」。
-       *   ⊘ 别再加「快竖直就画成正的」那种矫正：他试过之后否掉了
-       *     （矫正会让箭头落不到 target 上，为了补那个又得挪框，一环套一环，越弄越复杂）。
-       */
-      const midX = (params.sourceX + params.targetX) / 2;
-      const midY = (params.sourceY + params.targetY) / 2;
-      return [`M ${params.sourceX} ${params.sourceY} L ${params.targetX} ${params.targetY}`, midX, midY];
-    }
-  }
-  return smoothStep(bare);
+  return smoothStep({ ...params, centerX: undefined, centerY: undefined });
 }

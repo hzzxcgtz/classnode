@@ -32,6 +32,22 @@ function shot(raw: unknown): { svg: string; width: number; height: number } {
   return out;
 }
 
+/** 把 SVG 里那条连线（`marker-end` 那根 `<path>`）的点抠出来。 */
+function pathPoints(svg: string): [number, number][] {
+  const d = (svg.match(/<path d="(M [^"]+)"[^>]*marker-end/) ?? [])[1] ?? '';
+  return [...d.matchAll(/[ML]\s*(-?[\d.]+)\s+(-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+}
+
+/** 折线的每一段都必须是**横的或竖的** —— 教师 2026-10-07：「要不就是竖线，要不就是横线」。 */
+function assertAxisAligned(points: [number, number][], why: string): void {
+  for (let i = 1; i < points.length; i++) {
+    assert.ok(
+      points[i][0] === points[i - 1][0] || points[i][1] === points[i - 1][1],
+      `${why}：第 ${i} 段是**斜的**（${points[i - 1]} → ${points[i]}）`,
+    );
+  }
+}
+
 const FLOW = {
   nodes: [
     { id: 'n1', type: 'flow', position: { x: 80, y: 40 }, measured: { width: 120, height: 44 }, data: { label: '开始', kind: 'terminator' } },
@@ -70,10 +86,35 @@ test('🔴 连线带箭头：marker 定义了、也真的被引用', () => {
   /*
    * ★ 2026-10-07（教师：「快照也一起修了吧」那一轮）：端点要落在**句柄方块的边**上，
    *   与库（`getEdgePosition` / `getHandlePosition`）和画板**同一个约定** —— 比节点边框再往外 6px。
-   * 🔴 这里原来钉的是 `y1="84" y2="160"`（**边框上的点**）—— 那正是与画板差 6px 的那一版：
-   *   快照里的线比画板上短 6px（两头各 6），而且绕行点的能走范围也差 6px。
+   * 🔴 这里原来钉的是 `y1="84" y2="160"`（**边框上的点**）—— 那正是与画板差 6px 的那一版。
+   * ⊘ 2026-10-07 晚些时候：这里接连线都**不再是一根 `<line>`** 了（两端直连 = 斜线，教师否掉）
+   *   ⇒ 改成画折线，判据按**语义**判：起止点对不对得上、每一段是不是横的或竖的。
    */
-  assert.match(svg, /<line x1="140" y1="90" x2="140" y2="154"/, '连线没有按 handle（下→上）+ 端点约定落在句柄方块的外边上');
+  const points = pathPoints(svg);
+  assert.ok(points.length >= 2, '连线没画出来（或抠不出坐标）—— 先修这条判据');
+  assert.deepEqual(points[0], [140, 90], '起点没有落在「下侧句柄方块的外边」');
+  assert.deepEqual(points[points.length - 1], [140, 154], '终点没有落在「上侧句柄方块的外边」');
+  assertAxisAligned(points, '连线');
+});
+
+test('★ 线条只有竖的和横的 —— 两端差几像素也不许斜（教师 2026-10-07）', () => {
+  /*
+   * 🔴 这里原来画的是**一根斜的 `<line>`**（两端直连）—— 教师看到实物之后否掉了：
+   *    「这里还是取消自动变换成斜线吧，很怪异。所有的线条要不就是竖线，要不就是横线」。
+   * ✅ 现在一律折线：两端只差 4px 时，那 4px 走的是**一小段横线**，而不是把整根线拉斜。
+   */
+  const { svg } = shot({
+    nodes: [
+      { id: 'a', position: { x: 0, y: 0 }, measured: { width: 100, height: 40 }, data: { label: '左', kind: 'process' } },
+      // ⚠️ 只差 4px —— 正是「一眼看去像一条直线、其实两头不在同一水平线上」的那种。
+      { id: 'b', position: { x: 200, y: 4 }, measured: { width: 100, height: 40 }, data: { label: '右', kind: 'process' } },
+    ],
+    edges: [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'right', targetHandle: 'left' }],
+  });
+  assert.ok(!/<line [^>]*marker-end/.test(svg), '又画成一根直连的 <line> 了 —— 两端差几像素时那就是斜线');
+  const points = pathPoints(svg);
+  assert.ok(points.length >= 3, `两端只差 4px 时应当还是折线（拿到 ${points.length} 个点）`);
+  assertAxisAligned(points, '两端差 4px 的边');
 });
 
 test('🔴 学生写的字要转义（标签会原样进 SVG）', () => {

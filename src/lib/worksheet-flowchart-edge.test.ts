@@ -29,7 +29,6 @@ import {
   FLOW_LABEL_GAP,
   FLOW_LABEL_LINE,
   FLOW_LABEL_REACH,
-  FLOW_STRAIGHT_SNAP,
   flowAnchorPoint,
   flowEdgeGeometry,
   flowLabelOffset,
@@ -57,14 +56,26 @@ const base = {
   sourcePosition: 'bottom', targetPosition: 'top',
 } as const;
 
-test('竖直相邻、x 几乎相同 ⇒ 直接画直线（那个很小的拐角消失）', () => {
-  const [path] = flowEdgeGeometry({ ...base, targetX: 100 + FLOW_STRAIGHT_SNAP - 2 }, fakeSmooth);
-  assert.equal(path, 'M 100 0 L 110 300', '两端几乎同列 ⇒ 一条直线，而不是「下—横—下」');
-  /*
-   * ⚠️ 它**略微斜**（差 10px），这是**故意的**。教师 2026-10-07 试过「矫正成正的」之后否掉了：
-   *   「还是不要自动校正那个矩形框了，**斜线就斜线吧**」。
-   *   矫正会让箭头落不到 target 上（线画在 source 的垂线上），补那个又得挪框 —— 越弄越复杂。
-   */
+/*
+  ★ 2026-10-07（教师，**同一天里的第二次改主意**）：
+    「这里还是取消自动变换成斜线吧，很怪异。**所有的线条要不就是竖线，要不就是横线**」。
+  ⊘ 这里原来钉的是 `M 100 0 L 110 300` —— 一条**斜的**直线。那是上一轮的产物
+    （他先说「接近直线时吸附成直线，别留一个很小的拐角」，我做成「短到看不见就拉直」，
+    他当时接受了「斜线就斜线吧」，看到实物之后又否掉了）。
+  ✅ 现在**一条斜线都不画**：哪怕两端只差 2px，也交回库（`smoothstep` 的每一段本来就是横的或竖的）。
+*/
+test('★ 一条斜线都不画 —— 两端几乎同列时也交回库，由它画「下—横—下」', () => {
+  const [path] = flowEdgeGeometry({ ...base, targetX: 102 }, fakeSmooth);
+  assert.match(path, /^SMOOTH\(/, '两端几乎同列时没有走库 —— 那就是那条被否掉的斜线');
+  assert.ok(!/^M /.test(path), '路径是我们自己拼的「M…L…」⇒ 又出现了斜段');
+});
+
+test('★ 交接给库时**不夹带**绕行点（否则标签会被甩到线外）', () => {
+  const [path, labelX, labelY] = flowEdgeGeometry({ ...base, targetX: 102 }, fakeSmooth);
+  assert.match(path, /c=undefined,undefined\)/, '没拖过的边不该把 center 传给库');
+  // 标签点是**库回给我们的那两个**（假函数固定回 111/222）—— 不是我们另算的中点。
+  assert.equal(labelX, 111);
+  assert.equal(labelY, 222);
 });
 
 test('竖直相邻、x 差得明显 ⇒ 仍走 smoothstep', () => {
@@ -73,12 +84,12 @@ test('竖直相邻、x 差得明显 ⇒ 仍走 smoothstep', () => {
   assert.match(path, /^SMOOTH\(/, '偏得够远 ⇒ 该拐弯就拐弯（那是流程图的正常样子）');
 });
 
-test('横向相邻、y 几乎相同 ⇒ 同样画直线', () => {
+test('★ 横着的边同理：y 只差几像素也交回库（不拉成斜线）', () => {
   const [path] = flowEdgeGeometry({
-    sourceX: 0, sourceY: 50, targetX: 400, targetY: 50 + FLOW_STRAIGHT_SNAP - 2,
+    sourceX: 0, sourceY: 50, targetX: 400, targetY: 60,
     sourcePosition: 'right', targetPosition: 'left',
   }, fakeSmooth);
-  assert.equal(path, 'M 0 50 L 400 60', '横着的边同理（同样允许略微斜）');
+  assert.match(path, /^SMOOTH\(/, '横着的边也一样 —— 一段斜的都不许有');
 });
 
 /*
@@ -127,12 +138,7 @@ test('偏得太远（30° 以上）⇒ 照旧给库', () => {
   assert.match(path, /^SMOOTH\(/);
 });
 
-test('直线的标签点取两端中点 —— 否则线上的字会飘到别处', () => {
-  const [, labelX, labelY] = flowEdgeGeometry({ ...base, targetX: 104 }, fakeSmooth);
-  // 画的是「两端相连」的那条直线 ⇒ 标签点就是它的中点。
-  assert.equal(labelX, 102);
-  assert.equal(labelY, 150);
-});
+
 
 /*
   ============================ 绕行点能走的**那条线**、和**走到头** ============================

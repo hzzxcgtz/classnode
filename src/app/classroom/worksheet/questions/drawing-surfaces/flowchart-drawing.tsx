@@ -616,9 +616,12 @@ function labelOffsetOf(route: FlowEdgeData | undefined): FlowLabelOffset | null 
 /**
  * ★ 2026-10-07（教师）：这一份自定义边**只做两件事**，其余**全部**交给库的 `BaseEdge`。
  *
- *   ① **「折线太短就画成直线」** —— 教师：「在移动某个图形时，连接线接近直线时需要吸附成
- *      直线，否则可能会出现一个非常小的拐角，很难看」。几何在 `flowEdgeGeometry`（纯函数 + 用例）。
- *   ② **绕行点**（`data.routeX/routeY`）—— 折线上那颗控制柄拖出来的。
+ *   ① **绕行点**（`data.routeX/routeY`）—— 折线上那颗控制柄拖出来的；
+ *   ② **线上文字的偏移**（`data.labelDX/labelDY`）—— 默认贴在线旁边，还能拖着走。
+ *
+ * ⊘ 这里原来还有一条「折线太短就画成直线」—— 教师看到实物之后否掉了：
+ *   「**这里还是取消自动变换成斜线吧，很怪异。所有的线条要不就是竖线，要不就是横线**」
+ *   ⇒ 现在路径**一律**交回库（它的每一段本来就是横的或竖的），**一条斜线都不画**。
  *
  * 🔴 **与 2026-10-06 删掉的那一版有本质区别**：那一版还顺手**把标签挪到了线旁边**（教师后来
  *    否掉了，才有了「全回原版」）。这一版**不碰标签** —— `label`/`labelX`/`labelY`/`labelShowBg`
@@ -626,7 +629,7 @@ function labelOffsetOf(route: FlowEdgeData | undefined): FlowLabelOffset | null 
  *    箭头 / 配色 / 交互宽度同理，全部照转。
  */
 function FlowEdge({
-  id, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+  id, selected, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
   label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius,
   markerEnd, markerStart, style, pathOptions, interactionWidth, data,
 }: EdgeProps) {
@@ -642,6 +645,17 @@ function FlowEdge({
   const labelOffset = flowLabelOffset(params, String(label ?? ''), labelOffsetOf(route));
   const labelX = baseLabelX + labelOffset.dx;
   const labelY = baseLabelY + labelOffset.dy;
+  /*
+   * ★ 2026-10-07（教师）：「连接线上的文字说明，在我选中以后、移动之前，能不能套一个**简单的
+   *   文本框**，表示我选中了、可以移动了？」
+   * ✅ 就套在**库那块白底矩形**上（`labelBgStyle` ⇒ `.react-flow__edge-textbg`）：
+   *    那块矩形本来就贴着字量出来（`EdgeText` 里按 `getBBox` 算的）⇒ 任何缩放下都严丝合缝；
+   *    自己再画一个框，缩放一变就会与字差几个像素。
+   * ⚠️ 只在**选中且有字**时出现 —— 这正是「可以拖它了」的那个状态（把手也在这时出现）。
+   */
+  const labelBg = selected && label
+    ? { ...labelBgStyle, stroke: '#527198', strokeWidth: 1, strokeDasharray: '4 3' }
+    : labelBgStyle;
   return (
     <BaseEdge
       id={id}
@@ -651,7 +665,7 @@ function FlowEdge({
       label={label}
       labelStyle={labelStyle}
       labelShowBg={labelShowBg}
-      labelBgStyle={labelBgStyle}
+      labelBgStyle={labelBg}
       labelBgPadding={labelBgPadding}
       labelBgBorderRadius={labelBgBorderRadius}
       style={style}
@@ -941,7 +955,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   const { flowToScreenPosition } = useReactFlow<FlowNode, Edge>();
   const nodeTypes = useMemo(() => ({ flow: FlowNodeEditor }), []);
   /*
-   * ★ 2026-10-07（教师）：重新注册一份自定义边 —— 它**只**做「折线太短就画成直线」与
+   * ★ 2026-10-07（教师）：重新注册一份自定义边 —— 它**只**做「绕行点」与
    *   「绕行点」两件事，标签/箭头/配色/交互**全部**转交给库的 `BaseEdge`（见 `FlowEdge`）。
    *
    * 🔴 `FLOW_EDGE_TYPE` 是**我们自己**的类型名（不是 `smoothstep`）：这样 `edgeTypes` 注册的是
@@ -1880,7 +1894,11 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
               /* ★ 锚点就是**标签画在哪**（与库收到的坐标同源）—— 把手与字同源，不会分家。 */
               anchor={{ x: viewport.x + anchors.labelX * viewport.zoom, y: viewport.y + anchors.labelY * viewport.zoom }}
               offset={anchors.labelOffset}
-              width={Math.max(44, flowLabelWidth(String(edge.label)) + 10)}
+              /*
+               * ⚠️ 命中区是**屏幕像素**（浮层不跟着画布缩放），而字宽是**流坐标** ⇒ 要乘缩放。
+               *    不乘的话：放大到 2 倍时命中区只有字的一半宽（抓边上又掉到线上了）。
+               */
+              width={Math.max(44, (flowLabelWidth(String(edge.label)) + 10) * viewport.zoom)}
               disabled={disabled}
               onDragStateChange={setRouteDragging}
               onEdit={() => setLabelingEdge(selectedEdgeId)}

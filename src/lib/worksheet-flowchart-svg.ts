@@ -187,6 +187,29 @@ function anchorOf(node: FlowRasterNode, side: string): [number, number] {
   return [point.x, point.y];
 }
 
+/**
+ * 一条边的折线点 —— **每一段不是横的就是竖的**（教师 2026-10-07：
+ * 「所有的线条要不就是竖线，要不就是横线」）。重复的点会去掉（两端同列时会并成一根直线）。
+ *
+ * ⚠️ 两端句柄**对着**（bottom→top / right→left…）：中段落在 `routeX/routeY` 上 ——
+ *    拖过就是学生拖到的位置，没拖过就是两端中点（库的默认值）。
+ * ⚠️ 两端句柄**相邻**（bottom→left…）：一个拐角，拐在哪一侧由**起点句柄的轴**定
+ *    （起点是上下 ⇒ 先竖着走到底、再横过去）—— 与库 `getPoints` 相邻那一支的选择一致
+ *    （`points = sourceDir[axis] === currDir ? sourceTarget : targetSource`）。
+ */
+function edgePoints(input: {
+  x1: number; y1: number; x2: number; y2: number;
+  routeX: number; routeY: number; sourceSide: string; targetSide: string;
+}): [number, number][] {
+  const { x1, y1, x2, y2, routeX, routeY, sourceSide, targetSide } = input;
+  const sourceVertical = sourceSide === 'top' || sourceSide === 'bottom';
+  const targetVertical = targetSide === 'top' || targetSide === 'bottom';
+  const raw: [number, number][] = sourceVertical && targetVertical ? [[x1, y1], [x1, routeY], [x2, routeY], [x2, y2]]
+    : !sourceVertical && !targetVertical ? [[x1, y1], [routeX, y1], [routeX, y2], [x2, y2]]
+      : sourceVertical ? [[x1, y1], [x1, y2], [x2, y2]] : [[x1, y1], [x2, y1], [x2, y2]];
+  return raw.filter((point, index) => index === 0 || point[0] !== raw[index - 1][0] || point[1] !== raw[index - 1][1]);
+}
+
 /** 居中折行：按框宽断，最多三行（快照不追求完整排版，超出部分换行截断）。 */
 function wrapLabel(label: string, width: number): string[] {
   const perLine = Math.max(2, Math.floor((width - 12) / FONT_SIZE));
@@ -284,21 +307,15 @@ export function flowchartSvg(raw: unknown): { svg: string; width: number; height
     });
     const routeX = route ? route.x : (x1 + x2) / 2;
     const routeY = route ? route.y : (y1 + y2) / 2;
-    const sourceVertical = sourceSide === 'top' || sourceSide === 'bottom';
-    const targetVertical = targetSide === 'top' || targetSide === 'bottom';
-    if (route) {
-      /*
-       * ⚠️ 拐角的两条公式**照旧**（按两端句柄的方位各取一个坐标）—— 它本来就是对的：
-       *    竖着进出的边，中段是横的（`y = routeY`）；横着进出的，中段是竖的（`x = routeX`）。
-       */
-      const first: [number, number] = sourceVertical ? [x1, routeY] : [routeX, y1];
-      const second: [number, number] = targetVertical ? [x2, routeY] : [routeX, y2];
-      parts.push(`<path d="M ${x1} ${y1} L ${first[0]} ${first[1]} L ${second[0]} ${second[1]} L ${x2} ${y2}" `
-        + `fill="none" stroke="${COLORS.edge}" stroke-width="1.8" marker-end="url(#flow-arrow)"/>`);
-    } else {
-      parts.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COLORS.edge}" `
-        + `stroke-width="1.8" marker-end="url(#flow-arrow)"/>`);
-    }
+    /*
+     * ★ 2026-10-07（教师）：「**所有的线条要不就是竖线，要不就是横线**」。
+     * 🔴 这里原来**没有绕行点的边画一根 `<line>`**（两端直连）—— 两端差几像素时那就是**一条斜线**，
+     *    与画板上那条折线对不上，正是教师截图里否掉的那种。
+     * ✅ 现在一律画折线（`edgePoints`），每一段不是横的就是竖的；重复点会去掉。
+     */
+    const points = edgePoints({ x1, y1, x2, y2, routeX, routeY, sourceSide, targetSide });
+    parts.push(`<path d="${points.map(([px, py], index) => `${index === 0 ? 'M' : 'L'} ${px} ${py}`).join(' ')}" `
+      + `fill="none" stroke="${COLORS.edge}" stroke-width="1.8" marker-end="url(#flow-arrow)"/>`);
     /*
       ★ 2026-10-06（教师上传的标准流程图）：线上的字画在**线的旁边**，不压线 ——
         与画板 `FlowLabelEdge` **同一条规则**（同一个判据来源：`targetHandle` 的方位）：

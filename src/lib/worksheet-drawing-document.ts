@@ -36,3 +36,39 @@ export function readDrawingDocument(raw: unknown): DrawingDocument | null {
     return null;
   }
 }
+
+/**
+ * 这份绘图文档里**学生自己画的东西**是空的吗。
+ *
+ * ⚠️ 它**只看 `data`** —— 那是「学生自己画的那一份」（底稿在**读**的时候就剥掉了，
+ *    见 `worksheet-drawing-starter.ts`）。所以**别拿它当「有没有东西可看」** —— 见下一条。
+ */
+export function drawingDocumentIsEmpty(document: DrawingDocument): boolean {
+  if (!document.data || typeof document.data !== 'object' || Array.isArray(document.data)) return true;
+  const data = document.data as Record<string, unknown>;
+  if (document.tool === 'free') return !Array.isArray(data.paths) || data.paths.length === 0;
+  if (document.tool === 'math') return !Array.isArray(data.elements) || data.elements.length === 0;
+  if (document.tool === 'flowchart') return !Array.isArray(data.nodes) || data.nodes.length === 0;
+  const nodeData = data.nodeData;
+  if (!nodeData || typeof nodeData !== 'object' || Array.isArray(nodeData)) return true;
+  const root = nodeData as Record<string, unknown>;
+  return root.topic === '中心主题' && (!Array.isArray(root.children) || root.children.length === 0);
+}
+
+/**
+ * 这份绘图文档**值不值得交上去**（交了才算「他答了这道题」）。
+ *
+ * 🔴 判据是**两条**：学生自己画了东西 **或者** 有一张快照。
+ *    原来只有第一条 ⇒ 教师设了**初始化图**、学生还没动笔时：
+ *      · 学生那份 `data` 是空的（底稿被 `subtractFlowchart` 剥掉了 —— 那一步是**对的**，
+ *        「底稿不算学生的作答」）；
+ *      · 而那张快照画的本来就是**底稿 + 学生画的**（`flowchart-drawing.tsx` 里
+ *        `lastFlow.current = payload` 写的是全部那一份）；
+ *      ⇒ 文档被判成空、**连快照一起丢掉** ⇒ 教师的监控面板里**空白一片**
+ *        （学生屏幕上明明有底稿）—— 静默，两边都不报错。教师 2026-10-07 报的就是这个。
+ * ⚠️ 反过来也成立：没底稿、学生也没动笔时，快照根本抓不出来（空图 `flowchartSvg` 回 `null`）
+ *    ⇒ 仍然是「空」⇒ **不会**把「他只是打开了这道题」算成「作答中」。
+ */
+export function keepsDrawingDocument(document: DrawingDocument): boolean {
+  return !drawingDocumentIsEmpty(document) || Boolean(document.image);
+}

@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import { readDrawingBackground, readDrawingTool } from '@/lib/worksheet-drawing';
 import { readDrawingStarter } from '@/lib/worksheet-drawing-starter.ts';
-import type { DrawingDocument } from '@/lib/worksheet-drawing-document';
+import { keepsDrawingDocument, type DrawingDocument } from '@/lib/worksheet-drawing-document';
 import { defaultInkBox } from '@/lib/worksheet-ink';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import type { WorksheetQuestionNode } from '@/lib/types';
@@ -24,18 +24,6 @@ const TOOL_LABELS = {
   'mind-map': '思维导图',
   flowchart: '流程图',
 } as const;
-
-function documentIsEmpty(document: DrawingDocument): boolean {
-  if (!document.data || typeof document.data !== 'object' || Array.isArray(document.data)) return true;
-  const data = document.data as Record<string, unknown>;
-  if (document.tool === 'free') return !Array.isArray(data.paths) || data.paths.length === 0;
-  if (document.tool === 'math') return !Array.isArray(data.elements) || data.elements.length === 0;
-  if (document.tool === 'flowchart') return !Array.isArray(data.nodes) || data.nodes.length === 0;
-  const nodeData = data.nodeData;
-  if (!nodeData || typeof nodeData !== 'object' || Array.isArray(nodeData)) return true;
-  const root = nodeData as Record<string, unknown>;
-  return root.topic === '中心主题' && (!Array.isArray(root.children) || root.children.length === 0);
-}
 
 export function DrawingToolBody({ node, draft, onChange, disabled }: {
   node: WorksheetQuestionNode;
@@ -74,14 +62,26 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
       kind: 'ink',
       box,
       strokes: [],
-      drawing: documentIsEmpty(nextDocument) ? undefined : nextDocument,
+      /*
+       * ★ 2026-10-07：判据是**「学生画了东西」或「有一张快照」**，不再是「学生那份数据非空」——
+       * 教师设了初始化图时，学生那份 `data` 本来就是空的（底稿不算他的作答），
+       * 而快照画的是「底稿 + 学生画的」。原来把两者一起丢掉 ⇒ 教师面板空白（详见那条函数的注释）。
+       */
+      drawing: keepsDrawingDocument(nextDocument) ? nextDocument : undefined,
     });
   }, [box, drawingDocument?.image, onChange, tool]);
 
-  /** 抓图回来：只补 `image`，**不动 `data`**（快照晚到一步，不能覆盖学生刚改的内容）。 */
+  /**
+   * 抓图回来：只补 `image`，**不动 `data`**（快照晚到一步，不能覆盖学生刚改的内容）。
+   *
+   * ★ 2026-10-07：**快照可以单独成立** —— 教师设了初始化图、学生还没动笔时，
+   *   第一张快照到达时 `data` 还是 `undefined`（上一拍交出去的是一份空文档）。
+   *   原来这里 `data === undefined` 直接 return ⇒ 那张（画着底稿的）图**永远进不来**
+   *   ⇒ 教师监控面板一直空着。⚠️ `{}` 是合法的空 `data`（`readDrawingDocument` 只要求「有 data 这个键」），
+   *   学生一动笔 `update` 就会把真数据换上来，图仍然保留。
+   */
   const updateImage = useCallback((image: string) => {
-    const data = drawingDocument?.data;
-    if (data === undefined) return;
+    const data = drawingDocument?.data ?? {};
     onChange({ kind: 'ink', box, strokes: [], drawing: { tool, data, image } });
   }, [box, drawingDocument?.data, onChange, tool]);
 

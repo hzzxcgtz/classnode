@@ -68,8 +68,24 @@ export function flowEdgeGeometry(
   params: FlowEdgeGeometryParams,
   smoothStep: SmoothStepFn,
 ): [string, number, number] {
-  const hasCenter = Number.isFinite(params.centerX) && Number.isFinite(params.centerY);
-  if (!hasCenter) {
+  /*
+   * ★ 2026-10-07（教师）：「水平方向上我可以调整一条竖线，**但在垂直方向上，我无法拖动去调整
+   *   一条横线**」。
+   * 🔴 根因：拖动时**只写了一个轴**（竖直的边写 `routeY`、水平的写 `routeX`），另一个是
+   *    `undefined` ⇒ 原来那句 `Number.isFinite(centerX) && Number.isFinite(centerY)` 不成立
+   *    ⇒ **线纹丝不动**（拖了没反应，而控制柄照样跟着手指走，看着像"拖得动但线不动"）。
+   * ✅ 缺的那个轴补**两端中点** —— 那正是库自己的默认值（见 `getPoints` 里 `center.x ?? …`）。
+   */
+  const hasCenterX = Number.isFinite(params.centerX);
+  const hasCenterY = Number.isFinite(params.centerY);
+  if (hasCenterX || hasCenterY) {
+    return smoothStep({
+      ...params,
+      centerX: hasCenterX ? (params.centerX as number) : (params.sourceX + params.targetX) / 2,
+      centerY: hasCenterY ? (params.centerY as number) : (params.sourceY + params.targetY) / 2,
+    });
+  }
+  {
     const axis = isStraightPair(params.sourcePosition, params.targetPosition);
     if (axis !== null) {
       const delta = axis === 'v'

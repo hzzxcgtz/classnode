@@ -16,9 +16,17 @@ import assert from 'node:assert/strict';
 
 import { FLOW_STRAIGHT_SNAP, flowEdgeGeometry } from './worksheet-flowchart-edge.ts';
 
-/** 假库函数：只回一个能被认出来的字符串，外加一个固定的标签点。 */
-const fakeSmooth = (p: { sourceX: number; sourceY: number; targetX: number; targetY: number }) =>
-  [`SMOOTH(${p.sourceX},${p.sourceY}->${p.targetX},${p.targetY})`, 111, 222] as [string, number, number];
+/**
+ * 假库函数：把**收到的绕行点**原样回显出来 —— 这样判据能验「我们是否真的把它传下去了」。
+ * ⚠️ 只回一个认得出来的字符串是不够的：绕行点缺一个轴时**调用照样发生**，只是库那边不生效，
+ *    那种错只有把实参摊开看才抓得住（教师 2026-10-07 报的「垂直方向拖不动横线」就是它）。
+ */
+const fakeSmooth = (p: { sourceX: number; sourceY: number; targetX: number; targetY: number; centerX?: number; centerY?: number }) =>
+  [
+    `SMOOTH(${p.sourceX},${p.sourceY}->${p.targetX},${p.targetY};c=${String(p.centerX)},${String(p.centerY)})`,
+    111,
+    222,
+  ] as [string, number, number];
 
 const base = {
   sourceX: 100, sourceY: 0,
@@ -53,6 +61,26 @@ test('横向相邻、y 几乎相同 ⇒ 同样画直线', () => {
 test('有绕行点（控制柄拖过）⇒ 一切照库，不做直线判断', () => {
   const [path] = flowEdgeGeometry({ ...base, centerX: 140, centerY: 150 }, fakeSmooth);
   assert.match(path, /^SMOOTH\(/, '学生亲手调过走向的边，不该被「自动变直」抹掉');
+  assert.match(path, /c=140,150\)/, '两个轴都要原样传下去');
+});
+
+/*
+  ★ 2026-10-07（教师）：「你在折线上面加的控制点，**水平方向上我可以调整一条竖线，
+  但在垂直方向上，我无法拖动去调整一条横线**」。
+
+  🔴 根因：拖动时**只写了一个轴**（竖直的边写 `routeY`、水平的写 `routeX`），另一个是 `undefined`
+     ⇒ 门槛那句 `Number.isFinite(centerX) && Number.isFinite(centerY)` 不成立 ⇒ **线根本不动**。
+  ✅ 缺的那个轴要用**两端中点**补上（那正是库自己的默认值，见 `getPoints` 里 `center.x ?? …`）。
+*/
+test('只给一个绕行轴也要生效 —— 另一个轴补上两端中点', () => {
+  const [path] = flowEdgeGeometry({ ...base, centerY: 150 }, fakeSmooth);
+  assert.match(path, /^SMOOTH\(/, '给了 centerY 就该走库 —— 否则控制柄拖了没反应');
+  assert.match(path, /c=100,150\)/, 'centerX 要补成两端中点的 x（这里两端 x 都是 100）');
+});
+
+test('反过来也一样：只给 centerX', () => {
+  const [path] = flowEdgeGeometry({ ...base, centerX: 140 }, fakeSmooth);
+  assert.match(path, /c=140,150\)/, 'centerY 补成两端中点的 y（这里 0 与 300 的中点 = 150）');
 });
 
 test('两端句柄不同向（拐弯的边）⇒ 不碰，照库 —— 那种边「直线化」只会更怪', () => {

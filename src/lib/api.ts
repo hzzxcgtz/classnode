@@ -23,11 +23,12 @@ export function getStudentSessionAuthorization(): Record<string, string> {
  *      它一到就会回一句话（成功或失败），所以正常路径**永远轮不到这里**；
  *    · 这一条只在**响应永远不来**（网络断在半路、服务端没了）时才触发，
  *      作用是不让按钮**无声地转一整天**。
- * ⇒ 所以它取得**很宽**（10 分钟）：长一点没关系，短了才会误杀。
+ * ⇒ 所以它取得**很宽**（75 分钟 —— 服务端那条现在是 1 小时，教师 2026-10-07：
+ *   「可以放大，甚至不设限」）：长一点没关系，短了才会误杀。
  * ⚠️ 对拍判据（`worksheet-analysis-progress.test.ts`）只要求它**大于**服务端那条 ——
  *    改服务端上限时别把它落下了。
  */
-export const ANALYSIS_REQUEST_TIMEOUT_MS = 600_000;
+export const ANALYSIS_REQUEST_TIMEOUT_MS = 4_500_000;
 
 async function request<T>(path: string, options?: RequestInit, timeoutMs?: number): Promise<T> {
   const url = `${getApiBaseUrl()}${path}`;

@@ -204,6 +204,16 @@ export async function renderSheets(
       for (const cell of layout.cells) {
         const entry = entries[cell.index];
         if (entry?.kind !== 'photo' || !entry.photoUrl) continue;
+        /*
+         * ★ 2026-10-07（**教师拍板**）：学生在图里打的名字**不做任何遮盖** ——
+         *   原话：「学生在图里打的名字，我觉得没有必要进行匿名处理。」
+         *   这里只做 `rotate().resize()`，没有 OCR、没有遮挡，是**故意的**。
+         * 🔴 这是一条**隐私边界**（发出去的是学生的画，可能带着真名）——
+         *   将来要改它（遮盖 / 打码 / 只发裁剪后的图），**先回去问教师**，
+         *   别当实现细节顺手改掉。文字那一层的匿名（文档与提示词里的 `User_00X`）
+         *   是另一条规定（`ai-proxy.ts` 里那条），与本条**各自独立**。
+         */
+
         const filePath = resolveLocalPath(entry.photoUrl);
         if (!filePath) throw new Error(`invalid worksheet photo path: ${entry.photoUrl}`);
         const photo = await sharp(filePath)

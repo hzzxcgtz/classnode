@@ -584,6 +584,10 @@ export interface AnalysisPayload {
   covered: number;
   total: number;
   entries: Array<{ studentId: string; anonLabel: string }>;
+  /** ★ 2026-10-07：真的可以评分的那些代号（评分那一段只点这些人的名）。 */
+  scorableLabels: string[];
+  /** ★ 2026-10-07：这一版读不出作答、因而评不了的人（图没抓到 / 形状认不出）。 */
+  unscorableIds: string[];
   text: string | null;
   sheetLayouts: SheetLayout[];
   knobs: SheetKnobs;
@@ -635,6 +639,17 @@ export function buildAnalysisPayload(input: {
     covered: entries.length,
     total,
     entries: entries.map((entry) => ({ studentId: entry.studentId, anonLabel: labels.get(entry.studentId)! })),
+    /*
+     * ★ 2026-10-07（教师：40 人一起交给智能体）—— **这一版读不出来的作答**（快照没抓到、
+     *   形状也认不出 ⇒ `kind: 'unknown'`）。
+     * 🔴 它们原来只是文档里写一句「未纳入」，可**评分那一段照样点名要它们的分数**
+     *    （「给每一位已提交作答的学生评分……不能遗漏」）⇒ 模型只能**编**：
+     *   给一个没看到任何东西的学生编一个分和一段评价，落库，学生端还真会显示出来。
+     * ⇒ 现在把两件事分开：`scorableLabels` 是**真的可以评**的那些（喂给评分那一段），
+     *   `unscorableIds` 是评不了的（喂给教师面板，说明「这几个人评不了、要让他们重交」）。
+     */
+    scorableLabels: entries.filter((entry) => entry.kind !== 'unknown').map((entry) => labels.get(entry.studentId)!),
+    unscorableIds: entries.filter((entry) => entry.kind === 'unknown').map((entry) => entry.studentId),
     // 形态是 image 时不给文档（一张联系表就是全部内容）；mixed 两样都给。
     text: payloadKind === 'image' ? null : buildTextDocument(question, entries, labels, entries.length, total),
     sheetLayouts: payloadKind === 'text' ? [] : layoutSheets(entries, labels, knobs),

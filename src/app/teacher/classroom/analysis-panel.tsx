@@ -270,9 +270,19 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
       {!loading && payload?.aiScoring?.enabled && (
         (() => {
           const got = payload.perStudent?.scores.length ?? 0;
-          const missing = payload.perStudent?.missing ?? [];
-          if (missing.length === 0 && got > 0) return null;
+          const all = payload.perStudent?.missing ?? [];
+          /*
+           * ★ 2026-10-07：把「模型这次漏了」与「**根本评不了**」分开 ——
+           *  后者是那些**图没取到、形状也认不出**的作答（载荷里的 `unscorableIds`）。
+           *  ⚠️ 他们**不能**进「只补这 N 人」那颗按钮：补跑再多次也评不出来，
+           *    只会白等三分钟。要的是**让学生重新提交一次**（重交会重新抓一张图）。
+           */
+          const unscorable = new Set(payload.unscorableIds ?? []);
+          const missing = all.filter((id) => !unscorable.has(id));
+          const cannotScore = all.filter((id) => unscorable.has(id));
+          if (missing.length === 0 && cannotScore.length === 0 && got > 0) return null;
           const names = missing.map((id) => payload.participantNames?.[id] ?? nameOf?.(id) ?? '未命名学生');
+          const cannotNames = cannotScore.map((id) => payload.participantNames?.[id] ?? nameOf?.(id) ?? '未命名学生');
           return (
             <div className={styles.scoreMissing}>
               {got === 0
@@ -298,6 +308,12 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
               )}
               {missing.length > 0 && (
                 <span>补跑只补这几个人的分（已经拿到的分不会丢，整体分析不动）。</span>
+              )}
+              {cannotScore.length > 0 && (
+                <span>
+                  <strong>{cannotNames.join('、')}</strong> 的作答这一版读不出来（快照没抓到、形状也认不出），
+                  AI 评不了他们 —— 让他们重新提交一次这道题（重交会重新抓一张图），再点「重新生成」。
+                </span>
               )}
             </div>
           );

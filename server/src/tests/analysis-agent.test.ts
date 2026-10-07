@@ -290,3 +290,40 @@ test('normalizeNarrative 边界：刚好到上限不截断', () => {
   assert.equal(out.length, NARRATIVE_MAX);
   assert.ok(!out.includes('已截断'));
 });
+
+/*
+  ★ 2026-10-07（教师：40 人一起交给智能体）—— **不能给没图的人编分**。
+  🔴 原来评分那一段写的是「请给**每一位**已提交作答的学生评分……**不能遗漏**」，
+     而名单里混着几位**这一版读不出来的作答**（快照没抓到、形状也认不出）⇒
+     模型只能编：给一个什么都没看到的学生编一个分和一段评价，落库，学生端还真会显示。
+  ✅ 现在评分那一段**点名可评的那些**，并明说名单之外不要出现。
+*/
+test('★ 评分只点「有内容」的那些人的名 —— 读不出作答的人不许被编分', () => {
+  const unknownEntry = { studentId: 'p9', kind: 'unknown', gradeState: null } as AnalyzeEntry;
+  const payload = buildAnalysisPayload({
+    question: { questionId: 'q3', typeLabel: '绘图题', prompt: '画出水循环', heading: '任务一 · 5' },
+    entries: [inkEntry('p1'), inkEntry('p2'), unknownEntry],
+    total: 3,
+    knobs: DEFAULT_ANALYSIS_KNOBS,
+  });
+  // 前提：那一份确实被判成「读不出来」，另外两份是可评的。
+  assert.deepEqual(payload.unscorableIds, ['p9']);
+  assert.equal(payload.scorableLabels.length, 2);
+
+  const message = buildAnalysisMessage({ ...payload, aiScoring: { enabled: true, maxScore: 5, unit: '分', criteria: '' } });
+  assert.ok(!/给每一位已提交作答的学生评分/.test(message), '又写回「每一位都要评」了 —— 那会逼模型给没图的人编分');
+  assert.match(message, /请给下面这些学生评分：User_001、User_002/, '没有点名可评的那些人');
+  assert.ok(!message.includes('User_003'), '把「不可评」的那个也点进评分名单了');
+  assert.match(message, /名单之外的学生不要出现在机器块里/, '没有明说名单外不要出现');
+});
+
+test('★ 一份可评的都没有 ⇒ 明确让模型「不要给任何人评分、也不要编代号」', () => {
+  const payload = buildAnalysisPayload({
+    question: { questionId: 'q3', typeLabel: '绘图题', prompt: '画出水循环', heading: '任务一 · 5' },
+    entries: [{ studentId: 'p9', kind: 'unknown', gradeState: null } as AnalyzeEntry],
+    total: 1,
+    knobs: DEFAULT_ANALYSIS_KNOBS,
+  });
+  const message = buildAnalysisMessage({ ...payload, aiScoring: { enabled: true, maxScore: 5, unit: '分', criteria: '' } });
+  assert.match(message, /不要给任何人评分/, '一份可评的都没有时还要求评分 —— 那就是明着让模型编');
+});

@@ -576,6 +576,10 @@ export interface WorksheetAnalysisPayload {
   } | null;
   /** 只返回教师端，用于把评分中的参与者 ID 显示为姓名；不会进入远端智能体载荷。 */
   participantNames: Record<string, string>;
+  /** ★ 2026-10-07：**真的可以评分**的那些代号（评分那一段只点这些人的名）。 */
+  scorableLabels: string[];
+  /** ★ 2026-10-07：**这一版读不出作答**、因而评不了的人（图没抓到 / 形状认不出）。 */
+  unscorableIds: string[];
   /**
    * ★ M7b：学习单上指定的那个分析智能体（`null` = 没指定）。
    * 只给界面**显示**用 —— 能不能发的判断在服务端（见 `canSend`）。

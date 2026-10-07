@@ -293,6 +293,48 @@ test('★ 只补这几个人：只发他们、把分并进去、**不动整体�
   assert.equal(body.narrative, firstNarrative);
 });
 
+/*
+  ★ 2026-10-07（教师：40 人一起交给智能体）—— **模型硬编的行也收不进来**。
+  某个学生的作答这一版读不出来（快照没抓到、形状也认不出 ⇒ `kind: 'unknown'`），
+  就算模型在机器块里给他编了一行，服务端也不认（`byLabel` 里没有他）⇒
+  学生端不会出现「一个没有任何依据的分」。
+*/
+test('★ 读不出作答的学生：模型编的行不算数，他会出现在「评不了」而不是「补跑」里', async (t) => {
+  const db = await openTempDb();
+  // 模型给可评的那位正常评分，同时**多编了一行**给那个读不出来的学生。
+  const fake = await startFakeCoze('整体不错。<classnode-scores>{"scores":'
+    + '[{"student":"User_001","score":4,"reason":"思路清楚","advice":"再补一个分支。"},'
+    + '{"student":"User_002","score":3,"reason":"看起来还行","advice":"多练。"}]}</classnode-scores>');
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const agent = await makeAgent(p, 'coze', fake.base);
+  const { worksheet, classroom } = await seed(p, {
+    analysisAgentId: agent.id,
+    node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
+  });
+  // 第二位学生：已提交，但作答的**形状这一版读不出来**（不是 ink，也不是照片）⇒ `kind: 'unknown'`。
+  const second = await p.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const secondResponse = await p.worksheetResponse.create({
+    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: second.id },
+  });
+  await p.worksheetAnswer.create({
+    data: { responseId: secondResponse.id, questionId: 'q3', status: 'submitted', value: { format: 'nonsense/v9', whatever: true } },
+  });
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+  const computed = await (await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' })).json() as {
+    unscorableIds?: string[];
+  };
+  assert.deepEqual(computed.unscorableIds, [second.id], '读不出来的那位要单独报出来（教师据此让他重交，而不是补跑）');
+
+  const run = await fetch(runUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+  assert.equal(run.status, 200);
+  const row = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
+  const perStudent = row.perStudent as { scores: Array<{ studentId: string }>; missing?: string[] } | null;
+  assert.equal(perStudent?.scores.length, 1, '模型给读不出来的那位编的行**不许**落库');
+  assert.deepEqual(perStudent?.missing, [second.id], '他没分 ⇒ 会出现在「缺谁」里（面板再把它归到「评不了」那一类）');
+});
+
 test('🔴 平台收不了图 ⇒ 400，且**一次网络都没发**', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });

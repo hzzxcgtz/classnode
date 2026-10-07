@@ -1683,7 +1683,16 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const agentConfig = toAgentConfig(agent, agent.credential);
     const result = await proxyAnalysisRequest(agentConfig, buildAnalysisMessage(payload, labeled), images);
     if (!result.success) return res.status(502).json({ error: result.error ?? '分析失败' });
-    const parsed = parseAiAnalysisResult(result.content ?? '', payload.aiScoring, payload.entries);
+    /*
+     * ★ 2026-10-07：**只认可评的那些人** —— 名单外（这一版读不出作答的）就算模型硬编了一行，
+     *   这里也收不进来（`byLabel` 里没有他们）。防的是「学生端显示一个没有任何依据的分」。
+     */
+    const scorable = new Set(payload.scorableLabels);
+    const parsed = parseAiAnalysisResult(
+      result.content ?? '',
+      payload.aiScoring,
+      payload.entries.filter((entry) => scorable.has(entry.anonLabel)),
+    );
     if ('error' in parsed) return res.status(502).json({ error: parsed.error });
     const narrative = normalizeNarrative(parsed.narrative);
     if (narrative === '') {

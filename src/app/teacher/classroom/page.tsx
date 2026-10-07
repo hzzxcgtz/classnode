@@ -15,6 +15,7 @@ import { Toast } from '@/lib/components';
 import { useWebappMonitor } from './use-webapp-monitor';
 import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-tiles';
 import { WorksheetTileContent } from './worksheet-tiles';
+import { SvgAvatar } from '@/components/svg-avatar';
 import { MatrixOverlay } from './matrix-overlay';
 import { AnalysisOverlay } from './analysis-overlay';
 import { QuestionStatsOverlay } from './question-stats-overlay';
@@ -2950,7 +2951,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                         {isGroup ? (
                           getGroupInitial(item.group?.name)
                         ) : student.avatarId && studentAvatars[student.avatarId] ? (
-                          <div style={{ width: 36, height: 36, filter: status === 'offline' ? 'grayscale(1)' : 'none' }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[student.avatarId]).replace('<svg', '<svg width="36" height="36"') }} />
+                          <div style={{ filter: status === 'offline' ? 'grayscale(1)' : 'none' }}><SvgAvatar svg={studentAvatars[student.avatarId]} size={36} /></div>
                         ) : student.name[0]}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -3192,7 +3193,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                     {selectedGroup ? (
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
                     ) : selectedStudent.avatarId && studentAvatars[selectedStudent.avatarId] ? (
-                      <div style={{ width: 36, height: 36 }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[selectedStudent.avatarId]).replace('<svg', '<svg width="36" height="36"') }} />
+                      <SvgAvatar svg={studentAvatars[selectedStudent.avatarId]} size={36} />
                     ) : selectedStudent.name[0]}
                   </div>
                   <div style={{ minWidth: 0 }}>
@@ -3490,8 +3491,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                     }}>
                       {m.role === 'user' ? (
                         selectedStudent?.avatarId && studentAvatars[selectedStudent.avatarId] ? (
-                          <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}
-                            dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[selectedStudent.avatarId]).replace('<svg', '<svg width="48" height="48"') }} />
+                          <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}>
+                            <SvgAvatar svg={studentAvatars[selectedStudent.avatarId]} size={48} />
+                          </div>
                         ) : (
                           <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--primary-tint)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.938rem", fontWeight: 700, flexShrink: 0 }}>
                             {selectedStudent?.name?.[0] || '学'}
@@ -3734,7 +3736,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                           {isGroup ? (
                             getGroupInitial(item.group?.name)
                           ) : student.avatarId && studentAvatars[student.avatarId] ? (
-                            <div style={{ width: compact ? 26 : 36, height: compact ? 26 : 36, filter: status === 'offline' ? 'grayscale(1)' : 'none' }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(studentAvatars[student.avatarId]).replace('<svg', `<svg width="${compact ? 26 : 36}" height="${compact ? 26 : 36}"`) }} />
+                            <div style={{ filter: status === 'offline' ? 'grayscale(1)' : 'none' }}><SvgAvatar svg={studentAvatars[student.avatarId]} size={compact ? 26 : 36} /></div>
                           ) : student.name[0]}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>

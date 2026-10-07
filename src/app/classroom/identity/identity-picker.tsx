@@ -1,6 +1,6 @@
 import { useRouter } from 'next/navigation';
 import type { ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
-import { SvgAvatar } from '../chat/svg-avatar';
+import { SvgAvatar } from '@/components/svg-avatar';
 import { useIsMobile } from '../use-is-mobile';
 
 export interface IdentityPickerProps {

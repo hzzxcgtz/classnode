@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import type { AvatarSummary } from '@/lib/types';
 import type { ClassroomInfo, StudentSession } from '../classroom-types';
 import { fixSvgUrl } from '../avatar-utils';
-import { SvgAvatar } from './svg-avatar';
+import { SvgAvatar } from '@/components/svg-avatar';
 
 export interface AvatarChangerContentProps {
   studentId: string;

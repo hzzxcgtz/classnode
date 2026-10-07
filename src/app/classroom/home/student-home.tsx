@@ -7,7 +7,7 @@ import type { ClassroomWebappSummary, WorksheetMaterialSummary } from '@/lib/typ
 import type { ChatToast, ClassroomInfo, ModuleId, StudentChatMessage, StudentSession } from '../classroom-types';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
 import { MODULE_META } from '../module-meta';
-import { SvgAvatar } from '../chat/svg-avatar';
+import { SvgAvatar } from '@/components/svg-avatar';
 import styles from './home.module.css';
 
 export interface StudentHomeProps {

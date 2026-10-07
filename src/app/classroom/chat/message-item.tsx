@@ -1,6 +1,6 @@
 import { memo, useCallback, useState } from 'react';
 import { Markdown, stripImages } from '@/lib/markdown';
-import { SvgAvatar } from './svg-avatar';
+import { SvgAvatar } from '@/components/svg-avatar';
 import { AgentAvatar } from './agent-avatar';
 import type { ChatAgent, StudentChatMessage } from '../classroom-types';
 import styles from './chat.module.css';

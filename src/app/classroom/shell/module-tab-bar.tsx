@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, RefObject } from 'react';
 import { MODULE_META } from '../module-meta';
 import type { ModuleId, StudentSession } from '../classroom-types';
-import { SvgAvatar } from '../chat/svg-avatar';
+import { SvgAvatar } from '@/components/svg-avatar';
 import type { ModuleTabEntry } from './use-module-tabs';
 import styles from './shell.module.css';
 

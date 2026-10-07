@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetBoard, WorksheetBoardAnswerRow } from '../../../lib/types';
-import { applyLiveRows, mergeProgress, restProgress, type LiveRowPatch } from './worksheet-board-data.ts';
+import { answerRowWithDraft, applyLiveRows, mergeProgress, restProgress, type LiveRowPatch } from './worksheet-board-data.ts';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state.ts';
 
 /**
@@ -452,4 +452,48 @@ test('🔴 逐格合并：广播与快照有同一格时，广播赢（不能反
     1_000_000,
   );
   assert.deepEqual(merged.p1.cells, { q1: 'submitted' }, '广播那一格要盖过快照');
+});
+
+/* ── answerRowWithDraft：抽屉那一份值也取**实时预览** ──────────────────
+   ★ 2026-10-07（教师）：「左边卡片和右边抽屉显示的不是同一份内容」。
+   卡片那一格读的是**实时预览**（`worksheet-tile-state.ts` 的 `activeAnswer`：
+   `value: useDraft ? draft.value : row?.value`），而抽屉此前只读已落库的那一行 ——
+   学生继续画的那一分钟里，两张图自然不一样，且抽屉那一张**永远是旧的**。
+   ⇒ 抽屉也走同一条实时预览（`worksheet-draft-preview`，不落库、保存广播一到就被清掉）。
+*/
+
+const DRAFT = { worksheetId: 'w1', questionId: 'q1', value: { format: 'text/v1', text: '正在写' } };
+
+test('★ 有匹配的实时预览 ⇒ 值取预览那一份（抽屉不再落后于卡片）', () => {
+  const saved = row({ questionId: 'q1', value: { format: 'text/v1', text: '上次保存的' } });
+  const out = answerRowWithDraft(saved, DRAFT, 'w1', 'q1');
+  assert.deepEqual(out?.value, { format: 'text/v1', text: '正在写' });
+  assert.equal(out?.status, saved.status, '只换值，其余字段一个字不动');
+});
+
+test('🔴 预览属于**别的题 / 别的学习单** ⇒ 原样（不许串题）', () => {
+  const saved = row({ questionId: 'q1', value: { format: 'text/v1', text: '已保存' } });
+  assert.deepEqual(answerRowWithDraft(saved, { ...DRAFT, questionId: 'q2' }, 'w1', 'q1')?.value,
+    { format: 'text/v1', text: '已保存' }, '别的题的预览跑到这一题上了');
+  assert.deepEqual(answerRowWithDraft(saved, { ...DRAFT, worksheetId: 'w9' }, 'w1', 'q1')?.value,
+    { format: 'text/v1', text: '已保存' }, '两份学习单若有同名题号，只靠题号判会串');
+});
+
+test('🔴 预览的值是 null（学生清空了）⇒ 也取它，**不许回落**成旧的那份', () => {
+  const saved = row({ questionId: 'q1', value: { format: 'text/v1', text: '他已经删掉的' } });
+  assert.equal(answerRowWithDraft(saved, { ...DRAFT, value: null }, 'w1', 'q1')?.value, null,
+    '回落成旧值 = 教师看到一个学生已经删掉的内容');
+});
+
+test('没有预览 ⇒ 原行不动（浅拷贝也行，但字段必须逐字相等）', () => {
+  const saved = row({ questionId: 'q1', value: { format: 'text/v1', text: '已保存' } });
+  assert.deepEqual(answerRowWithDraft(saved, undefined, 'w1', 'q1'), saved);
+});
+
+test('★ 库里还没有那一行、但他此刻正在写 ⇒ **造一行**（不造的话抽屉说「未作答」而卡片有内容）', () => {
+  const out = answerRowWithDraft(undefined, DRAFT, 'w1', 'q1');
+  assert.equal(out?.status, 'draft', '「他正在写」在这一屏上就是作答中');
+  assert.deepEqual(out?.value, { format: 'text/v1', text: '正在写' });
+  assert.equal(out?.score, null, '没保存过 ⇒ 判分三件套一律 null（不许编）');
+  assert.equal(out?.reviewedAt, null);
 });

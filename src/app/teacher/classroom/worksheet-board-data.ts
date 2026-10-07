@@ -184,6 +184,42 @@ export function isGradeState(raw: unknown): raw is WorksheetGradeState {
   return raw === 'correct' || raw === 'partial' || raw === 'incorrect';
 }
 
+/**
+ * ★ 2026-10-07（教师）：抽屉里那一份「他写的什么」，也取**实时预览**。
+ *
+ * 🔴 起因：教师截图里**左边卡片与右边抽屉显示的不是同一份内容**。卡片那一格读的是
+ *   实时预览（`worksheet-tile-state.ts` 的 `activeAnswer`：`useDraft ? draft.value : row?.value`），
+ *   而抽屉此前只读**已落库**的那一行 ⇒ 学生继续画的那一分钟里，抽屉那一张永远是旧的，
+ *   而它恰恰是教师用来「标记已查看」的那一屏。
+ *
+ * ⚠️ 实时预览**不会过时**：它是 `worksheet-draft-preview` 那条独立通道（不落库），
+ *   而**每一条保存广播到达时都会被清掉**（见 `use-worksheet-board.ts` 里那句 delete）——
+ *   「已经保存过了」就不该再拿旧预览当「他此刻在写的」。
+ *
+ * 🔴 三个判据缺一不可：
+ *   ① 预览带 `worksheetId` 与 `questionId`，**两个都要对上**才用（两份学习单可能有同名题号，
+ *      只比题号会串题 —— 与卡片那一侧同一条纪律）；
+ *   ② 预览的值即使是 `null`（学生清空了）**也照用**，不许回落成旧的那一份
+ *      （回落 = 教师看到一个学生已经删掉的内容）；
+ *   ③ 库里还没有那一行、而他此刻正在写 ⇒ **造一行**（`status: 'draft'`）——
+ *      不造的话抽屉会说「未作答」，而同一时刻卡片上明明有内容。
+ */
+export function answerRowWithDraft(
+  row: WorksheetBoardAnswerRow | undefined,
+  draft: { worksheetId: string; questionId: string; value: unknown } | undefined,
+  worksheetId: string,
+  questionId: string,
+): WorksheetBoardAnswerRow | undefined {
+  if (!draft || draft.worksheetId !== worksheetId || draft.questionId !== questionId) return row;
+  if (row) return { ...row, value: draft.value };
+  // ⚠️ 这一行的其余字段一律取**「不知道」**（`null`），一个字都不许编 ——
+  //    判分三件套尤其不能编成 `false` / `0`（那会让奖励与对错标记凭空出现）。
+  return {
+    questionId, status: 'draft', isCorrect: null, gradeState: null, score: null,
+    reviewedAt: null, value: draft.value, createdAt: null, savedAt: null, saveCount: null,
+  };
+}
+
 export interface LiveRowPatch {
   status: 'draft' | 'submitted';
   value: unknown;

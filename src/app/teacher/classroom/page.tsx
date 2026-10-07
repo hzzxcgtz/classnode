@@ -3149,6 +3149,10 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             board={wb.board}
             nodesByWorksheet={wb.nodesByWorksheet}
             settingsByWorksheet={wb.settingsByWorksheet}
+            /* ★ 2026-10-07（教师）：「卡片与抽屉显示的不是同一份」——
+               抽屉也吃同一条实时预览（`wb.liveDrafts`）。🔴 必须**同源**：
+               各取各的会让同一时刻两处画出两张不同的图，而两边都不报错。 */
+            liveDrafts={wb.liveDrafts}
             loading={wb.loading}
             reviewBusy={worksheetReviewBusy}
             onReview={(worksheetId, participantId, questionId) => void reviewWorksheetAnswer(worksheetId, participantId, questionId)}

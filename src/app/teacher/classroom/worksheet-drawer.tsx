@@ -13,6 +13,7 @@ import { activeWorksheetAnalysisTask, hasCompletedWorksheetAnalysis } from '@/li
 // 教师端这个 SVG 都走它。各写一份 `x * canvas.w` 的后果是**两边画出来的形状不一样**，
 // 而两处都「看起来正常」：没有任何报错、也没有一条用例会红。
 import { AnswerViewBody } from './answer-view';
+import { answerRowWithDraft } from './worksheet-board-data';
 import { InkPreview } from './ink-preview';
 // ★ 2026-09-28：奖励的换算与全貌/过程的判据。
 import { resolveRewardScale, type RewardScale } from '@/lib/worksheet-reward';
@@ -76,7 +77,7 @@ export interface WorksheetDrawerEntry {
 }
 
 export function WorksheetDrawer({
-  entry, onClose, board, nodesByWorksheet, settingsByWorksheet, loading, reviewBusy, onReview, onClearQuestion, onOpenQuestionStats,
+  entry, onClose, board, nodesByWorksheet, settingsByWorksheet, liveDrafts, loading, reviewBusy, onReview, onClearQuestion, onOpenQuestionStats,
 }: {
   entry: WorksheetDrawerEntry;
   onClose: () => void;
@@ -89,6 +90,13 @@ export function WorksheetDrawer({
    * 键不在 = 还没加载到 ⇒ 奖励那一项显示「—」而**不是 0**（0 是一句假话）。
    */
   settingsByWorksheet: Record<string, WorksheetSettings>;
+  /**
+   * ★ 2026-10-07（教师）：「卡片与抽屉显示的不是同一份」——
+   * 参与者 id → 他**此刻正在写**的那一份（`worksheet-draft-preview` 通道，**没落库**）。
+   * 🔴 这一屏必须与看板那一格**同源**，否则教师会拿一张旧图去讲题（而两边都不报错）。
+   * 保存广播一到它就被清掉 ⇒ 不会拿旧预览当「他此刻在写的」。
+   */
+  liveDrafts: Record<string, { worksheetId: string; questionId: string; value: unknown }>;
   loading: boolean;
   /** 正在标记的那一条（`participantId:questionId`），点过的按钮显示「标记中…」。 */
   reviewBusy: string | null;
@@ -202,12 +210,13 @@ export function WorksheetDrawer({
           )}
           {board && current.kind === 'question' && (
             <QuestionAnswers board={board} worksheetId={current.worksheetId} questionId={current.questionId}
-              nodes={nodesByWorksheet[current.worksheetId] ?? null}
+              nodes={nodesByWorksheet[current.worksheetId] ?? null} liveDrafts={liveDrafts}
               onOpenParticipant={(participantId) => push({ kind: 'participant', participantId })} />
           )}
           {board && current.kind === 'participant' && (
             <ParticipantAnswers board={board} participantId={current.participantId}
               nodesByWorksheet={nodesByWorksheet} settingsByWorksheet={settingsByWorksheet}
+              liveDrafts={liveDrafts}
               reviewBusy={reviewBusy} onReview={onReview} onClearQuestion={onClearQuestion} />
           )}
         </div>
@@ -458,12 +467,14 @@ function QuestionAnalysisState({ classroomId, worksheetId, questionId, initially
 // ── 形态 B · 第三层：某题的全部作答（按参与者列，可能是组不是人）────
 
 export function QuestionAnswers({
-  board, worksheetId, questionId, nodes, onOpenParticipant,
+  board, worksheetId, questionId, nodes, liveDrafts, onOpenParticipant,
 }: {
   board: WorksheetBoard;
   worksheetId: string;
   questionId: string;
   nodes: WorksheetQuestionNode[] | null;
+  /** ★ 2026-10-07：实时预览（与看板那一格同源）—— 见 `answerRowWithDraft`。 */
+  liveDrafts: Record<string, { worksheetId: string; questionId: string; value: unknown }>;
   onOpenParticipant: (participantId: string) => void;
 }) {
   const worksheet = board.worksheets.filter((item) => item.id === worksheetId)[0];
@@ -473,7 +484,11 @@ export function QuestionAnswers({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {worksheet.participants.map((participant) => {
-        const row = participant.answerRows.filter((item) => item.questionId === questionId)[0];
+        // ★ 2026-10-07：这一行叠上**实时预览**（与他此刻屏幕上的一致，见 `answerRowWithDraft`）。
+        const row = answerRowWithDraft(
+          participant.answerRows.filter((item) => item.questionId === questionId)[0],
+          liveDrafts[participant.participantId], worksheet.id, questionId,
+        );
         const outcome = node ? questionOutcome(node, row) : null;
         const compactView = node ? answerView(node, row?.value) : null;
         return (
@@ -513,12 +528,14 @@ export function QuestionAnswers({
 // ── 形态 A：某参与者的逐题详情 ───────────────────────────────────────
 
 function ParticipantAnswers({
-  board, participantId, nodesByWorksheet, settingsByWorksheet, reviewBusy, onReview, onClearQuestion,
+  board, participantId, nodesByWorksheet, settingsByWorksheet, liveDrafts, reviewBusy, onReview, onClearQuestion,
 }: {
   board: WorksheetBoard;
   participantId: string;
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
   settingsByWorksheet: Record<string, WorksheetSettings>;
+  /** ★ 2026-10-07：实时预览（与看板那一格同源）—— 见 `answerRowWithDraft`。 */
+  liveDrafts: Record<string, { worksheetId: string; questionId: string; value: unknown }>;
   reviewBusy: string | null;
   onReview: (worksheetId: string, participantId: string, questionId: string) => void;
   onClearQuestion: (worksheetId: string, participantId: string, questionId: string) => void;
@@ -558,7 +575,11 @@ function ParticipantAnswers({
 
   const rowsByQuestion = new Map(participant.answerRows.map((row) => [row.questionId, row]));
   const enriched = items.map((item) => {
-    const row = rowsByQuestion.get(item.node.id);
+    // ★ 2026-10-07：叠上**实时预览** —— 抽屉里那张图/那段文字必须与他此刻屏幕上的一致
+    //（此前这里只读已落库的那一行 ⇒ 学生继续写的那一分钟里，这屏永远是旧的）。
+    const row = answerRowWithDraft(
+      rowsByQuestion.get(item.node.id), liveDrafts[participant.participantId], worksheet.id, item.node.id,
+    );
     return { ...item, row, outcome: questionOutcome(item.node, row) };
   });
   const attentionCount = overview.partial + overview.wrong + overview.noVerdict;

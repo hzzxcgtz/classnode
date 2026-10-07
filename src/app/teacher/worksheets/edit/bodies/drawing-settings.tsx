@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 
 // ⚠️ 学生端那块画板是**默认导出**（我们直接复用它，而不是再写一份）。
 import FlowchartDrawing from '@/app/classroom/worksheet/questions/drawing-surfaces/flowchart-drawing';
+import MindmapDrawing from '@/app/classroom/worksheet/questions/drawing-surfaces/mindmap-drawing';
 import { api } from '@/lib/api';
 import {
   DRAWING_BACKGROUND_PRESETS,
@@ -12,10 +13,24 @@ import {
   readDrawingTool,
   type DrawingMode,
 } from '@/lib/worksheet-drawing';
-import { readDrawingStarter } from '@/lib/worksheet-drawing-starter';
+import { blankStarterFor, readDrawingStarter } from '@/lib/worksheet-drawing-starter';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { EditorIcon } from '../editor-icons';
+
+/**
+ * ★ 2026-10-07：思维导图的**空底稿**（只有中心主题）。
+ *
+ * 🔴 形状照 `MindElixir.new()` 的那一份（`{ nodeData: { id, topic, children } }`）——
+ *   少一个 `nodeData` 的话学生端 `readMindMapPayload` 读不出来，**等于没底稿**
+ *   （而面板上那个开关却是开着的：教师以为设好了，学生那边什么都没有）。
+ * ⚠️ `id` 用固定值：它只需**在这张画布内**唯一 —— 库给学生新增的节点生成的是
+ *   16 位随机串（`dist/MindElixir.js` 的 `X()`），不会撞上这个名字。
+ */
+/** 画板的中文名（「这张底稿属于哪一档」那句话要用它，别把 `mind-map` 这种内部值摆给教师看）。 */
+function toolLabelOf(tool: string): string {
+  return DRAWING_TOOL_OPTIONS.filter((option) => option.value === tool)[0]?.label ?? tool;
+}
 
 export function DrawingSettings({ node, onDataChange, onNotice }: {
   node: WorksheetQuestionNode;
@@ -25,6 +40,8 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
   const tool = readDrawingTool(node);
   const background = readDrawingBackground(node);
   const starter = readDrawingStarter(node);
+  /** ★ 2026-10-07：这一档能不能有初始图（判据在 `blankStarterFor`，不在这一屏）。 */
+  const starterSupported = blankStarterFor(tool) !== null;
   /** 作答方式：`photo` = 学生拍照上传 ⇒ 这一页的画板相关设置全都不参与（见下面那段注释）。 */
   const photo = node.inputMode === 'photo';
   /**
@@ -192,13 +209,30 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
               type="checkbox"
               role="switch"
               checked={!!starter}
+              /*
+               * ★ 2026-10-07：这一档不支持初始图、而且题目上也没有旧底稿可关 ⇒ **禁用**。
+               * ⚠️ 有旧底稿时**必须仍可点**（哪怕它属于别的画板）—— 那是教师**唯一**能把它清掉的地方，
+               *   禁掉就等于留了一份他自己删不掉的脏数据。
+               */
+              disabled={!starterSupported && !starter}
+              title={starterSupported ? undefined : '这一档还不支持初始图（目前支持流程图与思维导图）'}
               onChange={(event) => {
                 if (!event.target.checked) {
                   if (starter && !window.confirm('清掉初始图会丢掉已经画好的内容，确定吗？')) return;
                   onDataChange({ drawingStarter: undefined });
                   return;
                 }
-                onDataChange({ drawingStarter: { tool: 'flowchart', data: { nodes: [], edges: [] } } });
+                /*
+                 * ★ 2026-10-07（教师：「初始图开关不仅流程图要，其他绘图题也要」）——
+                 * 「该给这一档写什么形状的空底稿」是**数据**、住在
+                 * `@/lib/worksheet-drawing-starter.ts` 的 `blankStarterFor`（纯函数、有判据）。
+                 * 🔴 原来这里是**无条件**写一份**流程图**底稿 ⇒ 思维导图题上挂着流程图的底稿，
+                 *   而服务端据此对模型说「图里有初始图」（假话，两边都不报错）。
+                 * ⚠️ 这一档不支持（数学作图 / 自由画）时那个开关是**禁用**的，
+                 *   所以 `null` 这一支走不到 —— 留着它是防守，不是主路径。
+                 */
+                const blank = blankStarterFor(tool);
+                if (blank) onDataChange({ drawingStarter: blank });
               }}
             />
             <span>让学生从这张初始图开始画</span>
@@ -214,7 +248,18 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
              （见 `src/lib/worksheet-drawing-starter.ts`）。
         */}
         {starter ? (
-          tool === 'flowchart' ? (
+          starter.tool !== tool ? (
+            /* ★ 2026-10-07：底稿属于**另一个画板**（教师中途换过作图工具）。
+               ⚠️ 它现在是**惰性**的：学生端不显示它，服务端也**不会**说「有初始图」
+               （判据是「底稿的画板必须与题目当前的一致」，见 `hasDrawingStarter`）。
+               ⇒ 这里照实说清它属于谁，别让教师以为它还在生效。 */
+            <p className="worksheet-editor-drawing-note">
+              这张底稿是<b>{toolLabelOf(starter.tool)}</b>的；把上面的作图工具改回
+              <b>{toolLabelOf(starter.tool)}</b>就能继续编辑它（不会丢）。
+              <br />
+              想改用当前这一档重新画一张，先把上面的开关关掉（会丢掉这张）。
+            </p>
+          ) : tool === 'flowchart' ? (
             <>
               <p className="worksheet-editor-drawing-note">
                 {/* ★ 2026-10-06：原来这里还有前半句「学生在下面这张图上继续画」——
@@ -230,9 +275,28 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
                 />
               </div>
             </>
+          ) : tool === 'mind-map' ? (
+            <>
+              <p className="worksheet-editor-drawing-note">
+                {/* 🔴 与流程图那句**不同**，别照抄：思维导图的底稿是**骨架**，
+                    学生要填的正是骨架本身，所以交上来的**整棵树**都算他的作答
+                    （见 `mindMapOrStarter`）—— 这里必须说清，不然教师会以为「骨架不算他的」。 */}
+                学生将在这张图上继续绘制；导图这一档，交上来的**整张图**都算他的作答
+                （只有发给智能体的那一句说明会提示「初始图不算学生的成果」）。
+              </p>
+              <div style={{ height: 380, border: '1px solid #e4ecf4', borderRadius: 10, overflow: 'hidden' }}>
+                <MindmapDrawing
+                  data={starter.tool === 'mind-map' ? starter.data : undefined}
+                  backgroundUrl={starterBackgroundUrl}
+                  disabled={false}
+                  onChange={(next: unknown) => onDataChange({ drawingStarter: { tool: 'mind-map', data: next } })}
+                />
+              </div>
+            </>
           ) : (
+            /* 数学作图 / 自由画：教师这次只要了流程图与思维导图两档 —— 照实说，别给一个画不了东西的空框。 */
             <p className="worksheet-editor-drawing-note">
-              初始图目前只支持<b>流程图</b>；把上面的作图工具改成流程图就能在这里画。
+              初始图目前支持<b>流程图</b>与<b>思维导图</b>；把上面的作图工具改成这两档就能在这里画。
             </p>
           )
         ) : null}

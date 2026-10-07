@@ -477,6 +477,16 @@ test('★ 教师初始图：只有**真的带初始图**的绘图题，提示词
       expectNote: false,
     },
     {
+      // ★ 2026-10-07（教师：「初始图开关不仅流程图要，其他绘图题也要」）——
+      // 思维导图这一档现在**也能设底稿**，于是服务端要认它（判据是工具一致，与哪一档无关）。
+      why: '绘图题（画板=思维导图）+ 思维导图自己的底稿',
+      node: drawing({
+        drawingTool: 'mind-map',
+        drawingStarter: { tool: 'mind-map', data: { nodeData: { id: 'starter-root', topic: '中心主题', children: [] } } },
+      }),
+      expectNote: true,
+    },
+    {
       // 手改/复制来的字段：前端 `readDrawingStarter` 也不认（题型不是 drawing）。
       why: '问答题上挂着同名字段',
       node: {

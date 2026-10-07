@@ -39,7 +39,9 @@ test('★ 底稿面板：用学生的画板、写回带 tool 的 drawingStarter�
   // ④ 画板要有明确高度：它靠量出容器尺寸才初始化（这条路径我们修过两次：scale(0) / overflowHidden）。
   assert.match(source, /height: 380/, '底稿画板没有给固定高度 —— 量不出尺寸它不会初始化');
   // ⑤ 还没接好的档位要说清楚，而不是给一个画不了东西的空框。
-  assert.match(source, /初始图目前只支持/, '非流程图档没有说明');
+  // ★ 2026-10-07：这一档的说明跟着「初始图推广到两档」改了 ——
+  //   原来写的是「目前只支持流程图」，现在是「支持流程图与思维导图」。
+  assert.match(source, /初始图目前支持/, '这两档之外的画板（数学作图 / 自由画）没有说明');
 });
 
 test('★ 2026-10-06（教师最终拍板）：「锁定初始图」开关**不许存在**（连同它的副说明）', () => {
@@ -64,9 +66,11 @@ test('★ 2026-10-06（教师最终拍板）：「锁定初始图」开关**不�
   assert.match(code, /\{starter \? \(/, '「这一题有初始图」那一支被误删了（初始图面板整块没了）');
   assert.match(code, /drawingStarter: \{ tool: 'flowchart', data: next \}/, '写回底稿的接线被误删了');
   // ⚠️ 反面对照：把那个开关块塞回去 ⇒ 上面那条必须红（证明它不是恒真）。
+  // ★ 2026-10-07：锚点跟着那次改动挪了 —— 现在 `{starter ? (` 之后的第一支是
+  //   「底稿属于别的画板」（`starter.tool !== tool`），不是原来的 `tool === 'flowchart'`。
   const switchBack = code.replace(
-    '{starter ? (\n          tool === \'flowchart\' ? (',
-    '{starter ? (\n          <label className="worksheet-editor-drawing-switch"><input type="checkbox" role="switch" checked={starter.locked} /><span>锁定初始图</span></label>\n          tool === \'flowchart\' ? (',
+    "{starter ? (\n          starter.tool !== tool ? (",
+    "{starter ? (\n          <label className=\"worksheet-editor-drawing-switch\"><input type=\"checkbox\" role=\"switch\" checked={starter.locked} /><span>锁定初始图</span></label>\n          starter.tool !== tool ? (",
   );
   assert.notEqual(switchBack, code, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.ok(/锁定初始图/.test(switchBack), '反面对照没被抓住 —— 这条判据是恒真的');

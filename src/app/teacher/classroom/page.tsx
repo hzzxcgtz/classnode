@@ -3720,7 +3720,14 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                         transition: 'all 0.15s',
                         boxShadow: isSelected ? '0 4px 16px rgba(var(--primary-focus-rgb), 0.12)' : '0 1px 4px rgba(0,0,0,0.04)',
                         minHeight: 0,
-                        height: compact ? 155 : 190,
+                        /*
+                         * ★ 2026-10-07（教师）：「点了上面的**全屏按钮**以后，卡片的高度**仍旧是原来的
+                         *   高度**」—— 主看板那次加高（260 → 300）只改了一处，全屏这一处漏了。
+                         * ⚠️ 这两个数**一起动**：全屏那张网格要在一屏里放下所有人，
+                         *    所以它比主看板矮（155/190 对 300），但同幅加高（各 +40）——
+                         *    加高的目的（给下面那块预览留地方）两边是一样的。
+                         */
+                        height: compact ? 195 : 230,
                         overflow: 'hidden',
                       }}>
                       {/* 头像 + 姓名行（含操作按钮）+ 学号 + 状态标签 */}

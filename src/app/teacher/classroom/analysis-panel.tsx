@@ -328,7 +328,9 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
               <strong>AI 评分</strong>
               <span>满额 {payload.perStudent.maxScore} {payload.perStudent.unit}</span>
             </div>
-            <span className={styles.aiScoreNotice}>AI 评分，供教学参考</span>
+            {/* ★ 2026-10-07（教师裁定 2）：这份分**已经写回成绩**（进总分、进奖励、进报告），
+                不再是「仅供参考」的旁注 —— 那句话会让教师以为不必核对。 */}
+            <span className={styles.aiScoreNotice}>已计入成绩</span>
           </div>
           {payload.perStudent.criteria && (
             /* ★ 2026-10-05：「评分要求」与「评分标准」在编辑器里已合并成同一份东西

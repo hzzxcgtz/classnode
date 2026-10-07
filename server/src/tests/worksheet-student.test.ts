@@ -1492,3 +1492,79 @@ test('🔴 反面对照：本地判分**有**结论的题，改回草稿**仍然
     '这道题本地判分有结论 ⇒ 三列必须照旧清干净（不清的话看板会画出一个库里已经不成立的 ✓）',
   );
 });
+
+test('🔴 关掉自动评分之后，旧的本地判分是**残留** —— 改回草稿必须清掉', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const worksheet = await seedWorksheet(db.prisma, '判分学习单', {
+    allowResubmit: true, autoGrade: true, defaultInputMode: 'keyboard',
+  });
+  const { classroom, participant } = await seedClassroom(db.prisma, '9104');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+
+  // 前置：先有一次**真的**本地判分（q_1 单选、autoGrade 开着）
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_1', value: CHOICE(['B']) }, bearer(token));
+  await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'q_1' }, bearer(token));
+  assert.equal((await rowGrade(db.prisma)).gradeState, 'correct', '前置：本地判分落了一次');
+
+  // 教师关掉整单的自动评分
+  await db.prisma.worksheet.update({
+    where: { id: worksheet.id },
+    data: { settings: { allowResubmit: true, autoGrade: false, defaultInputMode: 'keyboard' } as never },
+  });
+
+  // 学生把答案改成错的并保存
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_1', value: CHOICE(['A']) }, bearer(token));
+
+  assert.deepEqual(
+    await rowGrade(db.prisma),
+    { isCorrect: null, gradeState: null, score: null, status: 'draft' },
+    '这三列是**本地判分的残留**（关掉开关之前写下的），不是 AI 的分 —— '
+    + '留着会让报告对一份已经改错的作答印「对」（报告读全部行、不看 status）',
+  );
+});
+
+test('🔴 题目级「允许自动评分」关掉之后：残留同样要清（两个动作都清）', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const worksheet = await seedWorksheet(db.prisma);
+  const { classroom, participant } = await seedClassroom(db.prisma, '9105');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_1', value: CHOICE(['B']) }, bearer(token));
+  await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'q_1' }, bearer(token));
+  assert.equal((await rowGrade(db.prisma)).gradeState, 'correct', '前置：本地判分落了一次');
+
+  // 教师关掉**这道题**的自动评分（题目级开关落在 content 里）
+  const content = worksheet.content as { nodes: Array<Record<string, unknown>> };
+  await db.prisma.worksheet.update({
+    where: { id: worksheet.id },
+    data: {
+      content: {
+        ...content,
+        nodes: content.nodes.map((node) => (node.id === 'q_1' ? { ...node, autoGrade: false } : node)),
+      } as never,
+    },
+  });
+
+  // ① 存草稿：那三列是本地判分的残留，必须清
+  await server.put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_1', value: CHOICE(['A']) }, bearer(token));
+  assert.deepEqual(
+    await rowGrade(db.prisma),
+    { isCorrect: null, gradeState: null, score: null, status: 'draft' },
+    '存草稿：题目级开关关掉之后，残留的本地判分不许被当成 AI 的分留住',
+  );
+
+  // ② 再次提交：同理
+  await db.prisma.worksheetAnswer.updateMany({ data: { isCorrect: true, gradeState: 'correct', score: 8 } });
+  await server.post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'q_1' }, bearer(token));
+  assert.deepEqual(
+    await rowGrade(db.prisma),
+    { isCorrect: null, gradeState: null, score: null, status: 'submitted' },
+    '再次提交：同一把尺子 —— 本地判分对这道题**有**结论（在开关打开时），那三列就不可能是 AI 的',
+  );
+});

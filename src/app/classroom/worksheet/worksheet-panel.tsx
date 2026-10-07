@@ -224,7 +224,12 @@ interface LoadedWorksheet {
    * 是它引用稳定的**唯一**来源。挪出去现 map 一份，学生每敲一个字都会被水合抹掉。
    */
   savedAnswers: SavedAnswerRow[];
-  /** AI 对当前学生的逐题参考分；不参与正式判分与奖励。 */
+  /**
+   * AI 对当前学生的逐题参考分（评语与建议）。
+   * 🔴 ★ 2026-10-07（教师裁定 2）：那份分**也**写回了 `WorksheetAnswer.score` ⇒
+   *   它**会**参与总分与奖励。这一栏留给学生的是**评语与建议**（逐题明细），
+   *   奖励那一格读的是行上的 `score`。⚠️ 别再写「不参与正式判分与奖励」。
+   */
   aiReferenceScores: Record<string, StudentAiReferenceScore>;
   /**
    * ★ 2026-09-30：这间课堂**已开放的题 id**（教师看板的「逐题开放」，`manual` 档才用得上）。

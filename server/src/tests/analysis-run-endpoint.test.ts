@@ -243,7 +243,7 @@ test('🔴 模型返回空 ⇒ 502 且**不写库**（已有解读绝不被清�
 */
 test('★ 模型漏人 ⇒ 照样写（拿到几份存几份），并点名报出缺谁', async (t) => {
   const db = await openTempDb();
-  const fake = await startFakeCoze('整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":4,"reason":"思路清楚","advice":"可以再补一个判断分支。"}]}</classnode-scores>');
+  const fake = await startFakeCoze('整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":8,"reason":"思路清楚","advice":"可以再补一个判断分支。"}]}</classnode-scores>');
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
   const agent = await makeAgent(p, 'coze', fake.base);
@@ -251,7 +251,7 @@ test('★ 模型漏人 ⇒ 照样写（拿到几份存几份），并点名报�
   // 两个**已提交**的学生：模型只评了其中一个，另一个要点名报出来。
   const { worksheet, classroom } = await seed(p, {
     analysisAgentId: agent.id,
-    node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
+    node: DRAWING_AI,
     roster: TWO_STUDENTS,
   });
   const srv = await withServer(p);
@@ -276,14 +276,14 @@ test('★ 模型漏人 ⇒ 照样写（拿到几份存几份），并点名报�
 */
 test('★ 只补这几个人：只发他们、把分并进去、**不动整体解读**', async (t) => {
   const db = await openTempDb();
-  const first = '全班整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":4,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>';
+  const first = '全班整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":8,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>';
   const fake = await startFakeCoze(first);
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
   const agent = await makeAgent(p, 'coze', fake.base);
   const { worksheet, classroom } = await seed(p, {
     analysisAgentId: agent.id,
-    node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
+    node: DRAWING_AI,
     roster: TWO_STUDENTS,
   });
   const srv = await withServer(p);
@@ -306,7 +306,7 @@ test('★ 只补这几个人：只发他们、把分并进去、**不动整体�
    *    老的下标派生写法下李四在全量里是 `User_002`、在这批里是 `User_001` ——
    *    也就是说**教师刚核对过的那张图与补跑发出去的那张根本不是同一套标签**。
    */
-  fake.setAnswer('只看了看这一个同学。<classnode-scores>{"scores":[{"student":"' + LI + '","score":5,"reason":"补上了","advice":"很好。"}]}</classnode-scores>');
+  fake.setAnswer('只看了看这一个同学。<classnode-scores>{"scores":[{"student":"' + LI + '","score":10,"reason":"补上了","advice":"很好。"}]}</classnode-scores>');
   const scopedUrl = `${runUrl(srv.base, worksheet.id, 'q3', classroom.id)}&only=${missingId}`;
   const scoped = await fetch(scopedUrl, { method: 'POST' });
   assert.equal(scoped.status, 200, '补跑不该失败');
@@ -334,7 +334,7 @@ test('★ 读不出作答的学生：模型编的行不算数，他会出现在�
   const agent = await makeAgent(p, 'coze', fake.base);
   const { worksheet, classroom, participants } = await seed(p, {
     analysisAgentId: agent.id,
-    node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
+    node: DRAWING_AI,
     roster: TWO_STUDENTS,
   });
   // 第二位学生：已提交，但作答的**形状这一版读不出来**（不是 ink，也不是照片）⇒ `kind: 'unknown'`。
@@ -358,7 +358,7 @@ test('★ 读不出作答的学生：模型编的行不算数，他会出现在�
    */
   const secondLabel = computed.entries.find((entry) => entry.studentId === second)!.anonLabel;
   fake.setAnswer('整体不错。<classnode-scores>{"scores":'
-    + `[{"student":"${ZHANG}","score":4,"reason":"思路清楚","advice":"再补一个分支。"},`
+    + `[{"student":"${ZHANG}","score":8,"reason":"思路清楚","advice":"再补一个分支。"},`
     + `{"student":"${secondLabel}","score":3,"reason":"看起来还行","advice":"多练。"}]}</classnode-scores>`);
 
   const run = await fetch(runUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
@@ -514,7 +514,7 @@ test('★ 重渲（GET 载荷）与再发送（run 提示词）用的是同一�
     analysisAgentId: agent.id,
     // 🔴 必须**开着 AI 评分**：评分那一段（含点名名单）只在开启时才拼进提示词 ——
     //    关着的话那段提示词里根本没有标签，这条判据就变成恒真的了（夹具塌了）。
-    node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
+    node: DRAWING_AI,
     roster: TWO_STUDENTS,
   });
   const srv = await withServer(p);
@@ -547,14 +547,14 @@ test('★ 重渲（GET 载荷）与再发送（run 提示词）用的是同一�
 test('★ 端到端：模型只回姓名（丢掉 #学号），分照样收得到', async (t) => {
   const db = await openTempDb();
   const fake = await startFakeCoze(
-    '整体不错。<classnode-scores>{"scores":[{"student":"张伟","score":4,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>',
+    '整体不错。<classnode-scores>{"scores":[{"student":"张伟","score":8,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>',
   );
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
   const agent = await makeAgent(p, 'coze', fake.base);
   const { worksheet, classroom } = await seed(p, {
     analysisAgentId: agent.id,
-    node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
+    node: DRAWING_AI,
   });
   const srv = await withServer(p);
   t.after(() => srv.close());
@@ -575,15 +575,18 @@ test('★ 端到端：模型只回姓名（丢掉 #学号），分照样收得�
    ══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * 一道**绘图题**：本地判分对它恒回 `null`（`judge` 认 ink 值 ⇒ 不判）
+ * 一道**绘图题**，按**真题的形状**搭：本地判分对它恒回 `null`（`judge` 认 ink 值 ⇒ 不判）
  * ⇒ 行里非空的判分三列**只可能来自 AI**。
- * ⚠️ `points.full` 必须是 10：不写它的话 `resolvePoints(node, DEFAULT_POINTS)` 给的是 1，
- * 于是「4/5 × 10 = 8」这条判据会在一个恒为 1 的分母上退化。
+ *
+ * 🔴 **刻意不写 `points`** —— 那才是真事的形状：能开 AI 评分的题型（问答题 / 绘图题）上
+ *   `points.full` **恒为 1 且教师没有入口**（编辑页的分值设置只挂在可本地判分的题型上），
+ *   教师配的那个数在 `data.aiScoringMaxScore`（默认 10，编辑页写作「分值 / 奖励数量」）。
+ *   ⚠️ 显式写 `points: {full:10}` 会把这个缺陷**盖住**（复核 2026-10-07 抓到的那条 Critical
+ *   就是这么被夹具挡掉的）。写回的分母就是 `aiScoringMaxScore`，所以下面的假 Coze 一律按 10 分制回。
  */
 const DRAWING_AI = {
   ...(DRAWING as Record<string, unknown>),
-  points: { full: 10, half: 5 },
-  data: { aiScoringEnabled: true, aiScoringMaxScore: 5 },
+  data: { aiScoringEnabled: true, aiScoringMaxScore: 10 },
 } as Prisma.InputJsonValue;
 
 /** 一次「生成载荷 + run」——下面每一条都要走这两步。 */
@@ -602,7 +605,7 @@ async function gradeOf(p: PrismaClient, responseId: string) {
 test('★ 写回：AI 的分进了成绩（教师：「AI 的评分是要写回的，要参与总分的统计」）', async (t) => {
   const db = await openTempDb();
   const fake = await startFakeCoze(
-    '整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":4,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>',
+    '整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":8,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>',
   );
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
@@ -618,7 +621,7 @@ test('★ 写回：AI 的分进了成绩（教师：「AI 的评分是要写回�
   assert.deepEqual(
     await gradeOf(p, response.id),
     { isCorrect: false, gradeState: 'partial', score: 8 },
-    'AI 给 4/5、题目 10 分 ⇒ 记 8 分（教师给的例子）',
+    'AI 给 8/10 ⇒ 记 8 分（分母就是教师为这道题配的那个分值）',
   );
 });
 
@@ -651,7 +654,7 @@ test('🔴 AI 明说判不了（score: null）⇒ 三列一个字都不动', asy
 test('★ 写回只动**这个课堂**的行（同一份学习单被两个班同时引用）', async (t) => {
   const db = await openTempDb();
   const fake = await startFakeCoze(
-    '整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":4,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>',
+    '整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":8,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>',
   );
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
@@ -708,18 +711,18 @@ test('★ 补跑（?only=）不许把没参与这一轮的学生改掉', async (
   // 第一次：两个人都拿到分
   fake.setAnswer('整体不错。<classnode-scores>{"scores":['
     + `{"student":"${ZHANG}","score":2,"reason":"刚起步","advice":"再补细节。"},`
-    + `{"student":"${LI}","score":5,"reason":"完整","advice":"很好。"}]}</classnode-scores>`);
+    + `{"student":"${LI}","score":10,"reason":"完整","advice":"很好。"}]}</classnode-scores>`);
   const first = await generateAndRun(srv, worksheet.id, classroom.id);
   assert.equal(first.status, 200, await first.text());
 
   const responseOf = async (participantId: string) =>
     (await p.worksheetResponse.findFirstOrThrow({ where: { participantId } })).id;
   const [zhang, li] = participants;
-  assert.equal((await gradeOf(p, await responseOf(zhang))).score, 4, '张伟：2/5 × 10');
-  assert.equal((await gradeOf(p, await responseOf(li))).score, 10, '李四：5/5 × 10');
+  assert.equal((await gradeOf(p, await responseOf(zhang))).score, 2, '张伟：2/10');
+  assert.equal((await gradeOf(p, await responseOf(li))).score, 10, '李四：10/10');
 
   // 补跑：只发张伟一个人，给他一个新分
-  fake.setAnswer(`只看了这一个。<classnode-scores>{"scores":[{"student":"${ZHANG}","score":5,"reason":"补上了","advice":"很好。"}]}</classnode-scores>`);
+  fake.setAnswer(`只看了这一个。<classnode-scores>{"scores":[{"student":"${ZHANG}","score":10,"reason":"补上了","advice":"很好。"}]}</classnode-scores>`);
   const scoped = await fetch(`${runUrl(srv.base, worksheet.id, 'q3', classroom.id)}&only=${zhang}`, { method: 'POST' });
   assert.equal(scoped.status, 200, await scoped.text());
 
@@ -730,7 +733,7 @@ test('★ 补跑（?only=）不许把没参与这一轮的学生改掉', async (
 test('★ 参与者是「组」时也写得进去（标签是组名，键还是 ClassroomStudent.id）', async (t) => {
   const db = await openTempDb();
   const fake = await startFakeCoze(
-    '整体不错。<classnode-scores>{"scores":[{"student":"第一组","score":5,"reason":"完整","advice":"很好。"}]}</classnode-scores>',
+    '整体不错。<classnode-scores>{"scores":[{"student":"第一组","score":10,"reason":"完整","advice":"很好。"}]}</classnode-scores>',
   );
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
@@ -754,7 +757,7 @@ test('★ 参与者是「组」时也写得进去（标签是组名，键还是 
 test('🔴 草稿行一个字都不写（草稿行的判分三列必须是 null）', async (t) => {
   const db = await openTempDb();
   const fake = await startFakeCoze(
-    '整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":4,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>',
+    '整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":8,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>',
   );
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
@@ -806,7 +809,7 @@ const MIXED_FILL_VALUE = { format: 'fill-multi/v1', texts: ['甲', '乙', '我�
 test('🔴 本地判分**有结论**的行不许被 AI 盖掉（混合填空题）', async (t) => {
   const db = await openTempDb();
   const fake = await startFakeCoze(
-    '整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":4,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>',
+    '整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":8,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>',
   );
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
@@ -833,7 +836,43 @@ test('🔴 本地判分**有结论**的行不许被 AI 盖掉（混合填空题�
   assert.deepEqual(
     await gradeOf(p, response.id),
     { isCorrect: true, gradeState: 'correct', score: 3 },
-    'AI 的整题分（4/5 × 10 = 8）盖掉了本地判分 —— 而它算的只是本地那两个空。'
+    'AI 的整题分（4，满额 5）盖掉了本地判分 —— 而它算的只是本地那两个空。'
     + '「混合填空怎么算总分」是一个既有的未决问题，那类题**不在写回范围内**',
   );
+});
+
+/*
+  ★ 2026-10-07 复核抓到（Critical）：**分母取错了。**
+  我原来把「题目分值」取成 `points.full`，而它在**能开 AI 评分的两个题型**上**恒为 1**：
+  编辑页的「自动评分」卡（含分值设置）只对**可本地判分**的题型挂载
+  （`question-card.tsx` 的 `isGradedQuestionType`），而 `addQuestion` **无条件**写
+  `points: { full: 1, half: 0 }` ⇒ 教师**没有入口**改它。
+  教师配的那个数在 `data.aiScoringMaxScore`（编辑页写作「分值 / 奖励数量」，默认 10），
+  而那正是模型答卷用的刻度。
+  ⇒ 拿 `points.full` 当分母的后果：AI 给 5/10 ⇒ `round(0.5 × 1) = 1 ≥ full` ⇒ **判成满分**，
+    报告印「对」、学生端发满额奖励、正确率算进分子，而教师填的「AI 评分 · 最高 10 分」
+    被完全忽略 —— 屏幕上没有任何一处说分母换了，`partial` 在这类题上永远不可达。
+  🔴 这条判据用的是**真题形状**（`DRAWING_AI` 刻意不写 `points`）。
+    上面那几条曾被 `points: {full:10}` 的夹具**盖住**（夹具把真事挡掉 —— 本仓反复吃的形状）。
+*/
+test('🔴 真题形状（无 points）：AI 给 5/10 ⇒ 记 5 分、判「部分给分」，不是满分', async (t) => {
+  const db = await openTempDb();
+  const fake = await startFakeCoze(
+    '整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":5,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>',
+  );
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const agent = await makeAgent(p, 'coze', fake.base);
+  const { worksheet, classroom } = await seed(p, { analysisAgentId: agent.id, node: DRAWING_AI });
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+
+  const run = await generateAndRun(srv, worksheet.id, classroom.id);
+  assert.equal(run.status, 200, await run.text());
+
+  const response = await p.worksheetResponse.findFirstOrThrow({ where: { classroomId: classroom.id } });
+  const row = await p.worksheetAnswer.findFirstOrThrow({ where: { responseId: response.id } });
+  assert.equal(row.score, 5, `分母取成了 points.full（= ${row.score === 1 ? 1 : '?'}）—— 教师配的是 10`);
+  assert.equal(row.gradeState, 'partial', '5/10 不是满分 —— 判成 correct 会让报告印「对」、发满额奖励');
+  assert.equal(row.isCorrect, false);
 });

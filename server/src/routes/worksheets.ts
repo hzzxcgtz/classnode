@@ -1377,6 +1377,30 @@ function payloadFromStoredRow(
 }
 
 /**
+ * ★ 2026-10-07：**这一行的判分三列有没有可能是本地判分写下的。**
+ *
+ * 🔴 判据是「**假设这道题的自动评分开着**，本地判分对这份作答有没有结论」——
+ *   与写回那一侧的规则 ② **同源**（那边是「有结论就跳过」，这边是「有结论就不许当成 AI 的」）。
+ *   两处必须是同一把尺子，否则会出现「AI 不肯写、但学生一保存又留着」的鬼状态。
+ *
+ * ⚠️ **为什么要假装开关是开着的**（`{ ...node, autoGrade: true }`）：
+ *   教师事后关掉自动评分时，行里已经躺着**上一次本地判分**的结果。
+ *   若照 `grade()` 的真实返回（关掉 ⇒ `null`）判成「本地没有结论」，那三列就会被
+ *   当成 AI 的分**永久保留** —— 学生在开关关掉之后把答案改错，报告仍对这份作答印「对」
+ *   （报告读**全部**行、不看 `status`）。复核 2026-10-07 抓到的就是这条。
+ *   同理**不看**学习单级的 `autoGrade`（调用方自己决定要不要落那一份判分）。
+ *
+ * ✅ 反过来也安全：真正只有 AI 能写的题（绘图 / 手写 —— `judge()` 认 ink 值就回 `null`；
+ *   问答题同理）在假设开关打开时**仍然**是 `null` ⇒ 照旧保留。
+ *   而「本地有结论 ∧ AI 会写」这个组合是**不可达的**：本地有结论的行，写回那一侧的
+ *   规则 ② 本来就会跳过（唯一例外是「只有 AI 空的混合填空」，而那种题
+ *   `node.autoGrade === false` 会让 `aiScoringConfigOf` 直接禁用 AI 评分）。
+ */
+function localGradingOwns(node: QuestionNode, value: unknown, points: { full: number; half: number }): boolean {
+  return grade({ ...node, autoGrade: true }, value, points) !== null;
+}
+
+/**
  * ★ 2026-10-07（教师决定 2：「AI 的评分是要写回的，要参与总分的统计」）——
  * 把 AI 的分折成题目得分写进 `WorksheetAnswer`，让它进总分、进奖励、进报告里的对错标记。
  *
@@ -1430,7 +1454,23 @@ async function writeBackAiScores(
     //    `responseId` 也有值，而下面 `where` 里要用它。
     if (responseId === undefined || !row || row.status !== 'submitted') continue;   // ①
     if (grade(node, row.value, points) !== null) continue;       // ②
-    const next = answerGradeFromAiScore(scored.score, aiMaxScore, points.full);
+    /*
+     * 🔴 **分母是 AI 那把刻度**（`aiMaxScore` = 教师为这道题配的「分值」
+     *   `data.aiScoringMaxScore`），**不是 `points.full`**。
+     *
+     * 为什么：能开 AI 评分的两个题型（问答题 / 绘图题）上，`points.full` **恒为 1 且教师没有入口** ——
+     * 编辑页的「自动评分」卡（含分值设置）只挂在**可本地判分**的题型上
+     *（`question-card.tsx` 的 `isGradedQuestionType`），而 `addQuestion` **无条件**写
+     * `points: { full: DEFAULT_REWARD_STEP, half: DEFAULT_HALF_STEP }`。
+     * 拿它当分母的后果（复核 2026-10-07 抓到，Critical）：AI 给 5/10 ⇒
+     * `round(0.5 × 1) = 1 ≥ full` ⇒ **判成满分** —— 报告印「对」、学生端发满额奖励、
+     * 正确率把它算进分子，而教师填的「AI 评分 · 最高 10 分」被完全忽略，
+     * **屏幕上没有任何一处说分母换了**。`partial` 在那类题上因此永远不可达。
+     *
+     * ⚠️ 于是这里的比例是 1：AI 的分本来就在教师那把刻度上。
+     *   保留三参数的那个纯函数是为了「两个刻度真的不同」时的将来（那时才需要换算）。
+     */
+    const next = answerGradeFromAiScore(scored.score, aiMaxScore, aiMaxScore);
     if (row.score === next.score && row.gradeState === next.gradeState && row.isCorrect === next.isCorrect) continue;
     writes.push(prisma.worksheetAnswer.update({
       where: { responseId_questionId: { responseId, questionId } },
@@ -1516,7 +1556,11 @@ async function payloadResponse(
     payload.aiScoring,
     payload.entries.map((entry) => entry.studentId),
   );
-  // 姓名只回给教师端，不写入 aggregate，也不进入发给第三方智能体的 payload/message。
+  // 这一份「id → 姓名」只回给教师端，**不写入 aggregate**（少一处要审的真名副本）。
+  // 🔴 ★ 2026-10-07 更正：原来这里还写着「也不进入发给第三方智能体的 payload/message」——
+  //    那句话**现在是假的**：标签本身就是「姓名 + 学号」（见 `payloadLabels`），
+  //    真名**就是**载荷与提示词上的标签。这是教师明确接受的口径（伪名只差最后一位、
+  //    模型读图会看串 ⇒ 分数静默贴到别人头上）。别再照旧注释把它改回去。
   // ⚠️ 名册由调用方给（★ 2026-10-07）—— 少查一次，也保证它与标签用的是**同一份**。
   const participantNames = Object.fromEntries(
     participants.map((participant) => [participant.participantId, participant.name]),
@@ -2571,7 +2615,7 @@ router.put('/:id/answers', async (req, res) => {
     //
     // ⚠️ 这一步排在 `ensureResponse` **之前**：被拒的保存不留任何痕迹
     // （建会话/把整卷从 submitted 拨回 in-progress 都算痕迹）。
-    const { allowResubmit, autoGrade } = readStudentSettings(ctx.worksheet.settings);
+    const { allowResubmit } = readStudentSettings(ctx.worksheet.settings);
     if (!allowResubmit) {
       const current = await ctx.prisma.worksheetAnswer.findFirst({
         where: {
@@ -2602,10 +2646,9 @@ router.put('/:id/answers', async (req, res) => {
      * ⚠️ 保留的是**整组**三列（同生共死）：只留 `score` 会让这一行变成
      *   「没判对、但有分」的自相矛盾形状。
      */
-    const localHasVerdict = autoGrade
-      && grade(node, body.value, resolvePoints(node, DEFAULT_POINTS)) !== null;
+    const localOwns = localGradingOwns(node, body.value, resolvePoints(node, DEFAULT_POINTS));
     // ⚠️ 只在**需要保留**时才多查一次（普通题一个字都不多查 —— 保存是防抖之后频繁发的）。
-    const previous = localHasVerdict ? null : await ctx.prisma.worksheetAnswer.findUnique({
+    const previous = localOwns ? null : await ctx.prisma.worksheetAnswer.findUnique({
       where: { responseId_questionId: { responseId: response.id, questionId } },
       select: { isCorrect: true, gradeState: true, score: true },
     });
@@ -2755,7 +2798,9 @@ router.post('/:id/answers/submit', async (req, res) => {
      * ⚠️ `verdict` 有结论时照旧覆盖 —— 那一行归本地。**混合填空题**就是这种：
      *   它的 `grade()` 有结论，而算的只是本地那几个空 ⇒ AI 的整题分本来就不该写进去。
      */
-    const keepAi = verdict === null && answer.score !== null;
+    // ⚠️ 「本地有没有结论」用的是 `localGradingOwns`（**假设开关是开着的**），不是 `verdict`：
+    //    教师事后关掉自动评分时，行里那三列是**上一次本地判分的残留**，不是 AI 的分。
+    const keepAi = verdict === null && !localGradingOwns(node, answer.value, points) && answer.score !== null;
     const isCorrect = verdict ? verdict.state === 'correct' : keepAi ? answer.isCorrect : null;
     const gradeState = verdict ? verdict.state : keepAi ? answer.gradeState : null;
     // ⚠️ `score` 与 `gradeState` **同生共死**：`verdict` 为 null 时两个都是 null

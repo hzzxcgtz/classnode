@@ -866,7 +866,11 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
                       </button>
                     )}
                     <p className="worksheet-editor-ai-scoring-note">
-                      AI 评分仅供参考，不会覆盖教师评价。
+                      {/* ★ 2026-10-07（教师裁定 2）：AI 的分**会写回成绩**（进总分、进奖励、进报告的
+                          对错标记），所以原来那句「仅供参考，不会覆盖教师评价」已经不成立了。
+                          ⚠️ 这里**没有**「教师改分」入口（教师端唯一改答案的动作是「已查看」），
+                          所以「覆盖」这件事不存在；真正要提醒教师的是「这个分会算进成绩」。 */}
+                      AI 评分会算进成绩（满分 {aiScoringMaxScore} {pointsUnit}）。
                       {pointsUnit === '分' ? '分数最多保留一位小数。' : `${pointsUnit}按整数发放。`}
                     </p>
                   </div>

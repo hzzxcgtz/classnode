@@ -439,7 +439,15 @@ export const KNOBS_SETTING_KEY = 'worksheet-analysis-knobs';
 /** 格子之间的间距 · 整张图的外边距 · 每格上方标签条的高度（像素）。 */
 export const SHEET_GAP = 12;
 export const SHEET_MARGIN = 16;
-export const SHEET_LABEL_H = 22;
+/*
+ * ★ 2026-10-07（教师：40 人一起交给智能体）：「把联系表上的代号**画大一点**」——
+ * 模型是在**读那张图**辨认「第几格是谁」，代号画小了它就看串，而看串的后果是
+ * **分贴到别人头上**（解析那一侧只要求「代号在名单里」，认错也照收，两边都不报错）。
+ * ⇒ 代号字体 15 → **24**，这条标签条相应 22 → **34**（代价：每格里的图矮 12px）。
+ * ⚠️ 改这里要同时改 `analysis-render.ts` 里那句 `font-size` 与基线偏移 —— **三处一起动**。
+ *   （我第一次就漏了这一处：`analysis-render.ts` 改了、这里没改，而脚本无条件打印 ok ✗。）
+ */
+export const SHEET_LABEL_H = 34;
 
 /**
  * 各旋钮的合法区间 —— 归一化时越界回落默认。

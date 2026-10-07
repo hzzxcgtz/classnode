@@ -155,7 +155,14 @@ export function buildSheetSvg(entries: AnalyzeEntry[], layout: SheetLayout, labe
     const entry = entries[cell.index];
     parts.push(plate(cell));
     if (labeled) {
-      parts.push(`<text x="${cell.labelX}" y="${cell.labelY + 16}" font-size="15" font-family="sans-serif" fill="${LABEL_FILL}">${esc(cell.anonLabel)}</text>`);
+      /*
+       * ★ 2026-10-07（教师）：「把联系表上的代号**画大一点**」—— 15 → **24**。
+       * 模型是读这张图辨认「第几格是谁」的，代号小了它就看串，而看串的后果是**分贴到别人头上**
+       *（解析只要求「代号在名单里」，认错也照收，两边都不报错）。
+       * ⚠️ 基线偏移与上面 `SHEET_LABEL_H` 是一套：字体 24、条高 34 ⇒ 基线落在 +26
+       *（上方留 8px、下方留 8px）。改一个就得三个一起改。
+       */
+      parts.push(`<text x="${cell.labelX}" y="${cell.labelY + 26}" font-size="24" font-family="sans-serif" fill="${LABEL_FILL}">${esc(cell.anonLabel)}</text>`);
     }
     if (!cell.hasInk) {
       // 没有画可渲：说出原因，别留一块神秘的空底（教师与模型都得知道那是「空白」而不是「画布是白的」）
@@ -166,7 +173,7 @@ export function buildSheetSvg(entries: AnalyzeEntry[], layout: SheetLayout, labe
         const why = entry?.kind === 'unknown' ? '（形状认不出）'
           : entry?.kind === 'text' ? '（文字作答，见文档）'
             : '（空白）';
-        parts.push(`<text x="${cell.x + 8}" y="${cell.y + Math.round(cell.h / 2)}" font-size="14" font-family="sans-serif" fill="${PLACEHOLDER_FILL}">${esc(why)}</text>`);
+        parts.push(`<text x="${cell.x + 8}" y="${cell.y + Math.round(cell.h / 2)}" font-size="18" font-family="sans-serif" fill="${PLACEHOLDER_FILL}">${esc(why)}</text>`);
       }
       continue;
     }

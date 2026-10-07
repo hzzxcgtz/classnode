@@ -276,3 +276,25 @@
   .scoreRow { grid-template-columns: 1fr auto; gap: 5px 10px; }
   .scoreReason { grid-column: 1 / -1; }
 }
+
+/*
+ * ★ 2026-10-07（教师：40 人一起交给智能体）：**本次漏了谁**。
+ * 语气要「提醒」而不是「报错」—— 漏人在这条链路上是常态（模型每次漏的还不是同一批），
+ * 而这不是失败：拿到的分已经存下来了。
+ */
+.scoreMissing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid #e4d7b9;
+  border-radius: 10px;
+  background: #fbf7ee;
+  color: #876521;
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+.scoreMissing strong { color: #6b4d14; }
+.scoreMissing span { color: #9a8354; }

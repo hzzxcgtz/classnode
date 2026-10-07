@@ -255,6 +255,31 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
         <div className={styles.emptyResult}>这道题还没有已提交的作答。</div>
       )}
 
+      {/*
+        ★ 2026-10-07（教师：40 人一起交给智能体）—— 模型**很少一次评全**，
+        而面板原来是「有分就显示、没拿到的人连名字都不出现」⇒ 教师无从知道漏了谁。
+        这里把缺的人点名说出来（用真名，`participantNames` 那张表只给教师端）。
+        ⚠️ 文案里那句「已经拿到的分不会丢」是真的：服务端写的时候是**并进**已存那份
+           （见 `mergeAiScoring`），补跑不会把上一轮拿到的分换掉。
+      */}
+      {!loading && payload?.aiScoring?.enabled && (
+        (() => {
+          const got = payload.perStudent?.scores.length ?? 0;
+          const missing = payload.perStudent?.missing ?? [];
+          if (missing.length === 0 && got > 0) return null;
+          const names = missing.map((id) => payload.participantNames?.[id] ?? nameOf?.(id) ?? '未命名学生');
+          return (
+            <div className={styles.scoreMissing}>
+              {got === 0
+                ? '本次没有拿到任何逐生评分。'
+                : `本次只拿到 ${got}/${got + missing.length} 份评分。`}
+              {names.length > 0 && <> 还没拿到分的：<strong>{names.join('、')}</strong>。</>}
+              <span>再点一次「重新生成」会重新请智能体评一遍 —— 已经拿到的分不会丢。</span>
+            </div>
+          );
+        })()
+      )}
+
       {!loading && payload?.perStudent && (
         <section className={styles.scoreCard} aria-label="AI 评分">
           <div className={styles.scoreHeader}>

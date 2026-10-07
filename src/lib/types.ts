@@ -568,6 +568,11 @@ export interface WorksheetAnalysisPayload {
     unit: string;
     criteria: string;
     scores: Array<{ studentId: string; score: number | null; reason: string; advice: string }>;
+    /**
+     * ★ 2026-10-07：**还没有分的学生**（模型漏了 / 分数越界 / 缺评价或建议）。
+     * 面板据此显示「本次只拿到 X/Y，缺：…」—— 40 人班上模型几乎不会一次评全。
+     */
+    missing?: string[];
   } | null;
   /** 只返回教师端，用于把评分中的参与者 ID 显示为姓名；不会进入远端智能体载荷。 */
   participantNames: Record<string, string>;

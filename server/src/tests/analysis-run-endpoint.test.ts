@@ -194,6 +194,46 @@ test('🔴 模型返回空 ⇒ 502 且**不写库**（已有解读绝不被清�
   assert.equal(row.narrative, '旧的解读', '失败时已有解读必须原样保留 —— 清空它是静默的');
 });
 
+/*
+  ★ 2026-10-07（教师：全班 40 人一起交给智能体）——
+  模型漏人时，**这一轮拿到的分照样要落库**，并把「缺谁」一并存下来给教师面板。
+  🔴 原来是全有或全无：40 人的班上模型少写一行 ⇒ 整次 502、**一个学生的分都不落库**。
+*/
+test('★ 模型漏人 ⇒ 照样写（拿到几份存几份），并点名报出缺谁', async (t) => {
+  const db = await openTempDb();
+  const fake = await startFakeCoze('整体不错。<classnode-scores>{"scores":[{"student":"User_001","score":4,"reason":"思路清楚","advice":"可以再补一个判断分支。"}]}</classnode-scores>');
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const agent = await makeAgent(p, 'coze', fake.base);
+  // ⚠️ 这一题要**开了 AI 评分**才会走逐生分数那条路（`aiScoringConfigOf`：`data.aiScoringEnabled === true`）。
+  const { worksheet, classroom } = await seed(p, {
+    analysisAgentId: agent.id,
+    node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
+  });
+  // 再加一个**已提交**的学生：名单里有他，但这次模型没给他分。
+  const second = await p.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const secondResponse = await p.worksheetResponse.create({
+    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: second.id },
+  });
+  await p.worksheetAnswer.create({
+    data: {
+      responseId: secondResponse.id, questionId: 'q3', status: 'submitted',
+      value: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [{ points: [[0.2, 0.2], [0.8, 0.8]], width: 0.01, color: '#111111' }] },
+    },
+  });
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+  await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+
+  const run = await fetch(runUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+  assert.equal(run.status, 200, '漏一个人不再整次失败 —— 40 人班上那等于全丢');
+  const row = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
+  const perStudent = row.perStudent as { scores?: unknown[]; missing?: unknown[] } | null;
+  assert.equal(perStudent?.scores?.length, 1, '这一轮拿到的那一份要落库');
+  assert.equal(perStudent?.missing?.length, 1, '缺的那一个要点名存下来（教师据此补跑）');
+  assert.ok(row.narrative, '解读也要照存（它是独立的一份）');
+});
+
 test('🔴 平台收不了图 ⇒ 400，且**一次网络都没发**', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });

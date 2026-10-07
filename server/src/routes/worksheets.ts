@@ -62,7 +62,7 @@ import { labelsRenderOk, renderSheets } from '../services/analysis-render.js';
 // ★ M7b：编排层的三个纯函数（平台闸门 / 消息构造 / 解读归一化）
 import { analysisGateOf, buildAnalysisMessage, normalizeNarrative } from '../services/analysis-agent.js';
 import {
-  aiScoringConfigOf, parseAiAnalysisResult, readStoredAiScoring, readStudentAiReferenceScore,
+  aiScoringConfigOf, mergeAiScoring, parseAiAnalysisResult, readStoredAiScoring, readStudentAiReferenceScore,
 } from '../services/analysis-scoring.js';
 // ★ M7b：**全仓唯一一处 fetch 到第三方**
 import { proxyAnalysisRequest, resolveLocalPath } from '../services/ai-proxy.js';
@@ -1667,19 +1667,45 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
       return res.status(502).json({ error: '模型没有返回可用的解读（未写入）' });
     }
 
+    /*
+     * ★ 2026-10-07（教师：40 人一起交给智能体）—— 这里原来**整次覆盖**：
+     *   模型漏一个人就 502（一个都不写，见 `parseAiAnalysisResult`），
+     *   而就算写成功，新一轮也会把上一轮拿到的分**整份换掉**（补跑一次丢一批）。
+     * ✅ 现在：新分数**并进**已存的那份（同一个人以新的为准，没覆盖到的保留旧分），
+     *   并把「**还没有分的人**」算出来存进去 ⇒ 教师面板据此显示「本次只拿到 X/Y，缺：…」。
+     */
+    const studentIds = payload.entries.map((entry) => entry.studentId);
+    const existing = await prisma.worksheetQuestionAnalysis.findUnique({
+      where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
+      select: { perStudent: true },
+    });
+    const merged = mergeAiScoring(
+      readStoredAiScoring(existing?.perStudent ?? null, payload.aiScoring, studentIds),
+      parsed.perStudent,
+      studentIds,
+    );
+    const scored = new Set((merged?.scores ?? []).map((row) => row.studentId));
+    const missing = studentIds.filter((id) => !scored.has(id));
+    const perStudent = merged === null ? null : { ...merged, ...(missing.length > 0 ? { missing } : {}) };
+
     await prisma.worksheetQuestionAnalysis.update({
       where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
       // ⚠️ 只动 AI 结果字段。`aggregate`/`totalCount`/`computedAt` 一个字都不动。
       data: {
         narrative,
-        ...(parsed.perStudent === null ? {} : {
-          perStudent: parsed.perStudent as unknown as Prisma.InputJsonValue,
-        }),
+        ...(perStudent === null ? {} : { perStudent: perStudent as unknown as Prisma.InputJsonValue }),
         agentId: agent.id,
         model: agent.platform,
       },
     });
-    res.json({ narrative, perStudent: parsed.perStudent, agentId: agent.id, model: agent.platform });
+    res.json({
+      narrative,
+      perStudent,
+      agentId: agent.id,
+      model: agent.platform,
+      /* 这一轮模型漏了谁（教师面板据此提示「缺 N 人」）。 */
+      missingThisRun: parsed.missing,
+    });
   } catch (error) {
     console.error('[worksheets] 分析失败:', error);
     res.status(500).json({ error: '分析失败' });

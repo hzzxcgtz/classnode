@@ -21,6 +21,45 @@ export interface StoredAiScoring {
   criteria: string;
   parts?: Array<{ index: number; maxScore: number }>;
   scores: Array<{ studentId: string; score: number | null; reason: string; advice: string }>;
+  /**
+   * ★ 2026-10-07：**还没有分的学生**（模型漏了、或分数越界、或缺评价/建议）。
+   * 由写入那一侧算好存进来，教师面板据此显示「本次只拿到 X/Y，缺：…」。
+   */
+  missing?: string[];
+}
+
+/**
+ * 两份评分结果的**口径**是不是同一套（满分 / 单位 / 评分项）。
+ * ⚠️ 教师改了满分或单位之后，旧分本来就对不上（读取那一侧也按这条拒收）——
+ *    合并时要认同一件事，否则会把两套口径的分数混在一起。
+ */
+export function sameScoringBasis(a: StoredAiScoring, b: StoredAiScoring): boolean {
+  return a.maxScore === b.maxScore && a.unit === b.unit
+    && JSON.stringify(a.parts ?? null) === JSON.stringify(b.parts ?? null);
+}
+
+/**
+ * 把这一轮的结果**并进**已存的那份（★ 2026-10-07 教师：40 人那份要能补跑）。
+ *
+ * · 同一个人：以**新**的为准；
+ * · 这一轮**没拿到分**的人：**保留上一轮已经拿到的分** ——
+ *   否则每补跑一次，就把之前拿到的那批丢掉一批（40 人班上模型每次漏的人还不一样，
+ *   那样永远凑不齐）；
+ * · 口径不一致（教师改了满分 / 单位 / 评分项）：旧分不并 —— 它们本来就对不上口径；
+ * · 顺序按 `order`（这一轮的名单）排，读出来的那一列才稳定。
+ */
+export function mergeAiScoring(
+  previous: StoredAiScoring | null,
+  next: StoredAiScoring | null,
+  order: string[],
+): StoredAiScoring | null {
+  if (!next) return previous;
+  if (!previous || !sameScoringBasis(previous, next)) return next;
+  const byId = new Map(previous.scores.map((row) => [row.studentId, row]));
+  for (const row of next.scores) byId.set(row.studentId, row);
+  const ranked = order.length > 0 ? order : [...byId.keys()];
+  const ordered = ranked.map((studentId) => byId.get(studentId)).filter((row): row is NonNullable<typeof row> => !!row);
+  return { ...next, scores: ordered };
 }
 
 export interface StudentAiReferenceScore {
@@ -61,29 +100,46 @@ export function aiScoringConfigOf(node: QuestionNode, unit = '分'): AiScoringCo
 
 /**
  * 把模型返回拆成「教师看的 Markdown」与「机器读的逐生分数」。机器块不会进入界面。
- * 开启评分时，缺块或有学生漏评都视为失败，调用方因此保留上一次完整结果。
+ *
+ * ★ 2026-10-07（教师：全班 40 人怎么一起交给智能体）—— 原来是**全有或全无**：
+ *   缺块、或有一个学生漏评/分数越界 ⇒ **整次作废**。那个口径在 40 人这个规模上要命：
+ *   模型少写一行，教师等满约三分钟只等到「分析失败」，**一个学生的分都不落库**。
+ * ✅ 现在：**拿到几份存几份**，并把缺的那几个（`missing`）点名报出来给调用方 ——
+ *   教师据此补跑。⚠️ 「不能只给半张卡」那条纪律没变：**缺评价或缺建议的那一行仍然不算数**
+ *   （那个人进 `missing`），只是不再牵连全班。
+ * ⚠️ 一份有效分都没有时 `perStudent` 回 `null`（解读照存）—— 调用方负责把新分数**并进**
+ *   已存的那份，别把上一轮已经拿到的分覆盖没了。
  */
 export function parseAiAnalysisResult(
   raw: unknown,
   config: AiScoringConfig,
   entries: Array<{ studentId: string; anonLabel: string }>,
-): { narrative: string; perStudent: StoredAiScoring | null } | { error: string } {
+): { narrative: string; perStudent: StoredAiScoring | null; missing: string[] } | { error: string } {
   if (typeof raw !== 'string') return { error: '模型没有返回可用内容' };
-  if (!config.enabled) return { narrative: raw, perStudent: null };
+  if (!config.enabled) return { narrative: raw, perStudent: null, missing: [] };
 
+  /*
+   * ⚠️ 机器块缺失/读不出来时**不再作废整次** —— 解读（教师看得懂的那半）是独立的一份，
+   *    该留住。分数这边退回「一份都没有」，由 `missing` 把全班列出来，教师据此补跑。
+   */
   const start = raw.lastIndexOf(AI_SCORE_BLOCK_START);
   const end = raw.lastIndexOf(AI_SCORE_BLOCK_END);
-  if (start < 0 || end < start) return { error: '模型没有按约定返回 AI 评分数据（未写入）' };
-  const jsonText = raw.slice(start + AI_SCORE_BLOCK_START.length, end).trim();
-  let parsed: unknown;
-  try { parsed = JSON.parse(jsonText); } catch { return { error: '模型返回的 AI 评分数据无法读取（未写入）' }; }
-  if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { scores?: unknown }).scores)) {
-    return { error: '模型返回的 AI 评分数据格式不完整（未写入）' };
-  }
+  const blockScores = (() => {
+    if (start < 0 || end < start) return null;
+    try {
+      const parsed: unknown = JSON.parse(raw.slice(start + AI_SCORE_BLOCK_START.length, end).trim());
+      const rows = (parsed as { scores?: unknown } | null)?.scores;
+      return Array.isArray(rows) ? rows : null;
+    } catch { return null; }
+  })();
+  const narrative = (start >= 0 && end > start
+    ? `${raw.slice(0, start)}${raw.slice(end + AI_SCORE_BLOCK_END.length)}`
+    : raw).trim();
+  if (!narrative) return { error: '模型没有返回可用内容' };
 
   const byLabel = new Map(entries.map((entry) => [entry.anonLabel, entry.studentId]));
   const found = new Map<string, { studentId: string; score: number | null; reason: string; advice: string }>();
-  for (const item of (parsed as { scores: unknown[] }).scores) {
+  for (const item of blockScores ?? []) {
     if (!item || typeof item !== 'object') continue;
     const row = item as Record<string, unknown>;
     const studentId = typeof row.student === 'string' ? byLabel.get(row.student) : undefined;
@@ -95,23 +151,22 @@ export function parseAiAnalysisResult(
     if (score === undefined) continue;
     const reason = typeof row.reason === 'string' ? row.reason.trim().slice(0, 200) : '';
     const advice = typeof row.advice === 'string' ? row.advice.trim().slice(0, AI_SCORE_ADVICE_MAX) : '';
-    // 新协议要求“一句评价 + 详细建议”同时存在；缺一项就拒绝整次结果，避免学生页出现半张卡。
+    // 「一句评价 + 详细建议」缺一不可：缺的那一行**不算数**（学生那边不能只看到半张卡），
+    // ★ 但只丢这一行 —— 其余照存（原来这里是整次作废，40 人的班上等于全丢）。
     if (!reason || !advice) continue;
     found.set(studentId, { studentId, score, reason, advice });
   }
-  if (found.size !== entries.length) {
-    return { error: `模型只返回了 ${found.size}/${entries.length} 份有效 AI 评分（未写入）` };
-  }
-  const narrative = `${raw.slice(0, start)}${raw.slice(end + AI_SCORE_BLOCK_END.length)}`.trim();
+  const scores = entries.map((entry) => found.get(entry.studentId)).filter((row): row is NonNullable<typeof row> => !!row);
   return {
     narrative,
-    perStudent: {
+    perStudent: scores.length === 0 ? null : {
       maxScore: config.maxScore,
       unit: config.unit,
       criteria: config.criteria,
       ...(config.parts ? { parts: config.parts } : {}),
-      scores: entries.map((entry) => found.get(entry.studentId)!),
+      scores,
     },
+    missing: entries.filter((entry) => !found.has(entry.studentId)).map((entry) => entry.studentId),
   };
 }
 

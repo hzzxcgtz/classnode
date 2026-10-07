@@ -89,18 +89,50 @@ test('奖杯等图标奖励只能是整数，分数档仍可保留一位小数',
   if (!('error' in points)) assert.equal(points.perStudent?.scores[0]?.score, 2.5);
 });
 
-test('开启评分时漏人或越界分数拒绝整次结果，避免保存半份评分', () => {
+/*
+  ★ 2026-10-07（教师：全班 40 人怎么一起交给智能体分析）—— 这里原来钉的是**全有或全无**：
+    「漏一个人 / 有一个人分数越界 ⇒ **整次作废**」。
+  🔴 那个口径在 40 人这个规模上要命：模型少写一行、或把 `User_013` 写成 `user_13`，
+    教师等满约 3 分钟只等到「分析失败」，**一个学生的分都不落库**，也没有重试。
+  ✅ 改成：**拿到几份存几份**，并把**缺的那几个**点名报出来（教师据此补跑）。
+     ⚠️ 「一个人都不能少」那条纪律本身没变 —— 只是从「作废整次」变成「**那一行不算数**」：
+        缺建议的那一行仍然不许单独存进去（学生那边不能只看到半张卡）。
+*/
+test('★ 漏人不再整次作废：拿到几份存几份，并点名报出缺谁', () => {
   const entries = [{ studentId: 's1', anonLabel: 'User_001' }, { studentId: 's2', anonLabel: 'User_002' }];
-  const missing = parseAiAnalysisResult(
+  const result = parseAiAnalysisResult(
     '解读<classnode-scores>{"scores":[{"student":"User_001","score":3,"reason":"ok","advice":"继续完善。"}]}</classnode-scores>',
     { enabled: true, maxScore: 5, unit: '分', criteria: '' }, entries,
   );
-  assert.ok('error' in missing);
-  const overflow = parseAiAnalysisResult(
+  assert.ok(!('error' in result), '漏了一个人就把全部丢掉 —— 那正是「等三分钟什么都没有」');
+  if ('error' in result) return;
+  assert.equal(result.perStudent?.scores.length, 1, '该存的那一份要存下来');
+  assert.deepEqual(result.missing, ['s2'], '缺的那一个要点名（教师据此补跑）');
+});
+
+test('★ 越界分数只丢那一行，不牵连全班', () => {
+  const entries = [{ studentId: 's1', anonLabel: 'User_001' }, { studentId: 's2', anonLabel: 'User_002' }];
+  const result = parseAiAnalysisResult(
     '解读<classnode-scores>{"scores":[{"student":"User_001","score":8,"reason":"bad","advice":"修正。"},{"student":"User_002","score":3,"reason":"ok","advice":"继续。"}]}</classnode-scores>',
     { enabled: true, maxScore: 5, unit: '分', criteria: '' }, entries,
   );
-  assert.ok('error' in overflow);
+  assert.ok(!('error' in result));
+  if ('error' in result) return;
+  assert.deepEqual(result.perStudent?.scores.map((row) => row.studentId), ['s2'], '只丢越界那一行');
+  assert.deepEqual(result.missing, ['s1']);
+  assert.equal(result.perStudent?.scores[0].score, 3);
+});
+
+test('★ 一份有效分都没有 ⇒ 只写解读、不写分数（缺的人全列出来）', () => {
+  const entries = [{ studentId: 's1', anonLabel: 'User_001' }, { studentId: 's2', anonLabel: 'User_002' }];
+  const result = parseAiAnalysisResult(
+    '解读<classnode-scores>{"scores":[]}</classnode-scores>',
+    { enabled: true, maxScore: 5, unit: '分', criteria: '' }, entries,
+  );
+  assert.ok(!('error' in result), '解读还在，就该让教师看到');
+  if ('error' in result) return;
+  assert.equal(result.perStudent, null, '一份都没有 ⇒ 不写分数（旧的那些由调用方合并保留）');
+  assert.deepEqual(result.missing, ['s1', 's2']);
 });
 
 test('关闭评分或教师修改满分后，不显示上一次的旧评分', () => {
@@ -152,11 +184,14 @@ test('读取旧评分时也不会把半个奖杯送到教师端或学生端', ()
   assert.equal(readStudentAiReferenceScore(stored, config, 's1')?.advice, '', '升级前结果没有详细建议时保持兼容');
 });
 
-test('新分析缺少逐生详细建议时拒绝写入，避免学生只看到半张反馈卡', () => {
+test('新分析缺少逐生详细建议时：**那一行不算数**（学生不能只看到半张卡），其余照存', () => {
   const result = parseAiAnalysisResult(
-    '解读<classnode-scores>{"scores":[{"student":"User_001","score":4,"reason":"理解基本正确"}]}</classnode-scores>',
+    '解读<classnode-scores>{"scores":[{"student":"User_001","score":4,"reason":"理解基本正确"},{"student":"User_002","score":3,"reason":"ok","advice":"继续。"}]}</classnode-scores>',
     { enabled: true, maxScore: 5, unit: '分', criteria: '' },
-    [{ studentId: 's1', anonLabel: 'User_001' }],
+    [{ studentId: 's1', anonLabel: 'User_001' }, { studentId: 's2', anonLabel: 'User_002' }],
   );
-  assert.ok('error' in result);
+  assert.ok(!('error' in result));
+  if ('error' in result) return;
+  assert.deepEqual(result.perStudent?.scores.map((row) => row.studentId), ['s2'], '缺建议的那一行不许单独存（学生那边会只有半张卡）');
+  assert.deepEqual(result.missing, ['s1'], '但它要出现在「缺谁」里 —— 教师补跑时才会带上他');
 });

@@ -67,6 +67,7 @@ import {
   readFlowchartPayload,
   subtractFlowchart,
 } from '@/lib/worksheet-drawing-starter.ts';
+import { flowPayloadSignature, shouldPublishFlow } from '@/lib/worksheet-flowchart-publish.ts';
 
 import type { DrawingSurfaceProps } from './types';
 import styles from '../../worksheet.module.css';
@@ -963,6 +964,17 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *   **新增**的一种边，而不是**替换**库内置的那份。
    */
   const edgeTypes = useMemo(() => ({ [FLOW_EDGE_TYPE]: FlowEdge }), []);
+  /**
+   * ★ 2026-10-07（教师：「查一下第 11 题为什么会重复保存」）—— 上一份**发布过的**内容签名。
+   *
+   * 🔴 没有它就是一个自激环：这个 effect 的依赖里有 `onChange`，而 `onChange` 的身份取决于
+   *   `drawingDocument.image`，抓图**每次给一个新 URL** ⇒ 抓图 → 身份变 → effect 重跑 →
+   *   无条件再保存一次 + 再抓一张 ⇒ 每约 1 秒一次，**与学生在哪一题无关**
+   *   （学生端所有题目同时挂载 ⇒ 每一块流程图都在跑）。
+   * ⚠️ 判据在 `@/lib/worksheet-flowchart-publish.ts`（纯函数、有用例）。
+   */
+  const lastPublishedSignature = useRef<string | null>(null);
+
   /** 位图快照：自己吐一份纯 SVG 再栅格化（**不用 `foreignObject`**，老 iPad 上那条路可能出空白图）。 */
   const scheduleRaster = useDrawingRaster({
     capture: async () => {
@@ -989,8 +1001,20 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     const timer = window.setTimeout(() => {
       const payload = toFlowPayload(nodes, edges);
       // 快照按**全部**画（含底稿）⇒ 教师预览 / AI 联系表 / Word 报告里是一张完整的图。
+      // ⚠️ 这一份**永远**更新（抓图读它），与下面发不发无关。
       lastFlow.current = payload;
+      /*
+       * 🔴 ★ 2026-10-07：**内容没变就到此为止。**
+       *   这一句是断开那个自激环的地方 —— 上面那段注释写了它怎么闭合的。
+       *   没有它：每约 1 秒一次保存 + 一次上传，而且**每一块挂着的流程图都在跑**
+       *   （学生端所有题目同时挂载），与学生在哪一题上画无关。
+       * ⚠️ 首帧（还没有上一份签名）也要过 —— 首帧要抓快照（底稿靠它进教师那一格）。
+       */
+      const signature = flowPayloadSignature(payload);
+      if (!shouldPublishFlow(lastPublishedSignature.current, signature)) return;
+      lastPublishedSignature.current = signature;
       // ★ A：交上去的那份**只留学生自己画的**（底稿不算他的作答）。
+      // ⚠️ 首帧照旧**不报作答**（一进来就报会把这题算成「作答中」），但快照要抓。
       if (!firstFrame) {
         onChange(subtractFlowchart(payload, starterPayload) as unknown as ReturnType<typeof toFlowPayload>);
       }

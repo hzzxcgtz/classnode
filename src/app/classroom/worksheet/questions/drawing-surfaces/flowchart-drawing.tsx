@@ -19,6 +19,7 @@ import {
   type Edge,
   type EdgeProps,
   type Node,
+  type NodeChange,
   MarkerType,
   reconnectEdge,
   getSmoothStepPath,
@@ -45,7 +46,7 @@ import {
   type FlowSnapshot,
 } from '@/lib/worksheet-flowchart-history.ts';
 import { flowEdgeGeometry } from '@/lib/worksheet-flowchart-edge.ts';
-import { tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
+import { alignSnapX, tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
 import { flowchartSvg } from '@/lib/worksheet-flowchart-svg.ts';
 import { svgToPngBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 import { normalizePastedText } from '@/lib/worksheet-text-normalize.ts';
@@ -1454,6 +1455,30 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     const label = edges.find((edge) => edge.id === labelableEdgeId)?.label;
     return typeof label === 'string' ? label : '';
   })();
+  /**
+   * ★ 2026-10-07（教师）：**拖动时的同列吸附** —— 治的是「线斜」。
+   *
+   * 🔴 起因是一串连锁：教师先要「接近直线时吸附成直线」（线画直了），随后发现**直线是斜的**。
+   *    而这是几何上的死结：一条边**必须**连两端句柄 ⇒ 两端 x 只差一点点时，画折线有疙瘩、
+   *    画直线又必然斜。**唯一根治的办法是让两端的 x 真的相等** ⇒ 拖框时吸过去。
+   * 判据与几何在 `alignSnapX`（纯函数，有用例）。
+   *
+   * 🔴 拦在 **`onNodesChange`（位置变化的入口）**，而不是 `onNodeDrag` 里事后修正：
+   *    拖动每个 pointermove 都经过这里，帧内就把 x 改对 ⇒ 学生**看不到**它先歪一下再被拽正。
+   * ⚠️ 只处理 `dragging === true` 的那条 —— 程序化改位置（撤销 / 一键整理 / 别的写回）
+   *    不该再被吸一次（那会让「撤销」的结果和它记录的不一致）。
+   * ⚠️ 吸上之后 `delta === 0` ⇒ 条件不再成立 ⇒ 不会反复写（不会抖）。
+   */
+  const onNodesChangeSnapped = useCallback((changes: NodeChange<FlowNode>[]) => {
+    if (disabled) return onNodesChange(changes);
+    return onNodesChange(changes.map((change) => {
+      if (change.type !== 'position' || !change.position || change.dragging !== true) return change;
+      const snapped = alignSnapX(nodes, edges, change.id);
+      if (snapped === null) return change;
+      return { ...change, position: { ...change.position, x: snapped } };
+    }));
+  }, [disabled, edges, nodes, onNodesChange]);
+
   const visibleNodes = useMemo(() => nodes.map((node) => ({
     ...node,
     // ★ 「只读展示」那一档（`disabled`，教师预览 / 回顾作答时用）—— 与底稿无关，与过去那个
@@ -1534,7 +1559,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           edges={visibleEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          onNodesChange={disabled ? undefined : onNodesChange}
+          onNodesChange={disabled ? undefined : onNodesChangeSnapped}
           onEdgesChange={disabled ? undefined : onEdgesChange}
           onConnect={disabled ? undefined : onConnect}
           onReconnect={disabled ? undefined : onReconnect}

@@ -45,6 +45,30 @@ test('自定义边注册在 ReactFlow 上，而且标签是**转交**给 BaseEdg
 });
 
 /*
+  ★ 2026-10-07（教师）：「线条是能够直接变直线了，但是可能出现**略微倾斜**的情况」——
+  几何上的死结：一条边**必须**连两端句柄 ⇒ 两端 x 只差一点点时，画折线有疙瘩、画直线又必然斜。
+  ⇒ 唯一根治的是让**两端的 x 真的相等**：拖框时吸附对齐。
+
+  纯函数在 `alignSnapX`（6 条用例）；这条判据钉**接线**：
+  必须拦在 `onNodesChange`（位置变化的**入口**）、只处理**正在拖**的那条、而且 `<ReactFlow>` 真的挂上了。
+  ⚠️ 挂在 `onNodeDrag` 里事后修正的话，学生会看到它**先歪一下再被拽正**。
+*/
+test('拖动时的同列吸附：拦在 onNodesChange，且只对「正在拖」的那条生效', () => {
+  assert.match(SOURCE, /const onNodesChangeSnapped = useCallback/, '没有包那一层');
+  assert.match(SOURCE, /alignSnapX\(nodes, edges, change\.id\)/, '没有算吸附');
+  assert.match(
+    SOURCE,
+    /change\.dragging !== true/,
+    '要只处理**正在拖**的那条 —— 程序化改位置（撤销 / 一键整理）不该再被吸一次',
+  );
+  assert.match(
+    SOURCE,
+    /onNodesChange=\{disabled \? undefined : onNodesChangeSnapped\}/,
+    '`<ReactFlow>` 没挂上包过的那个（拦了等于没拦）',
+  );
+});
+
+/*
   ★ 2026-10-07（教师）：「折线上还是需要出现一个**控制柄**，可以让用户上下拖动这条横线，
   或者是左右拖动一条竖线，但是**这个控制柄本身不允许移动位置**」。
 

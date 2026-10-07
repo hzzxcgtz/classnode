@@ -164,3 +164,56 @@ export function tidyFlowchart<N extends TidyNodeLike, E extends TidyEdgeLike>(
 
   return { nodes: nextNodes, edges: nextEdges };
 }
+
+/*
+ * ── 拖动时的「同列吸附」（★ 2026-10-07 教师）────────────────────────────────
+ *
+ * 起因是一串连锁：教师先说「连接线接近直线时要吸附成直线，否则会出现一个非常小的拐角」，
+ * 做完之后又发现**直线是斜的** —— 而这是几何上的死结：
+ *
+ * 🔴 一条边**必须**从 source 的句柄出发、到 target 的句柄结束（不然箭头对不上框）。
+ *    两端 x 只差一点点时：画折线 ⇒ 中间那段几像素的横线（疙瘩）；画直线 ⇒ **必然斜那几像素**。
+ *    **「完全直」与「两端 x 不同」不可能同时成立** ⇒ 唯一能根治的，是让**两端的 x 真的相等**。
+ *
+ * ✅ 所以这一条管的是**节点位置**（拖框时吸附对齐），不是线的画法。
+ *    线那边「短了就画直」照旧留着（`@/lib/worksheet-flowchart-edge.ts`）—— 它兜住「没吸上」的情况。
+ */
+
+/**
+ * 「几乎同列」的容差（流坐标）。12px 大致是「一眼看得出歪、但还没到想让它错开」的距离。
+ * ⚠️ 吸附**只在拖动时**发生 ⇒ 已经放好的框不会被它偷偷挪走。
+ */
+export const ALIGN_SNAP_TOLERANCE = 12;
+
+/**
+ * 拖动中，算出被拖的节点该吸到什么 x；没什么可吸的返回 `null`（调用方据此什么都不做）。
+ *
+ * ✅ 只动**被拖的那个** —— 邻居一个都不碰（用户刚放好的框不该被拽走）。
+ * ✅ 只看**有连线相连**的：这是为了让**那条线**变直，不是「所有框都对齐」。
+ * ✅ 多个邻居时取**最近**的那一个；自环、以及另一头不在画布上的边一律跳过。
+ */
+export function alignSnapX(
+  nodes: readonly TidyNodeLike[],
+  edges: readonly TidyEdgeLike[],
+  movedId: string,
+  tolerance = ALIGN_SNAP_TOLERANCE,
+): number | null {
+  const moved = nodes.find((node) => node.id === movedId);
+  if (!moved) return null;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+
+  let best: number | null = null;
+  let bestDelta = Number.POSITIVE_INFINITY;
+  for (const edge of edges) {
+    const otherId = edge.source === movedId ? edge.target : edge.target === movedId ? edge.source : null;
+    if (otherId === null || otherId === movedId) continue; // 与它无关的边 / 自环
+    const other = byId.get(otherId);
+    if (!other) continue; // 另一头不在画布上
+    const delta = Math.abs(other.position.x - moved.position.x);
+    if (delta <= tolerance && delta < bestDelta) {
+      best = other.position.x;
+      bestDelta = delta;
+    }
+  }
+  return best;
+}

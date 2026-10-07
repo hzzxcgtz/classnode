@@ -26,7 +26,7 @@ import {
   MATH_TOOLS,
   arcLabelAt,
   arcPathOf,
-  backgroundRect,
+  backgroundPlacement,
   equalMarkOf,
   parallelMarkOf,
   parallelogramOf,
@@ -234,20 +234,43 @@ test('★ 角弧走的一定是**小弧**：两条边都指向左边时不许绕
  * 🔴 断言里用的是**装得进**（contain）而不是"铺满"：现在的实现是
  *   `.thirdPartyCanvas { background-size: 100% 100% }`（硬拉），教师传的原图比例一变就变形，
  *   而变形在几何题上**是有含义的错误**（直角看起来不是直角）。
+ * 🔴 返回的是 jsxgraph 要的 **[锚点, 尺寸]**，**不是两个角** ——
+ *   `createImage` 把 `parents[2]` 当 `[宽, 高]`。传两个角进去图会缩成一半、挤在左下角，
+ *   而屏幕上只是"图小了、偏了"（复核实测抓到的 Critical）。所以下面**专门钉"居中"**。
  */
-test('★ 底图摆位：等比装进画板框、居中、**不许拉伸**', () => {
-  // 画板框是 20×16（5:4）。4:3 的图 ⇒ 左右贴边、上下各留 0.5。
-  assert.deepEqual(backgroundRect(4 / 3), [[-10, -7.5], [10, 7.5]]);
+test('★ 底图摆位：等比装进画板框、**居中**、不许拉伸', () => {
+  /** 锚点 + 尺寸 ⇒ 图的四个边（顺带就是"居中"这条性质的检查方式）。 */
+  const box = (aspect: number) => {
+    const { anchor, size } = backgroundPlacement(aspect);
+    return { left: anchor[0], bottom: anchor[1], right: anchor[0] + size[0], top: anchor[1] + size[1] };
+  };
+  // 4:3 的图 ⇒ 左右贴边、上下各留 0.5。
+  assert.deepEqual(box(4 / 3), { left: -10, bottom: -7.5, right: 10, top: 7.5 });
   // 正方形 ⇒ 上下贴边、左右各留 2。
-  assert.deepEqual(backgroundRect(1), [[-8, -8], [8, 8]]);
+  assert.deepEqual(box(1), { left: -8, bottom: -8, right: 8, top: 8 });
   // 很宽的图 ⇒ 同理，比例一个字都不许变。
-  assert.deepEqual(backgroundRect(2), [[-10, -5], [10, 5]]);
+  assert.deepEqual(box(2), { left: -10, bottom: -5, right: 10, top: 5 });
+  /*
+   * 🔴 **居中**：图的中点必须落在画板框的中心（0,0）。
+   *   这条是专门为"锚点 + 尺寸"那个坑写的 —— 把它当成"两个角"用的话，
+   *   图的中心会跑到框的左下象限去，而上面那三条 deepEqual 里只要有任一条写成
+   *   "角"的形状就会一起错，所以必须有一条**只讲性质、不讲具体数**的。
+   */
+  for (const aspect of [0.4, 1, 4 / 3, 2, 5]) {
+    const { anchor, size } = backgroundPlacement(aspect);
+    assert.ok(Math.abs(anchor[0] + size[0] / 2) < 1e-9, `没有水平居中（aspect=${aspect}）`);
+    assert.ok(Math.abs(anchor[1] + size[1] / 2) < 1e-9, `没有垂直居中（aspect=${aspect}）`);
+    // 比例一个字都不许变。
+    assert.ok(Math.abs(size[0] / size[1] - aspect) < 1e-9, `比例变了（aspect=${aspect}）`);
+    // 装得进框。
+    assert.ok(size[0] <= 20 + 1e-9 && size[1] <= 16 + 1e-9, `装不进框（aspect=${aspect}）`);
+  }
   // 与画板同比例 ⇒ 正好铺满。
   // ⚠️ 框的比例从 `MATH_BOX` **算出来**，不许写死 1.25（写死就与常量脱钩了：
   //    哪天有人动了框，这条判据照样绿，而底图会被拉伸）。
   const boxAspect = (MATH_BOX[2] - MATH_BOX[0]) / (MATH_BOX[1] - MATH_BOX[3]);
-  assert.deepEqual(backgroundRect(boxAspect), [[-10, -8], [10, 8]]);
+  assert.deepEqual(box(boxAspect), { left: -10, bottom: -8, right: 10, top: 8 });
   // 量不出来（老浏览器 / 图的宽高是 0）⇒ 回落到画板框自己的比例，**不许**算出 NaN。
-  assert.deepEqual(backgroundRect(Number.NaN), [[-10, -8], [10, 8]]);
-  assert.deepEqual(backgroundRect(0), [[-10, -8], [10, 8]]);
+  assert.deepEqual(box(Number.NaN), { left: -10, bottom: -8, right: 10, top: 8 });
+  assert.deepEqual(box(0), { left: -10, bottom: -8, right: 10, top: 8 });
 });

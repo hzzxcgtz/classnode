@@ -343,9 +343,18 @@ export function arcLabelAt(vertex: Pt, a: Pt, b: Pt): Pt | null {
 export const MATH_BOX: readonly [number, number, number, number] = [-10, 8, 10, -8];
 
 /**
- * 底图放进画板的两个角（jsxgraph 的 `create('image', …)` 要「左下、右上」）。
+ * 底图放进画板时的 **[锚点, 尺寸]** —— jsxgraph 的 `create('image', …)` 要的就是这个形状。
  *
- * 🔴 `contain` + 居中：等比缩放到**装得进**这个框，两侧（或上下）留白。
+ * 🔴 **不是两个角！** 我第一版按「左下角 + 右上角」写，那是**错的**：
+ *   `createImage` 把 `parents[1]` 当**左下角锚点**、`parents[2]` 当 **[宽, 高]**
+ *   （`src/base/image.js` 的类文档逐字：「user coordinates of the **lower left corner**」+
+ *   「`size` defines the image's **width and height** in user coordinates」；
+ *   构造里 `this.W = createFunction(size[0])`、`this.H = createFunction(size[1])`）。
+ *   传两个角进去 ⇒ 宽高会变成"右上角那两个数" ⇒ 图缩成一半、挤在左下角，
+ *   **而屏幕上只是"图小了、偏了"，不报错**。
+ *   ⚠️ 这条错最初还被我当成"已核事实"写进了 spec —— 教训是：**"核过"要核到构造函数的赋值那一行**。
+ *
+ * 🔴 `contain` + 居中：等比缩放到**装得进** `MATH_BOX`，两侧（或上下）留白。
  *   **不许拉伸** —— 现在走 CSS 的 `background-size: 100% 100%`，教师传的原图比例一变就变形，
  *   而变形在几何题上是**有含义的错误**（直角看起来不是直角）。
  *   ⚠️ 代价：原图与 5:4 差得远时留白。留白是可见、可理解的（"老师给的图比画布窄"）。
@@ -353,7 +362,7 @@ export const MATH_BOX: readonly [number, number, number, number] = [-10, 8, 10, 
  * `aspect` = 图片的 宽/高。量不出来（`NaN` / `0` / 负数）⇒ 回落成画板框自己的比例
  *   —— ⚠️ **不许**算出 NaN 再交给画板（那会让整张图画没，且不报错）。
  */
-export function backgroundRect(aspect: number): [[number, number], [number, number]] {
+export function backgroundPlacement(aspect: number): { anchor: Pt; size: Pt } {
   const [left, top, right, bottom] = MATH_BOX;
   const boxW = right - left;
   const boxH = top - bottom;
@@ -363,8 +372,10 @@ export function backgroundRect(aspect: number): [[number, number], [number, numb
   if (h > boxH) { h = boxH; w = h * ratio; }
   const cx = (left + right) / 2;
   const cy = (top + bottom) / 2;
-  return [
-    [round(cx - w / 2), round(cy - h / 2)],   // 左下
-    [round(cx + w / 2), round(cy + h / 2)],   // 右上
-  ];
+  return {
+    // 左下角（jsxgraph 的锚点就是这一个点）
+    anchor: [round(cx - w / 2), round(cy - h / 2)],
+    // [宽, 高]（用户坐标）—— **不是**右上角
+    size: [round(w), round(h)],
+  };
 }

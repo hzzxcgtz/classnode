@@ -10,7 +10,7 @@ import {
   MATH_TOOLS,
   arcLabelAt,
   arcPathOf,
-  backgroundRect,
+  backgroundPlacement,
   equalMarkOf,
   parallelMarkOf,
   parallelogramOf,
@@ -257,25 +257,42 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
        *   画板只负责"把算好的点画上去"，一个三角函数都不许在这里出现
        *   （教师预览是第二个渲染端，两边各推一套迟早分叉，而分叉的表现只是
        *    "教师看到的记号比学生画的小一点"，没人会为此报 bug）。
-       * ⚠️ 三个记号 `points: []`（没有抓手）：它们太小，拖它比重新画一个还费劲；
-       *    选中 + 删除照旧可用（`objects` 里的形状本身就能被点中）。
+       * ⚠️ 三个记号 `points: []`（没有抓手）**并且 `fixed: true`**：它们太小，
+       *   拖它比重新画一个还费劲。**`fixed: true` 不是装饰** —— jsxgraph 对
+       *   "坐标数组建出来的线/曲线"默认 `isDraggable = true`，不锁住的话学生能拖走它，
+       *   而 `snapshot()` 对这三个 kind 落到最后的 `return entry`（位移不进数据）⇒
+       *   **拖了不记住**：屏幕上挪走了，下一次重画又弹回来，中间那张快照里却是挪过的位置。
+       * ⚠️ 锁住**不影响选中**：`getAllObjectsUnderMouse` 只看可见性，`hasPoint` 不看 `fixed`
+       *   ⇒ 学生照旧能点中它并「删除选中」。
        */
       if (entry.kind === 'equalMark') {
         const tick = equalMarkOf(entry.a, entry.b);
         if (!tick) return { entry, points: [], objects: [] };
-        const shape = board.create('segment', [tick[0], tick[1]], { ...lineAttrs, strokeWidth: 3 }) as JXG.GeometryElement;
+        const shape = board.create('segment', [tick[0], tick[1]], { ...lineAttrs, strokeWidth: 3, fixed: true }) as JXG.GeometryElement;
         return { entry, points: [], objects: [shape] };
       }
       if (entry.kind === 'parallelMark') {
         const bar = parallelMarkOf(entry.a, entry.b);
         if (!bar) return { entry, points: [], objects: [] };
-        const shape = board.create('segment', [bar[0], bar[1]], { ...lineAttrs, firstArrow: true, lastArrow: true }) as JXG.GeometryElement;
+        const shape = board.create('segment', [bar[0], bar[1]], { ...lineAttrs, firstArrow: true, lastArrow: true, fixed: true }) as JXG.GeometryElement;
         return { entry, points: [], objects: [shape] };
       }
       if (entry.kind === 'rightAngle') {
         const square = rightAngleOf(entry.vertex, entry.a, entry.b);
         if (!square) return { entry, points: [], objects: [] };
-        const shape = board.create('polyline', square, { ...lineAttrs, strokeWidth: 2 }) as JXG.GeometryElement;
+        /*
+         * 🔴 **不许用 `create('polyline', …)`** —— jsxgraph 里**没有**这个元素名
+         *   （注册表里是 `polygon` / `polygonalchain` / `curve`，产物里搜 `polyline` 零命中）。
+         *   `board.create` 找不全会 **throw**，而 `handleDown` 是挂在 `board.on('down')` 上的 ——
+         *   `EventEmitter.trigger` 的 `suspended[evt] = false` **不在 finally 里**
+         *   （`src/utils/event.js:71-81`，逐字核过）⇒ 抛一次之后 `suspended['down']`
+         *   **永远停在 true** ⇒ 这块画板此后**不再派发 down** ⇒ 点/线段/圆/四个记号……
+         *   **所有点类工具静默失效**，只剩拖动类（走我们自己的 DOM 监听）还能画。
+         * ⇒ 用 `curve`（与自由线条、角弧同一支）：喂数组时它的 `curvetype` 是 `'plot'`，
+         *   即**逐点连直线**，正是折线要的。
+         */
+        const shape = board.create('curve', [square.map(([x]) => x), square.map(([, y]) => y)],
+          { ...lineAttrs, strokeWidth: 2, fixed: true }) as JXG.GeometryElement;
         return { entry, points: [], objects: [shape] };
       }
       if (entry.kind === 'angleArc') {
@@ -387,8 +404,17 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
      *    逐个恢复 `strokeColor` 要记住每种形状的原始属性，那是第二份真源，迟早对不上。
      */
     const applySelection = (index: number | null) => {
-      // ⚠️ 顺序要紧：先整体重画（上一条选中的端点会随重画消失），再给这一条露端点。
-      renderAll(runtime.current.map((item) => item.entry));
+      /*
+       * ⚠️ 顺序要紧：先整体重画（上一条选中的端点会随重画消失），再给这一条露端点。
+       *
+       * 🔴 重画的输入是 **`snapshot()` 而不是 `item.entry`** —— `entry` 是**创建时**那份，
+       *   学生拖过端点之后它还是旧坐标，而拖动改的是 `item.points`。
+       *   用 `item.entry` 重画 ⇒ **拖过的图形弹回原位**，而且此后任何一次 `publish()`
+       *   会把弹回后的坐标写回作答 ⇒ 拖动永久丢失（屏幕上只是"弹了一下"）。
+       *   这一版把「拖端点」变成了唯一的微调手势，所以这条老代码第一次变成主路径。
+       *   `snapshot()` 的定义就是"画板上现在真正是什么"，重画当然该按它来。
+       */
+      renderAll(snapshot());
       if (index === null) return;
       const item = runtime.current[index];
       item?.objects.forEach((object) => {
@@ -688,7 +714,7 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
      *      教师看板那一格与发给 AI 的联系表里是「一堆悬空的线，几何图不见了」；
      *   ② **跟着缩放平移**：它的矩形是用户坐标，画板动它就动 —— 在图上描辅助线，
      *      对齐是**全部意义**，而 CSS 背景钉死不动；
-     *   ③ **不变形**：摆位由 `backgroundRect` 给的两个角决定，不再被
+     *   ③ **不变形**：摆位由 `backgroundPlacement` 给的锚点与尺寸决定，不再被
      *      `background-size: 100% 100%` 硬拉成 5:4。
      *
      * 🔴 取图必须走 **fetch → blob → objectURL**（同源），不能把 URL 直接喂进去：
@@ -726,8 +752,12 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
           const aspect = await imageAspectOf(objectUrl);
           if (cancelled) { URL.revokeObjectURL(objectUrl); return; }
           loadedBackgroundUrl = objectUrl;
-          const [lowerLeft, upperRight] = backgroundRect(aspect ?? Number.NaN);
-          backgroundObject = board.create('image', [objectUrl, lowerLeft, upperRight], {
+          /*
+           * 🔴 jsxgraph 要的是 **[锚点, 尺寸]**，不是两个角（我第一版按两个角写，图缩成一半、
+           *   挤在左下角）。换算在 `backgroundPlacement` 里，有用例钉住"居中"这条性质。
+           */
+          const { anchor, size } = backgroundPlacement(aspect ?? Number.NaN);
+          backgroundObject = board.create('image', [objectUrl, anchor, size], {
             // 🔴 压在最下面：canvas 渲染器绘制前按 layer 排序（已核 board.js 的 _compareDepth），
             //    而 `layer` 是公开属性。这样**不用**靠"底图必须先建"来保证顺序。
             layer: -1,
@@ -756,7 +786,9 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
     deleteSelectedRef.current = () => {
       const index = selectedRef.current;
       if (index === null) return;
-      const remaining = runtime.current.filter((_, itemIndex) => itemIndex !== index).map((item) => item.entry);
+      // ⚠️ 与 `applySelection` 同一个道理：按 `snapshot()`（画板上现在的坐标）重画，
+      //    不许用 `item.entry`（创建时那份）—— 否则拖过端点的图形会弹回。
+      const remaining = snapshot().filter((_, itemIndex) => itemIndex !== index);
       pushHistory();
       renderAll(remaining);
       selectRef.current?.(null);

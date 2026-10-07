@@ -62,7 +62,8 @@ import { labelsRenderOk, renderSheets } from '../services/analysis-render.js';
 // ★ M7b：编排层的三个纯函数（平台闸门 / 消息构造 / 解读归一化）
 import { analysisGateOf, buildAnalysisMessage, normalizeNarrative } from '../services/analysis-agent.js';
 import {
-  aiScoringConfigOf, mergeAiScoring, parseAiAnalysisResult, readStoredAiScoring, readStudentAiReferenceScore,
+  aiScoringConfigOf, answerGradeFromAiScore, mergeAiScoring, parseAiAnalysisResult,
+  readStoredAiScoring, readStudentAiReferenceScore,
 } from '../services/analysis-scoring.js';
 // ★ M7b：**全仓唯一一处 fetch 到第三方**
 import { proxyAnalysisRequest, resolveLocalPath } from '../services/ai-proxy.js';
@@ -1375,6 +1376,72 @@ function payloadFromStoredRow(
   });
 }
 
+/**
+ * ★ 2026-10-07（教师决定 2：「AI 的评分是要写回的，要参与总分的统计」）——
+ * 把 AI 的分折成题目得分写进 `WorksheetAnswer`，让它进总分、进奖励、进报告里的对错标记。
+ *
+ * 🔴 **三条判定，缺一条就会静默写错**：
+ *   ① 只写 `submitted` 的行 —— 草稿行的判分三列必须是 `null`（那是不变量，见存草稿那一处）；
+ *   ② **本地判分有结论的行一律跳过** —— 那一行归本地。混合填空题（一部分空本地判、
+ *      一部分空 AI 判）就是这种：`grade()` 有结论，而它算的只是**本地那几个空**
+ *      ⇒ 拿 AI 的整题分去盖它是错的。⚠️「混合填空怎么算总分」是一个**既有的未决问题**，
+ *      不在这里顺手定；
+ *   ③ AI 明说 `score: null`（判不了）⇒ 一个字都不动，保留行里原有的值。
+ *
+ * ⚠️ 幂等：算出来的三列与行里已有的相同就不写（补跑会把整份名单重放一遍）。
+ * 🔴 **不许吞异常**：写不进去就是真的失败，让外层 500 —— 教师重跑一次即可（重跑幂等）。
+ *   静默跳过等于「分数没进总分，而界面一切正常」。
+ */
+async function writeBackAiScores(
+  prisma: PrismaClient,
+  input: {
+    classroomId: string; worksheetId: string; questionId: string;
+    node: QuestionNode;
+    aiMaxScore: number;
+    scores: Array<{ studentId: string; score: number | null }>;
+    participantIds: string[];
+  },
+): Promise<number> {
+  const { classroomId, worksheetId, questionId, node, aiMaxScore, scores, participantIds } = input;
+  // ⚠️ `classroomId` 这个条件是**冗余的**（`participantId` 是 `ClassroomStudent.id`，
+  //    本身已经是课堂内的，而 `participantIds` 来自**本课堂**分析存下来的 `aggregate`）——
+  //    留着它是为了**读起来就是对的**：同一份学习单可以被多个课堂引用
+  //  （`ClassroomWorksheet` 的唯一键是 `(classroomId, worksheetId)`），
+  //    将来若有人把 `participantIds` 换成更宽的来源，少这一个条件就会跨班改分，
+  //    而两个屏幕上都不会报错。⚠️ 别为它写「少了它就会红」的判据 —— 那种判据是假的。
+  const responses = await prisma.worksheetResponse.findMany({
+    where: { classroomId, worksheetId, participantId: { in: participantIds } },
+    select: { id: true, participantId: true },
+  });
+  if (responses.length === 0) return 0;
+  const responseOf = new Map(responses.map((response) => [response.participantId, response.id]));
+  const rows = await prisma.worksheetAnswer.findMany({
+    where: { questionId, responseId: { in: responses.map((response) => response.id) } },
+    select: { responseId: true, value: true, status: true, isCorrect: true, gradeState: true, score: true },
+  });
+  const rowOf = new Map(rows.map((row) => [row.responseId, row]));
+  const points = resolvePoints(node, DEFAULT_POINTS);
+  const writes: Array<ReturnType<typeof prisma.worksheetAnswer.update>> = [];
+  for (const scored of scores) {
+    if (scored.score === null) continue;                        // ③
+    const responseId = responseOf.get(scored.studentId);
+    const row = responseId === undefined ? undefined : rowOf.get(responseId);
+    // ⚠️ 显式判 `responseId`（不是靠 `!row` 带出来）：TS 不会从 `row` 有值推出
+    //    `responseId` 也有值，而下面 `where` 里要用它。
+    if (responseId === undefined || !row || row.status !== 'submitted') continue;   // ①
+    if (grade(node, row.value, points) !== null) continue;       // ②
+    const next = answerGradeFromAiScore(scored.score, aiMaxScore, points.full);
+    if (row.score === next.score && row.gradeState === next.gradeState && row.isCorrect === next.isCorrect) continue;
+    writes.push(prisma.worksheetAnswer.update({
+      where: { responseId_questionId: { responseId, questionId } },
+      data: { isCorrect: next.isCorrect, gradeState: next.gradeState, score: next.score },
+    }));
+  }
+  if (writes.length === 0) return 0;
+  await prisma.$transaction(writes);
+  return writes.length;
+}
+
 /** 一道题发给智能体前的完整题面投影。三条端点共用，避免重算/重发时漏掉参考答案。 */
 function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: string) {
   const rubric = analysisRubric(node);
@@ -1772,6 +1839,24 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
         model: agent.platform,
       },
     });
+
+    /*
+     * ★ 2026-10-07（教师决定 2）：AI 的分**写回成绩**。
+     * ⚠️ 写的是**并集** `perStudent` 而不是「这一轮拿到的那些」：补跑时没被点名的人保留原值，
+     *   而重放一遍已经写过的人也必须是**幂等**的（同一份名单、同一个结果）。
+     * 🔴 排在落库**之后**：解读与 `perStudent` 先存住，再去动学生那边的行 ——
+     *   万一写回失败（外层 500），教师重跑一次即可，而重跑是幂等的。
+     */
+    if (payload.aiScoring.enabled && perStudent) {
+      await writeBackAiScores(prisma, {
+        classroomId, worksheetId, questionId,
+        node: target.node,
+        aiMaxScore: perStudent.maxScore,
+        scores: perStudent.scores,
+        participantIds: studentIds,
+      });
+    }
+
     res.json({
       /* ⚠️ 补跑那一轮**不动**整体解读 ⇒ 回给界面的也必须是**存下来的那一份**，
          否则面板会拿一段「只说了 3 个人」的文字当全班结论显示。 */

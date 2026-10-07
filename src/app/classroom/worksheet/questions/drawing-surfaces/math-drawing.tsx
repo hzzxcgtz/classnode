@@ -157,7 +157,23 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
     const pointAttrs = { size: 3, strokeColor: '#527198', fillColor: '#ffffff', fixed: disabled, name: '' };
     const lineAttrs = { strokeColor: '#365b82', strokeWidth: 2, fixed: disabled };
 
-    const mkPoint = (at: Pt) => board.create('point', at, pointAttrs) as JXG.Point;
+    /**
+     * ★ 2026-10-07（教师）：「线段两端的点只有当我选中这个线段的时候才会出现；
+     *   我不选择的时候，它就是一根看不见端点的线条」。
+     *
+     * 🔴 两种工厂、**不是**一个带默认参数的工厂：它们的用途是两件事 ——
+     *   · `mkHandle` 是图形的**端点**（学生只是画了条线，不该看起来像"标了两个点"）；
+     *   · `mkMark` 是**反馈**（多击工具点到第几下）与**作答本身**（独立的「点」）。
+     *   一个带默认值的工厂会让调用点写成 `mkPoint(at)` / `mkPoint(at, true)` ——
+     *   而"哪个参数是什么意思"没人看得出来，加一个调用点就会选错。
+     *
+     * ⚠️ 靠库的一个性质省掉一整套判断：`Board.getAllObjectsUnderMouse` 先判
+     *   `visPropCalc.visible`（我核过 jsxgraph 的产物）⇒ 不可见的点**也点不中、也拖不动**。
+     *   所以"未选中时藏端点"和"未选中时端点不可拖"是**同一件事**，不用各写一遍。
+     *   代价：想拖端点得先选中它 —— 而那正是这一版要的心智（先选、再改）。
+     */
+    const mkHandle = (at: Pt) => board.create('point', at, { ...pointAttrs, visible: false }) as JXG.Point;
+    const mkMark = (at: Pt) => board.create('point', at, pointAttrs) as JXG.Point;
 
     /**
      * 把一条记录画到画板上。**六种形状一处定义**（挂载、撤销重画、学生新画都走它）——
@@ -165,25 +181,26 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
      */
     const renderEntry = (entry: MathEntry): RuntimeEntry => {
       if (entry.kind === 'point') {
-        const p = mkPoint(entry.p);
+        // ⚠️ 独立的「点」用 `mkMark`：那一个点**就是**学生的作答本身，藏了等于没画上。
+        const p = mkMark(entry.p);
         return { entry, points: [p], objects: [p] };
       }
       if (entry.kind === 'circle') {
-        const a = mkPoint(entry.center);
-        const b = mkPoint(entry.edge);
+        const a = mkHandle(entry.center);
+        const b = mkHandle(entry.edge);
         const shape = board.create('circle', [a, b], lineAttrs) as JXG.GeometryElement;
         return { entry, points: [a, b], objects: [a, b, shape] };
       }
       if (entry.kind === 'segment' || entry.kind === 'line' || entry.kind === 'arrow') {
-        const a = mkPoint(entry.a);
-        const b = mkPoint(entry.b);
+        const a = mkHandle(entry.a);
+        const b = mkHandle(entry.b);
         const shape = board.create(entry.kind, [a, b], lineAttrs) as JXG.GeometryElement;
         return { entry, points: [a, b], objects: [a, b, shape] };
       }
       if (entry.kind === 'polyline') {
         // 闭合（三角形/长方形/正方形/平行四边形/梯形）：把顶点做成**可拖的点** ⇒ 学生能微调。
         if (entry.closed) {
-          const points = entry.points.map(mkPoint);
+          const points = entry.points.map((point) => mkHandle(point));
           const shape = board.create('polygon', points, { ...lineAttrs, borders: lineAttrs }) as JXG.GeometryElement;
           return { entry, points, objects: [...points, shape] };
         }
@@ -194,9 +211,10 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
         return { entry, points: [], objects: [shape], freehand: entry.points };
       }
       if (entry.kind === 'angle') {
-        const a = mkPoint(entry.a);
-        const vertex = mkPoint(entry.vertex);
-        const b = mkPoint(entry.b);
+        // ⚠️ **历史形状**（老「角」画的：两条臂 + 一段弧）：工具已砍掉，但老作答要靠这一支画出来。
+        const a = mkHandle(entry.a);
+        const vertex = mkHandle(entry.vertex);
+        const b = mkHandle(entry.b);
         const arm1 = board.create('segment', [vertex, a], lineAttrs) as JXG.GeometryElement;
         const arm2 = board.create('segment', [vertex, b], lineAttrs) as JXG.GeometryElement;
         const arc = board.create('angle', [a, vertex, b], { radius: 0.8, name: '', ...lineAttrs }) as JXG.GeometryElement;
@@ -283,6 +301,7 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
      *    逐个恢复 `strokeColor` 要记住每种形状的原始属性，那是第二份真源，迟早对不上。
      */
     const applySelection = (index: number | null) => {
+      // ⚠️ 顺序要紧：先整体重画（上一条选中的端点会随重画消失），再给这一条露端点。
       renderAll(runtime.current.map((item) => item.entry));
       if (index === null) return;
       const item = runtime.current[index];
@@ -290,6 +309,11 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
         const shape = object as unknown as { setAttribute?: (attrs: Record<string, unknown>) => void };
         shape.setAttribute?.({ strokeColor: '#b45309', strokeWidth: 3, highlight: false });
       });
+      /*
+       * ★ 2026-10-07：端点只在这一刻露出来，而且**放大** —— 它现在是唯一的抓手，
+       *   而 `size: 3` 是"顺带可见"时代的尺寸，在 iPad 上抓不住。
+       */
+      item?.points.forEach((point) => point.setAttribute({ visible: true, size: 6 }));
     };
     /**
      * 一条记录在屏幕上的代表点（浮动删除按钮的锚点）。
@@ -385,7 +409,7 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
         pending.current = { tool: currentTool, ats: [], marks: [] };
       }
       pending.current.ats.push(at);
-      pending.current.marks.push(mkPoint(at));
+      pending.current.marks.push(mkMark(at));
       if (pending.current.ats.length < spec.clicks) return;
 
       const ats = pending.current.ats;

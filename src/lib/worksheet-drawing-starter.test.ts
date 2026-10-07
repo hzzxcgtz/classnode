@@ -20,7 +20,10 @@ import {
   flowchartPreviewImage,
   mergeFlowchart,
   restoreFlowchart,
+  blankStarterFor,
+  mindMapOrStarter,
   readDrawingStarter,
+  readMindMapPayload,
   readFlowchartPayload,
   subtractFlowchart,
 } from './worksheet-drawing-starter.ts';
@@ -237,4 +240,61 @@ test('🔴 底稿的画板必须与题目当前的画板一致（串档 ⇒ 学�
     readDrawingStarter({ type: 'drawing', data: { drawingStarter: starter } }), null,
     '题目没写 drawingTool ⇒ 画布不是流程图 ⇒ 那份流程图底稿不会被显示',
   );
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ★ 2026-10-07（教师裁定）：思维导图的底稿**只作起点** —— 学生一旦动手，
+   **整棵树都是他的作答**。（流程图那边不是这样：它是「写的时候按 id 把底稿剔掉」。）
+
+   🔴 为什么两档必须不同：思维导图的底稿通常是一个**骨架**，而学生要做的恰恰是
+   **往骨架里填**（改的正是教师那些节点的文字）⇒ 照搬流程图那套按 id 剔除，
+   会把学生填的内容**连同骨架一起删掉**，交上去是空的。
+   ⚠️ 于是「底稿不算学生的成果」这件事在这里**只靠提示词里那句话**承担
+   （`analysis-agent.ts` 的 `DRAWING_STARTER_NOTE`，服务端按 `hasDrawingStarter` 决定发不发）。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const MINE = { nodeData: { id: 'm1', topic: '我填的' } };
+const SKELETON = { nodeData: { id: 's1', topic: '教师给的骨架' } };
+
+test('★ 有自己的作答 ⇒ 用他的（整棵树都算他的，不许被底稿盖掉）', () => {
+  assert.deepEqual(mindMapOrStarter(MINE, SKELETON), MINE,
+    '学生的作答被底稿盖掉了 —— 他填的东西会当场消失');
+});
+
+test('★ 还没有作答 ⇒ 底稿当起点', () => {
+  assert.deepEqual(mindMapOrStarter(null, SKELETON), SKELETON);
+  assert.deepEqual(mindMapOrStarter(undefined, SKELETON), SKELETON);
+  assert.deepEqual(mindMapOrStarter({}, SKELETON), SKELETON, '空对象 = 没作答（不是「一份空的导图」）');
+});
+
+test('两个都没有 / 形状不对 ⇒ null（调用方给一张空导图，别在这儿编一个）', () => {
+  assert.equal(mindMapOrStarter(null, null), null);
+  assert.equal(mindMapOrStarter(null, { nope: 1 }), null, '形状不对的底稿不算底稿');
+  assert.equal(readMindMapPayload({ nodeData: 'x' }), null, '`nodeData` 不是对象 ⇒ 读不出来');
+  assert.deepEqual(readMindMapPayload(SKELETON), SKELETON);
+});
+
+/*
+  ★ 2026-10-07（教师：「初始图开关不仅流程图要，其他绘图题也要」）——
+  打开那个开关时，**该给哪一档写什么形状的空底稿**。
+  🔴 它是个**纯函数**、不是界面里的一段 if：写错的表现是「挂着一份别的画板的底稿」，
+  而那种数据会让服务端对模型说一句假话（「图里有教师的初始图」），两边都不报错。
+*/
+test('★ 开关打开时按**当前画板**写空底稿（不是恒写流程图）', () => {
+  assert.deepEqual(blankStarterFor('flowchart'), { tool: 'flowchart', data: { nodes: [], edges: [] } });
+  const mind = blankStarterFor('mind-map');
+  assert.equal(mind?.tool, 'mind-map', '思维导图那一档写了一份**流程图**的底稿 —— 那就是审计抓到的串档');
+  assert.ok(
+    mind && typeof (mind.data as Record<string, unknown>).nodeData === 'object',
+    '空底稿缺 `nodeData` ⇒ 学生端读不出来，等于没底稿（而面板上开关是开着的）',
+  );
+  assert.equal(
+    ((mind?.data as Record<string, unknown>).nodeData as Record<string, unknown>).topic, '中心主题',
+    '给一张只有中心主题的图，学生从它开始长',
+  );
+});
+
+test('★ 数学作图 / 自由画这一版**没有**初始图 ⇒ 明说没有（返回 null，别编一个空壳）', () => {
+  assert.equal(blankStarterFor('math'), null);
+  assert.equal(blankStarterFor('free'), null);
 });

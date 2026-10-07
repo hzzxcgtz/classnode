@@ -145,6 +145,61 @@ export function mergeFlowchart(starter: FlowchartPayload, mine: FlowchartPayload
  *    恢复出来的底稿同样是**能改**的：老数据里的锁标记照剥（`withoutLegacyLocks`）——
  *    两个入口（合并 / 恢复）的语义不许分叉。
  */
+/**
+ * ★ 2026-10-07（教师：「初始图开关不仅流程图要，其他绘图题也要」）——
+ * **打开那个开关时，该给这一档写一份什么形状的空底稿。**
+ *
+ * 🔴 它必须是**纯函数**、而不是教师端面板里的一段 `if`：
+ *   写错的表现是「题目上挂着一份**别的画板**的底稿」，而那种数据会让服务端
+ *   对模型说一句假话（「本题的图里有教师预先给出的初始图」）—— 两边都不报错，
+ *   而模型会把学生自己画的那张当成教师给的（见 `hasDrawingStarter` 的那一段）。
+ *
+ * ⚠️ **数学作图 / 自由画这一版没有初始图**（教师这次只要了流程图与思维导图两档）⇒
+ *   返回 `null`，调用方据此把那个开关**禁用**并说明原因 ——
+ *   不许「写一个空壳」：空壳在学生端读不出来，等于没底稿，而面板上开关却是开着的。
+ */
+export function blankStarterFor(tool: DrawingMode): DrawingStarter | null {
+  if (tool === 'flowchart') return { tool: 'flowchart', data: { nodes: [], edges: [] } };
+  /*
+   * 🔴 形状照 `MindElixir.new()` 的那一份（`{ nodeData: { id, topic, children } }`）——
+   *   少了 `nodeData` 的话 `readMindMapPayload` 读不出来。
+   * ⚠️ `id` 用固定值：它只需**在这张画布内**唯一，而库给学生新增的节点生成的是
+   *   16 位随机串（`dist/MindElixir.js` 的 `X()`）⇒ 撞不上这个名字。
+   */
+  if (tool === 'mind-map') {
+    return { tool: 'mind-map', data: { nodeData: { id: 'starter-root', topic: '中心主题', children: [] } } };
+  }
+  return null;
+}
+
+/**
+ * ★ 2026-10-07（教师裁定）：思维导图那一档**要给库的那份数据**。
+ *
+ * 🔴 **口径与流程图不同，而且是刻意的**：
+ *   · 流程图：交上去的是「底稿 + 学生画的」**按 id 剔掉底稿**（见 `subtractFlowchart`）；
+ *   · 思维导图：**只作起点** —— 学生一旦动手，整棵树都是他的作答。
+ *
+ * 为什么不能照搬：思维导图的底稿通常是一个**骨架**（中心主题 + 几个空分支），
+ * 而学生要做的恰恰是**往骨架里填**（改的正是教师那些节点的文字）。
+ * 按 id 剔除会把学生填的内容**连同骨架一起删掉**，交上去是空的。
+ * ⚠️ 「底稿不算学生的成果」这件事在这一档**只靠提示词里那句话**承担
+ *   （`analysis-agent.ts` 的 `DRAWING_STARTER_NOTE`，服务端按 `hasDrawingStarter` 决定发不发）。
+ *
+ * 🔴 「学生有自己的作答」的判据是**形状**（有 `nodeData`），不是「非空」：
+ *   一份被他删到只剩中心主题的导图**仍然**是他的作答，不许拿底稿盖回去
+ *   —— 那等于把他删的东西又塞回他手里，而屏幕上像是没保存上。
+ */
+export function mindMapOrStarter(mine: unknown, starter: unknown): Record<string, unknown> | null {
+  return readMindMapPayload(mine) ?? readMindMapPayload(starter);
+}
+
+/** 一份思维导图数据（`mind-elixir` 的 `MindElixirData`：至少要有个对象形状的 `nodeData`）。 */
+export function readMindMapPayload(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const row = raw as Record<string, unknown>;
+  return row.nodeData && typeof row.nodeData === 'object' && !Array.isArray(row.nodeData) ? row : null;
+}
+
 export function restoreFlowchart(starter: FlowchartPayload): FlowchartPayload {
   return {
     nodes: starter.nodes.map((item) => withoutLegacyLocks(item)),

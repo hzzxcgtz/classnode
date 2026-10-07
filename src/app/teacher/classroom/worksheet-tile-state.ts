@@ -137,8 +137,13 @@ export type WorksheetTileState =
   //    哪个任务、任务的名称是什么，都不需要了」——
   //    ⇒ 这一格只要**小题号**（`AnswerableQuestion.label`，就是那个连续计数器里的数）：
   //      `number`。两级题号（`headings` 那一份）是**抽屉 / 矩阵**要的，它们各自的类型里还留着。
-  | { kind: 'working'; number: string | null; cells: WorksheetCellStatus[]; headings: string[] }
-  | { kind: 'stuck'; number: string | null; minutes: number; cells: WorksheetCellStatus[]; headings: string[] }
+  // ★ 2026-10-07 当天的下一轮（教师看了实物）：「正在做第 11 题，**后面要补上题型**，
+  //    例如「开心填空」」⇒ 题型（`typeLabel`）加回来。⚠️ 用的是**教师端的正式题型名**
+  //    （`questionTypeLabel` ⇒ 「填空题」），不是学生端那个「开心填空」
+  //    （`QUESTION_TYPE_OPTIONS.nickname` —— 那一栏的注释写得很清楚：学生端用昵称、
+  //      教师端一切照旧用正式名，为了对上教材与教研的用词）。
+  | { kind: 'working'; number: string | null; typeLabel: string | null; cells: WorksheetCellStatus[]; headings: string[] }
+  | { kind: 'stuck'; number: string | null; typeLabel: string | null; minutes: number; cells: WorksheetCellStatus[]; headings: string[] }
   | { kind: 'all-submitted'; cells: WorksheetCellStatus[]; headings: string[] };
 
 export interface WorksheetTileInput {
@@ -202,15 +207,16 @@ export function worksheetTileState(input: WorksheetTileInput): WorksheetTileStat
   /* ⚠️ 用 `label`（全卷连续计数器里那个数），**不是** `heading`（带任务前缀的两级题号）——
      教师 2026-10-07：「就写上正在做第几小题就可以了，哪个任务、任务的名称是什么，都不需要了」。 */
   const number = at === null ? null : items[at].label;
+  const typeLabel = at === null ? null : questionTypeLabel(items[at].node.type);
   // 🔴 `lastAt === null` ⇒ **不算「停住了」**（见 `ParticipantWorksheetProgress.lastAt`）：
   // `now - null` 在 JS 里是 `now`（一个 1.7e12 量级的数），它会让这一格**立刻**报停住了，
   // 而那些题可能刚刚才被答过。判据宁可少报，也不许把「不知道」编成「他卡了 5 分钟」。
   const idleMs = known.lastAt === null ? null : now - known.lastAt;
   if (online && idleMs !== null && idleMs > WORKSHEET_STUCK_AFTER_MS) {
     // `Math.floor` 而不是四舍五入：8 分 59 秒说「8 分钟」是准的，说「9 分钟」是提前量。
-    return { kind: 'stuck', number, minutes: Math.floor(idleMs / 60_000), cells, headings };
+    return { kind: 'stuck', number, typeLabel, minutes: Math.floor(idleMs / 60_000), cells, headings };
   }
-  return { kind: 'working', number, cells, headings };
+  return { kind: 'working', number, typeLabel, cells, headings };
 }
 
 /**

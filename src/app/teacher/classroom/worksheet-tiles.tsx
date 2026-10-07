@@ -27,9 +27,17 @@ import { TileAnswerBody } from './tile-answer';
  * 而不是红绿那一组。
  */
 const CELL_STYLE: Record<WorksheetCellStatus, { background: string; border: string; label: string }> = {
+  /*
+   * ★ 2026-10-07（教师，截图批注）：「红框里的**文字和色块**不要设置得这么醒目，可以**淡雅**一些，
+   *   否则有点**喧宾夺主**了」。
+   * ⇒ 三态都退到低饱和：已提交用钢板蓝（与节点边框 `#7895b3` 同一族）、作答中用淡琥珀。
+   * ⚠️ **三态还得一眼分得开** —— 靠的是**色相**（蓝 / 黄 / 近白）而不是饱和度，
+   *    所以调淡不会把它们变成一样；色觉障碍教师也仍然分得出（蓝黄是最友好的一对）。
+   * ⚠️ 别调回 `var(--primary)`：那一版在小格子里比下面那幅图还抢眼。
+   */
   unanswered: { background: '#f1f5f9', border: '#e2e8f0', label: '未答' },
-  draft: { background: '#fbbf24', border: '#956834', label: '作答中' },
-  submitted: { background: 'var(--primary)', border: 'var(--primary-dark)', label: '已提交' },
+  draft: { background: '#f5d9a8', border: '#d8b174', label: '作答中' },
+  submitted: { background: '#9db4cd', border: '#7d99b6', label: '已提交' },
 };
 
 /**
@@ -61,11 +69,14 @@ function stateLine(state: WorksheetTileState): string {
       // ★ 2026-10-07（教师）：「就写上**正在做第几小题**就可以了，哪个任务、任务的名称是什么，
       //   都不需要了」⇒ 这一行只剩小题号（原来写着「正在做 任务三 雨后校园的水与彩虹 · 11 · 绘图题」，
       //   在小格子里要折两行、把下面那块预览挤掉）。题型与两级题号在**抽屉 / 矩阵**里还有。
-      return state.number === null ? '正在作答' : `正在做第 ${state.number} 题`;
+      /* ★ 2026-10-07（教师）：「正在做第 11 题，**后面要补上题型**」⇒ 题号后面带上题型。 */
+      return state.number === null
+        ? '正在作答'
+        : `正在做第 ${state.number} 题${state.typeLabel ? ` · ${state.typeLabel}` : ''}`;
     case 'stuck':
       return state.number === null
         ? `停住了 · ${state.minutes} 分钟`
-        : `停在第 ${state.number} 题 · ${state.minutes} 分钟`;
+        : `停在第 ${state.number} 题${state.typeLabel ? ` · ${state.typeLabel}` : ''} · ${state.minutes} 分钟`;
     case 'all-submitted':
       return `${state.cells.length} 题已全部提交`;
     default:
@@ -75,9 +86,14 @@ function stateLine(state: WorksheetTileState): string {
 
 /** 那行大字与方格阵的底色（只有「停住了」是琥珀）。 */
 function stateTone(state: WorksheetTileState): { background: string; border: string; color: string } {
-  if (state.kind === 'stuck') return { background: '#faf4eb', border: '1px solid #fde68a', color: '#92400e' };
-  if (state.kind === 'all-submitted') return { background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d' };
-  return { background: '#f8fafc', border: '1px solid #eef2f6', color: '#1e293b' };
+  /*
+   * ★ 2026-10-07（教师）：「文字……淡雅一些，否则喧宾夺主」。
+   * 「正在做」是**常态**（多数格子都是它）⇒ 退到灰蓝，别与下面那幅图抢眼；
+   * 「停住了」「交齐了」是**要教师看一眼**的两种 ⇒ 留着彩色，但也不再是刺眼的深色。
+   */
+  if (state.kind === 'stuck') return { background: '#faf6ef', border: '1px solid #f3e2c0', color: '#8a6134' };
+  if (state.kind === 'all-submitted') return { background: '#f2f9f3', border: '1px solid #cfe8d5', color: '#3f7a52' };
+  return { background: '#f8fafc', border: '1px solid #eef2f6', color: '#64748b' };
 }
 
 export function WorksheetTileContent({ state, answer, compact }: {
@@ -120,7 +136,10 @@ export function WorksheetTileContent({ state, answer, compact }: {
           {/* 上面这一块**不许被压**（`flexShrink: 0`）：状态那一行是这一格的标题，
               被下面的预览挤掉的话，教师就不知道下面那块是谁的作答了。 */}
           <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: compact ? 4 : 5 }}>
-          <div style={{ fontSize: compact ? '0.688rem' : '0.813rem', fontWeight: 700, color: tone.color, lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 5 }}>
+          {/* ★ 2026-10-07（教师）：「文字……不要设置得这么醒目，可以淡雅一些，否则有点喧宾夺主」。
+              字重 700 → 600、颜色交给 `stateTone`（日常那一态是灰蓝，只有「停住了 / 交齐了」
+              才给彩色 —— 那两种才是真的要教师看一眼的）。 */}
+          <div style={{ fontSize: compact ? '0.688rem' : '0.813rem', fontWeight: 600, color: tone.color, lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 5 }}>
             {state.kind === 'all-submitted' && <WorksheetStatusIcon name="completed" size={compact ? 14 : 16} />}
             {state.kind === 'working' && <WorksheetStatusIcon name="drafting" size={compact ? 14 : 16} />}
             {stateLine(state)}

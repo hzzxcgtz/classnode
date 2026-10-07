@@ -7,7 +7,7 @@ import type { WorksheetAnalysisPayload } from '@/lib/types';
 import { moduleCountUnit } from './worksheet-tile-state';
 import { activeWorksheetAnalysisTask, startWorksheetAnalysisTask } from '@/lib/worksheet-analysis-background';
 import { worksheetAnalysisProgressLabel } from '@/lib/worksheet-analysis-progress';
-import { cellLabelOf } from '@/lib/worksheet-analysis-cells';
+import { cellLabelOf, localizeLegacyLabels } from '@/lib/worksheet-analysis-cells';
 import { Markdown } from '@/lib/markdown';
 import { normalizeWorksheetAnalysisMarkdown } from '@/lib/worksheet-analysis-markdown';
 import styles from './analysis-panel.module.css';
@@ -210,10 +210,11 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
   /**
    * ★ 2026-09-29（教师）：「为什么没有显示姓名」。
    *
-   * 🔴 **发出去的东西一个字不改**：那张联系表与文档上的标签**必须**是伪名
-   * （`User_001`…）—— 它们是**要发给第三方 AI 的**，而本项目的匿名器规定
-   * 「任何提示词离开这台机器之前，真名一律换成伪名」（`ai-proxy.ts`）。
-   * 真名进那张图 = 把未成年人的姓名发给第三方，**那不是这一屏能决定的事**。
+   * 🔴 ★ 2026-10-07（教师裁定）**改口径了**：发出去的那张图上就是**真名 + 学号**
+   * （`张伟#7`）。教师明确接受这个代价 —— 伪名只差最后一位、模型读图会看串，
+   * 而看串的后果是分数**静默贴到别人头上**（原本那张对照表藏在「查看发送数据」里，
+   * 不看就无从核对）。**别再照旧注释把它改回伪名。**
+   * ⚠️ 真名只出现在**发给分析型智能体的那份载荷**上；聊天那条路仍走 `anonymizer`。
    *
    * ⇒ 教师要看的是「第 3 格是谁」，而这个映射**本来就在他手上的数据里**
    *（载荷里的 `entries[].studentId` 就是参与者 id，名册在这一屏也有）。
@@ -231,26 +232,25 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
   /**
    * ★ 2026-09-29（教师）：「经过第三方 AI 分析后返回的数据，在看的时候还是要有真名」。
    *
-   * 🔴 **这就是学伴那条路上早就有的做法**（`ai-proxy.ts` 的文件头：出去时换成伪名，
-   * 模型回话时再把真名换回来）—— 分析这条路当时只做了前半段，于是教师在屏幕上
-   * 读到的是 `User_001 把第 2 空填成了…`。
+   * 🔴 ★ 2026-10-07（教师：标签改用「姓名 + 学号」）—— **这一段的职责缩小了**：
+   *   新结果里标签**本身就是真名**（`张伟#7`），既不需要、也**不许**替换；
+   *   只有**老结果**里嵌着的 `User_00X` 还要换回真名（那些 narrative 已经存在库里）。
+   * ⇒ 换成 `localizeLegacyLabels`（只认老格式那个正则）。
    *
-   * ⚠️ **替换只发生在渲染这一层**：发给 AI 的仍然是伪名，库里存的也仍然是伪名
-   * （`WorksheetQuestionAnalysis.narrative` 不变）。⇒ 将来若有人把这段解读**导出**
-   * 或**别处复用**，那份东西里仍是伪名 —— 想让它也带真名，要在**那一处**同样替换。
+   * 🔴 **朴素子串替换到这里为止**：它过去的安全性只依赖「`User_001` 互不为子串」，
+   *   而标签换成真名之后，姓名可能是**别人姓名或正文的子串** ⇒ 静默改错文字。
+   *   判据在 `src/lib/worksheet-analysis-cells.test.ts`（含反面对照）。
+   *
+   * ⚠️ **替换只发生在渲染这一层**：库里存的仍是模型原样返回的那份
+   * （`WorksheetQuestionAnalysis.narrative` 不变）⇒ 将来若有人把这段解读**导出**
+   * 或**别处复用**，老结果里那份东西仍是老式伪名 —— 想让它也带真名，要在**那一处**同样替换。
    * 这一句写在这里，是因为「同一份数据在两个出口长得不一样」是本仓反复吃的形状。
-   *
-   * ⚠️ 朴素替换（不是正则）是安全的：伪名是 `User_` + **至少三位**零填充
-   *（`payloadLabels` 的 `padStart(3, '0')`），`User_001` 不会出现在别的伪名里面。
-   * 一个班不可能有 1000 人。
    */
   const localize = (text: string | null | undefined): string | null => {
-    if (!text) return text ?? null;
-    if (!payload) return text;
-    return payload.entries.reduce((acc, entry) => {
-      const real = payload.participantNames?.[entry.studentId] ?? nameOf?.(entry.studentId);
-      return real ? acc.split(entry.anonLabel).join(real) : acc;
-    }, text);
+    if (!payload) return text ?? null;
+    return localizeLegacyLabels(text, payload.entries, (studentId) => (
+      payload.participantNames?.[studentId] ?? nameOf?.(studentId) ?? null
+    ));
   };
 
   return (

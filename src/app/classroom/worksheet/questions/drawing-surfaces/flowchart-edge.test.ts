@@ -189,4 +189,6 @@ test('★ 标签：偏移加给库的坐标（不是自己画）、把手跟着�
   assert.match(SOURCE, /labelDX: next\.dx, labelDY: next\.dy/, '拖它没有把位置写回边数据');
   assert.match(SOURCE, /labelX: labelX \+ labelOffset\.dx, labelY: labelY \+ labelOffset\.dy/, '锚点表没有吐出「标签画在哪」');
   assert.match(SOURCE, /const \{ labelX, labelY \} = anchors;/, '就地输入框没有跟着标签走 —— 会停在线上与那几个字分家');
+  // ⚠️ 命中区**跟着字走**：只有 44px 的话，四个字以上的标签只能从正中间拖得动（抓边上会掉到线上）。
+  assert.match(SOURCE, /width=\{Math\.max\(44, flowLabelWidth\(String\(edge\.label\)\) \+ 10\)\}/, '拖标签的命中区没有跟着字宽走');
 });

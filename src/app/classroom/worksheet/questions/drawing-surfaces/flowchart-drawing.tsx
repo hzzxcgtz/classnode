@@ -50,6 +50,7 @@ import {
   flowAnchorPoint,
   flowEdgeGeometry,
   flowLabelOffset,
+  flowLabelWidth,
   flowRouteTrack,
   type FlowLabelOffset,
   type FlowRouteTrack,
@@ -745,11 +746,13 @@ function FlowRouteHandle({
  * ⚠️ 双击 = 改这条线上的字：标签挪到线旁边之后，从线上双击容易点不到那几个字。
  */
 function FlowLabelHandle({
-  edgeId, anchor, offset, disabled, onDragStateChange, onEdit,
+  edgeId, anchor, offset, width, disabled, onDragStateChange, onEdit,
 }: {
   edgeId: string;
   anchor: { x: number; y: number };
   offset: FlowLabelOffset;
+  /** 命中区宽度 —— 至少 44（触屏下限），比标签本身宽一点。见下面 `style` 那行。 */
+  width: number;
   disabled: boolean;
   onDragStateChange: (dragging: boolean) => void;
   onEdit: () => void;
@@ -791,7 +794,11 @@ function FlowLabelHandle({
       type="button"
       aria-label="拖动这段文字（双击改字）"
       title="拖动这段文字（双击改字）"
-      style={{ left: anchor.x, top: anchor.y }}
+      /*
+       * ★ 命中区**跟着字走**：只有 44px 的话，四个字以上的标签只能从**中间**拖得动，
+       *   抓它两边会掉到线上（学生第一下常常就抓在边上）。下限仍是 44（触屏那条硬要求）。
+       */
+      style={{ left: anchor.x, top: anchor.y, width }}
       onPointerDown={onPointerDown}
       onDoubleClick={(event) => { event.stopPropagation(); onEdit(); }}
     >
@@ -1873,6 +1880,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
               /* ★ 锚点就是**标签画在哪**（与库收到的坐标同源）—— 把手与字同源，不会分家。 */
               anchor={{ x: viewport.x + anchors.labelX * viewport.zoom, y: viewport.y + anchors.labelY * viewport.zoom }}
               offset={anchors.labelOffset}
+              width={Math.max(44, flowLabelWidth(String(edge.label)) + 10)}
               disabled={disabled}
               onDragStateChange={setRouteDragging}
               onEdit={() => setLabelingEdge(selectedEdgeId)}

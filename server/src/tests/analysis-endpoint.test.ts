@@ -68,6 +68,18 @@ async function seedWorksheet(prisma: PrismaClient, nodes: Prisma.InputJsonValue[
 }
 
 /**
+ * ★ 2026-10-07（教师：标签改用「姓名 + 学号」）—— 参与者**必须有真名**。
+ * 没有 `studentId` 的参与者拿不到姓名（`loadAnalysisParticipants` 取的是
+ * `student.name ?? group.name ?? '未命名参与者'`），标签会退化成「未命名参与者#xxxx」，
+ * 而教师在图上看到的应该是「张伟#7」。
+ */
+async function seedStudent(p: PrismaClient, classroomId: string, name = '张伟', studentNo: string | null = '7') {
+  const klass = await p.class.create({ data: { name: `测试班-${name}-${studentNo ?? '无'}` } });
+  const student = await p.student.create({ data: { classId: klass.id, name, studentNo } });
+  return p.classroomStudent.create({ data: { classroomId, type: 'student', studentId: student.id } });
+}
+
+/**
  * 起一个只挂 worksheets 路由的 app。
  *
  * 🔴 **默认不挂 gate**（= 跳过 `requireTeacher`）—— 与 `history-traces.test.ts` 同一条做法：
@@ -116,8 +128,10 @@ test('🔴 标准模式：covered / total 按参与者数（不是「作答过�
   const worksheet = await seedWorksheet(p, [SHORT_ANSWER_NODE]);
   const classroom = await p.classroom.create({ data: { title: '课', code: '7001', status: 'active', mode: 'standard' } });
   await p.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
-  const a = await p.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
-  const b = await p.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  // ★ 2026-10-07：两个人各有真名与学号 —— 标签是「姓名 + 学号」（`张伟#7` / `李四#12`）。
+  // 不给真名的表现是标签退化成「未命名参与者#xxxx」，而那条负面对照会当场红。
+  const a = await seedStudent(p, classroom.id, '张伟', '7');
+  const b = await seedStudent(p, classroom.id, '李四', '12');
   const ra = await p.worksheetResponse.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: a.id } });
   await p.worksheetResponse.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: b.id } });
   // a 交了、b 没交
@@ -137,7 +151,11 @@ test('🔴 标准模式：covered / total 按参与者数（不是「作答过�
   assert.equal(body.total, 2, '分母是参与者数 —— 没交的人也算分母');
   assert.equal(body.payloadKind, 'text');
   assert.match(String(body.text), /我的答案/);
-  assert.doesNotMatch(String(body.text), /未命名参与者/, 'a 没有真实姓名时用占位名，但不该印 id 之外的怪东西');
+  // ★ 2026-10-07：标签是「姓名 + 学号」。负面对照盯的是**退化**：名册装载少 select 了
+  // `studentNo`、或参与者没挂学生行，标签就会变成「未命名参与者#xxxx」或只留姓名 ——
+  // 而屏幕上没有任何东西缺一块（教师只会觉得「这编号怎么怪怪的」）。
+  assert.match(String(body.text), /张伟#7/, '标签必须是「姓名 + 学号」');
+  assert.doesNotMatch(String(body.text), /未命名参与者/, '参与者都有真名，不许退化成占位名');
 });
 
 test('🔴 高级模式：分母只算「解析到这份学习单」的组（3 组里只有 2 组配了它）', async (t) => {
@@ -201,7 +219,7 @@ test('🔴 客观题也生成语义载荷：选项、参考答案、本地判分
   const worksheet = await seedWorksheet(db.prisma, [CHOICE_NODE]);
   const classroom = await db.prisma.classroom.create({ data: { title: '课', code: '7013', status: 'active', mode: 'standard' } });
   await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
-  const participant = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const participant = await seedStudent(db.prisma, classroom.id);
   const response = await db.prisma.worksheetResponse.create({
     data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: participant.id },
   });
@@ -218,7 +236,8 @@ test('🔴 客观题也生成语义载荷：选项、参考答案、本地判分
   const body = await res.json() as Record<string, unknown>;
   assert.match(String(body.questionDetails), /A\. 只看运动方向/);
   assert.match(String(body.referenceAnswer), /B\. 先确定参照物/);
-  assert.match(String(body.text), /User_001｜答错/);
+  // ★ 2026-10-07：标签是「姓名 + 学号」（见 `seedStudent`），不再是 `User_00X`。
+  assert.match(String(body.text), /张伟#7｜答错/);
   assert.match(String(body.text), /选择：A\. 只看运动方向/);
   assert.deepEqual(body.localStats, { correct: 0, partial: 0, incorrect: 1, ungraded: 0 });
 });
@@ -296,7 +315,7 @@ test('🔴 联系表的成功路径：真 PNG + 正确的 content-type（此前�
   const worksheet = await seedWorksheet(p, [DRAWING_NODE]);
   const classroom = await p.classroom.create({ data: { title: '课', code: '7005', status: 'active', mode: 'standard' } });
   await p.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
-  const a = await p.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const a = await seedStudent(p, classroom.id);
   const ra = await p.worksheetResponse.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: a.id } });
   await p.worksheetAnswer.create({
     data: {
@@ -317,7 +336,10 @@ test('🔴 联系表的成功路径：真 PNG + 正确的 content-type（此前�
   assert.equal(payload.covered, 1);
   assert.equal(payload.text, null, '形态是 image 时不给文档');
   assert.equal((payload.sheetLayouts as unknown[]).length, 1);
-  assert.equal((payload.entries as Array<{ anonLabel: string }>)[0].anonLabel, 'User_001', '伪名按格序派生');
+  assert.equal(
+    (payload.entries as Array<{ anonLabel: string }>)[0].anonLabel, '张伟#7',
+    '标签由**名册**派生（★ 2026-10-07 起），不再是按格序派生的 `User_001`',
+  );
 
   const sheet = await fetch(sheetUrl(srv.base, worksheet.id, 'q3', 0, classroom.id));
   assert.equal(sheet.status, 200);

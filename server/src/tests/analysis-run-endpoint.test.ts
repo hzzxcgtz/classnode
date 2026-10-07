@@ -105,10 +105,26 @@ const runUrl = (base: string, ws: string, q: string, classroomId: string) =>
 
 const DRAWING: Prisma.InputJsonValue = { id: 'q3', type: 'drawing', prompt: '画一画', inputMode: 'handwriting', data: {}, children: [] };
 
-/** 一节标准模式的课 + 一份绘图学习单 + 一份已提交的笔迹作答。返回那几个 id。 */
+/** 一个参与者的作答值（笔迹），下面几处都要用。 */
+const INK_VALUE = {
+  format: 'ink/v1', canvas: { w: 320, h: 240 },
+  strokes: [{ points: [[0.1, 0.1], [0.9, 0.9]], width: 0.01, color: '#111111' }],
+};
+
+/**
+ * 一节标准模式的课 + 一份绘图学习单 + 每个名册条目一份已提交的笔迹作答。返回那几个 id。
+ *
+ * ★ 2026-10-07（教师：标签改用「姓名 + 学号」）—— 夹具**必须有真名**：
+ * 没有 `studentId` 的参与者拿不到姓名，标签会退化成「未命名参与者#xxxx」，
+ * 而模型收到的名单就是那一串 ⇒ 这些用例里所有假 Coze 的回答都得跟着编。
+ */
 async function seed(
   p: PrismaClient,
-  opts: { analysisAgentId?: string | null; withAnswer?: boolean; node?: Prisma.InputJsonValue } = {},
+  opts: {
+    analysisAgentId?: string | null; withAnswer?: boolean; node?: Prisma.InputJsonValue;
+    /** `group: true` 造一个**组**参与者（组名就是标签，不带尾号）。 */
+    roster?: Array<{ name: string; studentNo?: string | null; group?: boolean }>;
+  } = {},
 ) {
   const worksheet = await p.worksheet.create({
     data: {
@@ -119,20 +135,41 @@ async function seed(
   });
   const classroom = await p.classroom.create({ data: { title: '课', code: `70${Math.floor(Math.random() * 90 + 10)}`, status: 'active', mode: 'standard' } });
   await p.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
-  const student = await p.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
-  const response = await p.worksheetResponse.create({
-    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: student.id },
-  });
-  if (opts.withAnswer !== false) {
-    await p.worksheetAnswer.create({
-      data: {
-        responseId: response.id, questionId: 'q3', status: 'submitted',
-        value: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [{ points: [[0.1, 0.1], [0.9, 0.9]], width: 0.01, color: '#111111' }] },
-      },
+  const roster = opts.roster ?? [{ name: '张伟', studentNo: '7' }];
+  const participants: string[] = [];
+  for (const [index, entry] of roster.entries()) {
+    let participantId: string;
+    if (entry.group) {
+      const group = await p.classroomGroup.create({ data: { classroomId: classroom.id, name: entry.name } });
+      participantId = (await p.classroomStudent.create({
+        data: { classroomId: classroom.id, type: 'group', groupId: group.id },
+      })).id;
+    } else {
+      const klass = await p.class.create({ data: { name: `测试班${index}` } });
+      const student = await p.student.create({
+        data: { classId: klass.id, name: entry.name, studentNo: entry.studentNo ?? null },
+      });
+      participantId = (await p.classroomStudent.create({
+        data: { classroomId: classroom.id, type: 'student', studentId: student.id },
+      })).id;
+    }
+    participants.push(participantId);
+    const response = await p.worksheetResponse.create({
+      data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId },
     });
+    if (opts.withAnswer !== false) {
+      await p.worksheetAnswer.create({
+        data: { responseId: response.id, questionId: 'q3', status: 'submitted', value: INK_VALUE },
+      });
+    }
   }
-  return { worksheet, classroom };
+  return { worksheet, classroom, participants };
 }
+
+/** 「张伟#7」这种标签在假 Coze 的回答里要逐字写对 —— 写错就等于模型没认出名册上的人。 */
+const ZHANG = '张伟#7';
+const LI = '李四#12';
+const TWO_STUDENTS = [{ name: '张伟', studentNo: '7' }, { name: '李四', studentNo: '12' }];
 
 /** 造一个分析智能体；`apiUrl` 指向假端点。 */
 async function makeAgent(p: PrismaClient, platform: string, apiUrl: string | null) {
@@ -143,7 +180,7 @@ async function makeAgent(p: PrismaClient, platform: string, apiUrl: string | nul
 
 test('🔴 成功路径：写回 narrative/agentId/model，且**一个载荷字段都不动**', async (t) => {
   const db = await openTempDb();
-  const fake = await startFakeCoze('整体情况：多数人画成了满月。典型错误见 User_002。');
+  const fake = await startFakeCoze('整体情况：多数人画成了满月。典型错误见 张伟#7。');
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
   const agent = await makeAgent(p, 'coze', fake.base);
@@ -203,25 +240,16 @@ test('🔴 模型返回空 ⇒ 502 且**不写库**（已有解读绝不被清�
 */
 test('★ 模型漏人 ⇒ 照样写（拿到几份存几份），并点名报出缺谁', async (t) => {
   const db = await openTempDb();
-  const fake = await startFakeCoze('整体不错。<classnode-scores>{"scores":[{"student":"User_001","score":4,"reason":"思路清楚","advice":"可以再补一个判断分支。"}]}</classnode-scores>');
+  const fake = await startFakeCoze('整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":4,"reason":"思路清楚","advice":"可以再补一个判断分支。"}]}</classnode-scores>');
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
   const agent = await makeAgent(p, 'coze', fake.base);
   // ⚠️ 这一题要**开了 AI 评分**才会走逐生分数那条路（`aiScoringConfigOf`：`data.aiScoringEnabled === true`）。
+  // 两个**已提交**的学生：模型只评了其中一个，另一个要点名报出来。
   const { worksheet, classroom } = await seed(p, {
     analysisAgentId: agent.id,
     node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
-  });
-  // 再加一个**已提交**的学生：名单里有他，但这次模型没给他分。
-  const second = await p.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
-  const secondResponse = await p.worksheetResponse.create({
-    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: second.id },
-  });
-  await p.worksheetAnswer.create({
-    data: {
-      responseId: secondResponse.id, questionId: 'q3', status: 'submitted',
-      value: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [{ points: [[0.2, 0.2], [0.8, 0.8]], width: 0.01, color: '#111111' }] },
-    },
+    roster: TWO_STUDENTS,
   });
   const srv = await withServer(p);
   t.after(() => srv.close());
@@ -245,7 +273,7 @@ test('★ 模型漏人 ⇒ 照样写（拿到几份存几份），并点名报�
 */
 test('★ 只补这几个人：只发他们、把分并进去、**不动整体解读**', async (t) => {
   const db = await openTempDb();
-  const first = '全班整体不错。<classnode-scores>{"scores":[{"student":"User_001","score":4,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>';
+  const first = '全班整体不错。<classnode-scores>{"scores":[{"student":"' + ZHANG + '","score":4,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>';
   const fake = await startFakeCoze(first);
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
@@ -253,16 +281,7 @@ test('★ 只补这几个人：只发他们、把分并进去、**不动整体�
   const { worksheet, classroom } = await seed(p, {
     analysisAgentId: agent.id,
     node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
-  });
-  const second = await p.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
-  const secondResponse = await p.worksheetResponse.create({
-    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: second.id },
-  });
-  await p.worksheetAnswer.create({
-    data: {
-      responseId: secondResponse.id, questionId: 'q3', status: 'submitted',
-      value: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [{ points: [[0.2, 0.2], [0.8, 0.8]], width: 0.01, color: '#111111' }] },
-    },
+    roster: TWO_STUDENTS,
   });
   const srv = await withServer(p);
   t.after(() => srv.close());
@@ -278,8 +297,13 @@ test('★ 只补这几个人：只发他们、把分并进去、**不动整体�
   assert.equal(firstPerStudent.missing?.length, 1);
   const missingId = firstPerStudent.missing![0];
 
-  // 第二次：只补那一个（模型这次给的是**另一段**解读 —— 它不该被采用）
-  fake.setAnswer('只看了看这一个同学。<classnode-scores>{"scores":[{"student":"User_001","score":5,"reason":"补上了","advice":"很好。"}]}</classnode-scores>');
+  /*
+   * 第二次：只补那一个（模型这次给的是**另一段**解读 —— 它不该被采用）。
+   * 🔴 标签写的是**李四**的，不是「这批里的第一个」：新标签由名册派生，补跑时不会变形。
+   *    老的下标派生写法下李四在全量里是 `User_002`、在这批里是 `User_001` ——
+   *    也就是说**教师刚核对过的那张图与补跑发出去的那张根本不是同一套标签**。
+   */
+  fake.setAnswer('只看了看这一个同学。<classnode-scores>{"scores":[{"student":"' + LI + '","score":5,"reason":"补上了","advice":"很好。"}]}</classnode-scores>');
   const scopedUrl = `${runUrl(srv.base, worksheet.id, 'q3', classroom.id)}&only=${missingId}`;
   const scoped = await fetch(scopedUrl, { method: 'POST' });
   assert.equal(scoped.status, 200, '补跑不该失败');
@@ -301,38 +325,45 @@ test('★ 只补这几个人：只发他们、把分并进去、**不动整体�
 */
 test('★ 读不出作答的学生：模型编的行不算数，他会出现在「评不了」而不是「补跑」里', async (t) => {
   const db = await openTempDb();
-  // 模型给可评的那位正常评分，同时**多编了一行**给那个读不出来的学生。
-  const fake = await startFakeCoze('整体不错。<classnode-scores>{"scores":'
-    + '[{"student":"User_001","score":4,"reason":"思路清楚","advice":"再补一个分支。"},'
-    + '{"student":"User_002","score":3,"reason":"看起来还行","advice":"多练。"}]}</classnode-scores>');
+  const fake = await startFakeCoze('');            // 拿到那位学生的**真标签**之后再 setAnswer
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
   const agent = await makeAgent(p, 'coze', fake.base);
-  const { worksheet, classroom } = await seed(p, {
+  const { worksheet, classroom, participants } = await seed(p, {
     analysisAgentId: agent.id,
     node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
+    roster: TWO_STUDENTS,
   });
   // 第二位学生：已提交，但作答的**形状这一版读不出来**（不是 ink，也不是照片）⇒ `kind: 'unknown'`。
-  const second = await p.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
-  const secondResponse = await p.worksheetResponse.create({
-    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: second.id },
-  });
-  await p.worksheetAnswer.create({
-    data: { responseId: secondResponse.id, questionId: 'q3', status: 'submitted', value: { format: 'nonsense/v9', whatever: true } },
+  const second = participants[1];
+  await p.worksheetAnswer.updateMany({
+    where: { responseId: (await p.worksheetResponse.findFirstOrThrow({ where: { participantId: second } })).id },
+    data: { value: { format: 'nonsense/v9', whatever: true } },
   });
   const srv = await withServer(p);
   t.after(() => srv.close());
   const computed = await (await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' })).json() as {
     unscorableIds?: string[];
+    entries: Array<{ studentId: string; anonLabel: string }>;
   };
-  assert.deepEqual(computed.unscorableIds, [second.id], '读不出来的那位要单独报出来（教师据此让他重交，而不是补跑）');
+  assert.deepEqual(computed.unscorableIds, [second], '读不出来的那位要单独报出来（教师据此让他重交，而不是补跑）');
+
+  /*
+   * 🔴 「模型硬编一行」要用那位学生**真实的标签**来编（从载荷里取）。
+   *   老写法编的是 `User_002` —— 那是夹具的产物，不是模型会看到的字符串，
+   *   于是这条用例证的东西比它看起来的少。
+   */
+  const secondLabel = computed.entries.find((entry) => entry.studentId === second)!.anonLabel;
+  fake.setAnswer('整体不错。<classnode-scores>{"scores":'
+    + `[{"student":"${ZHANG}","score":4,"reason":"思路清楚","advice":"再补一个分支。"},`
+    + `{"student":"${secondLabel}","score":3,"reason":"看起来还行","advice":"多练。"}]}</classnode-scores>`);
 
   const run = await fetch(runUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
   assert.equal(run.status, 200);
   const row = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
   const perStudent = row.perStudent as { scores: Array<{ studentId: string }>; missing?: string[] } | null;
   assert.equal(perStudent?.scores.length, 1, '模型给读不出来的那位编的行**不许**落库');
-  assert.deepEqual(perStudent?.missing, [second.id], '他没分 ⇒ 会出现在「缺谁」里（面板再把它归到「评不了」那一类）');
+  assert.deepEqual(perStudent?.missing, [second], '他没分 ⇒ 会出现在「缺谁」里（面板再把它归到「评不了」那一类）');
 });
 
 test('🔴 平台收不了图 ⇒ 400，且**一次网络都没发**', async (t) => {
@@ -459,5 +490,48 @@ test('★ 教师初始图：只有**真的带初始图**的绘图题，提示词
         ? `${item.why}：提示词里缺了「初始图不算学生的作答」—— 位图快照是完整那张图，模型会把教师画的那半张算成学生的成果`
         : `${item.why}：提示词提到了初始图，可这题没有（或不该算）—— 模型会去找一段不存在的底稿`,
     );
+  }
+});
+
+/*
+  ★ 2026-10-07：**两条路径必须得到同一组标签。**
+  教师在图上核对「第 3 格是谁」（那张图由 `layoutSheets` + `payloadLabels` 画），
+  面板上的「第 3 格」读的是 GET 载荷里的 `entries[].anonLabel`，而发出去的那一份
+  又是 run 端点自己重算的一遍。三处只要有一处喂了不同的名册，就会**静默**对不上 ——
+  分数于是贴到另一个人头上，而屏幕上什么都没有缺一块。
+  ⇒ 判据：run 端点**真发出去的那段提示词**里点名的标签，与 GET 载荷里的标签逐字相等。
+*/
+test('★ 重渲（GET 载荷）与再发送（run 提示词）用的是同一组标签', async (t) => {
+  const db = await openTempDb();
+  const fake = await startFakeCoze('整体不错。');
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const agent = await makeAgent(p, 'coze', fake.base);
+  const { worksheet, classroom } = await seed(p, {
+    analysisAgentId: agent.id,
+    // 🔴 必须**开着 AI 评分**：评分那一段（含点名名单）只在开启时才拼进提示词 ——
+    //    关着的话那段提示词里根本没有标签，这条判据就变成恒真的了（夹具塌了）。
+    node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
+    roster: TWO_STUDENTS,
+  });
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+
+  // 生成（把 aggregate 与总人数存下来）—— 这一步走的是「新分析」那条路径
+  const post = await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+  if (post.status !== 200) assert.fail(`生成载荷 HTTP ${post.status}: ${await post.text()}`);
+  // 面板读的载荷（**重渲**那条路径）：`entries[].anonLabel` 就是教师在图上核对用的标签
+  const payload = await (await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id))).json() as {
+    entries: Array<{ anonLabel: string }>;
+  };
+  const fromPayload = payload.entries.map((entry) => entry.anonLabel);
+  // ⚠️ 比**集合**不比顺序：条目顺序按 `studentId`（uuid）排，与名册顺序无关。
+  assert.deepEqual([...fromPayload].sort(), [ZHANG, LI].sort(), 'GET 载荷上的标签');
+
+  const run = await fetch(runUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+  assert.equal(run.status, 200, await run.text());
+  const sent = fake.messages.join('\n');
+  for (const label of fromPayload) {
+    assert.ok(sent.includes(label), `发出去的提示词里没有 ${label} —— 两条路径喂了不同的名册`);
   }
 });

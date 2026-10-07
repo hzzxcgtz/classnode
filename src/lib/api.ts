@@ -14,8 +14,38 @@ export function getStudentSessionAuthorization(): Record<string, string> {
   return studentSessionToken ? { Authorization: `Bearer ${studentSessionToken}` } : {};
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+/**
+ * ★ 2026-10-07（教师：「一次分析要三分钟」「我分不清**还在跑**和**坏了**」，
+ *   随后又问：「**如果我不设超时时间呢？** 有些任务我真的很难估计它要花多久」）。
+ *
+ * 🔴 定位改了：**这不是给「任务」设的上限，而是给「连接断了」设的后备**。
+ *    · 任务本身的上限在**服务端**（Coze 轮询 180 秒，`ANALYSIS_POLL_TIMEOUT_SECONDS`）——
+ *      它一到就会回一句话（成功或失败），所以正常路径**永远轮不到这里**；
+ *    · 这一条只在**响应永远不来**（网络断在半路、服务端没了）时才触发，
+ *      作用是不让按钮**无声地转一整天**。
+ * ⇒ 所以它取得**很宽**（10 分钟）：长一点没关系，短了才会误杀。
+ * ⚠️ 对拍判据（`worksheet-analysis-progress.test.ts`）只要求它**大于**服务端那条 ——
+ *    改服务端上限时别把它落下了。
+ */
+export const ANALYSIS_REQUEST_TIMEOUT_MS = 600_000;
+
+async function request<T>(path: string, options?: RequestInit, timeoutMs?: number): Promise<T> {
   const url = `${getApiBaseUrl()}${path}`;
+  const controller = timeoutMs === undefined ? null : new AbortController();
+  const timer = controller === null ? null : window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await requestOnce<T>(path, url, options, controller?.signal);
+  } catch (error) {
+    if (controller !== null && error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('等了很久都没收到回音（像是连接断了）—— 可以刷新页面看看结果有没有存下来，或者再试一次');
+    }
+    throw error;
+  } finally {
+    if (timer !== null) window.clearTimeout(timer);
+  }
+}
+
+async function requestOnce<T>(path: string, url: string, options: RequestInit | undefined, signal: AbortSignal | undefined): Promise<T> {
   const res = await fetch(url, {
     credentials: 'include',
     headers: {
@@ -24,6 +54,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       ...options?.headers,
     },
     ...options,
+    ...(signal ? { signal } : {}),
   });
   if (res.status === 401 && typeof window !== 'undefined' && !path.includes('verify-password')) {
     window.dispatchEvent(new CustomEvent('classnode-teacher-session-expired'));
@@ -537,7 +568,8 @@ export const api = {
     }>(
       `/api/worksheets/${worksheetId}/analysis/${questionId}/run?classroomId=${encodeURIComponent(classroomId)}`
       + (only && only.length > 0 ? `&only=${encodeURIComponent(only.join(','))}` : ''),
-      { method: 'POST' }),
+      { method: 'POST' },
+      ANALYSIS_REQUEST_TIMEOUT_MS),
   /**
    * 第 index 张联系表的图片 URL（**给 `<img src>` 用**，不走 `request`）。
    * ⚠️ 它每次请求都会重渲（服务端不存图）—— 这是「旋钮改了，旧图不会变成按旧参数画的」的代价。

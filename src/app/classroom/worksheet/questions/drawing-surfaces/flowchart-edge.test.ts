@@ -65,29 +65,12 @@ test('ReactFlow 的核心回调一个都不能少（删代码时切块切掉过�
 });
 
 /*
-  ★ 2026-10-07（教师）：「会出现如图这种情况……把上面这个文本框**自动往右边稍微移动一下**，
-  这样就能保证上下对齐了」—— 线矫正之后**落点**偏了（箭头贴在菱形的斜边上），得把**框**挪过去。
-
-  🔴 两条规则的门槛**必须同一个数**：线在 `worksheet-flowchart-edge.ts`，框在
-  `worksheet-flowchart-layout.ts`（那边是两个**副本**常量，故意不互相 import）。
-  不一致的表现是「线还斜着、框却被硬拽」—— 教师说的「框乱跳」就是它（当时线那边 12px、
-  框那边固定 75px）。
+  ⊘ 2026-10-07：这里曾有一条「两个门槛常量必须同值」的对拍判据 —— **删了**。
+  它当初钉的是「框的吸附门槛 == 线矫正的门槛」，理由是「不一致会出现线还斜着、框却被硬拽」。
+  但教师随后把要求说到最直白：「**移动到与下面这个菱形框完全对齐为止**」——
+  框那边改成**一个节点宽**的固定距离门槛，与线那边的**角度**门槛本来就是两回事
+  （一个管「线怎么画」、一个管「框怎么摆」，取舍不同）。没有对应关系，也就没什么可对拍的。
 */
-test('两个门槛常量必须同值 —— 否则会出现「线还斜着、框却被拽」', () => {
-  const ROOT = path.resolve(HERE, '../../../../..'); // → src/
-  const LAYOUT = fs.readFileSync(path.join(ROOT, 'lib/worksheet-flowchart-layout.ts'), 'utf8');
-  const EDGE = fs.readFileSync(path.join(ROOT, 'lib/worksheet-flowchart-edge.ts'), 'utf8');
-  const num = (src: string, name: string) => Number((new RegExp(`const ${name} = ([\\d.]+);`).exec(src) ?? [])[1]);
-  const shortA = num(LAYOUT, 'FLOW_STRAIGHT_SNAP_FOR_LAYOUT');
-  const shortB = num(EDGE, 'FLOW_STRAIGHT_SNAP');
-  const slopeA = num(LAYOUT, 'FLOW_SNAP_SLOPE_FOR_LAYOUT');
-  const slopeB = num(EDGE, 'FLOW_SNAP_SLOPE');
-  assert.ok(Number.isFinite(shortA) && Number.isFinite(shortB), '读不到「折线太短」那两个常量');
-  assert.ok(Number.isFinite(slopeA) && Number.isFinite(slopeB), '读不到「斜率」那两个常量');
-  assert.equal(shortA, shortB, `「折线太短」的门槛不一致：布局 ${shortA} / 画线 ${shortB}`);
-  assert.equal(slopeA, slopeB, `「斜率」的门槛不一致：布局 ${slopeA} / 画线 ${slopeB}`);
-});
-
 test('同列吸附挂在拖动结束那一下，而且用的是 alignSnapX', () => {
   assert.match(SOURCE, /onNodeDragStop=\{disabled \? undefined : \(_, node\) =>/, '没有接拖动结束');
   assert.match(SOURCE, /alignSnapX\(current, edges, node\.id\)/, '没有算吸附（要用函数式的 current）');

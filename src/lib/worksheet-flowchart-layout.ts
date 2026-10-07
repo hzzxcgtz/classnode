@@ -175,9 +175,15 @@ export function tidyFlowchart<N extends TidyNodeLike, E extends TidyEdgeLike>(
  *    线画在 source 的垂线上，而 target 偏一点点 ⇒ **箭头落不到 target 上**（贴着斜边）。
  *    ⇒ 这时候把**框**挪过去，落点就正了。
  *
- * 🔴 **阈值必须与线矫正的那一条完全相同**（`|Δx| ≤ 跨度 × 0.15`），否则会出现
- *    「线明明还斜着、框却被硬拽」—— 那正是 2026-10-07 那次「框乱跳」的成因：
- *    当时用了固定的 75px，**线还没矫正框就先跳了**。
+ * 🔴 教师最后一次把要求说到最直白（「我觉得其实很简单」）：
+ *    「当我拖动上面那个框出现这种情况时，**我松开鼠标，你就自动把上面那个框和连接线的位置
+ *     向右移动，移动到与下面这个菱形框完全对齐为止**就可以了」。
+ *
+ * ⊘ 我前后试过三档门槛，前两档都太保守：
+ *    · 固定 75px（线还没矫正就先跳 ⇒ 教师说「框乱跳」）；
+ *    · `跨度 × 0.15`（线矫正了，但教师图里那种差 100px 的够不着）。
+ * ✅ 现在就是**一个节点宽**：覆盖「松手时看得出没对齐」的常见幅度；
+ *    再远（>150px）一看就是**故意分开**的，那时不动手。
  */
 
 /**
@@ -197,7 +203,6 @@ export function alignSnapX(
   const moved = nodes.find((node) => node.id === movedId);
   if (!moved) return null;
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const movedCenterY = moved.position.y + heightOf(moved) / 2;
 
   let best: number | null = null;
   let bestDelta = Number.POSITIVE_INFINITY;
@@ -207,11 +212,7 @@ export function alignSnapX(
     const other = byId.get(otherId);
     if (!other) continue; // 另一头不在画布上
     const delta = Math.abs(other.position.x - moved.position.x);
-    // ⚠️ 与线矫正同一个门槛：跨度取两节点的**竖向中心距**（线就是从这儿量出来的）。
-    const otherCenterY = other.position.y + heightOf(other) / 2;
-    const span = Math.abs(otherCenterY - movedCenterY);
-    const limit = Math.max(FLOW_STRAIGHT_SNAP_FOR_LAYOUT, span * FLOW_SNAP_SLOPE_FOR_LAYOUT);
-    if (delta <= limit && delta < bestDelta) {
+    if (delta <= ALIGN_SNAP_TOLERANCE && delta < bestDelta) {
       best = other.position.x;
       bestDelta = delta;
     }
@@ -220,10 +221,10 @@ export function alignSnapX(
 }
 
 /**
- * 与 `@/lib/worksheet-flowchart-edge.ts` 里那两个数**必须同值**。
- * 复制而不是 import：那个模块是「怎么画线」，这个是「怎么摆框」，两者不该互相依赖
- * （而且这一份要能在不 import 任何东西的前提下被纯函数用例加载）。
- * 🔴 改一个必须改另一个 —— `flowchart-edge.test.ts` 会把两边对起来。
+ * 「松手时看得出没对齐」的容差（流坐标）—— **一个节点宽**（默认框宽 150）。
+ *
+ * ⚠️ 它**不再**与线矫正共用同一个式子，两件事的取舍本来就不同：
+ *    · 线矫正（`angle`）管的是**线怎么画** —— 宁可保守，掰错了比不掰更怪；
+ *    · 框对齐（距离）管的是**框怎么摆** —— 要**够得着**，教师图里差 100px 的也得吸。
  */
-export const FLOW_STRAIGHT_SNAP_FOR_LAYOUT = 12;
-export const FLOW_SNAP_SLOPE_FOR_LAYOUT = 0.15;
+export const ALIGN_SNAP_TOLERANCE = 150;

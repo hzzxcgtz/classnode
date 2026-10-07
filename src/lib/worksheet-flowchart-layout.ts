@@ -164,3 +164,54 @@ export function tidyFlowchart<N extends TidyNodeLike, E extends TidyEdgeLike>(
 
   return { nodes: nextNodes, edges: nextEdges };
 }
+
+/*
+ * ── 拖完框的「同列吸附」（★ 2026-10-07 教师）────────────────────────────────
+ *
+ * 教师原话：「在移动某个图形时，**连接线接近直线时需要吸附成直线**，否则可能会出现一个
+ * **非常小的拐角**，很难看」。
+ *
+ * 🔴 那个「很小的拐角」是 `smoothstep` 的固有表现：两端节点 **x 差一点点**时，中间那段横线
+ *    只有几个像素，看起来像打了个结。**把 x 吸齐，线就是一条直线**。
+ */
+
+/**
+ * 「几乎同列」的容差（流坐标）。12px 大致是「一眼看得出歪、但不至于想让它错开」的距离；
+ * 再大就会把学生**故意错开**的框也吸到一起，那又变成「打乱」了（与 `ALIGN_TOLERANCE` 同一个取舍）。
+ */
+export const ALIGN_SNAP_TOLERANCE = 12;
+
+/**
+ * 拖完一个节点之后，算出它该吸到什么 x；没什么可吸的返回 `null`（调用方据此什么都不做）。
+ *
+ * ✅ 只动**被拖的那个**——邻居一个都不碰（用户刚放好的框不该被拽走）。
+ * ✅ 只看**有连线相连**的：教师说的是「连接线接近直线时」，不是「所有框都对齐」。
+ * ✅ 多个邻居时取**最近**的那一个。
+ * ✅ 自环、以及另一头不在画布上的边，一律跳过。
+ * ⚠️ 它只管 **x**（水平对齐）；纵向的整齐归 `tidyFlowchart` 那条路。
+ */
+export function alignSnapX(
+  nodes: readonly TidyNodeLike[],
+  edges: readonly TidyEdgeLike[],
+  movedId: string,
+  tolerance = ALIGN_SNAP_TOLERANCE,
+): number | null {
+  const moved = nodes.find((node) => node.id === movedId);
+  if (!moved) return null;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+
+  let best: number | null = null;
+  let bestDelta = Number.POSITIVE_INFINITY;
+  for (const edge of edges) {
+    const otherId = edge.source === movedId ? edge.target : edge.target === movedId ? edge.source : null;
+    if (otherId === null || otherId === movedId) continue; // 与它无关的边 / 自环
+    const other = byId.get(otherId);
+    if (!other) continue; // 另一头不在画布上
+    const delta = Math.abs(other.position.x - moved.position.x);
+    if (delta <= tolerance && delta < bestDelta) {
+      best = other.position.x;
+      bestDelta = delta;
+    }
+  }
+  return best;
+}

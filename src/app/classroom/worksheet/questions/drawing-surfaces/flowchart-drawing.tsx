@@ -42,7 +42,7 @@ import {
   type FlowHistory,
   type FlowSnapshot,
 } from '@/lib/worksheet-flowchart-history.ts';
-import { tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
+import { alignSnapX, tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
 import { flowchartSvg } from '@/lib/worksheet-flowchart-svg.ts';
 import { svgToPngBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 import { normalizePastedText } from '@/lib/worksheet-text-normalize.ts';
@@ -254,26 +254,27 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
  * 规则一句话：**画布上的浮层一律是 44px 的命中区，从锚点沿「法线 / 目标句柄轴」往外偏移，
  * 永不压住句柄，偏移距离吃段长上限（`clampOffset` ≤ 40%）。**
  *
- *   · `FLOAT_SIZE`      —— 命中区 44px（老 iPad 的手指下限）。
- *   · `NODE_FLOAT_GAP`  —— 删除**图形**的按钮：中心在节点上边缘**上方**多少（流坐标）。
- *   · `EDGE_FLOAT_BACK` —— 删除**连线**的按钮：沿**目标句柄轴**（smoothstep 末段方向）往 source 退多少（流坐标）。
+ *   · 命中区 44px（老 iPad 的手指下限）—— **这个数住在 CSS 里**（`.flowEdgeFloat` 的
+ *     `width/height`；`worksheet-tap-targets.test.ts` 量的正是样式表那一份）
+ *     ⇒ 这里**不再**另存一份 TS 常量：两份必然分叉，而它在代码里也没有第二个消费者。
+ *   · `EDGE_FLOAT_BACK` —— 删除**连线**的按钮：从**起点**沿**起点句柄轴**往外走多少（流坐标）。
  *
  * ⊘ 2026-10-06：这里原来还有第四个常量 `HANDLE_GAP`（**中点浮层**沿「中点 → 目标端」挪多少）——
  *   它唯一的目的是避让那颗**中点句柄**（既别压住线上的 Y/N 标签，也别吞掉正落在中点的
  *   单击/双击）。句柄随自定义边一起删掉之后这两件事都不存在了 ⇒ 就地输入框回到**裸标签点**
  *   （见 `edgeMidAnchor`）。⚠️ 别再把它加回来：那会让输入框与它要改的那个字分家。
- * 🔴 `EDGE_FLOAT_BACK` 仍然**独自**存在：起点是**终点**（箭头落点）、方向是**目标句柄轴的外法线**
- *   ⇒ 目的是让删除按钮别盖住箭头、最后那段线和目标侧的连接点。它从来不是「那个 18 换个名字」，
- *   以后也不许拿别的数去替代它。
- * ⚠️ `NODE_FLOAT_GAP` 由 `FLOAT_SIZE` 推出来（半个按钮 + 一指宽的缝）：按钮以自己中心定位
- *    （`.flowEdgeFloat` 的 `transform: translate(-50%, -50%)`）⇒ 整颗按钮落在框**外面**
- *    又贴着框，一眼看得出「它属于这个框」。数值仍是 28（几何没动）。
- * ⚠️ `FLOAT_SIZE` 这个数在 `worksheet.module.css` 的 `.flowEdgeFloat` 里**还有一份**（CSS 读不到
- *    TS 常量，而 `worksheet-tap-targets.test.ts` 量的正是样式表那一份）⇒ 两份必须一致，
- *    `surface-lifecycle.test.ts` 会把它们对起来。
+ * 🔴 `EDGE_FLOAT_BACK` 仍然**独自**存在：它从来不是「某个数换个名字」，以后也不许拿别的数替代。
+ * ⊘ 2026-10-07（**教师改主意**）：这里原有的另外两个常量都删了 ——
+ *   · `NODE_FLOAT_GAP`（删除图形那颗按钮「在框上方多少」）：按钮挪到了**左上角顶点**上
+ *     （「位置可以放在图形区域的左上角，但切记要压在图形的线条上」）⇒ 不再需要偏移；
+ *   · `FLOAT_SIZE`：见上，它只是 CSS 那一份的副本，代码里没人用。
  */
-const FLOAT_SIZE = 44;
-const NODE_FLOAT_GAP = FLOAT_SIZE / 2 + 6;
+/*
+ * ⊘ 2026-10-07（教师改主意）：这里原有 `NODE_FLOAT_GAP`（= 半个按钮 + 一指宽的缝，数值 28）——
+ *   它让删除按钮悬在框**上边缘上方**。教师看过效果之后要求挪到**左上角的顶点**上
+ *   （「位置可以放在图形区域的左上角，但切记要压在图形的线条上」）⇒ 这个偏移没有对象了。
+ *   现在锚点直接取 `node.position`，不需要任何常量。
+ */
 const EDGE_FLOAT_BACK = 26;
 /**
  * ★ 2026-10-06（教师：「小学课堂上拖到线附近松手要能连上」）：**连到线上的吸附半径**（屏幕 px）。
@@ -1269,13 +1270,21 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    * ⚠️ 水平中心用 `measured.width`（库量出来的真实宽）：节点被长文字撑宽时按钮不会偏。
    * ⚠️ 找不到那个节点（刚被删/刚「恢复初始图」）就返回 null ⇒ 按钮不画，不留一颗悬空按钮。
    */
+  /**
+   * ★ 2026-10-07（**教师改主意**）：「出现在图形上方的删除按钮，位置可以放在图形区域的
+   *   **左上角**，但**切记要压在图形的线条上**」。
+   *
+   * ⊘ 这推翻了上一版：原来是「框**上边缘上方** 28px」（`NODE_FLOAT_GAP`）—— 那颗按钮悬在框外，
+   *   正好压住从上方下来的连线。
+   * ✅ 「压在线上」= 圆心**正好落在左上角那个顶点**（一半在框内、一半在框外）。
+   *   左边那条线与上边那条线在这一点相交 ⇒ 它压在**两条线**上。
+   * ⚠️ 交点 / 普通框走**同一支**（交点也是一颗框），这里不许为它开特例。
+   */
   const nodeFloatAnchor = (nodeId: string) => {
     const node = nodes.find((item) => item.id === nodeId);
     if (!node) return null;
-    const width = node.measured?.width ?? 150;
-    const flowX = node.position.x + width / 2;
-    const flowY = node.position.y - NODE_FLOAT_GAP;
-    return { x: viewport.x + flowX * viewport.zoom, y: viewport.y + flowY * viewport.zoom };
+    const point = { x: node.position.x, y: node.position.y };
+    return { x: viewport.x + point.x * viewport.zoom, y: viewport.y + point.y * viewport.zoom };
   };
 
   /**
@@ -1434,6 +1443,25 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
             setSnapCandidateId(null);
           }}
           onConnectEnd={disabled ? undefined : onConnectEnd}
+          /*
+           * ★ 2026-10-07（教师）：「在移动某个图形时，**连接线接近直线时需要吸附成直线**，
+           *   否则可能会出现一个非常小的拐角，很难看」。
+           *
+           * 拖完一个框 ⇒ 与它**相连**的框若几乎同列，就把**它的** x 吸过去（邻居一个都不碰）。
+           * 判据与几何都在 `alignSnapX`（`@/lib/worksheet-flowchart-layout.ts`，有单元测试）。
+           * ⚠️ 用**函数式** `setNodes`：`nodes` 是这次渲染的闭包，拖动期间可能已经旧了。
+           * ⚠️ 这里**不是**管「正在拖动」那个标记的（那个读 `nodes` 上的 `dragging` 字段，
+           *   见上面那条变化检测 effect）—— 两者目的不同，别合并。
+           */
+          onNodeDragStop={disabled ? undefined : (_, node) => {
+            setNodes((current) => {
+              const snapped = alignSnapX(current, edges, node.id);
+              if (snapped === null || snapped === node.position.x) return current;
+              return current.map((item) => (
+                item.id === node.id ? { ...item, position: { ...item.position, x: snapped } } : item
+              ));
+            });
+          }}
           // ⚠️ 这里**故意没有** `onNodeDragStart/Stop`：节点拖动的「正在拖」信号读的是节点自己的
           //    `dragging` 字段（详见上面那条变化检测 effect）—— 用回调置标记会在两条 abort 路径上
           //    漏掉，标记一旦卡死，整个会话都记不下新步骤（★ 审查发现 I1）。

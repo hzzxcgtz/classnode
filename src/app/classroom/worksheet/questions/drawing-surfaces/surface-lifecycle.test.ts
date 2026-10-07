@@ -79,11 +79,15 @@ const highlightEffectSource = (source: string) => blockAfter(source, 'const trac
  * 🔴 结束标记原来写的是 `const edgeHandleNodeId` —— 那个常量随**自定义边**一起删掉了，
  *    标记变成 -1，而 `slice(x, -1)` **不会报错**：它会从 FlowNodeEditor 一路切到文件末尾。
  *    于是「节点里的输入框不许挂 nodrag」那条判据当场变成**恒真**（实测：改了源码它照样绿）。
- *    ⇒ 换成还活着的顶层常量 `const FLOAT_SIZE = `，并且切不出来时**返回空串**让用例自己报错。
+ *    ⇒ 换成还活着的顶层常量，并且切不出来时**返回空串**让用例自己报错。
+ * ⚠️ 2026-10-07：那之后 `FLOAT_SIZE` 也删了（教师把删除按钮挪到左上角顶点之后，`NODE_FLOAT_GAP`
+ *    与它一起没了对象）⇒ 结束标记再换一次，这次用 `const EDGE_FLOAT_BACK = `（它还在）。
+ *    🔴 **教训**：结束标记**不能挑一个「可能被删掉」的常量** —— 每删一次就要改一次，
+ *    而漏改的表现是「静默切到文件末尾、判据变恒真」（这个坑已经踩过两回）。
  */
 const editorBodyOf = (source: string): string => {
   const at = source.indexOf('function FlowNodeEditor');
-  const end = at === -1 ? -1 : source.indexOf('const FLOAT_SIZE = ', at);
+  const end = at === -1 ? -1 : source.indexOf('const EDGE_FLOAT_BACK = ', at);
   return at === -1 || end === -1 ? '' : source.slice(at, end);
 };
 /**
@@ -713,14 +717,23 @@ test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出
   //   而 `smoothstep` 是折线，中心点经常不在路径上。现在必须用库自己的路径函数取**标签点**。
   assert.match(live, /getSmoothStepPath\(\{/, '锚点没有用库的路径函数（第一版就是这里飘的）');
   assert.match(live, /const \[, labelX, labelY\] = getSmoothStepPath/, '没有取标签点 labelX/labelY');
-  // ⑤ 浮层命中区：组件里的命名常量 `FLOAT_SIZE` 与样式表里那几处尺寸**必须一致**
-  //    （CSS 读不到 TS 常量，所以只能靠这条判据把两份对起来；44px 这个**下限**由
-  //    `worksheet-tap-targets.test.ts` 直接从 CSS 量）。
-  const floatSize = Number((live.match(/const FLOAT_SIZE = (\d+);/) || [])[1]);
-  assert.ok(Number.isFinite(floatSize) && floatSize > 0, `没有读到命名常量 FLOAT_SIZE（读到 ${floatSize}）`);
-  assert.match(css, new RegExp(`\\.flowEdgeFloat \\{[\\s\\S]{0,200}?width: ${floatSize}px;`), '浮层删除按钮的命中区与 FLOAT_SIZE 不一致');
-  assert.match(css, new RegExp(`\\.flowEdgeFloat \\{[\\s\\S]{0,200}?height: ${floatSize}px;`), '浮层删除按钮的命中区与 FLOAT_SIZE 不一致');
-  assert.match(css, new RegExp(`\\.flowEdgeInput \\{[\\s\\S]{0,260}?min-height: ${floatSize}px;`), '就地输入框太矮（与 FLOAT_SIZE 不一致）');
+  /*
+   * ⑤ 浮层命中区的尺寸**只有一个真源：样式表**。
+   * ⊘ 2026-10-07：这里原来拿组件里的 `FLOAT_SIZE` 与 CSS 对（「两份必须一致」）。
+   *   那个 TS 常量删了 —— 它只是 CSS 的副本、代码里没有第二个消费者
+   *   ⇒ 判据改成直接钉**样式表自身**（正方形 + 与就地输入框的下限同值）。
+   * ⚠️ 44px 这个**下限**由 `worksheet-tap-targets.test.ts` 从 CSS 直接量，这里不重复钉。
+   */
+  // ⚠️ 变量名带 `hit` 前缀：这个用例里已经有一个 `floatAt` 了（`const` 重复声明会直接编译错）。
+  const hitRuleAt = css.indexOf('.flowEdgeFloat {');
+  assert.notEqual(hitRuleAt, -1, '样式表里没有 `.flowEdgeFloat` 那条规则 —— 先修这条判据');
+  const hitRule = css.slice(hitRuleAt, css.indexOf('}', hitRuleAt) + 1);
+  assert.ok(hitRule.length > 40, '`.flowEdgeFloat` 那条规则没抠出来 —— 先修这条判据，别让它在空串上全绿');
+  const hitW = Number((hitRule.match(/[^-]width:\s*(\d+)px/) ?? [])[1]);
+  const hitH = Number((hitRule.match(/[^-]height:\s*(\d+)px/) ?? [])[1]);
+  assert.ok(Number.isFinite(hitW) && hitW > 0, `读不到浮层命中区的宽（读到 ${hitW}）`);
+  assert.equal(hitW, hitH, '删除按钮的命中区不是正方形');
+  assert.match(css, new RegExp(`\\.flowEdgeInput \\{[\\s\\S]{0,260}?min-height: ${hitW}px;`), '就地输入框太矮（与浮层命中区不一致）');
 });
 
 test('★ 2026-10-06：连到线中点 —— **自定义边 / 中点句柄已删干净**，插交点 + 拆线只留一份', () => {
@@ -1423,13 +1436,25 @@ test('★ 2026-10-06（教师）：选中一个图形 ⇒ 浮出删除按钮，�
   // ⚠️ 包含关系也钉住：`</ReactFlow>` 与浮层之间不许有 `</div>` —— 有就说明浮层排在舞台收尾之后。
   assert.ok(!/<\/div>/.test(live.slice(reactFlowAt, floatAt)), '删除浮层排在舞台的收尾 </div> 之后（会按外层卡片定位）');
   assert.equal(live.split('styles.flowEdgeFloat').length - 1, 1, '删除浮层画了两处 —— 第 1 步整理要求「一处渲染」');
-  // ⑦ 锚点必须是「节点上边缘**上方**」+ 与线的浮层同一套视口换算。
+  /*
+   * ⑦ 锚点必须是「图形区域的**左上角顶点**」+ 与线的浮层同一套视口换算。
+   *
+   * ⊘ 2026-10-07（**教师改主意**）：原来是「节点上边缘**上方**」（`NODE_FLOAT_GAP` = 28）——
+   *   那颗按钮悬在框外，正好压住从上方下来的连线。教师看过效果之后要求挪到左上角，
+   *   而且「**切记要压在图形的线条上**」⇒ 圆心落在那个顶点上（一半在框内），
+   *   正好压住左边与上边那两条线。
+   */
   const anchorAt = live.indexOf('const nodeFloatAnchor = ');
   assert.ok(anchorAt !== -1, '没有节点浮层的锚点 —— 先修这条判据');
   const anchorEnd = live.indexOf('\n  const ', anchorAt + 1);
   const anchorsBody = anchorAt === -1 ? '' : live.slice(anchorAt, anchorEnd === -1 ? undefined : anchorEnd);
   assert.ok(anchorsBody.length > 40, '节点锚点没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  assert.match(anchorsBody, /node\.position\.y - NODE_FLOAT_GAP/, '锚点没有退到节点上边缘**上方**（`NODE_FLOAT_GAP`）');
+  /*
+   * ⚠️ 正则**必须以 `}` 收尾**：写成 `y: node\.position\.y` 的话，`y: node.position.y - 28`
+   *   这种「退回框上方」的写法**也照样匹配**（它只是前缀）—— 变异实测抓到过这一点。
+   */
+  assert.match(anchorsBody, /x: node\.position\.x, y: node\.position\.y\s*\}/, '锚点没有落在左上角顶点上（要压住框的两条线）');
+  assert.ok(!/NODE_FLOAT_GAP/.test(anchorsBody), '锚点又退到框上方去了 —— 教师要求的是左上角');
   assert.match(anchorsBody, /viewport\.x \+ [\w.]+ \* viewport\.zoom/, '锚点没有做横向视口换算（浮层会飘）');
   assert.match(anchorsBody, /viewport\.y \+ [\w.]+ \* viewport\.zoom/, '锚点没有做纵向视口换算（浮层会飘）');
   // ⑧ 交点不做特例（教师没提它）：删除那条路、浮层描述式、锚点解析里都不许给 `junction` 开分支。
@@ -1599,12 +1624,27 @@ test('★ 2026-10-06：偏移的**上限**与**目标句柄轴** —— 真喂�
     assert.equal(typeof value, 'number', `${name} 不是一个数（读出来是 ${String(value)}）`);
     return value as number;
   };
-  const FLOAT_SIZE = constOf('FLOAT_SIZE');
-  const NODE_FLOAT_GAP = constOf('NODE_FLOAT_GAP', { FLOAT_SIZE });
+  /*
+   * ⚠️ 命中区那个 44px **从 CSS 读**（`·flowEdgeFloat` 的 `width`）—— 代码里那份 TS 常量
+   *   2026-10-07 删掉了（它只是 CSS 的副本、没有第二个消费者）。
+   *   `worksheet-tap-targets.test.ts` 量的也是样式表那一份 ⇒ 唯一的真源本来就是 CSS。
+   */
+  const cssLive = stripComments(CSS);
+  const floatRuleAt = cssLive.indexOf('.flowEdgeFloat {');
+  assert.notEqual(floatRuleAt, -1, '样式表里没有 `.flowEdgeFloat` 那条规则 —— 先修这条判据');
+  const floatHit = cssLive.slice(floatRuleAt, cssLive.indexOf('}', floatRuleAt) + 1);
+  const FLOAT_SIZE = Number((floatHit.match(/[^-]width:\s*(\d+)px/) ?? [])[1]);
+  assert.ok(Number.isFinite(FLOAT_SIZE) && FLOAT_SIZE > 0, `读不到浮层命中区的尺寸（读到 ${FLOAT_SIZE}）`);
   const EDGE_FLOAT_BACK = constOf('EDGE_FLOAT_BACK');
   assert.ok(EDGE_FLOAT_BACK > 0, '偏移常量 EDGE_FLOAT_BACK 必须是正数');
-  // ⚠️ 规则里那句「永不压住句柄」的数值落点：按钮要以自己中心定位，所以往上至少要半个按钮。
-  assert.ok(NODE_FLOAT_GAP >= FLOAT_SIZE / 2, `删除图形的按钮会压住节点上边缘（NODE_FLOAT_GAP=${NODE_FLOAT_GAP} < 半个按钮 ${FLOAT_SIZE / 2}）`);
+  /*
+   * ⊘ 2026-10-07（教师改主意）：这里原来读 `NODE_FLOAT_GAP` 并断言它 ≥ 半个按钮
+   *   （理由：「按钮以自己中心定位，往上至少要半个按钮才不压住上边缘」）。
+   *   现在节点的按钮改到**左上角顶点**上、而且**故意压线** ⇒ 那个约束没有对象了，常量也删了。
+   * ⚠️ 线的按钮那条 `EDGE_FLOAT_BACK` **不变**（它仍然不许盖住箭头那一段）。
+   * ⇒ 换成一条**仍然成立**的硬约束：命中区不许小于 44px（老 iPad 的手指下限）。
+   */
+  assert.ok(FLOAT_SIZE >= 44, `命中区不能小于 44px（老 iPad 的手指下限），读到 ${FLOAT_SIZE}`);
   const code = ['clampOffset', 'handleOutwardAxis'].map((name) => `const ${name} = ${grab(name)}`).join('\n');
   // ⚠️ 只喂给 `handleOutwardAxis`：它内部拿 `Position.某` 做比较，所以给一份**同一个对象**即可（具体值不重要）。
   const Position = { Top: 'top', Bottom: 'bottom', Left: 'left', Right: 'right' } as const;

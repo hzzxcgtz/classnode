@@ -45,7 +45,7 @@ import {
   type FlowSnapshot,
 } from '@/lib/worksheet-flowchart-history.ts';
 import { flowEdgeGeometry } from '@/lib/worksheet-flowchart-edge.ts';
-import { alignSnapX, tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
+import { tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
 import { flowchartSvg } from '@/lib/worksheet-flowchart-svg.ts';
 import { svgToPngBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 import { normalizePastedText } from '@/lib/worksheet-text-normalize.ts';
@@ -1535,50 +1535,9 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           onNodesChange={disabled ? undefined : onNodesChange}
-          /*
-           * ★ 2026-10-07（教师）：**拖动结束时的同列吸附** —— 治的是「线斜」。
-           *
-           * 🔴 为什么挂在**结束**而不是拖动中：React Flow 拖动时每帧都按「按下时的位置 + 指针位移」
-           *    重算节点位置。我们在 `onNodesChange` 里改掉的 x **它不知道** ⇒ 下一帧又算出一个
-           *    「没吸住」的位置、我们再吸一次…… 在吸附区边缘来回，屏幕上是**框在乱跳**
-           *    （教师原话：「我现在在拖的时候，感觉这个上面的矩形框怎么乱跳」）。
-           *    ⇒ 拖动时让它**跟手**，松手那一下才对齐。这也是 Figma / draw.io 的标准手感。
-           * 判据与几何在 `alignSnapX`（`@/lib/worksheet-flowchart-layout.ts`，有单元测试）。
-           * ⚠️ 用**函数式** `setNodes`：闭包里的 `nodes` 在拖动期间是旧的。
-           */
-          onNodeDragStop={disabled ? undefined : (_, node) => {
-            setNodes((current) => {
-              const snapped = alignSnapX(current, edges, node.id);
-              if (snapped === null || snapped === node.position.x) return current;
-              return current.map((item) => (
-                item.id === node.id ? { ...item, position: { ...item.position, x: snapped } } : item
-              ));
-            });
-          }}
           onEdgesChange={disabled ? undefined : onEdgesChange}
           onConnect={disabled ? undefined : onConnect}
           onReconnect={disabled ? undefined : onReconnect}
-          edgesReconnectable={!disabled}
-          reconnectRadius={28}
-          /*
-            ★ 2026-10-06（教师：「拖到线附近松手要能连上」）——**落点吸附**的三个钩子。
-            🔴 它是「连到线上」唯一的路：那颗中点句柄已随自定义边删掉，库的 `connectionRadius`
-               自然也不再和这件事有关（见 `EDGE_SNAP_RADIUS` 的注释）。
-            ① `onConnectStart`：记下这一拖的**起点句柄**（给吸附算方向、算距离、排除自环用）；
-               顺手把 `handledRef` 清掉（上一次拖拽的记号不能漏到这一次），并进入**拖动中**状态
-               （高亮那条路靠它开关）。
-            ② `onConnectEnd`：松手 —— 离某条线的中点 ≤ `EDGE_SNAP_RADIUS` ⇒ 走 `splitEdgeAt`
-               （判据与「什么都不做」的几种情形都写在那段注释里），并**收掉高亮**。
-            ③ 拖动过程中的高亮指针跟踪在 `connecting` 那个 effect 里（`pointermove` + `touchmove`）。
-          */
-          onConnectStart={disabled ? undefined : (_, params) => {
-            // 上一次拖拽的记号不许漏到这一次；起点句柄则要记下来（吸附靠它算方向与距离）。
-            handledRef.current = false;
-            dragOriginRef.current = { nodeId: params.nodeId ?? '', handleId: params.handleId ?? null, handleType: params.handleType ?? 'source' };
-            // ★ 拖动中高亮：开（清掉上一次留下的候选，免得第一帧就高亮错的线）。
-            setConnecting(true);
-            setSnapCandidateId(null);
-          }}
           onConnectEnd={disabled ? undefined : onConnectEnd}
           // ⚠️ 这里**故意没有** `onNodeDragStart/Stop`：节点拖动的「正在拖」信号读的是节点自己的
           //    `dragging` 字段（详见上面那条变化检测 effect）—— 用回调置标记会在两条 abort 路径上

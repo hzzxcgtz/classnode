@@ -27,6 +27,19 @@
  */
 export const FLOW_STRAIGHT_SNAP = 12;
 
+/**
+ * 「快接近竖直/水平」的**斜率上限**（正切）—— 约 8.5°。
+ *
+ * ★ 2026-10-07（教师，第二条要求）：「当变成一根直线以后，慢慢再拖动，**当快接近标准竖线或
+ *   标准横线时，则自动矫正角度，将斜线变成真正的竖线和横线**」。
+ *
+ * 🔴 用**角度**而不是固定的像素数：同样偏 30px，在 300px 长的线上是 5.7°（该矫正），
+ *    在 80px 长的线上是 20°（那是个真的斜线，不该硬掰）。固定阈值分不出这两种。
+ * ⚠️ 矫正**只改线的画法**，一个节点都不动 —— 教师明确否掉了「把节点吸过去」那套
+ *    （松手跳一下也是跳跃，他原话是「不行不行，这样还是会有跳跃」）。
+ */
+export const FLOW_SNAP_SLOPE = 0.15;
+
 /** 算路径需要的那几个数（与库的 `getSmoothStepPath` 入参**同形**，只是不依赖它）。 */
 export interface FlowEdgeGeometryParams {
   sourceX: number;
@@ -65,13 +78,30 @@ export function flowEdgeGeometry(
   if (!hasCenter) {
     const axis = isStraightPair(params.sourcePosition, params.targetPosition);
     if (axis !== null) {
-      const delta = axis === 'v'
-        ? Math.abs(params.targetX - params.sourceX)
-        : Math.abs(params.targetY - params.sourceY);
-      if (delta < FLOW_STRAIGHT_SNAP) {
-        const midX = (params.sourceX + params.targetX) / 2;
-        const midY = (params.sourceY + params.targetY) / 2;
-        return [`M ${params.sourceX} ${params.sourceY} L ${params.targetX} ${params.targetY}`, midX, midY];
+      const dx = params.targetX - params.sourceX;
+      const dy = params.targetY - params.sourceY;
+      /*
+       * 「折线太短」与「斜得不多」其实是**同一件事的两个阶段**，取**更宽**的那个门槛：
+       *   · `FLOW_STRAIGHT_SNAP`（12px）—— 折线的中间段短到看不见（2026-10-07 第一条要求）；
+       *   · `|跨度| × FLOW_SNAP_SLOPE` —— 角度太正，画正了才好看（同一天的第二条要求）。
+       * 短线时前者起作用（12px 已经是它长度的可观比例），长线时后者起作用（角度判据）。
+       */
+      const off = axis === 'v' ? dx : dy;
+      const span = axis === 'v' ? dy : dx;
+      const limit = Math.max(FLOW_STRAIGHT_SNAP, Math.abs(span) * FLOW_SNAP_SLOPE);
+      if (Math.abs(off) <= limit) {
+        /*
+         * ★ 画**正**的：竖直的边走 source 的 x、水平的边走 source 的 y。
+         *   端点因此落在 source 那条垂线（或水平线）上、横向偏 `|dx|` —— **节点一个都不动**。
+         *   ⚠️ 别改成「连到 target 句柄」（那就是一条**歪**的直线，教师 2026-10-07 报的就是它）。
+         */
+        const endX = axis === 'v' ? params.sourceX : params.targetX;
+        const endY = axis === 'v' ? params.targetY : params.sourceY;
+        return [
+          `M ${params.sourceX} ${params.sourceY} L ${endX} ${endY}`,
+          (params.sourceX + endX) / 2,
+          (params.sourceY + endY) / 2,
+        ];
       }
     }
   }

@@ -17,7 +17,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { alignSnapX, tidyFlowchart } from './worksheet-flowchart-layout.ts';
+import { tidyFlowchart } from './worksheet-flowchart-layout.ts';
 
 /** 判据用的最小节点 —— 形状与 React Flow 的 `Node` 在**用到的这几个字段上**一致。 */
 interface TidyTestNode {
@@ -111,50 +111,4 @@ test('整理不动连线上学生自己调过的路由点', () => {
   const routed = { ...edge('a', 'b'), data: { routeX: 42, routeY: 84 } };
   const out = tidyFlowchart(nodes, [routed]);
   assert.deepEqual(out.edges[0].data, { routeX: 42, routeY: 84 }, '路由点是学生手调的，整理不该把它清掉');
-});
-
-/*
- * ── 拖动时的「同列吸附」（★ 2026-10-07 教师）────────────────────────────────
- *
- * 🔴 它治的是**线斜**：一条边必须连两个句柄，两端 x 只差一点点时，
- *    画折线有小疙瘩、画直线又必然斜 ⇒ **唯一根治的办法是让两端 x 真的相等**。
- */
-test('拖动的框靠近相连的框（差 8px）⇒ 吸到同一竖线上', () => {
-  const nodes = [node('a', 100, 0), node('b', 108, 300)];
-  assert.equal(alignSnapX(nodes, [edge('a', 'b')], 'b'), 100, '吸上之后两端 x 相等 ⇒ 线是**严格竖直**的');
-});
-
-test('斜了 45px 也要吸 —— 教师截图里那条线就是这个幅度', () => {
-  const nodes = [node('a', 100, 0), node('b', 145, 300)];
-  assert.equal(
-    alignSnapX(nodes, [edge('a', 'b')], 'b'),
-    100,
-    '半个节点宽的容差就是为这种情况定的（原来 12px 够不着，教师当场否掉）',
-  );
-});
-
-test('差得多的不吸 —— 本来就想错开的，一个都不许碰', () => {
-  const nodes = [node('a', 100, 0), node('b', 260, 300)];
-  assert.equal(alignSnapX(nodes, [edge('a', 'b')], 'b'), null, '差 160px 超出一个节点宽，那是故意的');
-});
-
-test('没有连线的框不吸 —— 这是为了让**那条线**变直，不是「所有框都对齐」', () => {
-  const nodes = [node('a', 100, 0), node('b', 104, 300)];
-  assert.equal(alignSnapX(nodes, [], 'b'), null);
-});
-
-test('吸的是**被拖的那个**，不是邻居 —— 别把已经放好的那个拽走', () => {
-  const nodes = [node('a', 100, 0), node('b', 108, 300)];
-  assert.equal(alignSnapX(nodes, [edge('a', 'b')], 'a'), 108, '拖 a ⇒ a 吸到 b；反过来把 b 拽走就不对了');
-});
-
-test('多个相连的框时，吸到**最近**的那一个', () => {
-  const nodes = [node('a', 100, 0), node('b', 300, 100), node('m', 111, 300)];
-  assert.equal(alignSnapX(nodes, [edge('a', 'm'), edge('b', 'm')], 'm'), 100, 'a 差 11、b 差 189 ⇒ 取 a');
-});
-
-test('自环 / 悬空的边不许把它带偏', () => {
-  const nodes = [node('a', 100, 0), node('b', 106, 300)];
-  assert.equal(alignSnapX(nodes, [edge('a', 'a')], 'a'), null, '自环不该产生吸附');
-  assert.equal(alignSnapX(nodes, [edge('ghost', 'a')], 'a'), null, '另一头不在画布上 ⇒ 没有可吸的目标');
 });

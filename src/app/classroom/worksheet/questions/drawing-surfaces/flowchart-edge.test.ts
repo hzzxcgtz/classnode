@@ -45,38 +45,38 @@ test('自定义边注册在 ReactFlow 上，而且标签是**转交**给 BaseEdg
 });
 
 /*
-  ★ 2026-10-07（教师）：「线条是能够直接变直线了，但是可能出现**略微倾斜**的情况」——
-  几何上的死结：一条边**必须**连两端句柄 ⇒ 两端 x 只差一点点时，画折线有疙瘩、画直线又必然斜。
-  ⇒ 唯一根治的是让**两端的 x 真的相等**：拖框时吸附对齐。
+  ★ 2026-10-07（**一次真实事故换来的判据**）：`<ReactFlow>` 上的**核心回调一个都不能少**。
 
-  纯函数在 `alignSnapX`（6 条用例）；这条判据钉**接线**：
-  必须拦在 `onNodesChange`（位置变化的**入口**）、只处理**正在拖**的那条、而且 `<ReactFlow>` 真的挂上了。
-  ⚠️ 挂在 `onNodeDrag` 里事后修正的话，学生会看到它**先歪一下再被拽正**。
+  🔴 我删「节点吸附」那段代码时，脚本按标记切块，结束标记取的是 `onConnectEnd=` ——
+     而它**前面**还有 `onEdgesChange` / `onConnect` / `onReconnect` 三行，被**一起切掉了**。
+     后果：**框与框连不上线、拖端点重连失灵、边点不中**。
+  🔴 **`tsc` 没报**（那三行只是「赋值了没用」）、**判据也没报**（源码级判据只看它认识的那几处）——
+     是 `eslint` 的 `no-unused-vars` 把它抓出来的。**这就是假绿的样子**。
+  ⇒ 这里钉住它们，谁再让它们消失就当场红。
 */
-test('同列吸附挂在**拖动结束**那一下 —— 拖动中吸会与 React Flow 打架', () => {
-  assert.match(
-    SOURCE,
-    /onNodeDragStop=\{disabled \? undefined : \(_, node\) =>/,
-    '`<ReactFlow>` 上没有接拖动结束这个钩子',
-  );
-  const body = blockBetween(SOURCE, 'onNodeDragStop={disabled ? undefined : (_, node) =>', 'onConnect');
-  assert.ok(body.length > 100, `那一小段没抠出来（${body.length}）—— 先修这条判据`);
-  assert.match(body, /alignSnapX\(current, edges, node\.id\)/, '没有算吸附');
-  assert.match(body, /setNodes\(\(current\) =>/, '要用**函数式** setNodes —— 闭包里的 nodes 在拖动期间是旧的');
-
-  /*
-   * 🔴 **绝不要**改回「拖动中吸附」。
-   * React Flow 拖动时每帧都按「按下时的位置 + 指针位移」重算 ⇒ 我们在 `onNodesChange` 里改掉的 x
-   * **它不知道**，下一帧又算出一个「没吸住」的位置、我们再吸一次…… 在吸附区边缘来回，
-   * 屏幕上是**框在乱跳**（教师 2026-10-07 报的原话：「我现在在拖的时候，感觉这个上面的矩形框乱跳」）。
-   * 阈值越大（现在是半个节点宽）跳得越凶。
-   */
-  assert.ok(
-    !/onNodesChangeSnapped/.test(SOURCE),
-    '又把吸附挪回 `onNodesChange` 了 —— 那会与 React Flow 的拖动每帧打架、框会乱跳',
-  );
+test('ReactFlow 的核心回调一个都不能少（删代码时切块切掉过一次）', () => {
+  for (const prop of ['onNodesChange', 'onEdgesChange', 'onConnect', 'onReconnect', 'onConnectEnd']) {
+    assert.match(
+      SOURCE,
+      new RegExp(`${prop}=\\{disabled \\? undefined : ${prop}\\}`),
+      `\`<ReactFlow>\` 上的 ${prop} 不见了 —— 连线/重连/边变化会静默失灵（2026-10-07 出过一次）`,
+    );
+  }
 });
 
+/*
+  ⊘ 2026-10-07：这里曾经有两条「**拖动时把节点吸对齐**」的判据 —— 那一整套**废弃了**，别再照着加回来。
+
+  经过：教师先要「线不要倾斜」，我把它做成了「拖框时吸节点」；他随后连说两次跳跃
+  （拖动中吸会与 React Flow 每帧打架 ⇒ 框乱跳；改成松手吸之后，那一下本身也是跳）。
+  最后他给了准确的要求：
+
+  > 「当变成一根直线以后，慢慢再拖动，**当快接近标准竖线或标准横线时，则自动矫正角度，
+  >  将斜线变成真正的竖线和横线**」
+
+  ⇒ **一个节点都不动，只矫正线的画法**。那条规则在 `@/lib/worksheet-flowchart-edge.ts`
+    （`FLOW_SNAP_SLOPE`），判据在同名的 `.test.ts`；`alignSnapX` 已随之删除。
+*/
 /*
   ★ 2026-10-07（教师）：「折线上还是需要出现一个**控制柄**，可以让用户上下拖动这条横线，
   或者是左右拖动一条竖线，但是**这个控制柄本身不允许移动位置**」。

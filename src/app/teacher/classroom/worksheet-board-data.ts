@@ -220,6 +220,27 @@ export function answerRowWithDraft(
   };
 }
 
+/**
+ * ★ 2026-10-07（教师：「他正在编辑哪一题，监控面板就监看哪一题」）——
+ * 落库广播到了，**要不要把这个人那份实时预览清掉**。
+ *
+ * 🔴 故障现场：第 11 题是流程图、第 12 题是思维导图，学生在第 12 题上画，
+ *   而卡片**闪一下第 12 题又切回第 11 题**。
+ *   根因：那句清理原来**无条件**删（「保存过了就不该再拿旧快照当『他此刻在写的』」）——
+ *   那句话对**同一题**成立，对**别的题**不成立：别的题的一次保存，会把他**正在编辑那一题**
+ *   的实时预览抹掉 ⇒ 「正在做第几题」于是回落到 `lastQuestionId`
+ *  （= 刚刚保存的那一题）⇒ 卡片闪回。他再动一下，300ms 后又闪回来。
+ *
+ * ⚠️ 判据是「**落库的就是他正在编辑的那一题**」，不是「有人保存了」。
+ * ⚠️ 没有预览时什么都不做（别造一份空的出来 —— 那会让卡片显示一题他根本没在动的作答）。
+ */
+export function shouldDropLiveDraft(
+  draft: { questionId: string } | undefined,
+  savedQuestionId: string,
+): boolean {
+  return draft !== undefined && draft.questionId === savedQuestionId;
+}
+
 export interface LiveRowPatch {
   status: 'draft' | 'submitted';
   value: unknown;

@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
-import { applyLiveRows, isGradeState, mergeProgress, restProgress, type LiveRowPatch } from './worksheet-board-data';
+import {
+  applyLiveRows, isGradeState, mergeProgress, restProgress, shouldDropLiveDraft, type LiveRowPatch,
+} from './worksheet-board-data';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 
 /**
@@ -247,7 +249,15 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
       // 保存过了就不该再拿旧快照当「他此刻在写的」。**清理本身保留。**
       // 他继续敲，下一条预览会在 300ms 内把它填回来。
       setLiveDrafts((prev) => {
-        if (prev[participantId] === undefined) return prev;
+        const current = prev[participantId];
+        /*
+         * ★ 2026-10-07（教师）：「他正在编辑哪一题，监控面板就监看哪一题」。
+         * 🔴 原来这里**无条件**删 ⇒ **别的题**的一次保存（下面那条注释说的「他继续敲」对不上）
+         *   会把他**正在编辑那一题**的实时预览抹掉 ⇒ 「正在做第几题」回落到
+         *   `lastQuestionId`（= 刚保存的那一题）⇒ 卡片闪回上一题，看起来就是
+         *   「短暂显示一下又切回去」。判据抽在 `shouldDropLiveDraft`（纯函数、有用例）。
+         */
+        if (!shouldDropLiveDraft(current, questionId)) return prev;
         const next = { ...prev };
         delete next[participantId];
         return next;

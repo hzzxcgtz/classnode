@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetBoard, WorksheetBoardAnswerRow } from '../../../lib/types';
-import { answerRowWithDraft, applyLiveRows, mergeProgress, restProgress, type LiveRowPatch } from './worksheet-board-data.ts';
+import {
+  answerRowWithDraft, applyLiveRows, mergeProgress, restProgress,
+  shouldDropLiveDraft, type LiveRowPatch,
+} from './worksheet-board-data.ts';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state.ts';
 
 /**
@@ -496,4 +499,29 @@ test('★ 库里还没有那一行、但他此刻正在写 ⇒ **造一行**（�
   assert.deepEqual(out?.value, { format: 'text/v1', text: '正在写' });
   assert.equal(out?.score, null, '没保存过 ⇒ 判分三件套一律 null（不许编）');
   assert.equal(out?.reviewedAt, null);
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ★ 2026-10-07（教师）：「他正在编辑哪一题，监控面板就监看哪一题。」
+   故障现场：第 11 题是流程图、第 12 题是思维导图，学生在第 12 题上画，
+   而卡片**闪一下第 12 题又切回第 11 题**。
+   🔴 根因（观察本身就钉死了它：「切回第 11 题」要求 `lastQuestionId` 是 11，
+   而那**只在保存时更新** ⇒ 第 11 题确实刚被保存过）：落库广播一到，那句清理
+   **无条件**把这个人的实时预览删掉 ⇒ **别的题**的一次保存，把他**正在编辑那一题**
+   的实时预览抹掉了 ⇒ 卡片闪回上一题（他再动一下，300ms 后又闪回来 —— 看起来就是「短暂显示一下又切回去」）。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+test('★ 别的题保存 ⇒ **不许**清掉他正在编辑那一题的实时预览', () => {
+  assert.equal(
+    shouldDropLiveDraft({ questionId: 'q12' }, 'q11'), false,
+    '第 11 题保存把第 12 题的实时预览清掉了 —— 教师会看到面板从他的题闪回上一题',
+  );
+});
+
+test('★ 落库的正是他编辑那一题 ⇒ 该清（那一份已经被库里那一条取代）', () => {
+  assert.equal(shouldDropLiveDraft({ questionId: 'q12' }, 'q12'), true);
+});
+
+test('本来就没有预览 ⇒ 什么都不做（别造一份空的出来）', () => {
+  assert.equal(shouldDropLiveDraft(undefined, 'q12'), false);
 });

@@ -2,6 +2,13 @@
 
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { flowchartPreviewImage } from '@/lib/worksheet-drawing-starter.ts';
+import {
+  arcLabelAt,
+  arcPathOf,
+  equalMarkOf,
+  parallelMarkOf,
+  rightAngleOf,
+} from '@/lib/worksheet-math-shapes.ts';
 import type { DrawingDocument } from '@/lib/worksheet-drawing-document';
 
 type Pair = [number, number];
@@ -42,8 +49,14 @@ function pathFromPoints(raw: unknown): string {
   }).filter(Boolean).join(' ');
 }
 
-function Background({ url, width, height }: { url: string | null; width: number; height: number }) {
-  return url ? <image href={url} x="0" y="0" width={width} height={height} preserveAspectRatio="none" /> : null;
+/**
+ * 底图。`fit` 默认 `'none'`（**铺满**）—— 基础绘图那边画板就是
+ * `background-size: 100% 100%`（见 `ink-canvas` 的 CSS），预览跟着铺满才对。
+ * ★ 2026-10-07：数学作图那一档的画板改成了 `contain` + 居中（`backgroundRect`），
+ *   所以**只有它**传 `'xMidYMid meet'`。⚠️ 改默认值就是基础绘图的回归。
+ */
+function Background({ url, width, height, fit }: { url: string | null; width: number; height: number; fit?: string }) {
+  return url ? <image href={url} x="0" y="0" width={width} height={height} preserveAspectRatio={fit ?? 'none'} /> : null;
 }
 
 function BasicPreview({ data, width, height, backgroundUrl }: PreviewProps & { data: Record<string, unknown> }) {
@@ -68,7 +81,8 @@ function MathPreview({ data, width, height, backgroundUrl }: PreviewProps & { da
   return (
     <svg viewBox={`0 0 ${width} ${height}`} style={SVG_STYLE} role="img" aria-label="学生的数学作图作答">
       <defs><marker id="math-preview-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#365b82" /></marker></defs>
-      <Background url={backgroundUrl} width={width} height={height} />
+      {/* ★ 2026-10-07：数学作图那一档的画板是 `contain` 居中（见 `backgroundRect`）⇒ 预览要跟上。 */}
+      <Background url={backgroundUrl} width={width} height={height} fit="xMidYMid meet" />
       {!backgroundUrl && Array.from({ length: 17 }, (_, index) => <line key={`h${index}`} x1="0" y1={(index / 16) * height} x2={width} y2={(index / 16) * height} stroke="#edf2f7" />)}
       {!backgroundUrl && Array.from({ length: 21 }, (_, index) => <line key={`v${index}`} x1={(index / 20) * width} y1="0" x2={(index / 20) * width} y2={height} stroke="#edf2f7" />)}
       {elements.map((rawElement, index) => {
@@ -118,6 +132,49 @@ function MathPreview({ data, width, height, backgroundUrl }: PreviewProps & { da
           if (!at || !text) return null;
           const [x, y] = project(at);
           return <text key={index} x={x} y={y} fontSize="14" fontWeight="600" fill="#263b53" textAnchor="middle">{text}</text>;
+        }
+        /*
+         * ★ 2026-10-07：四个几何记号。**与画板共用同一组纯函数**
+         *   （`@/lib/worksheet-math-shapes.ts`）—— 各推一套算法迟早分叉，
+         *   而分叉的表现只是"教师看到的记号比学生画的小一点"，没人会为此报 bug。
+         * ⚠️ 纯函数给的是**用户坐标**，这里统一过一遍 `project`（与上面六种形状同一口径）。
+         */
+        if (item.kind === 'equalMark' || item.kind === 'parallelMark') {
+          const a = pair(item.a); const b = pair(item.b);
+          if (!a || !b) return null;
+          const bar = item.kind === 'equalMark' ? equalMarkOf(a, b) : parallelMarkOf(a, b);
+          if (!bar) return null;
+          const [p1, p2] = [project(bar[0]), project(bar[1])];
+          const arrow = item.kind === 'parallelMark' ? 'url(#math-preview-arrow)' : undefined;
+          return (
+            <line key={index} x1={p1[0]} y1={p1[1]} x2={p2[0]} y2={p2[1]} stroke="#365b82"
+              strokeWidth={item.kind === 'equalMark' ? '3' : '2'}
+              markerStart={arrow} markerEnd={arrow} />
+          );
+        }
+        if (item.kind === 'rightAngle') {
+          const vertex = pair(item.vertex); const a = pair(item.a); const b = pair(item.b);
+          if (!vertex || !a || !b) return null;
+          const square = rightAngleOf(vertex, a, b);
+          if (!square) return null;
+          return <polyline key={index} points={square.map((point) => project(point).join(',')).join(' ')}
+            fill="none" stroke="#365b82" strokeWidth="2" />;
+        }
+        if (item.kind === 'angleArc') {
+          const vertex = pair(item.vertex); const a = pair(item.a); const b = pair(item.b);
+          if (!vertex || !a || !b) return null;
+          const arc = arcPathOf(vertex, a, b);
+          if (!arc) return null;
+          const text = typeof item.text === 'string' ? item.text : '';
+          const at = text ? arcLabelAt(vertex, a, b) : null;
+          const [tx, ty] = at ? project(at) : [0, 0];
+          return (
+            <g key={index}>
+              <polyline points={arc.map((point) => project(point).join(',')).join(' ')}
+                fill="none" stroke="#365b82" strokeWidth="2" />
+              {at ? <text x={tx} y={ty} fontSize="14" fontWeight="600" fill="#263b53" textAnchor="middle">{text}</text> : null}
+            </g>
+          );
         }
         const first = pair(item.kind === 'circle' ? item.center : item.a);
         const second = pair(item.kind === 'circle' ? item.edge : item.b);

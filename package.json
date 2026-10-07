@@ -33,6 +33,7 @@
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-shell": "^2.3.5",
     "@xyflow/react": "12.11.6",
+    "@xyflow/system": "0.0.82",
     "docx": "^9.7.0",
     "jsxgraph": "1.13.3",
     "katex": "^0.17.0",

@@ -15,13 +15,33 @@
  */
 
 import { flowAnchorPoint, flowLabelOffset, flowRoutePoint } from './worksheet-flowchart-edge.ts';
+/* ⚠️ 平行四边形的斜角**只有一份真源**（它与样式表里 `.flowNode_io` 的 `skew(-10deg)` 对拍）。 */
+import { FLOW_IO_SKEW_DEG } from './worksheet-flowchart-node.ts';
+/*
+ * ★ 2026-10-07：**路径交回库自己算**（`@xyflow/system`，与画板同一个函数）——
+ *   画板画的就是它，我们再手搓一份必然分叉（拐角位置、留白、圆角都对不上）。
+ *   ⚠️ 这个包**不含 React**（画板用的是 `@xyflow/react`），所以纯 Node 下能加载、判据照跑。
+ */
+import { getSmoothStepPath, Position } from '@xyflow/system';
 
+/*
+ * ★ 2026-10-07（教师）：「监控面板里看到的流程图……跟学生手机画的有比较大的差异……至少要接近」。
+ * 下面这几个值**不是调出来的**，是从教师截图里**逐个取色量出来的**（ImageMagick 取像素）：
+ *   · 节点边框 = `#7895b3`（`.flowNode` 的 `border-color`；原来是 `#527198`，那是**句柄**的颜色）；
+ *   · 节点填充 = `#fff`（`.flowNode` 的 `background`；原来的 `#eef3f8` 偏蓝，一眼能看出两样）；
+ *   · 节点文字 = `#263b53`（`.flowNode` 的 `color`）；
+ *   · **连线** = `#b1b1b7`（库默认那条 `--xy-edge-stroke-default`；原来写的是蓝灰 `#6b86a5`，
+ *     那是**箭头**的颜色 —— 画板正是「灰线 + 蓝灰箭头」）。
+ */
 const COLORS = {
-  stroke: '#527198',
-  fill: '#eef3f8',
+  stroke: '#7895b3',
+  fill: '#ffffff',
   root: '#27415f',
-  text: '#24364b',
-  edge: '#6b86a5',
+  text: '#263b53',
+  /** 连线本体（灰）——与库默认值一致。 */
+  edge: '#b1b1b7',
+  /** 箭头（蓝灰）——画板 `FLOW_ARROW` 显式指定的那个颜色。 */
+  arrow: '#6b86a5',
 };
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif";
@@ -187,29 +207,6 @@ function anchorOf(node: FlowRasterNode, side: string): [number, number] {
   return [point.x, point.y];
 }
 
-/**
- * 一条边的折线点 —— **每一段不是横的就是竖的**（教师 2026-10-07：
- * 「所有的线条要不就是竖线，要不就是横线」）。重复的点会去掉（两端同列时会并成一根直线）。
- *
- * ⚠️ 两端句柄**对着**（bottom→top / right→left…）：中段落在 `routeX/routeY` 上 ——
- *    拖过就是学生拖到的位置，没拖过就是两端中点（库的默认值）。
- * ⚠️ 两端句柄**相邻**（bottom→left…）：一个拐角，拐在哪一侧由**起点句柄的轴**定
- *    （起点是上下 ⇒ 先竖着走到底、再横过去）—— 与库 `getPoints` 相邻那一支的选择一致
- *    （`points = sourceDir[axis] === currDir ? sourceTarget : targetSource`）。
- */
-function edgePoints(input: {
-  x1: number; y1: number; x2: number; y2: number;
-  routeX: number; routeY: number; sourceSide: string; targetSide: string;
-}): [number, number][] {
-  const { x1, y1, x2, y2, routeX, routeY, sourceSide, targetSide } = input;
-  const sourceVertical = sourceSide === 'top' || sourceSide === 'bottom';
-  const targetVertical = targetSide === 'top' || targetSide === 'bottom';
-  const raw: [number, number][] = sourceVertical && targetVertical ? [[x1, y1], [x1, routeY], [x2, routeY], [x2, y2]]
-    : !sourceVertical && !targetVertical ? [[x1, y1], [routeX, y1], [routeX, y2], [x2, y2]]
-      : sourceVertical ? [[x1, y1], [x1, y2], [x2, y2]] : [[x1, y1], [x2, y1], [x2, y2]];
-  return raw.filter((point, index) => index === 0 || point[0] !== raw[index - 1][0] || point[1] !== raw[index - 1][1]);
-}
-
 /** 居中折行：按框宽断，最多三行（快照不追求完整排版，超出部分换行截断）。 */
 function wrapLabel(label: string, width: number): string[] {
   const perLine = Math.max(2, Math.floor((width - 12) / FONT_SIZE));
@@ -225,7 +222,7 @@ function nodeShape(node: FlowRasterNode): string {
   const { x, y } = node.position;
   const w = node.width;
   const h = node.height;
-  const common = `fill="${COLORS.fill}" stroke="${COLORS.stroke}" stroke-width="1.6"`;
+  const common = `fill="${COLORS.fill}" stroke="${COLORS.stroke}" stroke-width="1.5"`;
   if (node.kind === 'terminator') {
     return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" ry="${h / 2}" ${common}/>`;
   }
@@ -235,7 +232,13 @@ function nodeShape(node: FlowRasterNode): string {
     return `<polygon points="${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}" ${common}/>`;
   }
   if (node.kind === 'io') {
-    const skew = Math.min(18, w / 5);
+    /*
+     * 🔴 与画板**同一个角**：`.flowNode_io { transform: skew(-10deg) }`。
+     *    斜切把上边相对下边推开 `高度 × tan(10°)`（不是半个 —— 上下各偏一半、合起来差一个整的）。
+     *    原来这里写死 `Math.min(18, w/5)`（150 宽的框 ⇒ 18px ⇒ ≈18.4°）⇒ **斜了快一倍**，
+     *    教师一眼就看出来了。数值从 `worksheet-flowchart-node.ts` 的常量来（那边与 CSS 对拍）。
+     */
+    const skew = h * Math.tan((FLOW_IO_SKEW_DEG * Math.PI) / 180);
     return `<polygon points="${x + skew},${y} ${x + w},${y} ${x + w - skew},${y + h} ${x},${y + h}" ${common}/>`;
   }
   if (node.kind === 'junction') {
@@ -261,7 +264,7 @@ function nodeText(node: FlowRasterNode): string {
   const startY = node.position.y + node.height / 2 - ((lines.length - 1) * LINE_HEIGHT) / 2;
   return lines
     .map((line, index) => `<text x="${cx}" y="${startY + index * LINE_HEIGHT}" text-anchor="middle" `
-      + `dominant-baseline="middle" font-family="${FONT}" font-size="${FONT_SIZE}" fill="${COLORS.text}">`
+      + `dominant-baseline="middle" font-family="${FONT}" font-size="${FONT_SIZE}" font-weight="600" fill="${COLORS.text}">`
       + `${escapeXml(line)}</text>`)
     .join('');
 }
@@ -313,9 +316,19 @@ export function flowchartSvg(raw: unknown): { svg: string; width: number; height
      *    与画板上那条折线对不上，正是教师截图里否掉的那种。
      * ✅ 现在一律画折线（`edgePoints`），每一段不是横的就是竖的；重复点会去掉。
      */
-    const points = edgePoints({ x1, y1, x2, y2, routeX, routeY, sourceSide, targetSide });
-    parts.push(`<path d="${points.map(([px, py], index) => `${index === 0 ? 'M' : 'L'} ${px} ${py}`).join(' ')}" `
-      + `fill="none" stroke="${COLORS.edge}" stroke-width="1.8" marker-end="url(#flow-arrow)"/>`);
+    /*
+     * ★ 2026-10-07（教师）：「监控面板里看到的流程图……跟学生（端）画的有比较大的差异……至少要接近」。
+     * 🔴 原来这里是我们**手搓**的一根折线：拐角落在**节点边框上**、没有库那 20px 的留白、
+     *    也没有圆角 ⇒ 与画板（库画的）形状明显两样。
+     * ✅ 现在**直接调库**（与画板同一个函数、同一份入参）⇒ 路径、圆角、留白、标签点全都一致。
+     *    ⚠️ 绕行点仍旧走 `flowRoutePoint`（认轴 + 夹范围）—— 那是我们自己的规则，两侧共用。
+     */
+    const [path, libraryLabelX, libraryLabelY] = getSmoothStepPath({
+      sourceX: x1, sourceY: y1, sourcePosition: sourceSide as Position,
+      targetX: x2, targetY: y2, targetPosition: targetSide as Position,
+      ...(route ? { centerX: route.x, centerY: route.y } : {}),
+    });
+    parts.push(`<path d="${path}" fill="none" stroke="${COLORS.edge}" stroke-width="1.8" marker-end="url(#flow-arrow)"/>`);
     /*
       ★ 2026-10-06（教师上传的标准流程图）：线上的字画在**线的旁边**，不压线 ——
         与画板 `FlowLabelEdge` **同一条规则**（同一个判据来源：`targetHandle` 的方位）：
@@ -350,8 +363,12 @@ export function flowchartSvg(raw: unknown): { svg: string; width: number; height
         edge.label,
         edge.labelDX === null || edge.labelDY === null ? null : { dx: edge.labelDX, dy: edge.labelDY },
       );
-      const labelX = routeX + labelOffset.dx;
-      const labelY = routeY + labelOffset.dy;
+      /*
+       * ★ 2026-10-07：标签基点也改成**库回给画板的那个**（`labelX/labelY`）——
+       *   原来用的是我们自己算的角点 ⇒ 同一条线上，报告里的字与画板上的字能差出十几像素。
+       */
+      const labelX = libraryLabelX + labelOffset.dx;
+      const labelY = libraryLabelY + labelOffset.dy;
       parts.push(`<rect x="${labelX - bgWidth / 2}" y="${labelY - LINE_HEIGHT + 3}" width="${bgWidth}" `
         + `height="${LINE_HEIGHT}" rx="3" fill="#ffffff"/>`);
       parts.push(`<text x="${labelX}" y="${labelY}" dy="0.35em" text-anchor="middle" `
@@ -363,7 +380,7 @@ export function flowchartSvg(raw: unknown): { svg: string; width: number; height
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`
     + `<defs><marker id="flow-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">`
-    + `<path d="M 0 0 L 10 5 L 0 10 z" fill="${COLORS.edge}"/></marker></defs>`
+    + `<path d="M 0 0 L 10 5 L 0 10 z" fill="${COLORS.arrow}"/></marker></defs>`
     + `<rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>`
     + `<g transform="translate(${PADDING - minX}, ${PADDING - minY})">${parts.join('')}</g>`
     + `</svg>`;

@@ -24,6 +24,8 @@ import { fileURLToPath } from 'node:url';
 import { escapeXml, flowchartSvg, readFlowRaster } from './worksheet-flowchart-svg.ts';
 /* ★ 2026-10-07：标签「默认让开多少」用到的两个量 —— 与快照这两个常量**对拍**（见下面那条）。 */
 import { FLOW_LABEL_CHAR, FLOW_LABEL_LINE } from './worksheet-flowchart-edge.ts';
+/* ★ 2026-10-07：平行四边形的斜角**只有一份真源**（它与样式表 `.flowNode_io` 的 `skew(-10deg)` 对拍）。 */
+import { FLOW_IO_SKEW_DEG } from './worksheet-flowchart-node.ts';
 
 /** 断言有图 + 把 `| null` 收窄（`tsc` 也跑这个文件，解构 null 会红）。 */
 function shot(raw: unknown): { svg: string; width: number; height: number } {
@@ -32,20 +34,22 @@ function shot(raw: unknown): { svg: string; width: number; height: number } {
   return out;
 }
 
-/** 把 SVG 里那条连线（`marker-end` 那根 `<path>`）的点抠出来。 */
-function pathPoints(svg: string): [number, number][] {
-  const d = (svg.match(/<path d="(M [^"]+)"[^>]*marker-end/) ?? [])[1] ?? '';
-  return [...d.matchAll(/[ML]\s*(-?[\d.]+)\s+(-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+/** 把 SVG 里那条连线（`marker-end` 那根 `<path>`）的 `d` 抠出来。 */
+function edgePath(svg: string): string | null {
+  return (svg.match(/<path d="([^"]+)"[^>]*marker-end/) ?? [])[1] ?? null;
 }
 
-/** 折线的每一段都必须是**横的或竖的** —— 教师 2026-10-07：「要不就是竖线，要不就是横线」。 */
-function assertAxisAligned(points: [number, number][], why: string): void {
-  for (let i = 1; i < points.length; i++) {
-    assert.ok(
-      points[i][0] === points[i - 1][0] || points[i][1] === points[i - 1][1],
-      `${why}：第 ${i} 段是**斜的**（${points[i - 1]} → ${points[i]}）`,
-    );
-  }
+/** 路径的起点（`M x y`）。 */
+function pathStart(d: string): [number, number] {
+  const m = d.match(/M\s*(-?[\d.]+)[ ,]+(-?[\d.]+)/) ?? [];
+  return [Number(m[1]), Number(m[2])];
+}
+
+/** 路径的终点（最后一个坐标对 —— 库的路径以 `L x y` 或 `Q … x y` 收尾）。 */
+function pathEnd(d: string): [number, number] {
+  const all = [...d.matchAll(/(-?[\d.]+)[ ,]+(-?[\d.]+)/g)];
+  const last = all[all.length - 1] ?? [];
+  return [Number(last[1]), Number(last[2])];
 }
 
 const FLOW = {
@@ -74,7 +78,7 @@ test('🔴 形状按 kind 分：terminator 圆角、decision 菱形、io 平行�
     edges: [],
   });
   assert.match(svg, /rx="2[0-9]"/, 'terminator 不是胶囊形（rx 应等于半高）');
-  assert.match(svg, /<polygon points="[^"]+" fill="#eef3f8"/, 'decision / io 没有画成多边形');
+  assert.match(svg, /<polygon points="[^"]+" fill="#ffffff"/, 'decision / io 没有画成多边形（或填充不是画板那个白）');
   assert.equal((svg.match(/<polygon /g) ?? []).length, 2, '四个节点里应当正好两个多边形（菱形 + 平行四边形）');
   assert.equal((svg.match(/<rect /g) ?? []).length, 3, '白底一个 + terminator 一个 + process 一个');
 });
@@ -90,11 +94,12 @@ test('🔴 连线带箭头：marker 定义了、也真的被引用', () => {
    * ⊘ 2026-10-07 晚些时候：这里接连线都**不再是一根 `<line>`** 了（两端直连 = 斜线，教师否掉）
    *   ⇒ 改成画折线，判据按**语义**判：起止点对不对得上、每一段是不是横的或竖的。
    */
-  const points = pathPoints(svg);
-  assert.ok(points.length >= 2, '连线没画出来（或抠不出坐标）—— 先修这条判据');
-  assert.deepEqual(points[0], [140, 90], '起点没有落在「下侧句柄方块的外边」');
-  assert.deepEqual(points[points.length - 1], [140, 154], '终点没有落在「上侧句柄方块的外边」');
-  assertAxisAligned(points, '连线');
+  const path = edgePath(svg);
+  assert.ok(path, '连线没画出来 —— 先修这条判据');
+  assert.deepEqual(pathStart(path), [140, 90], '起点没有落在「下侧句柄方块的外边」');
+  assert.deepEqual(pathEnd(path), [140, 154], '终点没有落在「上侧句柄方块的外边」');
+  /* ⚠️ 这一对框 **x 相同**（都是 140）⇒ 库画出来就是一根竖直的直线：没有拐角、也就没有 `Q`
+     （「路径是库画的」那一条断言的落点在下面那条**带拐角**的用例里 —— 这里不重复钉）。 */
 });
 
 test('★ 线条只有竖的和横的 —— 两端差几像素也不许斜（教师 2026-10-07）', () => {
@@ -112,9 +117,10 @@ test('★ 线条只有竖的和横的 —— 两端差几像素也不许斜（�
     edges: [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'right', targetHandle: 'left' }],
   });
   assert.ok(!/<line [^>]*marker-end/.test(svg), '又画成一根直连的 <line> 了 —— 两端差几像素时那就是斜线');
-  const points = pathPoints(svg);
-  assert.ok(points.length >= 3, `两端只差 4px 时应当还是折线（拿到 ${points.length} 个点）`);
-  assertAxisAligned(points, '两端差 4px 的边');
+  const path = edgePath(svg);
+  assert.ok(path, '连线没画出来 —— 先修这条判据');
+  /* 库画的折线：两端差几像素时它会走一小段横线/竖线，而不是把整根线拉斜（`Q` = 圆角，`L` = 直线段）。 */
+  assert.match(path, /L |Q /, '两端差 4px 时路径退化成了「只有起点终点」—— 那就是一根斜线');
 });
 
 test('🔴 学生写的字要转义（标签会原样进 SVG）', () => {
@@ -390,20 +396,26 @@ const routed = (routeY: number) => [{ id: 'e', source: 'a', target: 'b', sourceH
 
 test('★ 只写一个轴的绕行点也要画出来', () => {
   const { svg } = shot({ ...ROUTED, edges: routed(150) });
-  assert.match(
-    svg,
-    /<path d="M 50 46 L 50 150 L 250 150 L 250 194"/,
-    '绕行点没画出来 —— 或者端点又回到「节点边框上的点」了（那会与画板差 6px）',
-  );
+  const path = edgePath(svg) ?? '';
+  assert.deepEqual(pathStart(path), [50, 46], '起点不在句柄方块的外边上');
+  assert.deepEqual(pathEnd(path), [250, 194], '终点不在句柄方块的外边上');
+  /*
+   * ★ 2026-10-07：路径**交给库算**（`@xyflow/system` 的 `getSmoothStepPath`，与画板同一个函数）
+   * ⇒ 带圆角的 `Q` 命令就是它的签名。这一条钉的是「我们没又回去手搓一根折线」——
+   * 手搓那版的拐角落在**节点边框上**、没有留白也没有圆角，教师一眼就看出与画板两样。
+   */
+  assert.match(path, /Q /, '路径里没有圆角 —— 那不是库画的（手搓的折线拐角会落在节点边框上）');
+  // 绕行点 y=150（两端留白点 66…174 之内的那个位置）必须真的出现在路径里。
+  assert.match(path, /[ ,]150(?![\d.])/, '绕行点没画出来 —— 线还停在默认位置');
 });
 
 test('★ 快照也要把绕行点夹住（与画板同一个范围）', () => {
   const { svg } = shot({ ...ROUTED, edges: routed(9999) });
-  assert.match(
-    svg,
-    /<path d="M 50 46 L 50 174 L 250 174 L 250 194"/,
-    '越界的绕行点没被夹住 —— 教师那张图的「弧线折返」会在报告里重现，而画板上没有',
-  );
+  const path = edgePath(svg) ?? '';
+  assert.deepEqual(pathStart(path), [50, 46], '起点不在句柄方块的外边上');
+  // 越界的 (9999) 要被夹到终点那侧的留白点 174 —— 画板上也是 174（两侧共用 `flowRoutePoint`）。
+  assert.match(path, /[ ,]174(?![\d.])/, '越界的绕行点没被夹住 —— 报告里的线与画板上的不是同一条');
+  assert.ok(!/9999/.test(path), '越界的值原样画进去了');
 });
 
 /* ── ★ 2026-10-07：线上文字摆在线旁边（默认）／被拖过的位置 ─────────────────── */
@@ -441,4 +453,77 @@ test('★ 标签让开的距离用的「一行多高 / 一个字多宽」与快�
     '「一行多高」两边对不上 —— 标签默认位置在画板与报告里会差几像素（谁也不报错）');
   assert.equal(FLOW_LABEL_CHAR, constNumber(live, 'FONT_SIZE'),
     '「一个字多宽」两边对不上 —— 横线右侧的标签会让开得不一样多');
+});
+
+/*
+  ★ 2026-10-07（教师）：「监控面板里看到的流程图……跟学生（端）画的有比较大的差异，
+  至少要接近」。**颜色/线宽/字重这几样必须与画板的真源对拍** —— 差一点，屏幕上就是两张图。
+
+  🔴 这一条是补票：原来快照写的是 `stroke="#527198"`（那是**句柄**的颜色）、`fill="#eef3f8"`
+     （画板是白的）、连线写的是蓝灰 `#6b86a5`（那是**箭头**的颜色，线本体是灰的）——
+     三处都不对，而**没有任何判据看得见**（两边各写各的，谁也不报错）。
+  ⚠️ 判据从**样式表现读**画板那一侧的值（`CANVAS_CSS`），不逐字写死颜色。
+*/
+test('★ 节点颜色与样式表对拍（描边 / 填充 / 文字）', () => {
+  const css = fs.readFileSync(CANVAS_CSS, 'utf8');
+  const rule = css.match(/\.flowNode \{([\s\S]*?)\}/);
+  assert.ok(rule, '样式表里找不到 `.flowNode` —— 先修这条判据');
+  /* ⚠️ 允许 `#fff` 这种三位写法（画板那里正是它）—— 比较前先归一成六位。 */
+  const hex = (source: string, pattern: RegExp) => {
+    const hit = source.match(pattern)?.[1];
+    if (!hit) return null;
+    return hit.length === 4 ? `#${hit[1]}${hit[1]}${hit[2]}${hit[2]}${hit[3]}${hit[3]}` : hit.toLowerCase();
+  };
+  const border = hex(rule[1], /border:\s*[\d.]+px\s+solid\s+(#[0-9a-f]{3,6})/i);
+  const background = hex(rule[1], /background:\s*(#[0-9a-f]{3,6})/i);
+  const color = hex(rule[1], /color:\s*(#[0-9a-f]{3,6})/i);
+  assert.ok(border && background && color, `画板那条规则里读不到颜色（抠到的是「${rule[1].slice(0, 40)}」）—— 先修这条判据`);
+
+  const { svg } = shot({
+    nodes: [{ id: 'a', position: { x: 0, y: 0 }, measured: { width: 150, height: 54 }, data: { label: '处理过程', kind: 'process' } }],
+    edges: [],
+  });
+  assert.ok(svg.includes(`stroke="${border}"`), `快照的节点描边不是画板那个：${border}`);
+  assert.ok(svg.includes(`fill="${background}"`), `快照的节点填充不是画板那个：${background}`);
+  assert.ok(svg.includes(`fill="${color}"`), `快照的节点文字颜色不是画板那个：${color}`);
+  // 文字要**加粗**（画板 `.flowNodeLabel { font: 600 … }`）—— 不加粗在面板里一眼就「不像」。
+  assert.match(svg, /font-weight="600"/, '快照的节点文字没有加粗（画板是 600）');
+});
+
+test('★ 连线取库的默认色、箭头取画板 `FLOW_ARROW` 那个色（两者**不是一个色**）', () => {
+  const { svg } = shot(FLOW);
+  // 库默认：`--xy-edge-stroke-default`（画板没有覆盖它，实测取色也是它）。
+  const libraryCss = fs.readFileSync(path.resolve(HERE, '../../node_modules/@xyflow/react/dist/style.css'), 'utf8');
+  const edgeStroke = libraryCss.match(/--xy-edge-stroke-default:\s*(#[0-9a-f]{6})/i);
+  assert.ok(edgeStroke, '库的默认连线色没读到 —— 先修这条判据');
+  assert.ok(svg.includes(`stroke="${edgeStroke[1]}"`), `连线没有用库那个默认色：${edgeStroke[1]}`);
+  const arrow = fs.readFileSync(path.resolve(HERE, '../../src/app/classroom/worksheet/questions/drawing-surfaces/flowchart-drawing.tsx'), 'utf8')
+    .match(/const FLOW_ARROW = \{[^}]*color:\s*'(#[0-9a-f]{6})'/);
+  assert.ok(arrow, '画板里没读到 FLOW_ARROW 的颜色 —— 先修这条判据');
+  assert.ok(svg.includes(`fill="${arrow[1]}"`), `箭头没有用画板那个色：${arrow[1]}`);
+});
+
+/*
+  ★ 2026-10-07（教师）：面板里的图要「接近」画板。平行四边形这一条最扎眼 ——
+  画板是 CSS 的 `skew(-10deg)`（斜边把上边相对下边推开 `高度 × tan10°`），
+  而快照原来写死 `Math.min(18, w/5)`（150 宽的框 ⇒ 18px ⇒ ≈18.4°）⇒ **斜了快一倍**。
+  ⚠️ 判据按**几何**判（高度 × tan 角），不写死像素 —— 框一高，像素值就该跟着变。
+  ⚠️ 变异验证过：改回写死的 18px ⇒ 当场红。
+*/
+test('★ 平行四边形的斜度与画板同一个角（`h × tan10°`，不是写死的像素）', () => {
+  const height = 54;
+  const { svg } = shot({
+    nodes: [{ id: 'a', position: { x: 0, y: 0 }, measured: { width: 150, height }, data: { label: '输入/输出', kind: 'io' } }],
+    edges: [],
+  });
+  const points = (svg.match(/<polygon points="([^"]+)"/) ?? [])[1] ?? '';
+  const pairs = [...points.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+  assert.equal(pairs.length, 4, `平行四边形应当是四个顶点（拿到 ${pairs.length} 个）—— 先修这条判据`);
+  const [topLeftX] = pairs[0];
+  const [bottomLeftX] = pairs[3];
+  const expected = height * Math.tan((FLOW_IO_SKEW_DEG * Math.PI) / 180);
+  assert.ok(
+    Math.abs((topLeftX - bottomLeftX) - expected) < 0.01,
+    `斜度与画板对不上：上边相对下边推开了 ${(topLeftX - bottomLeftX).toFixed(1)}px，应当是 ${expected.toFixed(1)}px（高度 × tan10°）`,
+  );
 });

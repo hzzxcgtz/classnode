@@ -124,9 +124,18 @@ test('拖动的框靠近相连的框（差 8px）⇒ 吸到同一竖线上', () 
   assert.equal(alignSnapX(nodes, [edge('a', 'b')], 'b'), 100, '吸上之后两端 x 相等 ⇒ 线是**严格竖直**的');
 });
 
+test('斜了 45px 也要吸 —— 教师截图里那条线就是这个幅度', () => {
+  const nodes = [node('a', 100, 0), node('b', 145, 300)];
+  assert.equal(
+    alignSnapX(nodes, [edge('a', 'b')], 'b'),
+    100,
+    '半个节点宽的容差就是为这种情况定的（原来 12px 够不着，教师当场否掉）',
+  );
+});
+
 test('差得多的不吸 —— 本来就想错开的，一个都不许碰', () => {
   const nodes = [node('a', 100, 0), node('b', 260, 300)];
-  assert.equal(alignSnapX(nodes, [edge('a', 'b')], 'b'), null);
+  assert.equal(alignSnapX(nodes, [edge('a', 'b')], 'b'), null, '差 160px 超出一个节点宽，那是故意的');
 });
 
 test('没有连线的框不吸 —— 这是为了让**那条线**变直，不是「所有框都对齐」', () => {

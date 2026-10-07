@@ -66,32 +66,34 @@ test('菱形的描边与其它形状一样粗', () => {
 });
 
 /*
-  ★ 2026-10-06（教师批图：「**文字要包在框内**」）：**菱形里的文字必须落在内接矩形里**。
+  ★ 2026-10-06（教师批图「**文字要包在框内**」）
+  → ★ 2026-10-07（教师：「这个菱形框默认**怎么感觉特别大**，稍微调整一下」）。
 
-  判断框是**画出来的**菱形（`<polygon>`），它的内接矩形只有外框的**一半宽、一半高**
-  —— 顶点落在四条边的中点上。而文字盒 `.flowNodeLabel` 的 `max-width` 是按**整个外框**给的，
-  所以条件一长就必然探出斜边。
-
+  🔴 **真正的几何条件**：菱形的边界是 `|x|/(W/2) + |y|/(H/2) ≤ 1`；文字块最危险的是它的**角**
+     ⇒ 要的是 `文字宽/W + 文字高/H ≤ 1`。
+  ⊘ 上一版钉的是「文字宽 ≤ 菱形宽的一半」—— 那**过于保守**（只利用了菱形最窄的那一段），
+    白白逼着菱形放大到 240×120，教师随即觉得「特别大」。判据跟着换成上面那条几何式。
   ⚠️ 这里还有个**循环**：菱形宽度本来是被文字**撑开**的（`min-width` 只是下限），
-  所以「只把文字限窄」单独做不管用 —— 两边要**一起**钉：菱形给足确定的尺寸、
-  label 的 `max-width` 收到内接半宽以内。
+    所以「只把文字限窄」不管用 —— 两边要**一起**钉。
 */
-test('菱形里的文字必须落在内接矩形内 —— 半宽是硬上限', () => {
+test('判断框的文字要落在菱形里 —— 用真正的几何条件，不是「≤ 半宽」', () => {
   const diamond = blockBetween(CSS, '.flowNode_decision {', '}');
   assert.ok(diamond.length > 20, '找不到 `.flowNode_decision` 那条规则');
-  const minW = /min-width:\s*([\d.]+)px/.exec(diamond);
-  assert.ok(minW, '判断框要有确定的 min-width（否则宽度被文字撑开，下面的上限就失去意义）');
+  const minW = Number((/min-width:\s*([\d.]+)px/.exec(diamond) ?? [])[1]);
+  const minH = Number((/min-height:\s*([\d.]+)px/.exec(diamond) ?? [])[1]);
+  assert.ok(Number.isFinite(minW) && Number.isFinite(minH), '判断框要有确定的 min-width / min-height');
 
   const labelRule = blockBetween(CSS, '.flowNode_decision .flowNodeLabel', '}');
   assert.ok(labelRule.length > 10, '找不到「判断框里的 label」那条规则');
-  const maxW = /max-width:\s*([\d.]+)px/.exec(labelRule);
-  assert.ok(maxW, '判断框里的 label 要有自己的 max-width（外框那条 220px 对它太大）');
+  const textW = Number((/max-width:\s*([\d.]+)px/.exec(labelRule) ?? [])[1]);
+  assert.ok(Number.isFinite(textW), '判断框里的 label 要有自己的 max-width（外框那条 220px 对它太大）');
 
-  const halfWidth = Number(minW[1]) / 2;
-  assert.ok(
-    Number(maxW[1]) <= halfWidth,
-    `label 的 max-width ${maxW[1]}px 超过了内接半宽 ${halfWidth}px ⇒ 字会探出斜边（教师批图报的就是这个）`,
-  );
+  // 最长的那种条件大约三行（行高 1.35 × 12.8px ≈ 17px）。
+  const textH = 3 * 17;
+  const fill = textW / minW + textH / minH;
+  assert.ok(fill <= 1.02, `文字块的角会探出斜边（${textW}/${minW} + ${textH}/${minH} = ${fill.toFixed(2)} > 1）`);
+  // 反面：不许为了「装下最长的字」把菱形撑大 —— 教师 2026-10-07 说「特别大」。
+  assert.ok(minW <= 224 && minH <= 112, `判断框又变大了（${minW}×${minH}）—— 教师说过「特别大」`);
 });
 
 /*

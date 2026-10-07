@@ -2616,24 +2616,29 @@
 
   菱形是**画出来的**，它的内接矩形只有外框的**一半宽、一半高**（顶点落在四条边的中点上）——
   文字要落在里面，外框就得至少是文字所需的两倍。
-  ⇒ 240×120 ⇒ 内接 120×60 ⇒ label 收到 112px（留 8px 余量），长条件换行后正好放得下。
+  ✅ 真正的条件不是「文字宽 ≤ 半宽」，而是**菱形的边界式**：`|x|/(W/2) + |y|/(H/2) ≤ 1`。
+     文字块最危险的是它的**角** ⇒ 要的是 `文字宽/W + 文字高/H ≤ 1`。
+     ⊘ 上一版钉的是「≤ 半宽」—— 那**过于保守**（只用了菱形最窄的那一段），白白把菱形撑到
+       240×120，教师随即说「这个菱形框默认怎么感觉特别大」。
 
+  ⇒ 220×110 + label 120px（三行文字：120/220 + 51/110 = 1.01，贴边但不越界）。
   🔴 **必须给确定的 min-width**：菱形宽度本来是被文字撑开的，宽度一旦由内容决定，
-  「文字不超过半宽」这个约束就变成循环、也就失去意义（教师报的就是这个形态）。
+     上面那个约束就变成循环、也就失去意义（教师 2026-10-06 报的就是这个形态）。
 */
 .flowNode_decision {
-  min-width: 240px;
-  min-height: 120px;
+  min-width: 220px;
+  min-height: 110px;
   border: 0;
   background: transparent;
   box-shadow: none;
 }
 /*
-  ⚠️ 外框那条 `.flowNodeLabel { max-width: 220px }` 对菱形**太大了**（220 > 240/2）——
-  内接半宽才是这里的硬上限。这一条特异性更高（两个类），不必依赖书写顺序。
-  `flowchart-node-stroke.test.ts` 钉着「label 的 max-width ≤ 菱形 min-width 的一半」。
+  ⚠️ 外框那条 `.flowNodeLabel { max-width: 220px }` 对菱形**太大了** —— 这一条特异性更高
+  （两个类），不必依赖书写顺序。
+  `flowchart-node-stroke.test.ts` 钉的是**几何式**（`文字宽/W + 文字高/H ≤ 1`），
+  不是某个具体像素 —— 将来调尺寸它仍然有效。
 */
-.flowNode_decision .flowNodeLabel { max-width: 112px; }
+.flowNode_decision .flowNodeLabel { max-width: 120px; }
 .flowNode_decision[data-selected='1'] { box-shadow: none; }
 /*
   ⚠️ 选中时**只换颜色、不加粗** —— 与 `.flowNode[data-selected='1']`（只换 border-color）同一套。

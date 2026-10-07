@@ -28,6 +28,8 @@ const payloadOf = (kind: 'text' | 'image' | 'mixed', entries?: AnalyzeEntry[]) =
   entries: entries ?? (kind === 'text' ? textEntries : kind === 'image' ? [inkEntry('p1')] : [textEntries[0], inkEntry('p2')]),
   total: 40,
   knobs: DEFAULT_ANALYSIS_KNOBS,
+  // 空名册是刻意的：这些用例考的是提示词措辞，标签那一层由 analysis-payload.test.ts 管。
+  participants: [],
 });
 
 /**
@@ -42,6 +44,8 @@ const drawingPayloadOf = (kind: 'text' | 'image' | 'mixed', drawingStarter: bool
   entries: kind === 'text' ? textEntries : kind === 'image' ? [inkEntry('p1')] : [textEntries[0], inkEntry('p2')],
   total: 40,
   knobs: DEFAULT_ANALYSIS_KNOBS,
+  // 空名册是刻意的：这些用例考的是提示词措辞，标签那一层由 analysis-payload.test.ts 管。
+  participants: [],
 });
 
 /**
@@ -79,6 +83,8 @@ test('🔴 零份已提交 ⇒ 拒绝（发空载荷只会得到一段编造的�
   const empty = buildAnalysisPayload({
     question: { questionId: 'q1', typeLabel: '问答题', prompt: 'x', heading: '1' },
     entries: [], total: 40, knobs: DEFAULT_ANALYSIS_KNOBS,
+    // 空名册是刻意的：这些用例考的是提示词措辞，标签那一层由 analysis-payload.test.ts 管。
+    participants: [],
   });
   const gate = analysisGateOf(empty, 'coze');
   assert.equal(gate.ok, false);
@@ -90,7 +96,7 @@ test('消息文本：含题干、已交 N/M、逐条伪名与答案，以及固�
   assert.match(msg, /任务一 · 3/);
   assert.match(msg, /说说你的看法/);
   assert.match(msg, /已交 2\/40/);
-  assert.match(msg, /User_001/);
+  assert.match(msg, /User_001/, '名册空着 ⇒ 标签回落成老式伪名，把格子归属说清楚');
   assert.match(msg, /我认为是甲/);
   assert.match(msg, /请分析/, '固定引导语要在（模型据此知道要干什么）');
 });
@@ -98,7 +104,10 @@ test('消息文本：含题干、已交 N/M、逐条伪名与答案，以及固�
 test('消息文本：纯绘图题给的是「N 张联系表」的说明，而不是一段空文档', () => {
   const msg = buildAnalysisMessage(payloadOf('image'));
   assert.match(msg, /联系表/);
-  assert.match(msg, /User_001/, '要说清每格上方标着代号（否则模型不知道那是谁）');
+  // ★ 2026-10-07：标签从「`User_001` 这样的伪名」换成「姓名 + 学号」——
+  // 这句说明必须跟着换，否则模型不知道图上那一串 `张伟#7` 是什么、该照抄哪一部分。
+  assert.match(msg, /每格上方标着该学生的标签/, '要说清每格上方标着标签（否则模型不知道那是谁）');
+  assert.match(msg, /姓名/, '还要说清标签是「姓名 + # + 学号」，模型才知道该逐字照抄什么');
 });
 
 test('🔴 探针说标签没画出来时，必须把编号对照**以文本形式附上**（否则那句话就是假的）', () => {
@@ -148,7 +157,10 @@ test('★ 没有初始图的题目：一个字都不许多加（两向都要钉�
   }
   // 题面字面量**没写**这个键（老调用点、真题目没设过初始图）也必须落成「没有」。
   const meta = { questionId: 'q3', typeLabel: '绘图题', prompt: '画一画', heading: '5' };
-  const noKey = buildAnalysisPayload({ question: meta, entries: textEntries, total: 40, knobs: DEFAULT_ANALYSIS_KNOBS });
+  // 空名册是刻意的：这些用例考的是提示词措辞，标签那一层由 analysis-payload.test.ts 管。
+  const noKey = buildAnalysisPayload({
+    question: meta, entries: textEntries, total: 40, knobs: DEFAULT_ANALYSIS_KNOBS, participants: [],
+  });
   assert.equal(noKey.drawingStarter, false, '缺这个键 ⇒ false（落成 true 的表现就是每道题都多那句）');
   assert.ok(!buildAnalysisMessage(noKey).includes('初始图'));
 });
@@ -178,6 +190,8 @@ test('★ 拼装层**不按题型分流**：那句说明只认「有没有初始
   const odd = buildAnalysisPayload({
     question: { questionId: 'q1', typeLabel: '问答题', prompt: '说说你的看法', heading: '3', drawingStarter: true },
     entries: textEntries, total: 40, knobs: DEFAULT_ANALYSIS_KNOBS,
+    // 空名册是刻意的：这些用例考的是提示词措辞，标签那一层由 analysis-payload.test.ts 管。
+    participants: [],
   });
   assert.match(buildAnalysisMessage(odd), STARTER_NOTE_CORE, '拼装层只看标记 —— 题型不该在这里再判一次');
 });
@@ -190,6 +204,8 @@ test('开启 AI 评分时消息带满分、评分标准与机器块协议；关�
   const scored = buildAnalysisPayload({
     question: { questionId: 'q1', typeLabel: '问答题', prompt: '说说你的看法', heading: '任务一 · 3', rubricText: '概念 3 分，表达 2 分' },
     entries: textEntries, total: 40, knobs: DEFAULT_ANALYSIS_KNOBS,
+    // 空名册是刻意的：这些用例考的是提示词措辞，标签那一层由 analysis-payload.test.ts 管。
+    participants: [],
   });
   const message = buildAnalysisMessage({ ...scored, aiScoring: { enabled: true, maxScore: 5, unit: '分', criteria: '概念 3 分，表达 2 分' } });
   assert.match(message, /满额：5 分/);
@@ -201,7 +217,9 @@ test('开启 AI 评分时消息带满分、评分标准与机器块协议；关�
   assert.ok(!message.includes('评分要求：'), '「评分要求」那一行已随合并删除');
   assert.match(message, /<classnode-scores>/);
   assert.match(message, /"advice"/, '机器协议必须要求逐生返回可展开的详细建议');
-  assert.match(message, /"student":"User_001"/);
+  // ★ 2026-10-07：示例里的 `student` 也跟着换成新标签 —— 留一个旧形状的示例，
+  // 模型会照着它编 `User_00X` 出来（而名单里根本没有那些代号 ⇒ 整班收不到分）。
+  assert.match(message, /"student":"张伟#7"/);
   assert.ok(!buildAnalysisMessage(payloadOf('text')).includes('<classnode-scores>'));
 });
 
@@ -232,6 +250,8 @@ test('🔴 开了 AI 评分但教师没写评分标准 ⇒ 兜底那句必须在
   const withRubric = buildAnalysisPayload({
     question: { questionId: 'q1', typeLabel: '问答题', prompt: '说说你的看法', heading: '任务一 · 3', rubricText: '结论正确 2 座奖杯' },
     entries: textEntries, total: 40, knobs: DEFAULT_ANALYSIS_KNOBS,
+    // 空名册是刻意的：这些用例考的是提示词措辞，标签那一层由 analysis-payload.test.ts 管。
+    participants: [],
   });
   const withRubricMessage = buildAnalysisMessage({ ...withRubric, aiScoring: { enabled: true, maxScore: 5, unit: '座奖杯', criteria: '结论正确 2 座奖杯' } });
   assert.match(withRubricMessage, /评分标准：结论正确 2 座奖杯/);
@@ -246,6 +266,8 @@ test('评分标准文字与图片附件顺序会明确告诉智能体', () => {
       rubricImageUrl: '/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.png',
     },
     entries: textEntries, total: 2, knobs: DEFAULT_ANALYSIS_KNOBS,
+    // 空名册是刻意的：这些用例考的是提示词措辞，标签那一层由 analysis-payload.test.ts 管。
+    participants: [],
   });
   const message = buildAnalysisMessage(payload);
   assert.match(message, /评分标准：结论正确 2 分，理由完整 3 分/);
@@ -305,6 +327,8 @@ test('★ 评分只点「有内容」的那些人的名 —— 读不出作答�
     entries: [inkEntry('p1'), inkEntry('p2'), unknownEntry],
     total: 3,
     knobs: DEFAULT_ANALYSIS_KNOBS,
+    // 空名册是刻意的：这些用例考的是提示词措辞，标签那一层由 analysis-payload.test.ts 管。
+    participants: [],
   });
   // 前提：那一份确实被判成「读不出来」，另外两份是可评的。
   assert.deepEqual(payload.unscorableIds, ['p9']);
@@ -323,6 +347,8 @@ test('★ 一份可评的都没有 ⇒ 明确让模型「不要给任何人评�
     entries: [{ studentId: 'p9', kind: 'unknown', gradeState: null } as AnalyzeEntry],
     total: 1,
     knobs: DEFAULT_ANALYSIS_KNOBS,
+    // 空名册是刻意的：这些用例考的是提示词措辞，标签那一层由 analysis-payload.test.ts 管。
+    participants: [],
   });
   const message = buildAnalysisMessage({ ...payload, aiScoring: { enabled: true, maxScore: 5, unit: '分', criteria: '' } });
   assert.match(message, /不要给任何人评分/, '一份可评的都没有时还要求评分 —— 那就是明着让模型编');

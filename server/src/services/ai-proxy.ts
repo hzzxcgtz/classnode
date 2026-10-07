@@ -1171,10 +1171,14 @@ export async function testWenxinConnection(agent: AgentConfig): Promise<{ succes
  *
  * 与 `proxyAIRequest` 的**三处刻意的不同**（少一处都会出问题）：
  *
- * 1. 🔴 **不过 `anonymizer`**。载荷已经是伪名（M7a 的 `payloadLabels`），而分析是**班级级**的、
+ * 1. 🔴 **不过 `anonymizer`**。载荷的标签由 `payloadLabels` 生成，而分析是**班级级**的、
  *    没有「那个学生」可脱敏。传一个假名字会往映射表里塞一条**不是学生**的记录 ——
  *    而 `MAX_ENTRIES = 500`，塞满会**重置**，重置会换掉**正在进行的一段聊天**里
  *    同一个学生的伪名（`anonymizer.ts:7`）。
+ *    🔴 ★ 2026-10-07（教师裁定）：那些标签现在是「**姓名 + 学号**」（`张伟#7`）——
+ *    也就是说**分析这一条路上真名会离开本机**，这是教师明确接受的代价
+ *    （伪名只差最后一位、模型读图会看串 ⇒ 分数静默贴到别人头上），**不是遗漏**。
+ *    聊天那条路没有变：`anonymizer` 照旧把真名换成 `User_NNN`。
  * 2. 🔴 **收 `images: Buffer[]` 而不是 `fileUrls: string[]`**。既有那条路每个 url 都过
  *    `resolveLocalPath`（`:456` 逐字「仅允许读取应用上传目录中的文件」）⇒ 图必须先落盘到
  *    `/uploads/`，而那是 `express.static` **公开目录**（`index.ts:97`）⇒

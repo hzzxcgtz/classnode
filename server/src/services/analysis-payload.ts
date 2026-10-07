@@ -36,6 +36,41 @@ export interface RawAnswer {
 export interface Participant {
   participantId: string;
   name: string;
+  /**
+   * ★ 2026-10-07（教师：联系表标签改用「姓名 + 学号」）—— 标签里的那个**尾号**。
+   *
+   * 🔴 它**不是** `Student.studentNo` 的副本：名册装载那一侧已经做过回落
+   * （`analysisLabelNo`），这里拿到的就是**要印在图上**的那个尾号。
+   * `null` = 不加尾号（组）。
+   */
+  labelNo: string | null;
+}
+
+/**
+ * ★ 2026-10-07：一个参与者**要印在联系表 / 文档上的尾号**（`张伟#7` 里那个 `7`）。
+ *
+ * · 有学号 ⇒ 学号。姓名区分度高，学号挡**重名**；
+ * · 学生没有学号 ⇒ **id 末四位**。🔴 不能只留姓名：一个班里两个「张伟」会让模型认错人，
+ *   而那正是这次换标签要消掉的失败（分为此会**静默**贴到另一个人头上）。
+ *   末四位不好看，但它对得起「唯一」这条硬要求；
+ * · 组 ⇒ `null`：组名本身已经是标识（教师取的），加个尾号只会让它更长更难读。
+ *
+ * ⚠️ 判据是「**有没有学生行**」（`isGroup`），不是「有没有组」—— `ClassroomStudent.type`
+ *    历史上可能没跟上（参与者迁移过），而 `student` 关系在不在是事实。
+ */
+export function analysisLabelNo(
+  participant: { participantId: string; studentNo?: string | null },
+  isGroup = false,
+): string | null {
+  const no = typeof participant.studentNo === 'string' ? participant.studentNo.trim() : '';
+  if (no) return no;
+  return isGroup ? null : participant.participantId.slice(-4);
+}
+
+/** 一个参与者在**这一份载荷里**的标签（`张伟#7`）。纯函数。 */
+export function participantLabel(participant: Participant): string {
+  const no = typeof participant.labelNo === 'string' ? participant.labelNo.trim() : '';
+  return no ? `${participant.name}#${no}` : participant.name;
 }
 
 /**
@@ -53,10 +88,13 @@ export interface AnalyzeEntry {
   photoUrl?: string;
   gradeState?: 'correct' | 'partial' | 'incorrect' | null;
   // 🔴 **这里刻意没有 `displayName`。**
-  // 原先有，而它**只写不读**：文档与联系表上的标签都走伪名（`payloadLabels` 按 `studentId` 的
-  // 序派生），真名一次都没被显示过（独立审查 M3）。它却被写进了 `aggregate`，
-  // 于是库里多一份**用不上的真名副本** —— 而将来那道缝若图省事从 `aggregate` 取数发出去，
-  // 真名会跟着走。少一份这种副本，就少一处将来要审的地方。
+  // 原先有，而它**只写不读**：标签由 `payloadLabels` 从**名册**派生（★ 2026-10-07 起；
+  // 在那之前是按 `studentId` 的序派生的伪名），真名一次都没从这个字段显示过（独立审查 M3）。
+  // 它却被写进了 `aggregate`，于是库里多一份**用不上的真名副本** ——
+  // 而将来那道缝若图省事从 `aggregate` 取数发出去，真名会跟着走。少一份这种副本，
+  // 就少一处将来要审的地方。
+  // ⚠️ ★ 2026-10-07 之后**这条理由更强了**：标签本身就是「姓名 + 学号」，
+  //    再往 `aggregate` 里存一份姓名的意义已经为零，而多存一份就多一处要审的地方。
 }
 
 /** 从作答值里认出文字。`text/v1` 是本仓问答题的格式（`WorksheetAnswerValue`）。 */
@@ -371,9 +409,12 @@ function localStatsLine(entries: AnalyzeEntry[]): string {
 /**
  * 文字类的聚合文档。**纯字符串拼装**，发出去的就是它。
  *
- * ⚠️ **上线的一律是伪名**（`labels` 给的），真名绝不进这份文档 —— 它就是将来发给
- * 第三方 AI 的那份东西。`labels` 由调用方给（本函数是纯函数，不生成伪名）；
- * 缺伪名时**回落成参与者 id** 而不是留空：留空的后果是那一整段没有归属。
+ * ⚠️ **上线的是 `labels` 给的标签**。★ 2026-10-07（教师裁定）：标签从「`User_00X` 伪名」
+ * 改成「**姓名 + 学号**」（`张伟#7`）—— 教师明确接受「真名发给第三方」这个代价，
+ * 理由是伪名只差最后一位、模型读图会看串，而看串的后果是**分数静默贴到别人头上**。
+ * （同一次决定的另一半：图里学生自己写的名字也不遮盖，见 `analysis-render.ts`。）
+ * `labels` 由调用方给（本函数是纯函数，不生成标签）；
+ * 缺标签时**回落成参与者 id** 而不是留空：留空的后果是那一整段没有归属。
  *
  * ⚠️ 抬头里的 `covered / total` 是**防假绿**用的：载荷只覆盖了一部分人，
  * 而一份没有分母的名单会被读成「全班就这些人」。零份作答时 `covered` 是 0，
@@ -603,32 +644,66 @@ export interface AnalysisPayload {
 }
 
 /**
- * 按载荷的**格序**生成伪名（`User_001`…）。
+ * 生成标签（`张伟#7`）。
+ *
+ * 🔴 **从名册派生**（★ 2026-10-07 教师裁定），不再按条目下标派生。
+ *   老写法（`User_` + 下标零填充）的失败是**静默**的：模型读图时把 `User_001` /
+ *   `User_002` 看串，分数就贴到另一个人头上 —— 而解析那一侧只要求「标签在名单里」，照收不误。
  *
  * 🔴 **刻意不用全局 `anonymizer`**，两个理由：
  *   ① 它是有状态的单例（`MAX_ENTRIES = 500`，满了或换课堂就重置）——
  *      为一次分析再塞 40 条进去会**加快**它重置，而重置会让**正在进行的一段聊天**
  *      里同一个学生的伪名中途换掉（`anonymizer.ts:7`）；
- *   ② 这里要的语义不同：载荷的伪名只需**在这份载荷内**稳定且可复算
+ *   ② 这里要的语义不同：标签只需**在这份载荷内**稳定且可复算
  *      （同一份 aggregate 重渲必须得到同一组标签），不需要与聊天那边一致。
- * ⇒ 由排序后的下标派生，纯函数、无共享状态。
+ *
+ * ⚠️ **调用方必须喂同一份名册**：重渲（`payloadFromStoredRow`）与新分析两条路径
+ *    都要走 `loadAnalysisParticipants` —— 喂了不同的名册，同一份 `aggregate`
+ *    会渲出两组标签，而图、文档、提示词三处对不上，**没有任何报错**。
  */
-export function payloadLabels(entries: AnalyzeEntry[]): Map<string, string> {
-  return new Map(entries.map((entry, i) => [entry.studentId, `User_${String(i + 1).padStart(3, '0')}`]));
+export function payloadLabels(entries: AnalyzeEntry[], participants: Participant[]): Map<string, string> {
+  const roster = new Map(participants.map((participant) => [participant.participantId, participant]));
+  const used = new Set<string>();
+  const labels = new Map<string, string>();
+  entries.forEach((entry, index) => {
+    const participant = roster.get(entry.studentId);
+    // ⚠️ 名册里没有他（作答行还在、参与者已经退出课堂）⇒ 回落成**老式伪名**。
+    //    回落成真名是**猜**（我们不知道他是谁），留空则那一格没有归属。
+    let label = participant ? participantLabel(participant) : `User_${String(index + 1).padStart(3, '0')}`;
+    /*
+     * 🔴 **标签必须互不相同。** `parseAiAnalysisResult` 按标签把分收回来（`byLabel`），
+     *   两个一样的标签会让**分数静默贴到另一个人头上** —— 那正是这次要修的失败，
+     *   不能在新写法里再开一个同样的口子。
+     * 触发条件很窄但真实：同名的两个学生都没填学号；或名册里没有的那几个人凑出同一下标。
+     */
+    if (used.has(label)) {
+      let n = 2;
+      while (used.has(`${label}-${n}`)) n += 1;
+      label = `${label}-${n}`;
+    }
+    used.add(label);
+    labels.set(entry.studentId, label);
+  });
+  return labels;
 }
 
 /**
  * ★ 组装载荷。**薄编排层，不写判断**（规格 §3.2 的硬要求）：
- * 伪名、形态、文档、排版全调上面那几个纯函数。
+ * 标签、形态、文档、排版全调上面那几个纯函数。
  *
  * `total` 由调用方给 —— 它是「**该题应作答的**参与者数」（高级模式下不是全班人数），
  * 口径在路由那一层（复用 `resolveMaterialTargetId`）；本函数不读库、算不出它。
+ *
+ * ★ 2026-10-07：`participants` 是**必填**的（标签由它派生）。刻意不给默认值 ——
+ *    漏传的后果是标签全回落成老式伪名，而「模型看串格、分贴错人」正是要修的那件事，
+ *    编译期拦住比运行时静默退化好。
  */
 export function buildAnalysisPayload(input: {
   question: QuestionMeta; entries: AnalyzeEntry[]; total: number; knobs: SheetKnobs;
+  participants: Participant[];
 }): AnalysisPayload {
-  const { question, entries, total, knobs } = input;
-  const labels = payloadLabels(entries);
+  const { question, entries, total, knobs, participants } = input;
+  const labels = payloadLabels(entries, participants);
   const payloadKind = payloadKindOf(entries);
   return {
     questionId: question.questionId,

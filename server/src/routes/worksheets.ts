@@ -54,7 +54,7 @@ import {
   analysisQuestionDetails, analysisReferenceAnswer, analysisRubric, hasDrawingStarter,
 } from '../services/analysis-question.js';
 import {
-  KNOBS_SETTING_KEY, buildAnalysisPayload, entriesFromAggregate, entriesToAggregate,
+  KNOBS_SETTING_KEY, analysisLabelNo, buildAnalysisPayload, entriesFromAggregate, entriesToAggregate,
   isAnalysisStale, lastSubmittedAt, layoutSheets, normalizeAnalysisKnobs, payloadLabels, selectAnalyzeEntries,
   type AnalyzeEntry, type Participant, type RawAnswer, type SheetKnobs,
 } from '../services/analysis-payload.js';
@@ -1214,7 +1214,7 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
  * 先取 `ClassroomWorksheet` 里 `createdAt` 最早的那条、再退到组级材料。而同一份学习单
  * 可以被**多个课堂**引用（`ClassroomWorksheet` 的唯一键是 `(classroomId, worksheetId)`，
  * `GET /:id/usage` 专门统计「被 N 个课堂引用」）⇒ 教师在乙班点「分析」，拿到的是**甲班**的
- * covered/total、甲班的答案、甲班的伪名列表；在乙班点「重新生成」会把甲班那份**静默覆盖**。
+ * covered/total、甲班的答案、甲班的标签列表；在乙班点「重新生成」会把甲班那份**静默覆盖**。
  *
  * ⇒ 现在课堂由**请求带入**（`?classroomId=`，前端从矩阵浮层所在的课堂传），这里只做一道
  * 校验：它确实挂在这个班上（课堂级绑定 **或** 该班的组级材料）。不挂 ⇒ 404，
@@ -1287,7 +1287,10 @@ async function loadAnalysisParticipants(
       students: {
         select: {
           id: true, groupId: true,
-          student: { select: { name: true } },
+          // ★ 2026-10-07：`studentNo` 是标签（`张伟#7`）的来源。**漏 select 它**的表现是
+          // 标签**静默退化成「姓名 + id 末四位」** —— 能用，但不是教师填的那个号，
+          // 而屏幕上没有任何东西缺一块。
+          student: { select: { name: true, studentNo: true } },
           group: { select: { name: true } },
         },
       },
@@ -1308,6 +1311,12 @@ async function loadAnalysisParticipants(
       participantId: participant.id,
       // 分组 / 高级模式下这里是**一个组一行参与者**（`type === 'group'`）⇒ 名字优先取组名。
       name: participant.student?.name ?? participant.group?.name ?? '未命名参与者',
+      // ★ 2026-10-07：标签尾号（学号；没有学号的学生回落 id 末四位；组不加尾号）。
+      // 回落规则在 `analysisLabelNo` 里，与它的用例一起管 —— 这里只负责把事实传进去。
+      labelNo: analysisLabelNo(
+        { participantId: participant.id, studentNo: participant.student?.studentNo },
+        participant.student === null,
+      ),
     });
   }
   return participants;
@@ -1351,6 +1360,8 @@ function readClassroomIdQuery(raw: unknown): string | null {
 function payloadFromStoredRow(
   row: { aggregate: unknown; totalCount: number },
   node: QuestionNode, heading: string, scoringUnit: string, knobs: SheetKnobs,
+  /** ★ 2026-10-07：**必须**与生成那次喂同一份名册，否则标签会与图 / 文档对不上（见 `payloadLabels`）。 */
+  participants: Participant[],
 ): ReturnType<typeof buildAnalysisPayload> {
   const meta = analysisQuestionMeta(node, heading, scoringUnit);
   // ⚠️ `total` 取**存下来的** `totalCount`（与 `coveredCount` 同一时刻的口径），不重算 ——
@@ -1360,6 +1371,7 @@ function payloadFromStoredRow(
     entries: entriesFromAggregate(row.aggregate),
     total: row.totalCount,
     knobs,
+    participants,
   });
 }
 
@@ -1395,6 +1407,11 @@ async function payloadResponse(
   classroomId: string,
   worksheetId: string,
   payload: ReturnType<typeof buildAnalysisPayload>,
+  /**
+   * ★ 2026-10-07：名册由调用方给 —— 它**同时**喂给了 `payloadFromStoredRow`（标签的来源），
+   * 两处必须是同一份，否则「第 3 格」与真名对照表会对不上（而两边都不报错）。
+   */
+  participants: Participant[],
   labeled: boolean,
   stale: boolean,
   analysis: { narrative: string | null; perStudent: unknown; agentId: string | null; model: string | null },
@@ -1433,9 +1450,9 @@ async function payloadResponse(
     payload.entries.map((entry) => entry.studentId),
   );
   // 姓名只回给教师端，不写入 aggregate，也不进入发给第三方智能体的 payload/message。
+  // ⚠️ 名册由调用方给（★ 2026-10-07）—— 少查一次，也保证它与标签用的是**同一份**。
   const participantNames = Object.fromEntries(
-    (await loadAnalysisParticipants(prisma, classroomId, worksheetId))
-      .map((participant) => [participant.participantId, participant.name]),
+    participants.map((participant) => [participant.participantId, participant.name]),
   );
   return { ...payload, labeled, stale, ...analysis, perStudent, participantNames, analysisAgent, canSend };
 }
@@ -1455,7 +1472,7 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
     const entries = selectAnalyzeEntries(answers, participants, questionId, target.node);
     const knobs = await loadAnalysisKnobs(prisma);
     const meta = analysisQuestionMeta(target.node, target.heading, target.scoringUnit);
-    const payload = buildAnalysisPayload({ question: meta, entries, total: participants.length, knobs });
+    const payload = buildAnalysisPayload({ question: meta, entries, total: participants.length, knobs, participants });
 
     await prisma.worksheetQuestionAnalysis.upsert({
       where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
@@ -1487,7 +1504,7 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
       where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
       select: { narrative: true, perStudent: true, agentId: true, model: true },
     });
-    res.json(await payloadResponse(prisma, classroomId, worksheetId, payload, await labelsRenderOk(), false,
+    res.json(await payloadResponse(prisma, classroomId, worksheetId, payload, participants, await labelsRenderOk(), false,
       fresh ?? { narrative: null, perStudent: null, agentId: null, model: null }));
   } catch (error) {
     console.error('[worksheets] 生成分析载荷失败:', error);
@@ -1516,8 +1533,12 @@ router.get('/:id/analysis/:questionId', async (req, res) => {
     // 的 stale 用例当场抓住）。
     const answers = await loadAnalysisAnswers(prisma, classroomId, worksheetId);
     const stale = isAnalysisStale(row.computedAt.toISOString(), lastSubmittedAt(answers, questionId));
+    // ★ 2026-10-07：名册要在**构造载荷之前**拿到 —— 标签由它派生（`payloadLabels`），
+    //   而 `payloadResponse` 还要用它做真名对照表。两处**同一份**。
+    const participants = await loadAnalysisParticipants(prisma, classroomId, worksheetId);
     res.json(await payloadResponse(prisma, classroomId, worksheetId,
-      payloadFromStoredRow(row, target.node, target.heading, target.scoringUnit, knobs), await labelsRenderOk(), stale,
+      payloadFromStoredRow(row, target.node, target.heading, target.scoringUnit, knobs, participants),
+      participants, await labelsRenderOk(), stale,
       { narrative: row.narrative, perStudent: row.perStudent, agentId: row.agentId, model: row.model }));
   } catch (error) {
     console.error('[worksheets] 读取分析载荷失败:', error);
@@ -1544,7 +1565,10 @@ router.get('/:id/analysis/:questionId/sheet/:index', async (req, res) => {
 
     const entries: AnalyzeEntry[] = entriesFromAggregate(row.aggregate);
     const knobs = await loadAnalysisKnobs(prisma);
-    const layouts = layoutSheets(entries, payloadLabels(entries), knobs);
+    // ★ 2026-10-07：这里渲出来的图**必须**与载荷上的标签逐字一致 ——
+    //   教师是在图上核对「第 3 格是谁」，而面板上的「第 3 格」读的是载荷里那一份。
+    const participants = await loadAnalysisParticipants(prisma, classroomId, worksheetId);
+    const layouts = layoutSheets(entries, payloadLabels(entries, participants), knobs);
     if (sheetIndex >= layouts.length) return res.status(404).json({ error: '没有这一张' });
 
     // 🔴 **按需渲染**（规格 §3.1 决定 1）：库里只存结构化的 `aggregate`，
@@ -1637,6 +1661,9 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     if (scoped && entries.length === 0) {
       return res.status(400).json({ error: '这几个人不在这次分析的名单里（可能有人的作答已经被清掉了）' });
     }
+    // ★ 2026-10-07：标签由名册派生 ⇒ **必须**与生成那一次喂同一份名册，
+    //   否则教师刚在图上核对过的「第 3 格」会在重发时变成另一个人（静默）。
+    const participants = await loadAnalysisParticipants(prisma, classroomId, worksheetId);
     const payload = buildAnalysisPayload({
       question: analysisQuestionMeta(target.node, target.heading, target.scoringUnit),
       entries,
@@ -1644,6 +1671,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
          模型会去追那 37 个根本不在图里的人。 */
       total: scoped ? entries.length : row.totalCount,
       knobs,
+      participants,
     });
 
     // 第一道闸（界面用的也是它）

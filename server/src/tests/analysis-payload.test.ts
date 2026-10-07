@@ -11,8 +11,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ANSWER_TEXT_MAX, DEFAULT_ANALYSIS_KNOBS, KNOBS_SETTING_KEY, SHEET_GAP, SHEET_LABEL_H,
-  SHEET_MARGIN, buildAnalysisPayload, buildTextDocument, entriesFromAggregate, entriesToAggregate, isAnalysisStale,
-  lastSubmittedAt, layoutSheets, normalizeAnalysisKnobs, payloadKindOf, selectAnalyzeEntries,
+  SHEET_MARGIN, analysisLabelNo, buildAnalysisPayload, buildTextDocument, entriesFromAggregate,
+  entriesToAggregate, isAnalysisStale,
+  lastSubmittedAt, layoutSheets, normalizeAnalysisKnobs, payloadKindOf, payloadLabels, selectAnalyzeEntries,
   type AnalyzeEntry, type Participant, type RawAnswer,
 } from '../services/analysis-payload.js';
 import type { QuestionNode } from '../services/worksheet-questions.js';
@@ -22,10 +23,12 @@ const ink = (strokes: number) => ({
   canvas: { w: 320, h: 240 },
   strokes: Array.from({ length: strokes }, () => ({ points: [[0, 0], [1, 1]], width: 0.01, color: '#111111' })),
 });
+// ★ 2026-10-07：名册多了「标签尾号」（学号）。⚠️ 这些用例考的是**选择**（谁进来），
+//   一个都不看 `labelNo` —— 但它是 `Participant` 的必填字段，缺了编译不过。
 const people: Participant[] = [
-  { participantId: 'p1', name: '张三' },
-  { participantId: 'p2', name: '李四' },
-  { participantId: 'p3', name: '王五' },
+  { participantId: 'p1', name: '张三', labelNo: '1' },
+  { participantId: 'p2', name: '李四', labelNo: '2' },
+  { participantId: 'p3', name: '王五', labelNo: '3' },
 ];
 const row = (participantId: string, status: string, value: unknown): RawAnswer =>
   ({ participantId, questionId: 'q1', status, value });
@@ -156,6 +159,9 @@ test('客观题按题型翻译成语义文本，并把本地判分结果带给�
     entries,
     total: 3,
     knobs: DEFAULT_ANALYSIS_KNOBS,
+    // 名册空着是**刻意**的：这条用例考的是文档结构与本地统计，标签那一层由文件末尾
+    // 那几条新用例管（空名册 ⇒ 标签回落成老式伪名，正是下面断言的那个形状）。
+    participants: [],
   });
   assert.deepEqual(payload.localStats, { correct: 0, partial: 0, incorrect: 1, ungraded: 0 });
   assert.match(payload.text ?? '', /参考答案：B\. 铁生锈/);
@@ -500,4 +506,61 @@ test('🔴 文字的 texts 必须活过这一层（与 shape 同一条：第四�
   ], people, 'q1');
   const badTexts = (bad.ink as { texts?: unknown[] } | undefined)?.texts;
   assert.equal(badTexts?.length ?? 0, 1, '没有 text / 没有 at 的那两段都要丢掉');
+});
+
+/* ── ★ 2026-10-07（教师：联系表标签改用「姓名 + 学号」）────────────────────
+   起因：模型是在**读那张图**辨认「第几格是谁」，而 `User_001` / `User_002` 只差最后一位
+   ⇒ 看串 ⇒ 分会**静默地贴到别人头上**（解析只要求「代号在名单里」，认错也照收）。
+*/
+const ROSTER: Participant[] = [
+  { participantId: 'p1', name: '张伟', labelNo: '7' },
+  { participantId: 'p2', name: '李四', labelNo: '12' },
+];
+
+test('★ 标签是「姓名#学号」', () => {
+  const labels = payloadLabels(
+    [{ studentId: 'p1', kind: 'ink' }, { studentId: 'p2', kind: 'ink' }],
+    ROSTER,
+  );
+  assert.equal(labels.get('p1'), '张伟#7');
+  assert.equal(labels.get('p2'), '李四#12');
+});
+
+test('★ 名册里没有的人回落成老式伪名 —— 不许回落成真名（那是猜）', () => {
+  const labels = payloadLabels([{ studentId: 'pX', kind: 'ink' }], ROSTER);
+  assert.equal(labels.get('pX'), 'User_001');
+});
+
+test('★ 标签撞车必须分开：两个「张伟」都没学号 ⇒ 分会贴错人', () => {
+  const labels = payloadLabels(
+    [{ studentId: 'a', kind: 'ink' }, { studentId: 'b', kind: 'ink' }],
+    [
+      { participantId: 'a', name: '张伟', labelNo: null },
+      { participantId: 'b', name: '张伟', labelNo: null },
+    ],
+  );
+  assert.notEqual(
+    labels.get('a'), labels.get('b'),
+    '两个一样的标签 ⇒ 模型认错人，分会静默贴到另一个人头上（那正是这次要修的失败）',
+  );
+  assert.ok(
+    labels.get('a')!.startsWith('张伟') && labels.get('b')!.startsWith('张伟'),
+    '分开也要看得出是谁',
+  );
+});
+
+test('★ 组参与者：没有尾号 ⇒ 标签就是组名', () => {
+  const labels = payloadLabels(
+    [{ studentId: 'g1', kind: 'ink' }],
+    [{ participantId: 'g1', name: '第一组', labelNo: null }],
+  );
+  assert.equal(labels.get('g1'), '第一组');
+});
+
+test('★ 名册装载那一侧的两种回落：没学号的学生拿 id 末四位，组拿 null', () => {
+  const student = { participantId: 'abcd1234', name: '张伟', studentNo: null };
+  assert.equal(analysisLabelNo(student), '1234', '没学号的学生必须有尾号 —— 重名不是罕见事');
+  assert.equal(analysisLabelNo({ participantId: 'efgh5678', studentNo: null }, true), null, '组名本身就是标识');
+  assert.equal(analysisLabelNo({ ...student, studentNo: '7' }), '7');
+  assert.equal(analysisLabelNo({ ...student, studentNo: '  ' }), '1234', '空白学号等于没填');
 });

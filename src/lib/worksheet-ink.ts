@@ -1059,12 +1059,29 @@ export function downsampleInkValue(value: unknown, budgetChars: number): unknown
     // ★ 2026-09-30 第二轮：**文字原样带着**（抽稀只抽笔画 —— 文字没有「采样点」可抽）。
     //    ⚠️ 少了这一句，预览那一份会**整段丢掉文字**（而学生屏幕上还在）——
     //    正是「预览里看不到、学生那里有」那类静默分叉。
-    const candidate = { format: ink.format, canvas: ink.canvas, strokes, ...(ink.texts ? { texts: ink.texts } : {}) };
+    const candidate = { format: ink.format, canvas: ink.canvas, strokes, ...(ink.texts ? { texts: ink.texts } : {}), ...drawingPart(ink.drawing) };
     if (JSON.stringify(candidate).length <= budgetChars) return candidate;
   }
   // 抽到顶还装不下（几千笔的怪物）⇒ 返回抽到顶的那一份，**不再继续抽**
   //（再抽下去那一笔就只剩两个点了，画出来是一条直线，比不画更误导）。
-  return { format: ink.format, canvas: ink.canvas, strokes, ...(ink.texts ? { texts: ink.texts } : {}) };
+  return { format: ink.format, canvas: ink.canvas, strokes, ...(ink.texts ? { texts: ink.texts } : {}), ...drawingPart(ink.drawing) };
+}
+
+/**
+ * ★ 2026-10-07：**绘图类**（流程图 / 思维导图 / 数学作图 / 自由画）在预览那一份里只留**那张位图**。
+ *
+ * 🔴 原来重建候选值时不带 `drawing` —— 整份（含图）都丢了 ⇒ 看板那一格拿到 `strokes: []`
+ *    又没有 `drawing` ⇒ 画出一片空白，直到 1.5 秒后落库广播把真值换回来。
+ *    学生屏幕上一切正常、两边都不报错（静默分叉），正是这一层最该防的那种错。
+ * ⚠️ 体积几乎全在 `drawing.data` 上（45 个框 ≈ 15 KB，逼近 16 KB 预算），而**那张图的 URL 只有 61 字节**
+ *    ⇒ 预览只带图：教师看到的就是学生刚抓的那张快照（本来就 ≤1 秒旧），比空白强得多，
+ *    也不会把那条 300ms 的通道撑爆。
+ * ⚠️ `data` 必须是**合法形状**：`readDrawingDocument` 要求有 `tool` 且有 `data` 这个键 ⇒ 给一个 `{}`。
+ *    预览**不是存档**（见本函数开头的说明），那个字段没有任何消费方 —— 有图时渲染器直接画图。
+ */
+function drawingPart(drawing: DrawingDocument | undefined): { drawing?: DrawingDocument } {
+  if (!drawing) return {};
+  return { drawing: { tool: drawing.tool, data: {}, ...(drawing.image ? { image: drawing.image } : {}) } };
 }
 
 /**

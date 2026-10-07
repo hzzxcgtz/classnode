@@ -89,6 +89,8 @@ import {
   downsampleInkValue,
 } from './worksheet-ink.ts';
 import type { InkCanvas, InkPoint, InkStroke, InkText, InkValue } from './worksheet-ink.ts';
+/* ⚠️ 它住在另一个模块（作答信封那一份）—— 预览那份 `drawing` 必须过它的形状关。 */
+import { readDrawingDocument } from './worksheet-drawing-document.ts';
 
 // ── 脚手架 ──────────────────────────────────────────────────────────────
 
@@ -1003,4 +1005,49 @@ test('连接控制点：四向实时可见，可宽容命中并吸附到另一�
   const target = snapInkConnectionTarget([0.74, 0.45], strokes, box, 24, 0);
   assert.deepEqual(target, { shapeIndex: 1, anchorIndex: 3, point: [0.65, 0.45] }, '手指进入节点后应自动选最近锨点');
   assert.equal(snapInkConnectionTarget([0.45, 0.1], strokes, box, 24, 0), null, '空白处不应生成悬空连线');
+});
+
+/*
+  ★ 2026-10-07（教师让我核「看板监控学生画流程图」那一轮）：**绘图类的大作答，预览那一份必须留住那张位图**。
+  🔴 原来重建候选值时只写 `{ format, canvas, strokes, texts }` —— **`drawing` 整份丢掉** ⇒
+     看板那一格拿到 `strokes: []`、又没有 `drawing` ⇒ `InkPreview` 走「笔画」那一支 ⇒ **画出一片空白**，
+     直到 1.5 秒后落库广播把真值换回来。学生屏幕上一切正常、两边都不报错（静默分叉）。
+  ⚠️ 这条路真会走到：流程图实测 ~48 个框才超 16 KB 的预算（45 个框 15.1 KB），
+     而另外三块画布（思维导图 / 数学作图 / 自由画）的 `data` 更大、更容易超。
+*/
+test('★ 抽稀：绘图类超预算时，预览那份要留住**那张位图**（原来整份 drawing 被丢掉）', () => {
+  /* ⚠️ id 用**画板真实生成的那种形状**（`node-<时间戳>-<序号>`，二十来个字符）——
+     用短 id 凑不出「超预算」这个前提（45 个短 id 只有 6.5 KB，实测过）。 */
+  const nodes = Array.from({ length: 70 }, (_, index) => ({
+    id: `node-1759812345678-${index}`,
+    type: 'flow',
+    position: { x: 80 + index * 26, y: 70 + index * 26 },
+    measured: { width: 150, height: 54 },
+    data: { label: `第${index}步处理过程`, kind: 'process' },
+  }));
+  const image = '/uploads/chat/chat-3f2a1c9e-8b7d-4e5f-9a1b-2c3d4e5f6a7b.png';
+  const big = {
+    format: 'drawing/v1', canvas: { w: 900, h: 600 }, strokes: [] as InkPoint[],
+    /* ⚠️ 连线要一起给：真实作答里一个框差不多配一条线，它们占掉的字节与框本身相当。 */
+    drawing: {
+      tool: 'flowchart',
+      data: {
+        nodes,
+        edges: nodes.slice(1).map((node, index) => ({
+          id: `e${index}`, source: `node-1759812345678-${index}`, target: node.id,
+          sourceHandle: 'bottom', targetHandle: 'top', type: 'flowEdge',
+        })),
+      },
+      image,
+    },
+  };
+  const before = JSON.stringify(big).length;
+  assert.ok(before > 16384, `前提：这一份要真的超预览预算（实际 ${before}）`);
+
+  const preview = downsampleInkValue(big, 16384);
+  assert.ok(JSON.stringify(preview).length <= 16384, '预览那一份要装得进预算');
+  const ink = readInkValue(preview);
+  assert.ok(ink?.drawing, '预览把整份 drawing 丢了 ⇒ 教师那一格只能画出一片空白');
+  assert.equal(ink.drawing.image, image, '预览里没有那张位图 ⇒ 教师看不到学生画的是什么');
+  assert.ok(readDrawingDocument(ink.drawing), 'drawing 的信封形状不合法 —— 渲染那一侧会把它丢掉');
 });

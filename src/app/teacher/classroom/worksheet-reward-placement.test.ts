@@ -74,6 +74,15 @@ test('🔴 教师端作图预览：有快照就画快照（不许把导图退化
   assert.ok(firstApprox !== -1, '四个近似分支不见了？先确认文件没被大改');
   assert.ok(imageBranch < firstApprox, '快照分支必须排在最前面（否则永远不会生效）');
   assert.match(preview, /worksheetAssetUrl\(props\.document\.image\)/, '快照没有走统一的资源 URL 解析');
+  /*
+   * ★ 2026-10-07（核看板监控那一轮补的）：**光判顺序不够** —— 把那一支的 `return` 改成 `null`
+   * 也照样过，而那等于「教师那格什么都看不到」。这里钉住它**真的画出了一张 `<img>`**。
+   */
+  assert.match(
+    preview.slice(imageBranch, imageBranch + 400),
+    /<img[\s\S]{0,240}?src=\{worksheetAssetUrl\(props\.document\.image\)\}/,
+    '快照那一支没有真的画出 <img> —— 教师那一格会是空的（顺序对不算数）',
+  );
   // 反面对照：这条判据本身能红。
   assert.ok(!stripComments('if (props.document.tool === "math") {} if (x.image) {}').match(/image[\s\S]*math/) === false || true, '');
 });

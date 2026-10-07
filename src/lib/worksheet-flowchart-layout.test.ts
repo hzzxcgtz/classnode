@@ -17,7 +17,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { tidyFlowchart } from './worksheet-flowchart-layout.ts';
+import { alignSnapX, tidyFlowchart } from './worksheet-flowchart-layout.ts';
 
 /** 判据用的最小节点 —— 形状与 React Flow 的 `Node` 在**用到的这几个字段上**一致。 */
 interface TidyTestNode {
@@ -111,4 +111,47 @@ test('整理不动连线上学生自己调过的路由点', () => {
   const routed = { ...edge('a', 'b'), data: { routeX: 42, routeY: 84 } };
   const out = tidyFlowchart(nodes, [routed]);
   assert.deepEqual(out.edges[0].data, { routeX: 42, routeY: 84 }, '路由点是学生手调的，整理不该把它清掉');
+});
+
+/*
+ * ── 拖动结束时的「同列吸附」（★ 2026-10-07 教师，第三次说这件事）──────────────
+ *
+ * 🔴 它治的是**线矫正之后的落点偏差**：线画在 source 的垂线上，而 target 偏一点点 ⇒
+ *    箭头落不到 target 上（贴在斜边）。这时候把框挪过去，落点就正了。
+ * 🔴 门槛**必须与线矫正的完全相同**（`|Δx| ≤ 跨度 × 0.15`）—— 固定阈值（当时是 75px）会出现
+ *    「线还斜着、框却被硬拽」，那就是教师说的「框乱跳」。
+ */
+test('差 30px、上下相距 200px ⇒ 吸（门槛 = max(12, 200×0.15) = 30）', () => {
+  const nodes = [node('a', 100, 0), node('b', 130, 200)];
+  assert.equal(alignSnapX(nodes, [edge('a', 'b')], 'b'), 100, '线会被矫正成正的，落点也得跟着正');
+});
+
+test('同样是 30px，但线只有 80px 长 ⇒ 不吸（门槛只有 12）', () => {
+  const nodes = [node('a', 100, 0), node('b', 130, 80)];
+  assert.equal(
+    alignSnapX(nodes, [edge('a', 'b')], 'b'),
+    null,
+    '短线上偏 30px 已经是个明显的角度了 —— 那时线也不会被矫正，框就不该被拽',
+  );
+});
+
+test('差得太多 ⇒ 不吸（线本来就斜着，硬拽框就是「乱跳」）', () => {
+  const nodes = [node('a', 100, 0), node('b', 260, 200)];
+  assert.equal(alignSnapX(nodes, [edge('a', 'b')], 'b'), null);
+});
+
+test('没有连线的框不吸 —— 这是为了**那条线**的落点，不是「所有框都对齐」', () => {
+  const nodes = [node('a', 100, 0), node('b', 104, 300)];
+  assert.equal(alignSnapX(nodes, [], 'b'), null);
+});
+
+test('吸的是**被拖的那个**，不是邻居 —— 别把已经放好的那个拽走', () => {
+  const nodes = [node('a', 100, 0), node('b', 108, 300)];
+  assert.equal(alignSnapX(nodes, [edge('a', 'b')], 'a'), 108, '拖 a ⇒ a 吸到 b');
+});
+
+test('自环 / 悬空的边不许把它带偏', () => {
+  const nodes = [node('a', 100, 0), node('b', 106, 300)];
+  assert.equal(alignSnapX(nodes, [edge('a', 'a')], 'a'), null);
+  assert.equal(alignSnapX(nodes, [edge('ghost', 'a')], 'a'), null);
 });

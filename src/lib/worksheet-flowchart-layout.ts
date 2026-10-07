@@ -164,3 +164,66 @@ export function tidyFlowchart<N extends TidyNodeLike, E extends TidyEdgeLike>(
 
   return { nodes: nextNodes, edges: nextEdges };
 }
+
+/*
+ * ── 拖动结束时的「同列吸附」（★ 2026-10-07 教师）────────────────────────────
+ *
+ * 教师原话（第三次说这件事，这次才说准）：「会出现如图这种情况……当出现这样的情况时，
+ * 你就可以把上面这个文本框**自动往右边稍微移动一下**，这样就能保证上下对齐了」。
+ *
+ * 🔴 起因是**线已经被矫正成正的**（见 `@/lib/worksheet-flowchart-edge.ts` 的 `FLOW_SNAP_SLOPE`）：
+ *    线画在 source 的垂线上，而 target 偏一点点 ⇒ **箭头落不到 target 上**（贴着斜边）。
+ *    ⇒ 这时候把**框**挪过去，落点就正了。
+ *
+ * 🔴 **阈值必须与线矫正的那一条完全相同**（`|Δx| ≤ 跨度 × 0.15`），否则会出现
+ *    「线明明还斜着、框却被硬拽」—— 那正是 2026-10-07 那次「框乱跳」的成因：
+ *    当时用了固定的 75px，**线还没矫正框就先跳了**。
+ */
+
+/**
+ * 被拖的节点该吸到什么 x；没什么可吸的返回 `null`（调用方据此什么都不做）。
+ *
+ * ✅ 只动**被拖的那个** —— 邻居一个都不碰。
+ * ✅ 只看**有连线相连**的：这是为了让**那条线**正，不是「所有框都对齐」。
+ * ✅ 多个邻居时取**最近**的那一个；自环、另一头不在画布上的边一律跳过。
+ * ✅ 容差**随跨度放大**（与线矫正同一个式子）：短边要求严、长边放宽，
+ *    因为「同样偏 30px」在长线上只是个小角度、在短线上已经很明显了。
+ */
+export function alignSnapX(
+  nodes: readonly TidyNodeLike[],
+  edges: readonly TidyEdgeLike[],
+  movedId: string,
+): number | null {
+  const moved = nodes.find((node) => node.id === movedId);
+  if (!moved) return null;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const movedCenterY = moved.position.y + heightOf(moved) / 2;
+
+  let best: number | null = null;
+  let bestDelta = Number.POSITIVE_INFINITY;
+  for (const edge of edges) {
+    const otherId = edge.source === movedId ? edge.target : edge.target === movedId ? edge.source : null;
+    if (otherId === null || otherId === movedId) continue; // 与它无关的边 / 自环
+    const other = byId.get(otherId);
+    if (!other) continue; // 另一头不在画布上
+    const delta = Math.abs(other.position.x - moved.position.x);
+    // ⚠️ 与线矫正同一个门槛：跨度取两节点的**竖向中心距**（线就是从这儿量出来的）。
+    const otherCenterY = other.position.y + heightOf(other) / 2;
+    const span = Math.abs(otherCenterY - movedCenterY);
+    const limit = Math.max(FLOW_STRAIGHT_SNAP_FOR_LAYOUT, span * FLOW_SNAP_SLOPE_FOR_LAYOUT);
+    if (delta <= limit && delta < bestDelta) {
+      best = other.position.x;
+      bestDelta = delta;
+    }
+  }
+  return best;
+}
+
+/**
+ * 与 `@/lib/worksheet-flowchart-edge.ts` 里那两个数**必须同值**。
+ * 复制而不是 import：那个模块是「怎么画线」，这个是「怎么摆框」，两者不该互相依赖
+ * （而且这一份要能在不 import 任何东西的前提下被纯函数用例加载）。
+ * 🔴 改一个必须改另一个 —— `flowchart-edge.test.ts` 会把两边对起来。
+ */
+export const FLOW_STRAIGHT_SNAP_FOR_LAYOUT = 12;
+export const FLOW_SNAP_SLOPE_FOR_LAYOUT = 0.15;

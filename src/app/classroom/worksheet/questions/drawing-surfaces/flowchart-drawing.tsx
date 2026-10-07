@@ -45,7 +45,7 @@ import {
   type FlowSnapshot,
 } from '@/lib/worksheet-flowchart-history.ts';
 import { flowEdgeGeometry } from '@/lib/worksheet-flowchart-edge.ts';
-import { tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
+import { alignSnapX, tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
 import { flowchartSvg } from '@/lib/worksheet-flowchart-svg.ts';
 import { svgToPngBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 import { normalizePastedText } from '@/lib/worksheet-text-normalize.ts';
@@ -1538,6 +1538,27 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           onEdgesChange={disabled ? undefined : onEdgesChange}
           onConnect={disabled ? undefined : onConnect}
           onReconnect={disabled ? undefined : onReconnect}
+          /*
+           * ★ 2026-10-07（教师，第三次说这件事）：「会出现如图这种情况……把上面这个文本框
+           *   **自动往右边稍微移动一下**，这样就能保证上下对齐了」。
+           *
+           * 🔴 治的是**线矫正之后的落点偏差**：线被画在 source 的垂线上，而 target 偏一点点
+           *    ⇒ 箭头落不到 target 上（贴着斜边）。这时候把**框**挪过去，落点就正了。
+           * 🔴 门槛与线矫正**完全相同**（`alignSnapX` 里算，见它的注释）—— 固定阈值会让
+           *    「线还斜着、框却被硬拽」，那正是教师说的「框乱跳」。
+           * ⚠️ 挂在**结束**而不是拖动中：React Flow 拖动时每帧按「按下位置 + 指针位移」重算，
+           *    我们改掉的 x 它不知道 ⇒ 每帧打架 ⇒ 框乱跳。
+           * ⚠️ 用**函数式** `setNodes`：闭包里的 `nodes` 在拖动期间是旧的。
+           */
+          onNodeDragStop={disabled ? undefined : (_, node) => {
+            setNodes((current) => {
+              const snapped = alignSnapX(current, edges, node.id);
+              if (snapped === null || snapped === node.position.x) return current;
+              return current.map((item) => (
+                item.id === node.id ? { ...item, position: { ...item.position, x: snapped } } : item
+              ));
+            });
+          }}
           onConnectEnd={disabled ? undefined : onConnectEnd}
           // ⚠️ 这里**故意没有** `onNodeDragStart/Stop`：节点拖动的「正在拖」信号读的是节点自己的
           //    `dragging` 字段（详见上面那条变化检测 effect）—— 用回调置标记会在两条 abort 路径上

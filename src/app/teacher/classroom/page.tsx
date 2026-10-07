@@ -2932,7 +2932,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       background: 'white',
                       display: 'flex',
                       flexDirection: 'column',
-                      height: 260,
+                      /* ★ 2026-10-07（教师）：「把学生卡片的高度再做得大一些」—— 上面那块方格阵
+                         也同时改小了（见 `worksheet-tiles.tsx`），两处一起把空间让给下面那块预览。 */
+                      height: 300,
                       transition: 'all 0.15s',
                       boxShadow: isSelected ? '0 4px 16px rgba(var(--primary-focus-rgb), 0.12)' : '0 1px 4px rgba(0,0,0,0.04)',
                       overflow: 'hidden',

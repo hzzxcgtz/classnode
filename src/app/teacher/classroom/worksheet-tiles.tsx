@@ -126,8 +126,13 @@ export function WorksheetTileContent({ state, answer, compact }: {
             {state.kind === 'working' && <WorksheetStatusIcon name="drafting" size={compact ? 14 : 16} />}
             {stateLine(state)}
           </div>
-          {/* 逐题状态方格阵。窄格子会自己换行 —— 题多的学习单只是方块多几行，不会溢出。 */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 3 }}>
+          {/* 逐题状态方格阵。窄格子会自己换行 —— 题多的学习单只是方块多几行，不会溢出。
+              ★ 2026-10-07（教师）：「这一排小色块太大了，再设得小一点……想尽可能地给下面的
+                预览区域留出更大的空间」⇒ 方块 14 → **10**（全屏网格里 11 → **8**）、间距 3 → 2。
+                方块小一圈 ⇒ 一行能多放几个 ⇒ 方格阵**少换一行**，省下来的高度全给下面那块预览
+                （那一块是 `flex: 1`，见文件末尾）。⚠️ 它只是个状态指示（题号与状态在 title 里），
+                不是点击目标 —— 小一点不影响用法。 */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
             {/* ⚠️ 题号取自判据层的 `headings`（与 `cells` 同源），**不在这里现算** ——
                 现算就是又一份真源：第二级任务的第一道题会写着「第 3 题」，而同一屏上
                 抽屉/矩阵/学生端说的是「任务二 · 1」。 */}
@@ -135,7 +140,7 @@ export function WorksheetTileContent({ state, answer, compact }: {
               <span key={index}
                 title={`${state.headings[index]} · ${CELL_STYLE[status].label}`}
                 style={{
-                  width: compact ? 11 : 14, height: compact ? 11 : 14, borderRadius: 3,
+                  width: compact ? 8 : 10, height: compact ? 8 : 10, borderRadius: 2,
                   background: CELL_STYLE[status].background, border: `1px solid ${CELL_STYLE[status].border}`,
                 }} />
             ))}

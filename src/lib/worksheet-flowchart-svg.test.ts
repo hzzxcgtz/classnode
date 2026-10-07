@@ -65,7 +65,13 @@ test('🔴 连线带箭头：marker 定义了、也真的被引用', () => {
   const { svg } = shot(FLOW);
   assert.match(svg, /<marker id="flow-arrow"/, '没有箭头 marker —— 流程图的连线看不出方向');
   assert.match(svg, /marker-end="url\(#flow-arrow\)"/, '连线没有引用箭头');
-  assert.match(svg, /<line x1="140" y1="84" x2="140" y2="160"/, '连线没有按 handle（下→上）落在框边上');
+  /*
+   * ★ 2026-10-07（教师：「快照也一起修了吧」那一轮）：端点要落在**句柄方块的边**上，
+   *   与库（`getEdgePosition` / `getHandlePosition`）和画板**同一个约定** —— 比节点边框再往外 6px。
+   * 🔴 这里原来钉的是 `y1="84" y2="160"`（**边框上的点**）—— 那正是与画板差 6px 的那一版：
+   *   快照里的线比画板上短 6px（两头各 6），而且绕行点的能走范围也差 6px。
+   */
+  assert.match(svg, /<line x1="140" y1="90" x2="140" y2="154"/, '连线没有按 handle（下→上）+ 端点约定落在句柄方块的外边上');
 });
 
 test('🔴 学生写的字要转义（标签会原样进 SVG）', () => {
@@ -307,3 +313,40 @@ test('★ 线标签不依赖 `dominant-baseline`（Safari 15 支持不佳），�
   assert.ok(!/dominant-baseline/.test(labelBlock), '线标签又在用 `dominant-baseline` —— Safari 15 上竖向位置会不可靠');
 });
 
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ★ 2026-10-07（教师：「快照也一起修了吧」）：绕行点必须**与画板同一份规则**
+   ══════════════════════════════════════════════════════════════════════════════ */
+/*
+  🔴 原来这里是 `Number.isFinite(edge.routeX) && Number.isFinite(edge.routeY)`：**两个轴都在**才认。
+     而拖动**只写一个轴**（竖直的边只写 routeY）⇒ 学生拖过的线在快照里**一点都看不出来**
+     —— 画板上是对的、报告里还是老样子，两边都不报错。
+  ✅ 现在两处都走 `flowRoutePoint`（认自由轴、夹进范围、另一个轴补中点）。
+  ⚠️ 判据是**行为**的：快照是纯函数，直接喂数据看它画成什么。端点按句柄方块的外边算（上 46 / 下 194）。
+*/
+const ROUTED = {
+  nodes: [
+    { id: 'a', position: { x: 0, y: 0 }, measured: { width: 100, height: 40 }, data: { label: '上', kind: 'process' } },
+    { id: 'b', position: { x: 200, y: 200 }, measured: { width: 100, height: 40 }, data: { label: '下', kind: 'process' } },
+  ],
+  edges: [],
+};
+const routed = (routeY: number) => [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'bottom', targetHandle: 'top', data: { routeY } }];
+
+test('★ 只写一个轴的绕行点也要画出来', () => {
+  const { svg } = shot({ ...ROUTED, edges: routed(150) });
+  assert.match(
+    svg,
+    /<path d="M 50 46 L 50 150 L 250 150 L 250 194"/,
+    '绕行点没画出来 —— 或者端点又回到「节点边框上的点」了（那会与画板差 6px）',
+  );
+});
+
+test('★ 快照也要把绕行点夹住（与画板同一个范围）', () => {
+  const { svg } = shot({ ...ROUTED, edges: routed(9999) });
+  assert.match(
+    svg,
+    /<path d="M 50 46 L 50 174 L 250 174 L 250 194"/,
+    '越界的绕行点没被夹住 —— 教师那张图的「弧线折返」会在报告里重现，而画板上没有',
+  );
+});

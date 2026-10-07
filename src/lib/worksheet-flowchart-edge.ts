@@ -68,6 +68,52 @@ export interface FlowEdgeGeometryParams {
 /** 注入的库函数 —— 真的用 `getSmoothStepPath`，判据里用假的。 */
 export type SmoothStepFn = (params: FlowEdgeGeometryParams) => [string, number, number];
 
+/**
+ * 句柄那个小方块的**半个边长**。
+ *
+ * 🔴 这个 6 **不是我们定的**：它是 `.flowNode :global(.react-flow__handle)` 的 `12px` 的一半
+ *    （画板把库默认那个小圆点改成了 12×12 的方块）。**换句柄尺寸就得跟着改它** ——
+ *    `flowchart-anchor.test.ts` 有一条判据把样式表里的那个尺寸与它对起来。
+ */
+export const FLOW_HANDLE_HALF = 6;
+
+/** 一个盒子（左上角 + 尺寸）—— 节点在流坐标里的位置与大小。 */
+export interface FlowBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * 节点某一侧上**边真正接到的那一点**（流坐标）—— 与库 `getEdgePosition` / `getHandlePosition`
+ * **同一个约定**。
+ *
+ * 🔴 这是教师 2026-10-07 第二次报障的根因：库给边的端点**不是节点边框上的那个点**，
+ *    而是**句柄那个小方块的边**。库的 `getHandlePosition`（`@xyflow/system` 0.0.82）逐字是：
+ *      `case Top:    return { x: x + width / 2, y };`              // 方块的**上边**
+ *      `case Bottom: return { x: x + width / 2, y: y + height };`
+ *      `case Left:   return { x, y: y + height / 2 };`
+ *      `case Right:  return { x: x + width, y: y + height / 2 };`
+ *    而句柄是**骑在边框上**的（库的 CSS：`top: 0` / `bottom: 0` + `translate(±50%, ±50%)`
+ *    ⇒ 方块的中心正好落在边框线上）⇒ **端点比边框再往外半个方块**（`FLOW_HANDLE_HALF`）。
+ *
+ * 🔴 我们原来按「边框上的点」算，于是与库画出来的那条线**差 6px**。后果**只在两端现形**：
+ *    · 绕行点的**能走范围**（`flowRouteTrack`）比线自己的宽松 6px ⇒ 拖到最两端时，
+ *      控制柄停在「线已经到头」的地方，看着就是**偏出线外一点** ——
+ *      竖直的边上下偏、水平的边左右偏（教师那两句描述正是这两件）；
+ *    · 没拖到尽头时两边都不夹取 ⇒ 一模一样，**看不出来**。
+ * ⚠️ 「一键整理」「交点节点」「吸附半径」「锚点表」全都建在这个函数上 —— 一起跟着准了。
+ */
+export function flowAnchorPoint(box: FlowBox, side: string): { x: number; y: number } {
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  if (side === 'top') return { x: cx, y: box.y - FLOW_HANDLE_HALF };
+  if (side === 'bottom') return { x: cx, y: box.y + box.height + FLOW_HANDLE_HALF };
+  if (side === 'left') return { x: box.x - FLOW_HANDLE_HALF, y: cy };
+  return { x: box.x + box.width + FLOW_HANDLE_HALF, y: cy };
+}
+
 /** 四个句柄的外法线（与库的 `handleDirections` 同一张表）。 */
 const HANDLE_DIRECTIONS: Record<string, { x: number; y: number }> = {
   left: { x: -1, y: 0 },

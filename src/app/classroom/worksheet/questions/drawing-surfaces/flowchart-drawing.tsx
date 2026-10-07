@@ -46,6 +46,7 @@ import {
 } from '@/lib/worksheet-flowchart-history.ts';
 import {
   clampToTrack,
+  flowAnchorPoint,
   flowEdgeGeometry,
   flowRouteTrack,
   type FlowRouteTrack,
@@ -389,24 +390,23 @@ const positionOfHandle = (id: unknown, fallback: Position): Position => (
 );
 
 /**
- * 一个节点上某个句柄的**流坐标** —— 起止点按「句柄在节点那一侧边上**居中**」算（库就是这么摆的）。
+ * 一个节点上某个句柄的**流坐标** —— 就是**库给边的那一点**（见 `flowAnchorPoint`）。
+ *
+ * 🔴 别再自己写「盒子的哪条边、哪个中点」：库的端点约定是**句柄方块的边**，
+ *    比节点边框再往外 6px。差这 6px 的后果是「拖到最两端时控制柄偏出线外一点」
+ *    （教师 2026-10-07 第二次报障，根因写在那条函数的注释里）。
  * ⚠️ 抽成模块级是因为两处要用：锚点表（`edgeFlowAnchors`）与 `onConnectEnd` 的几何兜底。
  *    两份各写一遍必然分叉，而分叉的表现是「吸附算出来的距离整体偏半个节点」这种**不报错**的错。
  * ⚠️ 宽高优先用库量出来的 `measured`（真实尺寸），没量到才退回 150×54 —— 与画布默认值同一档。
  */
-const handleFlowPoint = (node: FlowNode, handleId: unknown, fallback: Position): FlowPoint => {
-  const box = {
+const handleFlowPoint = (node: FlowNode, handleId: unknown, fallback: Position): FlowPoint => (
+  flowAnchorPoint({
     x: node.position.x,
     y: node.position.y,
     width: node.measured?.width ?? 150,
     height: node.measured?.height ?? 54,
-  };
-  const position = positionOfHandle(handleId, fallback);
-  return position === Position.Top ? { x: box.x + box.width / 2, y: box.y }
-    : position === Position.Bottom ? { x: box.x + box.width / 2, y: box.y + box.height }
-      : position === Position.Left ? { x: box.x, y: box.y + box.height / 2 }
-        : { x: box.x + box.width, y: box.y + box.height / 2 };
-};
+  }, positionOfHandle(handleId, fallback))
+);
 
 /** 流程图几何里用的一个点（纯函数之间传参用，省得把 `{ x: number; y: number }` 写两遍）。 */
 type FlowPoint = { x: number; y: number };

@@ -11,8 +11,34 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+/* ⚠️ 相对路径而不是 `@/lib/…`：判据跑在**纯 Node** 下（没有打包器解析别名）。 */
+import { FLOW_HANDLE_HALF } from '../../../../../lib/worksheet-flowchart-edge.ts';
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SOURCE = fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8');
+
+/**
+ * **对拍**：端点往外那半个方块（`FLOW_HANDLE_HALF`）必须等于样式表里句柄尺寸的一半。
+ * 这是本仓的老套路（交点那颗 8px 也是这么对的）：改了一边忘了另一边，当场红。
+ * ⚠️ 认的是 `.flowNode :global(.react-flow__handle)` 那条规则里的 `width` —— 换句柄尺寸就得回来。
+ */
+test('端点外扩量 == 样式表里句柄尺寸的一半（对拍）', () => {
+  const css = fs.readFileSync(path.join(HERE, '..', '..', 'worksheet.module.css'), 'utf8');
+  /*
+   * ⚠️ 必须连 `{` 一起认：`.flowNode :global(.react-flow__handle)` 这串字在**注释里**也出现过
+   *   （交点那段解释「线要接在它的上/下」）—— 只 `indexOf` 那串字会切到一段注释上，
+   *   判据于是在**别人的样式**里读 `width`（施工时实测：读到的是 `8px`）。
+   */
+  const rule = css.match(/\.flowNode :global\(\.react-flow__handle\)\s*\{([\s\S]*?)\}/);
+  assert.ok(rule, '样式表里找不到句柄那条规则 —— 先修这条判据');
+  const width = rule[1].match(/width:\s*(\d+)px/);
+  assert.ok(width, `句柄那条规则里没读到 width（抠出来的是「${rule[1].slice(0, 40)}」）—— 先修这条判据`);
+  assert.equal(
+    Number(width[1]) / 2,
+    FLOW_HANDLE_HALF,
+    '句柄尺寸与 `FLOW_HANDLE_HALF` 对不上了 —— 端点会算错，绕行点的能走范围会与线差半个方块',
+  );
+});
 
 function blockBetween(source: string, startMarker: string, endMarker: string): string {
   const at = source.indexOf(startMarker);

@@ -9,7 +9,12 @@
  * ⚠️ 它是**快照**，只求「教师与 AI 看懂学生画了什么」，不追求与编辑器逐像素一致：
  *    `measured`（React Flow 量出来的真实尺寸）在就照着画，不在就按字数估一个。
  *    字号、配色跟着应用那一套（深浅蓝 + 白底），避免快照长得像另一个产品。
+ * 🔴 **但有两件事必须与画板一字不差**（★ 2026-10-07）：**边端点的约定**（`flowAnchorPoint`）
+ *    与**绕行点的规则**（`flowRoutePoint`）—— 差一点，快照里的线就与画板上那条对不上，
+ *    而这份快照正是教师与 AI 看到的那张图。两处都走同一份纯函数，别在这里再写一遍。
  */
+
+import { flowAnchorPoint, flowRoutePoint } from './worksheet-flowchart-edge.ts';
 
 const COLORS = {
   stroke: '#527198',
@@ -150,17 +155,31 @@ export function readFlowRaster(raw: unknown): { nodes: FlowRasterNode[]; edges: 
   return { nodes, edges };
 }
 
-/** 一边的中点（`handle` 是 React Flow 的方位名：top/right/bottom/left）。 */
-function anchorOf(node: FlowRasterNode, handle: string | null, towards: FlowRasterNode): [number, number] {
-  const cx = node.position.x + node.width / 2;
-  const cy = node.position.y + node.height / 2;
-  const side = handle ?? (Math.abs(towards.position.x - node.position.x) > Math.abs(towards.position.y - node.position.y)
+/**
+ * 一边的**方位**（`handle` 是 React Flow 的方位名：top/right/bottom/left）。
+ * 没给 handle 时按两端相对位置猜（快照是离线重画的，没有库那套句柄信息）。
+ */
+function sideOf(node: FlowRasterNode, handle: string | null, towards: FlowRasterNode): string {
+  return handle ?? (Math.abs(towards.position.x - node.position.x) > Math.abs(towards.position.y - node.position.y)
     ? (towards.position.x > node.position.x ? 'right' : 'left')
     : (towards.position.y > node.position.y ? 'bottom' : 'top'));
-  if (side === 'top') return [cx, node.position.y];
-  if (side === 'bottom') return [cx, node.position.y + node.height];
-  if (side === 'left') return [node.position.x, cy];
-  return [node.position.x + node.width, cy];
+}
+
+/**
+ * 一边的**边端点**（流坐标）。
+ *
+ * 🔴 **与画板同一个约定**：`flowAnchorPoint` —— 库给边的端点落在**句柄方块的边**上，
+ *    比节点边框再往外 6px。快照这边原来按「边框上的点」画 ⇒ 线比画板上**短 6px**（两头各 6），
+ *    而且绕行点的**能走范围**会比画板紧 6px（夹出来的位置两边对不上）。
+ */
+function anchorOf(node: FlowRasterNode, side: string): [number, number] {
+  const point = flowAnchorPoint({
+    x: node.position.x,
+    y: node.position.y,
+    width: node.width,
+    height: node.height,
+  }, side);
+  return [point.x, point.y];
 }
 
 /** 居中折行：按框宽断，最多三行（快照不追求完整排版，超出部分换行截断）。 */
@@ -238,14 +257,35 @@ export function flowchartSvg(raw: unknown): { svg: string; width: number; height
     const source = byId.get(edge.source);
     const target = byId.get(edge.target);
     if (!source || !target) continue;
-    const [x1, y1] = anchorOf(source, edge.sourceHandle, target);
-    const [x2, y2] = anchorOf(target, edge.targetHandle, source);
-    const hasRoute = Number.isFinite(edge.routeX) && Number.isFinite(edge.routeY);
-    const routeX = hasRoute ? edge.routeX as number : (x1 + x2) / 2;
-    const routeY = hasRoute ? edge.routeY as number : (y1 + y2) / 2;
-    if (hasRoute) {
-      const sourceVertical = edge.sourceHandle === 'top' || edge.sourceHandle === 'bottom';
-      const targetVertical = edge.targetHandle === 'top' || edge.targetHandle === 'bottom';
+    const sourceSide = sideOf(source, edge.sourceHandle, target);
+    const targetSide = sideOf(target, edge.targetHandle, source);
+    const [x1, y1] = anchorOf(source, sourceSide);
+    const [x2, y2] = anchorOf(target, targetSide);
+    /*
+      ★ 2026-10-07（教师：「快照也一起修了吧」）：绕行点交给 `flowRoutePoint` —— **与画板同一份规则**。
+      🔴 原来这里是 `Number.isFinite(routeX) && Number.isFinite(routeY)`：**两个轴都在**才认。
+         而拖动**只写一个轴**（竖直的边只写 routeY）⇒ 学生拖过的线在快照里**一点都看不出来**
+         （画板上是对的，报告里还是老样子）—— 同一类根因，另一个面。
+      ✅ 现在：认哪条轴、夹到哪儿、另一个轴补中点，全由那一个函数定 ——
+         与画板算出来的绕行点**逐字一致**（夹取范围也一样，因为端点用的是同一个约定）。
+    */
+    const route = flowRoutePoint({
+      sourceX: x1, sourceY: y1, sourcePosition: sourceSide,
+      targetX: x2, targetY: y2, targetPosition: targetSide,
+      /* ⚠️ 两个轴都要**原样喂进去**（`readFlowRaster` 给的是 `number | null`）——
+         认哪条轴由 `flowRoutePoint` 判，我们不在这里挑。忘了喂 = 绕行点静默失效。 */
+      ...(edge.routeX === null ? {} : { centerX: edge.routeX }),
+      ...(edge.routeY === null ? {} : { centerY: edge.routeY }),
+    });
+    const routeX = route ? route.x : (x1 + x2) / 2;
+    const routeY = route ? route.y : (y1 + y2) / 2;
+    const sourceVertical = sourceSide === 'top' || sourceSide === 'bottom';
+    const targetVertical = targetSide === 'top' || targetSide === 'bottom';
+    if (route) {
+      /*
+       * ⚠️ 拐角的两条公式**照旧**（按两端句柄的方位各取一个坐标）—— 它本来就是对的：
+       *    竖着进出的边，中段是横的（`y = routeY`）；横着进出的，中段是竖的（`x = routeX`）。
+       */
       const first: [number, number] = sourceVertical ? [x1, routeY] : [routeX, y1];
       const second: [number, number] = targetVertical ? [x2, routeY] : [routeX, y2];
       parts.push(`<path d="M ${x1} ${y1} L ${first[0]} ${first[1]} L ${second[0]} ${second[1]} L ${x2} ${y2}" `

@@ -1552,8 +1552,17 @@ test('★ 2026-10-06（教师截图）：删除浮层用**终点**锚点，就�
   assert.notEqual(endFnAt, -1, `句柄点函数 ${endPoint[2]} 没找到 —— 先修这条判据`);
   const endFnBody = live.slice(endFnAt, live.indexOf('\n};', endFnAt));
   assert.ok(endFnBody.length > 80, `句柄点函数 ${endPoint[2]} 没抠出来 —— 先修这条判据，别让它在空串上全绿`);
-  assert.match(endFnBody, /y: node\.position\.y/, `句柄点函数 ${endPoint[2]} 的盒子不是从 node.position 来的`);
-  assert.match(endFnBody, /box\.y \+ box\.height/, `句柄点函数 ${endPoint[2]} 没有把下侧的句柄点算在节点下边缘上`);
+  assert.match(endFnBody, /x: node\.position\.x/, `句柄点函数 ${endPoint[2]} 的盒子不是从 node.position 来的`);
+  /*
+   * ★ 2026-10-07（教师第二次报障）：「端点在哪」这件事**交给 `flowAnchorPoint`** ——
+   *   它与库的 `getEdgePosition` / `getHandlePosition` 同一个约定（落点在**句柄方块的边**上，
+   *   比节点边框再往外 6px）。**行为**由那条纯函数的用例守（`worksheet-flowchart-edge.test.ts`），
+   *   这里只钉「画板没有再自己写一遍」—— 两份必然分叉，而分叉的表现是
+   *   「拖到最两端时控制柄偏出线外一点」这种**不报错**的错。
+   * 🔴 上一版这里钉的是「下侧的句柄点落在 `box.y + box.height`」—— **那正是错的那一版**：
+   *   按边框算 ⇒ 绕行点的能走范围比库画出来的那条线宽 6px ⇒ 到头了控制柄还在动。
+   */
+  assert.match(endFnBody, /flowAnchorPoint\(/, `句柄点函数 ${endPoint[2]} 没有走那个与库同约定的纯函数（自己在算端点）`);
   assert.match(anchorsBody, new RegExp(`endX: ${endPoint[1]}\\.x`), '两个锚点没有从中点/终点分别给出（终点 x）');
   assert.match(anchorsBody, new RegExp(`endY: ${endPoint[1]}\\.y`), '两个锚点没有从中点/终点分别给出（终点 y）');
   // ★ 2026-10-06（教师认可的第一条偏移）：删除按钮要往 **source** 退 ⇒ 锚点表必须多吐起点。

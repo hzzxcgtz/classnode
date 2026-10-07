@@ -25,7 +25,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  FLOW_HANDLE_HALF,
   FLOW_STRAIGHT_SNAP,
+  flowAnchorPoint,
   flowEdgeGeometry,
   flowRoutePoint,
   flowRouteTrack,
@@ -203,4 +205,42 @@ test('范围里就照原样走 —— 别顺手往里缩', () => {
 
 test('没拖过（两个轴都没有）⇒ 没有绕行点，一切照旧', () => {
   assert.equal(flowRoutePoint(base), null, '别凭空造一个绕行点出来 —— 那会把直线的判断也顶掉');
+});
+
+/*
+  ======================= 边端点的**约定**：与库同一个（教师第二次报障的根因） =======================
+
+  🔴 库给边的端点**不是节点边框上的点**，而是**句柄那个小方块的边**：
+     `getHandlePosition` 里 `Top` 直接取 `handle.y`（方块的上边）、`Bottom` 取 `handle.y + height`……
+     而句柄是**骑在边框上**的 ⇒ 端点比边框再往外**半个方块**（6px）。
+  🔴 我们原来按「边框上的点」算 ⇒ 与库画的那条线差 6px。**后果只在两端现形**：
+     绕行点的能走范围因此比线自己的宽 6px ⇒ 拖到最两端时控制柄还在动、看着**偏出线外一点**
+     （竖直的边上下偏、水平的边左右偏）。这两条用例把那个约定逐面钉住。
+*/
+test('端点约定：上/下/左/右四侧都落在**句柄方块的外边**（比节点边框再出去半个方块）', () => {
+  const box = { x: 100, y: 200, width: 150, height: 54 };
+  assert.deepEqual(flowAnchorPoint(box, 'top'), { x: 175, y: 200 - FLOW_HANDLE_HALF }, '上侧：y 在边框**上方**半个方块');
+  assert.deepEqual(flowAnchorPoint(box, 'bottom'), { x: 175, y: 254 + FLOW_HANDLE_HALF }, '下侧：y 在边框**下方**半个方块');
+  assert.deepEqual(flowAnchorPoint(box, 'left'), { x: 100 - FLOW_HANDLE_HALF, y: 227 }, '左侧：x 在边框**左方**半个方块');
+  assert.deepEqual(flowAnchorPoint(box, 'right'), { x: 250 + FLOW_HANDLE_HALF, y: 227 }, '右侧：x 在边框**右方**半个方块');
+});
+
+test('端点约定直接决定「能走多远」—— 按边框算就会多出那半个方块', () => {
+  /*
+   * 一条竖直的边：源框（边框底边 y=54）的**下侧**句柄 → 目标框（边框顶边 y=246）的**上侧**句柄。
+   * 端点各往外 6px ⇒ 留白之后的范围随之收紧 6px。
+   */
+  const source = flowAnchorPoint({ x: 100, y: 0, width: 150, height: 54 }, 'bottom');
+  const target = flowAnchorPoint({ x: 100, y: 246, width: 150, height: 54 }, 'top');
+  const ends = { sourcePosition: 'bottom', targetPosition: 'top' } as const;
+  const track = flowRouteTrack({ ...ends, sourceX: source.x, sourceY: source.y, targetX: target.x, targetY: target.y });
+  assert.deepEqual(track, { axis: 'y', min: 80, max: 220 }, '60+20 与 240-20');
+  // 反面对照：按**边框上的点**算（= 老的那一版）—— 上下各宽 6px，正是「到头了还在动」的那一点。
+  const borderTrack = flowRouteTrack({ ...ends, sourceX: 175, sourceY: 54, targetX: 175, targetY: 246 });
+  assert.deepEqual(borderTrack, { axis: 'y', min: 74, max: 226 });
+  assert.equal(
+    borderTrack.max - track.max,
+    FLOW_HANDLE_HALF,
+    '差的正是那半个方块 —— 这就是教师看到的「拖到最两端时控制柄偏出线外一点」',
+  );
 });

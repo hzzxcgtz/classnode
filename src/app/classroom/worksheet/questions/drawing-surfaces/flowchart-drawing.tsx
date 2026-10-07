@@ -57,6 +57,7 @@ import {
   type SmoothStepFn,
 } from '@/lib/worksheet-flowchart-edge.ts';
 import { tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
+import { flowNodeCornerPoint } from '@/lib/worksheet-flowchart-node.ts';
 import { flowchartSvg } from '@/lib/worksheet-flowchart-svg.ts';
 import { svgToPngBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 import { normalizePastedText } from '@/lib/worksheet-text-normalize.ts';
@@ -1651,7 +1652,20 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   const nodeFloatAnchor = (nodeId: string) => {
     const node = nodes.find((item) => item.id === nodeId);
     if (!node) return null;
-    const point = { x: node.position.x, y: node.position.y };
+    /*
+     * ★ 2026-10-07（教师，四张图）：删除按钮要压在**每种形状自己的左上那一点**上。
+     * 🔴 这里原来一律取**外接框的左上角** —— 而那个角只有矩形落在轮廓上：
+     *    菱形那个角在图形外面一大截、平行四边形的上边被 skew 推走了、胶囊的角在圆弧外
+     *    （教师 2026-10-06 就说过「切记**要压在图形的线条上**」）。
+     * ⚠️ 挑点这件事挪进了纯函数（`flowNodeCornerPoint`）—— 那里有一条判据**逐形状验
+     *    「这个点在不在轮廓上」**（验轮廓，不验坐标数字）。
+     */
+    const point = flowNodeCornerPoint({
+      x: node.position.x,
+      y: node.position.y,
+      width: node.measured?.width ?? 150,
+      height: node.measured?.height ?? 54,
+    }, String(node.data?.kind ?? 'process'));
     return { x: viewport.x + point.x * viewport.zoom, y: viewport.y + point.y * viewport.zoom };
   };
 

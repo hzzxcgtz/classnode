@@ -2812,6 +2812,19 @@
 */
 .flowNode_junction :global(.react-flow__handle) { opacity: 0; }
 
+/*
+  ★ 2026-10-07（教师）：「平行四边形选中以后的四个控制句柄**不能变形**」。
+  🔴 根因：`.flowNode_io` 自己挂着 `skew(-10deg)`，句柄是它的**子元素** ⇒ 一起被斜切成了小菱形。
+     上面 `.flowNode_io input` / `.flowNodeLabel` 早就加了反向 `skew(10deg)`，**句柄被漏了**。
+  ⚠️ 反向斜切必须**接在库那套定位 translate 的后面**（四侧的 translate 各不相同：top/bottom 在 x 上
+     居中、left/right 在 y 上居中）—— 只写 `skew(10deg)` 会把四个句柄全挪到框中央去。
+  ⚠️ 位置要紧：这四条必须排在 `.flowNode :global(.react-flow__handle)` **之后**（同特异性下后写的才赢）。
+*/
+.flowNode_io :global(.react-flow__handle-top) { transform: translate(-50%, -50%) skew(10deg); }
+.flowNode_io :global(.react-flow__handle-bottom) { transform: translate(-50%, 50%) skew(10deg); }
+.flowNode_io :global(.react-flow__handle-left) { transform: translate(-50%, -50%) skew(10deg); }
+.flowNode_io :global(.react-flow__handle-right) { transform: translate(50%, -50%) skew(10deg); }
+
 @media (max-width: 720px) {
   .thirdPartyCanvas { min-height: 430px; }
   .drawingToolbarHint { flex-basis: 100%; }

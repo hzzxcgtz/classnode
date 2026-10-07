@@ -1460,10 +1460,15 @@ test('★ 2026-10-06（教师）：选中一个图形 ⇒ 浮出删除按钮，�
   const anchorsBody = anchorAt === -1 ? '' : live.slice(anchorAt, anchorEnd === -1 ? undefined : anchorEnd);
   assert.ok(anchorsBody.length > 40, '节点锚点没抠出来 —— 先修这条判据，别让它在空串上全绿');
   /*
-   * ⚠️ 正则**必须以 `}` 收尾**：写成 `y: node\.position\.y` 的话，`y: node.position.y - 28`
-   *   这种「退回框上方」的写法**也照样匹配**（它只是前缀）—— 变异实测抓到过这一点。
+   * ★ 2026-10-07（教师，四张图）：锚点**不再是「外接框的左上角」**了 —— 那个角只有**矩形**
+   *   落在轮廓上（菱形那个角在图形外面一大截、平行四边形的上边被 skew 推走、胶囊的角在圆弧外）。
+   *   挑点挪进了纯函数 `flowNodeCornerPoint`；**逐形状验「点在不在轮廓上」**的判据在
+   *   `src/lib/worksheet-flowchart-node.test.ts`（那边验轮廓、不验坐标数字）。
+   * ⚠️ 这里只钉**接线**：锚点是那个纯函数按**节点自己的盒子**算出来的。
    */
-  assert.match(anchorsBody, /x: node\.position\.x, y: node\.position\.y\s*\}/, '锚点没有落在左上角顶点上（要压住框的两条线）');
+  assert.match(anchorsBody, /flowNodeCornerPoint\(/, '锚点没有走「按形状挑左上那一点」的纯函数（又回到外接框的角了）');
+  assert.match(anchorsBody, /x: node\.position\.x,/, '锚点的盒子不是从 node.position 来的');
+  assert.match(anchorsBody, /node\.measured\?\.width/, '锚点的尺寸没有用库量出来的 measured（形状会挑错）');
   assert.ok(!/NODE_FLOAT_GAP/.test(anchorsBody), '锚点又退到框上方去了 —— 教师要求的是左上角');
   assert.match(anchorsBody, /viewport\.x \+ [\w.]+ \* viewport\.zoom/, '锚点没有做横向视口换算（浮层会飘）');
   assert.match(anchorsBody, /viewport\.y \+ [\w.]+ \* viewport\.zoom/, '锚点没有做纵向视口换算（浮层会飘）');

@@ -88,6 +88,26 @@ export function hasDrawingStarter(node: QuestionNode): boolean {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
   const row = raw as Record<string, unknown>;
   if (!DRAWING_STARTER_TOOLS.includes(row.tool as string)) return false;
+  /*
+   * 🔴 ★ 2026-10-07（审计抓到）：**底稿的画板工具必须与题目当前的画板一致。**
+   *
+   * 真事：教师端那个「初始图」开关对**所有**绘图题都渲染，打开时**无条件**写一份
+   * **流程图**底稿（`bodies/drawing-settings.tsx` 的 `selectTool` 也不清它）⇒
+   * 在思维导图题上翻一下开关，题目数据里就留下一份流程图的底稿标记。
+   * 而学生端的思维导图画板**根本不接底稿** ⇒ 快照里不可能有底稿 ⇒
+   * 那句「本题的图里有教师预先给出的初始图……不要把初始图当作学生的成果」
+   * 会让模型把学生自己搭的**整张**导图当成教师给的 —— **分给低了，而两边都不报错**。
+   *
+   * ⚠️ **刻意不抄**前端 `readDrawingTool` 那条 `drawingExtensions` 历史回落：
+   *    初始图是 2026-10-06 才有的功能，而 `drawingExtensions` 那套格式更早就没人写了
+   *   （全仓只有 `selectTool` 在**清**它、加一个读取函数在读它）⇒
+   *    **任何带着 `drawingStarter` 的题目一定来自新版编辑器，也就一定有 `drawingTool`**。
+   *    抄一份回落等于在服务端再养一份会漂的拷贝 —— 本仓反复防的就是那个。
+   * ⚠️ 题目没写 `drawingTool` ⇒ 画布是默认那一档（`free`），它也不接底稿 ⇒ 不许说。
+   *    这是**宁可漏说**的一侧（与这个函数一贯的方向一致）：漏说 = 模型把底稿算成学生的成果；
+   *    多说 = 模型把**学生的成果**算成底稿 —— 后者更坏。
+   */
+  if (node.data.drawingTool !== row.tool) return false;
   return !!row.data && typeof row.data === 'object';
 }
 

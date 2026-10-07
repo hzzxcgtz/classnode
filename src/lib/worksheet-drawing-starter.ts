@@ -48,6 +48,17 @@ export function readDrawingStarter(node: { type?: string; data?: Record<string, 
   const tool = row.tool;
   if (tool !== 'flowchart' && tool !== 'mind-map' && tool !== 'math' && tool !== 'free') return null;
   if (!row.data || typeof row.data !== 'object') return null;
+  /*
+   * 🔴 ★ 2026-10-07（审计抓到的「串档」）：**底稿的画板必须与题目当前的画板一致。**
+   *
+   * 教师端那个「初始图」开关对**所有**绘图题都渲染，打开时**无条件**写一份**流程图**底稿，
+   * 而切换画板工具时**不清它** ⇒ 思维导图题上可以挂着一份流程图的底稿。
+   * 学生端的导图画板**根本不接底稿**（`mindmap-drawing.tsx` 的解构里没有 `starter`）——
+   * 读出来只会在下游造出「有底稿」的假象（服务端据此给模型加一句
+   * 「不要把初始图当作学生的成果」，而那张图里根本没有底稿）。
+   * ⚠️ 与服务端 `hasDrawingStarter` **同一条尺子**，两边必须逐条对得上。
+   */
+  if (node.data?.drawingTool !== tool) return null;
   return { tool, data: row.data };
 }
 

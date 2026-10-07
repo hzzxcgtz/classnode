@@ -37,7 +37,8 @@ const pick = <T extends { id: string }>(items: T[], id: string): T => {
 
 test('阳性对照：读得出底稿、认得出「没有底稿」，且**不再回 locked**（旧字段一个字都不读）', () => {
   const starter = { tool: 'flowchart', data: { nodes: [node('a')], edges: [] } };
-  const read = (data: Record<string, unknown>) => readDrawingStarter({ type: 'drawing', data });
+  // ★ 2026-10-07：题目的 `drawingTool` 必须与底稿的 `tool` 一致（见下面那条用例）。
+  const read = (data: Record<string, unknown>) => readDrawingStarter({ type: 'drawing', data: { drawingTool: 'flowchart', ...data } });
   // ★ 「锁定初始图」撤掉之后，读出来的东西**只有 tool + data** 两个键（`locked` 这个键不存在）。
   assert.deepEqual(read({ drawingStarter: starter }), starter);
   assert.deepEqual(Object.keys(read({ drawingStarter: starter }) ?? {}), ['tool', 'data'],
@@ -47,12 +48,14 @@ test('阳性对照：读得出底稿、认得出「没有底稿」，且**不再
   assert.equal(read({ drawingStarter: { tool: 'nope', data: {} } }), null);
   assert.equal(read({ drawingStarter: { tool: 'flowchart' } }), null);
   assert.equal(readDrawingStarter({ type: 'single-choice', data: { drawingStarter: starter } }), null);
+  // ⚠️ 下面那条「串档」用例管的是另一半：画板与底稿不是同一档。
 });
 
 test('★ 2026-10-06（教师最终拍板）：旧字段 `drawingStarterLocked` 一律忽略 —— 任何取值读出来都一样', () => {
   const data = { nodes: [node('t1'), node('t2')], edges: [edge('e1', 't1', 't2')] };
   const read = (locked: unknown) => readDrawingStarter({
-    type: 'drawing', data: { drawingStarter: { tool: 'flowchart', data }, drawingStarterLocked: locked },
+    type: 'drawing',
+    data: { drawingTool: 'flowchart', drawingStarter: { tool: 'flowchart', data }, drawingStarterLocked: locked },
   });
   // ① 读出来的形状**逐字**等于「不带那个字段」的那一份：`true` / `false` / 乱值 / 缺席，四种都一样。
   for (const value of [true, false, 'nope', undefined]) {
@@ -211,4 +214,27 @@ test('★ 快照没到时的兜底：底稿要画出来、菱形要是菱形（�
   }));
   assert.ok(withMine.includes('我加的框'), '学生自己画的那份也要合进来（底稿 + 他画的）');
   assert.ok(withMine.includes('判断条件'), '合上之后底稿仍然要在');
+});
+
+/*
+  ★ 2026-10-07（审计抓到的「串档」）—— 与**服务端**同一条尺子：
+  底稿的画板工具必须与**题目当前**的画板一致。
+  🔴 为什么两边都要：服务端据此决定提示词要不要说「图里有教师的初始图」，
+  而两边口径不一致时，一边说、一边不说 —— 那正是这个判据要防的
+  （服务端那条用例的抬头写着「与前端 `readDrawingStarter` 同一把尺子」，那句话必须是真的）。
+*/
+test('🔴 底稿的画板必须与题目当前的画板一致（串档 ⇒ 学生端根本不显示它）', () => {
+  const starter = { tool: 'flowchart', data: { nodes: [node('a')], edges: [] } };
+  assert.deepEqual(
+    readDrawingStarter({ type: 'drawing', data: { drawingTool: 'flowchart', drawingStarter: starter } }),
+    starter, '工具一致 ⇒ 正常读出来（正常情形，别把这条也一起挡掉）',
+  );
+  assert.equal(
+    readDrawingStarter({ type: 'drawing', data: { drawingTool: 'mind-map', drawingStarter: starter } }), null,
+    '题目的画板是思维导图、底稿却是流程图的 —— 导图画板不接底稿，读出来只会让下游以为有底稿',
+  );
+  assert.equal(
+    readDrawingStarter({ type: 'drawing', data: { drawingStarter: starter } }), null,
+    '题目没写 drawingTool ⇒ 画布不是流程图 ⇒ 那份流程图底稿不会被显示',
+  );
 });

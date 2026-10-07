@@ -146,22 +146,26 @@ test('★ 绘图题的「初始图」判据：与前端 `readDrawingStarter` 同
   //   服务端**收紧** ⇒ 该说的那句没说，模型把教师画的那半张算成学生的成果。
   // 两种都不报错，所以形状必须逐条对拍前端 `src/lib/worksheet-drawing-starter.ts` 的判据。
   const starter = { tool: 'flowchart', data: { nodes: [], edges: [] } };
-  assert.equal(hasDrawingStarter(node('drawing', { drawingStarter: starter })), true, '合法的 { tool, data } 就是有初始图');
+  // ★ 2026-10-07：题目的 `drawingTool` 必须与信封里的 `tool` **一致**（见下面那条用例）。
+  assert.equal(
+    hasDrawingStarter(node('drawing', { drawingTool: 'flowchart', drawingStarter: starter })), true,
+    '合法的 { tool, data } 且工具一致 ⇒ 有初始图',
+  );
   for (const tool of ['flowchart', 'mind-map', 'math', 'free']) {
     assert.equal(
-      hasDrawingStarter(node('drawing', { drawingStarter: { tool, data: {} } })), true,
-      `「${tool}」是认得出的画板工具（前端 DRAWING_TOOLS 那一档）`,
+      hasDrawingStarter(node('drawing', { drawingTool: tool, drawingStarter: { tool, data: {} } })), true,
+      `「${tool}」是认得出的画板工具（前端 DRAWING_TOOLS 那一档），且与题目当前工具一致`,
     );
   }
   // 认不出的形状一律当「没有初始图」—— 与前端回 null 的那些分支一一对应。
   assert.equal(hasDrawingStarter(node('drawing', {})), false, '没设过 ⇒ 没有初始图');
-  assert.equal(hasDrawingStarter(node('drawing', { drawingStarter: null })), false);
-  assert.equal(hasDrawingStarter(node('drawing', { drawingStarter: 'flowchart' })), false, '字符串不是那个形状');
-  assert.equal(hasDrawingStarter(node('drawing', { drawingStarter: [starter] })), false, '数组不是那个形状');
-  assert.equal(hasDrawingStarter(node('drawing', { drawingStarter: { tool: 'flowchart' } })), false, '缺 data ⇒ 前端也读不出来');
-  assert.equal(hasDrawingStarter(node('drawing', { drawingStarter: { data: {} } })), false, '缺 tool ⇒ 前端也读不出来');
+  assert.equal(hasDrawingStarter(node('drawing', { drawingTool: 'flowchart', drawingStarter: null })), false);
+  assert.equal(hasDrawingStarter(node('drawing', { drawingTool: 'flowchart', drawingStarter: 'flowchart' })), false, '字符串不是那个形状');
+  assert.equal(hasDrawingStarter(node('drawing', { drawingTool: 'flowchart', drawingStarter: [starter] })), false, '数组不是那个形状');
+  assert.equal(hasDrawingStarter(node('drawing', { drawingTool: 'flowchart', drawingStarter: { tool: 'flowchart' } })), false, '缺 data ⇒ 前端也读不出来');
+  assert.equal(hasDrawingStarter(node('drawing', { drawingTool: 'flowchart', drawingStarter: { data: {} } })), false, '缺 tool ⇒ 前端也读不出来');
   assert.equal(
-    hasDrawingStarter(node('drawing', { drawingStarter: { tool: 'nope', data: {} } })), false,
+    hasDrawingStarter(node('drawing', { drawingTool: 'nope', drawingStarter: { tool: 'nope', data: {} } })), false,
     '认不出的工具（手改过的数据、将来新增的工具）不算 —— 前端也不认它',
   );
 });
@@ -175,4 +179,40 @@ test('🔴 「初始图」只在**绘图题**上考虑：别的题型挂着同�
   for (const type of ['single-choice', 'short-answer', 'fill-blank', 'task'] as const) {
     assert.equal(hasDrawingStarter(node(type, { drawingStarter: starter })), false, `${type} 不是绘图题，不许认这个字段`);
   }
+});
+
+test('🔴 底稿的画板工具必须与**题目当前**的画板一致（串档 ⇒ 提示词会说一句假话）', () => {
+  /*
+    真事（2026-10-07 审计抓到）：教师端那个「初始图」开关对**所有**绘图题都渲染，
+    打开时**无条件**写一份**流程图**底稿；而切换画板工具的函数**不清它**。
+    ⇒ 在思维导图题上翻一下开关（面板只会多一句「目前只支持流程图」），或先给流程图题设好底稿
+    再把工具切成思维导图，题目数据里就留下一份**流程图的**底稿标记。
+
+    🔴 而学生端的思维导图画板**根本不接底稿**（`mindmap-drawing.tsx` 的解构里没有 `starter`）
+    ⇒ 快照里不可能有底稿 ⇒ 那句「本题的图里有教师预先给出的初始图……不要把初始图当作学生的成果」
+    会让模型把学生自己搭的**整张**导图当成教师给的，**分给低了，而两边都不报错**。
+  */
+  const starter = { tool: 'flowchart', data: { nodes: [], edges: [] } };
+  assert.equal(
+    hasDrawingStarter(node('drawing', { drawingTool: 'flowchart', drawingStarter: starter })), true,
+    '工具一致 ⇒ 有初始图（正常情形，别把这条也一起挡掉）',
+  );
+  assert.equal(
+    hasDrawingStarter(node('drawing', { drawingTool: 'mind-map', drawingStarter: starter })), false,
+    '题目的画板是思维导图、底稿却是流程图的 ⇒ 学生端不会显示它，提示词不许说「有初始图」',
+  );
+  // 题目没写 `drawingTool` ⇒ 画布是默认那一档（`free`），而 `free` 也不接底稿 ⇒ 同样不许说。
+  // ⚠️ 这是**宁可漏说**的一侧（与这个函数一贯的方向一致）：漏说的代价是模型把底稿算成学生的成果，
+  //    多说的代价是模型把学生的成果算成底稿 —— 后者更坏（学生的努力被抹掉）。
+  assert.equal(
+    hasDrawingStarter(node('drawing', { drawingStarter: starter })), false,
+    '没写 drawingTool ⇒ 画布不是流程图 ⇒ 那份流程图底稿不会被显示',
+  );
+  /*
+    ⚠️ 这里**刻意不抄**前端 `readDrawingTool` 那条 `drawingExtensions` 历史回落：
+    初始图是 2026-10-06 才有的功能，而 `drawingExtensions` 那套格式更早就没人写了
+    （全仓只有 `selectTool` 在**清**它、和那一个读取函数在读它）⇒
+    **任何带着 `drawingStarter` 的题目一定来自新版编辑器，也就一定有 `drawingTool`**。
+    抄一份回落等于在服务端再养一份会漂的拷贝 —— 本仓反复防的就是那个。
+  */
 });

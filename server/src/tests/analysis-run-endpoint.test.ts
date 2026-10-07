@@ -462,11 +462,20 @@ test('★ 教师初始图：只有**真的带初始图**的绘图题，提示词
     ({ id: 'q3', type: 'drawing', prompt: '画出水循环的过程', inputMode: 'handwriting', data, children: [] });
   const cases: Array<{ why: string; node: Prisma.InputJsonValue; expectNote: boolean }> = [
     {
-      why: '绘图题 + 教师给的初始图（合法形状 `{ tool, data }`）',
-      node: drawing({ drawingStarter: { tool: 'flowchart', data: { nodes: [], edges: [] } } }),
+      // ★ 2026-10-07：`drawingTool` 必须与底稿的 `tool` 一致（见 `hasDrawingStarter`）——
+      // 真事里一定一致：初始图是 2026-10-06 才有的，只有新版编辑器写得出来，而它同时也写 `drawingTool`。
+      why: '绘图题（画板=流程图）+ 教师给的初始图（合法形状 `{ tool, data }`）',
+      node: drawing({ drawingTool: 'flowchart', drawingStarter: { tool: 'flowchart', data: { nodes: [], edges: [] } } }),
       expectNote: true,
     },
     { why: '绘图题但没有初始图', node: drawing({}), expectNote: false },
+    {
+      // ★ 2026-10-07（审计抓到的那条）：底稿是流程图的，而题目的画板是思维导图 ⇒
+      // 学生端的导图画板根本不接底稿 ⇒ 提示词不许说「有初始图」。
+      why: '画板是思维导图、底稿却是流程图的（串档）',
+      node: drawing({ drawingTool: 'mind-map', drawingStarter: { tool: 'flowchart', data: { nodes: [], edges: [] } } }),
+      expectNote: false,
+    },
     {
       // 手改/复制来的字段：前端 `readDrawingStarter` 也不认（题型不是 drawing）。
       why: '问答题上挂着同名字段',

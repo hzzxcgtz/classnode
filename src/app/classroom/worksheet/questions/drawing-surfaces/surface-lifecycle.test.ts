@@ -488,7 +488,7 @@ test('★ 2026-10-06（教师）：底稿（A 不算学生作答 / B 初始图�
   const { mergeFlowchart, readDrawingStarter, readFlowchartPayload } = await import('../../../../../lib/worksheet-drawing-starter.ts');
   const payload = { nodes: [{ id: 't1', data: { label: '开始' } }], edges: [{ id: 'e1', source: 't1', target: 't1' }] };
   const starter = readDrawingStarter({
-    type: 'drawing', data: { drawingStarter: { tool: 'flowchart', data: payload }, drawingStarterLocked: true },
+    type: 'drawing', data: { drawingTool: 'flowchart', drawingStarter: { tool: 'flowchart', data: payload }, drawingStarterLocked: true },
   });
   assert.ok(starter, '带 `drawingStarterLocked: true` 的题读不出底稿了');
   assert.deepEqual(starter, { tool: 'flowchart', data: payload },
@@ -527,7 +527,7 @@ test('★ 2026-10-06（教师最终拍板）：「锁定初始图」撤干净 �
   const { mergeFlowchart, readDrawingStarter, readFlowchartPayload } = await import('../../../../../lib/worksheet-drawing-starter.ts');
   const payload = { nodes: [{ id: 't1', data: { label: '过程' } }], edges: [{ id: 'e1', source: 't1', target: 't1' }] };
   const starter = readDrawingStarter({
-    type: 'drawing', data: { drawingStarter: { tool: 'flowchart', data: payload }, drawingStarterLocked: true },
+    type: 'drawing', data: { drawingTool: 'flowchart', drawingStarter: { tool: 'flowchart', data: payload }, drawingStarterLocked: true },
   });
   assert.ok(starter, '带 `drawingStarterLocked: true` 的题读不出底稿了');
   assert.deepEqual(starter, { tool: 'flowchart', data: payload },

@@ -401,8 +401,10 @@ test('★ 2026-10-06（教师）：「画上去的东西怎么删除？是不是
   // ①「选择」必须是一个真正的工具档（不是藏在别处的一次性动作）。
   assert.ok(shapes.includes("value: 'select'"), '工具表里没有「选择」档');
   // ② 选择档要在「点到图形就 return」那句**之前**处理 —— 顺序反了它永远选不中东西。
+  //    ⚠️ 2026-10-07：那句守卫现在走 `studentHitsUnderMouse`（它把**底图**滤掉了），
+  //       锚点跟着换，但**要钉的东西一个字没变**：选择那一支必须排在它前面。
   const selectBranch = live.indexOf("toolRef.current === 'select'");
-  const earlyReturn = live.indexOf('if (board.getAllObjectsUnderMouse(event).length > 0) return;');
+  const earlyReturn = live.indexOf('if (studentHitsUnderMouse(event).length > 0) return;');
   assert.ok(selectBranch !== -1, '没有处理「选择」档');
   assert.ok(earlyReturn !== -1 && selectBranch < earlyReturn, '「选择」档排在了那句 return 之后 —— 点图形会被提前 return 掉');
   // ③ 删除要有明确的按钮与实现（两步：选中 → 删除选中，避免 iPad 误触即删）。

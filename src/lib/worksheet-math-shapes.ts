@@ -328,3 +328,43 @@ export function arcLabelAt(vertex: Pt, a: Pt, b: Pt): Pt | null {
   const d = MARK_ARC_RADIUS * 1.8;
   return [round(vertex[0] + (bx / len) * d), round(vertex[1] + (by / len) * d)];
 }
+
+/*
+ * ★ 2026-10-07（教师）：教师上传的几何题原图当**底图** —— 摆位。
+ */
+
+/**
+ * 画板的**单位框**（`[左, 上, 右, 下]`）。
+ *
+ * 🔴 **不许改这个数**：教师端预览的投影是照它**硬编码**的
+ *   （`drawing-document-preview.tsx` 的 `((x + 10) / 20) * width`），
+ *   而存档里所有坐标都是按这个框存的 ⇒ 改框等于把所有历史作答挪个位置。
+ */
+export const MATH_BOX: readonly [number, number, number, number] = [-10, 8, 10, -8];
+
+/**
+ * 底图放进画板的两个角（jsxgraph 的 `create('image', …)` 要「左下、右上」）。
+ *
+ * 🔴 `contain` + 居中：等比缩放到**装得进**这个框，两侧（或上下）留白。
+ *   **不许拉伸** —— 现在走 CSS 的 `background-size: 100% 100%`，教师传的原图比例一变就变形，
+ *   而变形在几何题上是**有含义的错误**（直角看起来不是直角）。
+ *   ⚠️ 代价：原图与 5:4 差得远时留白。留白是可见、可理解的（"老师给的图比画布窄"）。
+ *
+ * `aspect` = 图片的 宽/高。量不出来（`NaN` / `0` / 负数）⇒ 回落成画板框自己的比例
+ *   —— ⚠️ **不许**算出 NaN 再交给画板（那会让整张图画没，且不报错）。
+ */
+export function backgroundRect(aspect: number): [[number, number], [number, number]] {
+  const [left, top, right, bottom] = MATH_BOX;
+  const boxW = right - left;
+  const boxH = top - bottom;
+  const ratio = Number.isFinite(aspect) && aspect > 0 ? aspect : boxW / boxH;
+  let w = boxW;
+  let h = w / ratio;
+  if (h > boxH) { h = boxH; w = h * ratio; }
+  const cx = (left + right) / 2;
+  const cy = (top + bottom) / 2;
+  return [
+    [round(cx - w / 2), round(cy - h / 2)],   // 左下
+    [round(cx + w / 2), round(cy + h / 2)],   // 右上
+  ];
+}

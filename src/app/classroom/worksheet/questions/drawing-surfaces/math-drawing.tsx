@@ -10,6 +10,7 @@ import {
   MATH_TOOLS,
   arcLabelAt,
   arcPathOf,
+  backgroundRect,
   equalMarkOf,
   parallelMarkOf,
   parallelogramOf,
@@ -124,6 +125,11 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
 
   useEffect(() => {
     if (!host.current) return;
+    /**
+     * ⚠️ 把 props 收一个局部名：下面（取底图那段）会用一个同名的局部变量装 blob URL，
+     *   而 `backgroundUrl` 是 `DrawingSurfaceProps` 的字段、四个画板共用 ⇒ **不许为了消歧改 props**。
+     */
+    const backgroundUrlProp = backgroundUrl;
     const board = JXG.JSXGraph.initBoard(host.current, {
       /** ★ 2026-10-06：**明确用 canvas 渲染**（位图快照直接读这块 canvas；老 iPad 上 SVG 更慢）。 */
       renderer: 'canvas',
@@ -446,7 +452,7 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
        * 那句是给绘图工具用的（点既有图形时只让内核拖动它），选择档恰恰要处理「点到了图形」。
        */
       if (toolRef.current === 'select') {
-        const hits = board.getAllObjectsUnderMouse(event);
+        const hits = studentHitsUnderMouse(event);
         // `getAllObjectsUnderMouse` 的类型是 `unknown[]`（库的历史包袱）⇒ 这里只做一次窄化。
         const target = hits[0] as JXG.GeometryElement | undefined;
         const index = target === undefined ? -1 : runtime.current.findIndex((item) => item.objects.includes(target));
@@ -454,7 +460,7 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
         return;
       }
       // 拖动既有控制点时 JSXGraph 同样会发 down；此时只让内核处理拖动，不再新建图形。
-      if (board.getAllObjectsUnderMouse(event).length > 0) return;
+      if (studentHitsUnderMouse(event).length > 0) return;
       const coords = board.getUsrCoordsOfMouse(event);
       const at: Pt = [round3(coords[0]), round3(coords[1])];
       const currentTool = toolRef.current;
@@ -624,7 +630,7 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
       const isDragTool = currentTool === 'free'
         || (MATH_TOOLS.find((item) => item.value === currentTool)?.drag ?? false);
       if (!isDragTool) return;
-      if (board.getAllObjectsUnderMouse(event).length > 0) return;   // 让内核去拖那个控制点
+      if (studentHitsUnderMouse(event).length > 0) return;   // 让内核去拖那个控制点
       event.stopPropagation();
       event.preventDefault();
       syncOverlaySize();
@@ -674,6 +680,67 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
     window.addEventListener('pointerup', onDragUp);
     window.addEventListener('pointercancel', onDragUp);
 
+    /*
+     * ★ 2026-10-07（教师）：教师上传的几何题原图当**底图**。
+     *
+     * 🔴 为什么必须是**画板对象**、而不是继续挂在 CSS `background-image` 上（三条缺一不可）：
+     *   ① **进快照**：抓图抓的是 jsxgraph 那块 canvas，CSS 背景一个字都不在里面 ⇒
+     *      教师看板那一格与发给 AI 的联系表里是「一堆悬空的线，几何图不见了」；
+     *   ② **跟着缩放平移**：它的矩形是用户坐标，画板动它就动 —— 在图上描辅助线，
+     *      对齐是**全部意义**，而 CSS 背景钉死不动；
+     *   ③ **不变形**：摆位由 `backgroundRect` 给的两个角决定，不再被
+     *      `background-size: 100% 100%` 硬拉成 5:4。
+     *
+     * 🔴 取图必须走 **fetch → blob → objectURL**（同源），不能把 URL 直接喂进去：
+     *   dev 下页面在 `:4000`、图片在 `:4001`（`worksheetAssetUrl` 就是这么拼的）⇒ 跨域图
+     *   画进 canvas ⇒ canvas **被污染** ⇒ `toDataURL()` 抛 SecurityError ⇒ 被 `safeCapture`
+     *   吞掉 ⇒ **快照静默全废**，而屏幕上什么都不说。生产是同源、本来没这问题，
+     *   但**教师是在 dev 里验的**。
+     *
+     * ⚠️ 取图失败（离线 / 404 / 教师把图换了）⇒ 就当这一题没有底图，学生照旧能在空白
+     *   画板上作答。**不弹提示**：那是学生无能为力的事，打断他更坏。
+     * ⚠️ 底图**不进 `runtime.current`** ⇒ 「清空」与撤销栈碰不到它（学生清不掉老师给的图）。
+     * ⚠️ 顺序**不靠创建先后**（取图是异步的）：见下面 `layer: -1` 那一段。
+     *   所以下面那句 `renderAll` 仍然**同步**执行 —— 不许为了等底图把它挪到 `await` 后面，
+     *   那会让"重新打开一道题"先看到一块空白画板。
+     */
+    let cancelled = false;
+    let loadedBackgroundUrl: string | null = null;
+    let backgroundObject: JXG.GeometryElement | null = null;
+
+    /**
+     * 底图**不是学生能碰的东西**：`Image.hasPoint` 是矩形命中，而它铺满整块画布 ⇒
+     * 它会被**每一次点击**命中。三处命中判断共用这一个过滤器（少滤一处就是
+     * "所有绘图工具失效"或"永远选不中自己画的线"，两种都不报错）。
+     * ⚠️ 按**对象身份**滤，不依赖"库今天会不会返回它" —— 将来库改了 `Image.hasPoint`，
+     *   这条过滤照样成立（与「思维导图那条工具条用库自己的 id 并对拍库产物」同一个纪律）。
+     */
+    const studentHitsUnderMouse = (event: PointerEvent) => board.getAllObjectsUnderMouse(event)
+      .filter((object) => object !== backgroundObject);
+
+    if (backgroundUrlProp) {
+      void (async () => {
+        try {
+          const response = await fetch(backgroundUrlProp);
+          const objectUrl = URL.createObjectURL(await response.blob());
+          const aspect = await imageAspectOf(objectUrl);
+          if (cancelled) { URL.revokeObjectURL(objectUrl); return; }
+          loadedBackgroundUrl = objectUrl;
+          const [lowerLeft, upperRight] = backgroundRect(aspect ?? Number.NaN);
+          backgroundObject = board.create('image', [objectUrl, lowerLeft, upperRight], {
+            // 🔴 压在最下面：canvas 渲染器绘制前按 layer 排序（已核 board.js 的 _compareDepth），
+            //    而 `layer` 是公开属性。这样**不用**靠"底图必须先建"来保证顺序。
+            layer: -1,
+            fixed: true,          // 老师给的图不是可拖的东西
+            highlight: false,     // 触摸屏没有 hover，留着只是让桌面端与学生的感受分叉
+            withLabel: false,
+          }) as JXG.GeometryElement;
+        } catch {
+          // 取不到就当没有底图（见上）。
+        }
+      })();
+    }
+
     renderAll(readEntries(data));
     board.on('down', handleDown);
     board.on('up', () => { if (!drag) publish(); });
@@ -714,6 +781,14 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
       hostEl.removeEventListener('pointermove', onDragMove, { capture: true });
       window.removeEventListener('pointerup', onDragUp);
       window.removeEventListener('pointercancel', onDragUp);
+      /*
+       * ★ 2026-10-07：底图那条 blob URL 必须回收 —— 不回收就是"每开一次题漏一张图"，
+       *   而它漏的是**内存**（学生在同一节课里翻几十道题就会显出来）。
+       * ⚠️ `cancelled` 先置：取图还在路上时组件就被卸载的话，
+       *   那条 async 分支醒来会发现 `cancelled` 并**自己**回收（见上面）。
+       */
+      cancelled = true;
+      if (loadedBackgroundUrl) URL.revokeObjectURL(loadedBackgroundUrl);
       undoRef.current = null;
       clearRef.current = null;
       deleteSelectedRef.current = null;
@@ -810,10 +885,16 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => clearRef.current?.()}>清空</button>
       </div>
       <div className={styles.mathStage}>
+        {/*
+          ★ 2026-10-07：这上面原来挂着一句 `style={{ backgroundImage: … }}` —— 底图已经改成
+            画板里的一个 image 对象（见 effect 里那一段）。**别加回来**：
+            CSS 背景进不了快照、也不跟缩放平移。
+          ⚠️ `.thirdPartyCanvas` 的 CSS（含 `background-size: 100% 100%`）**一个字都不许动** ——
+            流程图与思维导图两档**还在用**它。
+        */}
         <div
           ref={host}
           className={`${styles.thirdPartyCanvas} ${styles.mathCanvas}`}
-          style={backgroundUrl ? { backgroundImage: `url(${backgroundUrl})` } : undefined}
         />
         {/* 拖动预览层：`pointer-events: none`（在 CSS 里），绝不抢指针事件。 */}
         <canvas ref={overlay} className={styles.mathOverlay} aria-hidden="true" />
@@ -840,4 +921,18 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
 /** 坐标统一留三位小数：与 `worksheet-math-shapes.ts` 里那几个构造器同一口径。 */
 function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
+}
+
+/**
+ * 取一张图的原始宽高比；**加载不出来就回 `null`**（调用方据此回落成画板框自己的比例）。
+ * ⚠️ 用 `onerror` 兜底、且**不抛**：图挂了不该把整个画板带下去。
+ */
+function imageAspectOf(url: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const probe = new Image();
+    probe.onload = () => resolve(probe.naturalWidth > 0 && probe.naturalHeight > 0
+      ? probe.naturalWidth / probe.naturalHeight : null);
+    probe.onerror = () => resolve(null);
+    probe.src = url;
+  });
 }

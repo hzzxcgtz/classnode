@@ -20,11 +20,13 @@ import {
   MARK_ARC_SEGMENTS,
   MARK_SQUARE_SIDE,
   MARK_TICK_LEN,
+  MATH_BOX,
   MATH_TOOL_GROUPS,
   MATH_TOOL_ICONS,
   MATH_TOOLS,
   arcLabelAt,
   arcPathOf,
+  backgroundRect,
   equalMarkOf,
   parallelMarkOf,
   parallelogramOf,
@@ -224,4 +226,28 @@ test('★ 角弧走的一定是**小弧**：两条边都指向左边时不许绕
     const d = Math.hypot(arc[arc.length - 1][0] - arc[0][0], arc[arc.length - 1][1] - arc[0][1]);
     assert.ok(d < 0.05, `弧太长（绕了大圈）：两个端点相距 ${d}`);
   }
+});
+
+/**
+ * ★ 2026-10-07（教师）：几何题原图当**底图** —— 摆位。
+ *
+ * 🔴 断言里用的是**装得进**（contain）而不是"铺满"：现在的实现是
+ *   `.thirdPartyCanvas { background-size: 100% 100% }`（硬拉），教师传的原图比例一变就变形，
+ *   而变形在几何题上**是有含义的错误**（直角看起来不是直角）。
+ */
+test('★ 底图摆位：等比装进画板框、居中、**不许拉伸**', () => {
+  // 画板框是 20×16（5:4）。4:3 的图 ⇒ 左右贴边、上下各留 0.5。
+  assert.deepEqual(backgroundRect(4 / 3), [[-10, -7.5], [10, 7.5]]);
+  // 正方形 ⇒ 上下贴边、左右各留 2。
+  assert.deepEqual(backgroundRect(1), [[-8, -8], [8, 8]]);
+  // 很宽的图 ⇒ 同理，比例一个字都不许变。
+  assert.deepEqual(backgroundRect(2), [[-10, -5], [10, 5]]);
+  // 与画板同比例 ⇒ 正好铺满。
+  // ⚠️ 框的比例从 `MATH_BOX` **算出来**，不许写死 1.25（写死就与常量脱钩了：
+  //    哪天有人动了框，这条判据照样绿，而底图会被拉伸）。
+  const boxAspect = (MATH_BOX[2] - MATH_BOX[0]) / (MATH_BOX[1] - MATH_BOX[3]);
+  assert.deepEqual(backgroundRect(boxAspect), [[-10, -8], [10, 8]]);
+  // 量不出来（老浏览器 / 图的宽高是 0）⇒ 回落到画板框自己的比例，**不许**算出 NaN。
+  assert.deepEqual(backgroundRect(Number.NaN), [[-10, -8], [10, 8]]);
+  assert.deepEqual(backgroundRect(0), [[-10, -8], [10, 8]]);
 });

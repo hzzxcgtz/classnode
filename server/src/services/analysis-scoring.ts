@@ -77,6 +77,35 @@ function normalizeAiScore(score: number, config: AiScoringConfig): number {
   return config.unit === '分' ? Math.round(score * 10) / 10 : Math.round(score);
 }
 
+/**
+ * ★ 2026-10-07（教师决定 2：「AI 的评分是要写回的，要参与总分的统计」）——
+ * 把 AI 给的分（满分是 **AI 自己的**满分）折成**这道题的得分**，连同三态一起给出。
+ *
+ * 🔴 **三个数一起给**：`score` 与 `gradeState` **同生共死**（`worksheets.ts` 那条唯一
+ *   判分路径上的规矩），只写一个会让读的一侧去猜。`isCorrect` 与本地判分同一口径
+ *   （语义早已收窄为「全对」）。
+ *
+ * 🔴 **取整**，不保留小数：奖励是按 `score` 的**绝对值**画的（`worksheet-reward.ts` 的
+ *   `rewardAmount` 直接返回它），而符号档画的是 `symbol.repeat(amount)` —— `repeat` 把 8.4
+ *   截成 8，于是同一件事有两个数（画 8 颗星、旁边写 `×8.4`）。本地判分也从不产生小数。
+ *
+ * ⚠️ **不往 `{ 0, half, full }` 上贴**：教师自己给的例子（题目 10 分、AI 给 4/5 ⇒ 记 8 分）
+ *   就否掉了那一条 —— 8 既不是 0、也不是半对档。
+ * ⚠️ 三态只看「是不是顶到 `full` / 落到 0」，**不看题目的 `half`**：`half` 是**本地判分器**
+ *   给部分分用的档，而 AI 给的是连续分。
+ */
+export function answerGradeFromAiScore(
+  aiScore: number,
+  aiMaxScore: number,
+  full: number,
+): { isCorrect: boolean; gradeState: 'correct' | 'partial' | 'incorrect'; score: number } {
+  const ratio = aiMaxScore > 0 ? aiScore / aiMaxScore : 0;
+  const bounded = Number.isFinite(ratio) ? ratio : 0;
+  const score = Math.max(0, Math.min(full, Math.round(bounded * full)));
+  const gradeState = score >= full ? 'correct' : score <= 0 ? 'incorrect' : 'partial';
+  return { isCorrect: gradeState === 'correct', gradeState, score };
+}
+
 export function aiScoringConfigOf(node: QuestionNode, unit = '分'): AiScoringConfig {
   const fillParts = node.type === 'fill-blank' && node.autoGrade !== false
     ? explicitFillGrading(node.data).map((part, index) => ({ ...part, index })).filter(part => part.gradingMode === 'ai')

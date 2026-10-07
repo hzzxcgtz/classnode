@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   aiScoringConfigOf,
+  answerGradeFromAiScore,
   parseAiAnalysisResult,
   readStoredAiScoring,
   readStudentAiReferenceScore,
@@ -269,4 +270,52 @@ test('🔴 别名不与标签抢：某人真名恰好等于另一个人的标签
   if ('error' in result) return;
   assert.equal(result.perStudent?.scores.length, 1);
   assert.equal(result.perStudent?.scores[0].studentId, 's1', '标签优先 —— 别名不许把它顶掉');
+});
+
+/*
+  ★ 2026-10-07（教师决定 2：「AI 分按比例换算到题目分值」，原话的例子是
+  「AI 给 4/5、题目 10 分 ⇒ 记 8 分」）—— 这个函数的唯一职责就是那一次换算 + 三态。
+*/
+test('★ 按比例换算：4/5 × 10 分 ⇒ 8 分', () => {
+  assert.deepEqual(
+    answerGradeFromAiScore(4, 5, 10),
+    { isCorrect: false, gradeState: 'partial', score: 8 },
+  );
+});
+
+test('★ 满分 ⇒ correct；0 ⇒ incorrect（三态与本地判分同一口径）', () => {
+  assert.deepEqual(answerGradeFromAiScore(5, 5, 10), { isCorrect: true, gradeState: 'correct', score: 10 });
+  assert.deepEqual(answerGradeFromAiScore(0, 5, 10), { isCorrect: false, gradeState: 'incorrect', score: 0 });
+});
+
+test('🔴 折出来的分必须是**整数**：符号奖励画的是 repeat(amount)，8.4 会被截成 8', () => {
+  assert.equal(answerGradeFromAiScore(3.7, 5, 10).score, 7);
+  assert.equal(answerGradeFromAiScore(4.5, 5, 10).score, 9);
+  assert.equal(answerGradeFromAiScore(1, 3, 10).score, 3, '10/3 不许变成 3.333…');
+});
+
+test('🔴 坏输入收在 0..full 里，不许出 NaN / Infinity', () => {
+  assert.equal(answerGradeFromAiScore(9, 5, 10).score, 10, '越界封顶');
+  assert.equal(answerGradeFromAiScore(-1, 5, 10).score, 0, '负数不许写进去（学生的累计会变负）');
+  assert.equal(answerGradeFromAiScore(5, 0, 10).score, 0, 'aiMaxScore 为 0 不许出 NaN');
+  assert.equal(answerGradeFromAiScore(Number.NaN, 5, 10).score, 0);
+});
+
+test('🔴 不往 {0, half, full} 上贴：教师给的例子本身就否掉了那一条', () => {
+  const hit = answerGradeFromAiScore(4, 5, 10);
+  assert.notEqual(hit.score, 0);
+  assert.notEqual(hit.score, 10);
+  assert.equal(hit.gradeState, 'partial', '8 分既不是全对也不是全错');
+  // 而「半对档 = 5 分」的学习单里也照样记 8 —— 那是**本地判分器**给部分分用的档，
+  // 教师明确要的是按比例换算（4/5 × 10）。
+  assert.equal(answerGradeFromAiScore(2, 5, 10).score, 4, '按比例，不贴半对档');
+});
+
+test('★ 三态与 score 同生共死：correct ⇔ score === full、incorrect ⇔ score === 0', () => {
+  for (const [ai, full] of [[5, 10], [0, 10], [4, 10], [0.4, 10], [1, 1]] as const) {
+    const hit = answerGradeFromAiScore(ai, 5, full);
+    assert.equal(hit.isCorrect, hit.gradeState === 'correct', `isCorrect 与 gradeState 必须同一口径（ai=${ai}）`);
+    assert.equal(hit.gradeState === 'correct', hit.score >= full, `满分档对不上（ai=${ai}）`);
+    assert.equal(hit.gradeState === 'incorrect', hit.score <= 0, `零分档对不上（ai=${ai}）`);
+  }
 });

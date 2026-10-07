@@ -973,13 +973,27 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   });
 
   useEffect(() => {
-    if (!initialized.current) { initialized.current = true; return; }
+    /*
+     * ★ 2026-10-07（教师）：「初始图里的绘图元素**一开始都没有显示出来**。当我移动其中的一个，
+     *   它才会显示」—— 根因就是这条「首帧只立基线、什么都别做」的守卫：
+     *   一进题目还没动笔时，`onChange` 与 `scheduleRaster` **两个都不跑** ⇒
+     *   **一张快照都抓不出来**（而底稿正是画在快照上的）⇒ 教师那一格空白，
+     *   而学生屏幕上明明有底稿 —— 又是「两边都不报错」的那种。
+     * ✅ 首帧照旧**不报作答**（交上去的是「学生自己画的」那一份，刚进来时它就是空的；
+     *   一进来就报会把这题算成「作答中」），但**快照要照抓** —— 它不进作答，只喂教师/AI。
+     * ⚠️ 空画板抓不出图（`flowchartSvg` 对空图回 `null`）⇒ 没底稿的题仍然什么都不会发生
+     *   （不会把「只是打开了题」算成作答中）。
+     */
+    const firstFrame = !initialized.current;
+    initialized.current = true;
     const timer = window.setTimeout(() => {
       const payload = toFlowPayload(nodes, edges);
       // 快照按**全部**画（含底稿）⇒ 教师预览 / AI 联系表 / Word 报告里是一张完整的图。
       lastFlow.current = payload;
       // ★ A：交上去的那份**只留学生自己画的**（底稿不算他的作答）。
-      onChange(subtractFlowchart(payload, starterPayload) as unknown as ReturnType<typeof toFlowPayload>);
+      if (!firstFrame) {
+        onChange(subtractFlowchart(payload, starterPayload) as unknown as ReturnType<typeof toFlowPayload>);
+      }
       scheduleRaster();
     }, 180);
     return () => window.clearTimeout(timer);

@@ -117,9 +117,16 @@ function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.Rea
       );
 
     case 'ink':
-      // 一幅画在这一格里只能给一块固定高度的窗口（按宽度缩放的话 4:3 的图会高过整格）。
+      /*
+       * ★ 2026-10-07（教师）：「一眼看到完整的图……不要使用滚动条了」。
+       * 🔴 **这一层必须是 flex 容器**（`display: flex`）：里面那个 `InkPreview` 外框靠
+       *   `flex: 1` 填满剩余高度，而 `flex` 只在**flex 容器**里起作用 ——
+       *   原来这里是普通块级元素 ⇒ 外框的高度退化成「内容高度」⇒ 图里那句
+       *   `max-height: 100%` 没了基准（等于 `none`）⇒ 图按宽度铺满、**高的部分被
+       *   `overflow: hidden` 裁掉**（教师截图里下半张图不见，就是这个）。
+       */
       return view.ink ? (
-        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', borderRadius: 4, border: '1px solid #e2e8f0' }}>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 4, border: '1px solid #e2e8f0' }}>
           <InkPreview value={view.ink} node={node} />
         </div>
       ) : <Line color={FAINT}>读不出这幅画</Line>;

@@ -768,13 +768,20 @@ test('★ 2026-10-06：连到线中点 —— **自定义边 / 中点句柄已�
    * ⚠️ 下面「归一化」那条判据也仍然有效：`visibleEdges` 还是要把所有边归到同一个类型
    *    （老作答里存着 `'flow'` / `'flowLabel'` 这些我们自造的名字）。
    */
+  /*
+   * ★ 2026-10-07（教师）：又注册了一份自定义边 —— 但它**不是** 2026-10-06 删掉的那份
+   *   （`FlowLabelEdge`，那版还顺手把标签挪到了线旁边）。
+   * 🔴 关键区别：**类型名是我們自己造的**（`FLOW_EDGE_TYPE !== 'smoothstep'`）⇒ `edgeTypes`
+   *   注册的是**新增**的一种边，而不是**替换**库内置的那份；而且新那份**不碰标签**
+   *   （`label`/`labelX`/`labelY`/`labelShowBg` 原样转交给 `BaseEdge`）。
+   */
   const edgeTypeName = (live.match(/const FLOW_EDGE_TYPE = '([^']+)'/) ?? [])[1];
-  assert.equal(edgeTypeName, 'smoothstep',
-    `FLOW_EDGE_TYPE=${edgeTypeName} —— 教师定的「全回原版」要求它就是库内置的 smoothstep`);
-  assert.ok(!/edgeTypes=/.test(live),
-    '`<ReactFlow>` 又接上 edgeTypes 了 —— 那是**替换**库内置的 smoothstep（不是给它加东西），「原版那种」就没了');
-  assert.ok(!/FlowLabelEdge/.test(live.split('曾经')[1] ?? live),
-    '`FlowLabelEdge` 那份自定义边又回来了 —— 教师定的是「全回原版」');
+  assert.ok(edgeTypeName, '没有命名常量 FLOW_EDGE_TYPE');
+  assert.notEqual(edgeTypeName, 'smoothstep',
+    `FLOW_EDGE_TYPE=${edgeTypeName} —— 用库内置的名字会**替换**掉库那份，而不是新增一种`);
+  assert.match(live, /edgeTypes=\{edgeTypes\}/, '`<ReactFlow>` 没有接上 edgeTypes');
+  assert.ok(!/FlowLabelEdge/.test(live),
+    '`FlowLabelEdge`（2026-10-06 那份「顺手挪标签」的自定义边）又回来了 —— 教师否掉的是那个');
   // ② 旧类型记号**全部**规范化成它（只换 `'flow'` 不够：上一版把 `'smoothstep'` 写进了作答）。
   const normalizesAll = (source: string): boolean => {
     const body = blockAfter(source, 'const visibleEdges = useMemo', '[edges, snapCandidateId]');

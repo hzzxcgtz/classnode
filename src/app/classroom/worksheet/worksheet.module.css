@@ -2412,6 +2412,41 @@
 .flowEdgeFloat:hover > svg { background: #fff7ed; }
 .flowEdgeFloat:active > svg { background: #ffedd5; }
 /*
+  ★ 2026-10-07（教师）：「这个区域的折线上还是需要出现一个**控制柄**，可以让用户上下拖动这条
+  横线，或者是左右拖动一条竖线，但是**这个控制柄本身不允许移动位置**」。
+
+  🔴 最后半句是设计的关键：它**不是**自由浮层（不是「拖到哪儿算哪儿」），而是**长在折线上的
+  把手** —— 组件把它画在库算出来的路径点上，线一动它跟着动，所以它**永远在线上面**，
+  不需要任何额外约束。
+  ⚠️ 命中区 44px（老 iPad 的手指下限），与删除按钮同一套；可见体是一个 16px 的实心圆点。
+*/
+.flowRouteHandle {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: grab;
+  box-shadow: none;
+  touch-action: none; /* 触屏上不许它被当成滚动手势 */
+  z-index: 7; /* 比删除按钮(6)高一点：两者可能挨着，把手要够得着 */
+}
+.flowRouteHandle > span {
+  width: 16px;
+  height: 16px;
+  border: 3px solid #527198;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 5px rgb(16 42 67 / .2);
+}
+.flowRouteHandle:active { cursor: grabbing; }
+.flowRouteHandle:active > span { background: #eaf0f6; }
+
+/*
  * ⊘ 2026-10-06（教师：「全回原版」）：这里原有 `.flowEdgeRouteHandle` 那三块样式 ——
  *   它是「拖动线中圆点调走向」那颗浮层圆点。教师定了「全回原版」之后，那颗圆点连同它的
  *   处理器一起删了（边交回库内置的 `smoothstep`，绕行点这一层不存在了）⇒ 样式也没有对象了。

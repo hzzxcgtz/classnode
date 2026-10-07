@@ -17,7 +17,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { alignSnapX, tidyFlowchart } from './worksheet-flowchart-layout.ts';
+import { tidyFlowchart } from './worksheet-flowchart-layout.ts';
 
 /** 判据用的最小节点 —— 形状与 React Flow 的 `Node` 在**用到的这几个字段上**一致。 */
 interface TidyTestNode {
@@ -111,41 +111,4 @@ test('整理不动连线上学生自己调过的路由点', () => {
   const routed = { ...edge('a', 'b'), data: { routeX: 42, routeY: 84 } };
   const out = tidyFlowchart(nodes, [routed]);
   assert.deepEqual(out.edges[0].data, { routeX: 42, routeY: 84 }, '路由点是学生手调的，整理不该把它清掉');
-});
-
-// ── 拖完框的「同列吸附」（★ 2026-10-07 教师：「连接线接近直线时需要吸附成直线，
-//    否则可能会出现一个非常小的拐角，很难看」）─────────────────────────────────
-
-test('拖完一个框：与它**相连**的框几乎同列 ⇒ 吸到同一竖线上', () => {
-  const nodes = [node('a', 100, 0), node('b', 108, 300)];
-  const x = alignSnapX(nodes, [edge('a', 'b')], 'b');
-  assert.equal(x, 100, '差 8px 就该吸齐 —— 不吸的话那条线上会留一个很小的拐角（教师报的正是这个）');
-});
-
-test('差得多的不吸 —— 本来就想错开的，一个都不许碰', () => {
-  const nodes = [node('a', 100, 0), node('b', 260, 300)];
-  assert.equal(alignSnapX(nodes, [edge('a', 'b')], 'b'), null, '差 160px 远超容差');
-});
-
-test('没有连线的框不吸 —— 教师说的是「连接线接近直线时」，不是「所有框都对齐」', () => {
-  const nodes = [node('a', 100, 0), node('b', 104, 300)];
-  assert.equal(alignSnapX(nodes, [], 'b'), null, '它俩之间没有线，列对齐不归这条管');
-});
-
-test('吸的是**被拖的那个**，不是邻居 —— 别把已经放好的那个拽走', () => {
-  const nodes = [node('a', 100, 0), node('b', 108, 300)];
-  // 拖的是 a：那 a 应当吸到 b 的 108，而不是反过来把 b 拽到 100。
-  assert.equal(alignSnapX(nodes, [edge('a', 'b')], 'a'), 108);
-});
-
-test('多个相连的框时，吸到**最近**的那一个', () => {
-  const nodes = [node('a', 100, 0), node('b', 300, 100), node('m', 111, 300)];
-  const x = alignSnapX(nodes, [edge('a', 'm'), edge('b', 'm')], 'm');
-  assert.equal(x, 100, 'a 差 11、b 差 189 ⇒ 取 a');
-});
-
-test('自环 / 悬空的边不许把它带偏 —— 端点不在画布上就当没这条线', () => {
-  const nodes = [node('a', 100, 0), node('b', 106, 300)];
-  assert.equal(alignSnapX(nodes, [edge('a', 'a')], 'a'), null, '自环不该产生吸附');
-  assert.equal(alignSnapX(nodes, [edge('ghost', 'a')], 'a'), null, '另一头不在画布上 ⇒ 没有可吸的目标');
 });

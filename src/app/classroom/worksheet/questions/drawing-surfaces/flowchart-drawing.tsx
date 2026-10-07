@@ -5,6 +5,7 @@ import {
   addEdge,
   Background,
   BackgroundVariant,
+  BaseEdge,
   ConnectionMode,
   Controls,
   Handle,
@@ -16,6 +17,7 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
+  type EdgeProps,
   type Node,
   MarkerType,
   reconnectEdge,
@@ -42,7 +44,8 @@ import {
   type FlowHistory,
   type FlowSnapshot,
 } from '@/lib/worksheet-flowchart-history.ts';
-import { alignSnapX, tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
+import { flowEdgeGeometry } from '@/lib/worksheet-flowchart-edge.ts';
+import { tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
 import { flowchartSvg } from '@/lib/worksheet-flowchart-svg.ts';
 import { svgToPngBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 import { normalizePastedText } from '@/lib/worksheet-text-normalize.ts';
@@ -65,12 +68,15 @@ import styles from '../../worksheet.module.css';
  */
 type FlowKind = 'terminator' | 'process' | 'decision' | 'io' | 'junction';
 type FlowData = { label: string; kind: FlowKind; locked?: boolean };
-/*
- * ⊘ 2026-10-06（教师：「全回原版」）：这里原来有 `type FlowEdgeData = { routeX?, routeY? }`
- *   —— 那是「拖动线中圆点调走向」存绕行点用的。圆点连同它的处理器一起删了，
- *   边交回库内置的 `smoothstep`（它不认 `centerX/centerY`）⇒ 这个类型没有对象了。
- *   ⚠️ 老作答里可能仍**存着** `data.routeX/routeY` 那两个字段：无害，只是不再被读。
+/**
+ * 边上的**绕行点**（★ 2026-10-07 恢复了）。
+ *
+ * ⊘ 2026-10-06 曾随「全回原版」删过一次（当时边交回库内置的 `smoothstep`，而它不认
+ *   `centerX/centerY`）。教师随后要的「折线上的控制柄」正是靠它 —— 这次由**我们自己的边**
+ *   （`FlowEdge`）把它喂给库的路径函数，其余一切照旧交库。
+ * ⚠️ 老作答里可能存着这两个字段：读得到就用（学生之前调过的走向不该被抹掉）。
  */
+type FlowEdgeData = { routeX?: number; routeY?: number };
 
 /**
  * 工具按钮上的**形状图标**（★ 2026-10-06 教师：「分别加上一个形象的图形表示」）。
@@ -111,7 +117,7 @@ type FlowNode = Node<FlowData>;
  * ⚠️ **名字保留、值改成库内置的那个**：`visibleEdges` 靠它把**所有**边归一化到同一个类型
  *    （老作答里存着 `'flow'`、`'flowLabel'` 这些我们自造的名字）—— 这一步仍然需要。
  */
-const FLOW_EDGE_TYPE = 'smoothstep';
+const FLOW_EDGE_TYPE = 'flowEdge';
 
 /**
  * ★ 2026-10-06（教师拍板 + 参考图）：**判断框出边的默认标注**是「是 / 否」，不是 `Y / N`。
@@ -509,6 +515,115 @@ function toFlowPayload(nodes: FlowNode[], edges: Edge[]) {
 }
 
 
+/**
+ * ★ 2026-10-07（教师）：这一份自定义边**只做两件事**，其余**全部**交给库的 `BaseEdge`。
+ *
+ *   ① **「折线太短就画成直线」** —— 教师：「在移动某个图形时，连接线接近直线时需要吸附成
+ *      直线，否则可能会出现一个非常小的拐角，很难看」。几何在 `flowEdgeGeometry`（纯函数 + 用例）。
+ *   ② **绕行点**（`data.routeX/routeY`）—— 折线上那颗控制柄拖出来的。
+ *
+ * 🔴 **与 2026-10-06 删掉的那一版有本质区别**：那一版还顺手**把标签挪到了线旁边**（教师后来
+ *    否掉了，才有了「全回原版」）。这一版**不碰标签** —— `label`/`labelX`/`labelY`/`labelShowBg`
+ *    原样转交给 `BaseEdge`，画出来与库内置那份**逐字一致**（白底框、居中压线，都是库那套）。
+ *    箭头 / 配色 / 交互宽度同理，全部照转。
+ */
+function FlowEdge({
+  id, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+  label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius,
+  markerEnd, markerStart, style, pathOptions, interactionWidth, data,
+}: EdgeProps) {
+  const route = data as FlowEdgeData | undefined;
+  const [path, labelX, labelY] = flowEdgeGeometry({
+    sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition,
+    ...(route?.routeX !== undefined ? { centerX: route.routeX } : {}),
+    ...(route?.routeY !== undefined ? { centerY: route.routeY } : {}),
+    ...(pathOptions?.offset !== undefined ? { offset: pathOptions.offset } : {}),
+    ...(pathOptions?.borderRadius !== undefined ? { borderRadius: pathOptions.borderRadius } : {}),
+    /*
+     * ⚠️ 库那个函数返回的是 **5 元组**（`[path, labelX, labelY, offsetX, offsetY]`），
+     * 而这里只关心前三个 ⇒ 包一层收窄，别把它整个塞进那个三元的形状里（`tsc` 会当场报）。
+     */
+  }, (params) => {
+    const [path, centerX, centerY] = getSmoothStepPath(params as Parameters<typeof getSmoothStepPath>[0]);
+    return [path, centerX, centerY];
+  });
+  return (
+    <BaseEdge
+      id={id}
+      path={path}
+      labelX={labelX}
+      labelY={labelY}
+      label={label}
+      labelStyle={labelStyle}
+      labelShowBg={labelShowBg}
+      labelBgStyle={labelBgStyle}
+      labelBgPadding={labelBgPadding}
+      labelBgBorderRadius={labelBgBorderRadius}
+      style={style}
+      markerEnd={markerEnd}
+      markerStart={markerStart}
+      interactionWidth={interactionWidth}
+    />
+  );
+}
+
+/**
+ * ★ 2026-10-07（教师）：「这个区域的折线上还是需要出现一个**控制柄**，可以让用户上下拖动这条
+ *   横线，或者是左右拖动一条竖线，但是**这个控制柄本身不允许移动位置**」。
+ *
+ * 🔴 最后那半句是整个设计的钥匙 —— 它**不是**自由浮层（不是「拖到哪儿算哪儿」），
+ *    而是**长在折线上的一个把手**：拖它只是**移动那一段线**，把手自己**永远在线上面**
+ *    （因为它就画在库算出来的路径点上，线一动它跟着动，不需要任何额外约束）。
+ * ✅ **一个轴**：`axis` 由边的走向定 ——
+ *      · 竖直的边（`bottom→top`）中间是**横线** ⇒ 拖它 = **上下** ⇒ 改 `routeY`；
+ *      · 水平的边（`right→left`）中间是**竖线** ⇒ 拖它 = **左右** ⇒ 改 `routeX`。
+ *    这正是教师说的「上下拖动这条横线，或者左右拖动一条竖线」。
+ * ⚠️ 另一个轴保持**两端中点**（= 库的默认值）—— 给了 `centerX` 就必须同时给 `centerY`，
+ *    否则库会拿 `undefined` 去比（见 `getPoints` 里那句 `center.x ?? …`）。
+ */
+function FlowRouteHandle({
+  edgeId, anchor, axis, vertical, disabled,
+}: {
+  edgeId: string;
+  anchor: { x: number; y: number };
+  axis: 'x' | 'y';
+  vertical: boolean;
+  disabled: boolean;
+}) {
+  const { setEdges, screenToFlowPosition } = useReactFlow<FlowNode, Edge>();
+  const onPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (disabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const move = (pointer: PointerEvent) => {
+      const point = screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY });
+      setEdges((current) => current.map((edge) => (edge.id === edgeId
+        ? { ...edge, data: { ...(edge.data as FlowEdgeData | undefined), [axis === 'x' ? 'routeX' : 'routeY']: axis === 'x' ? point.x : point.y } }
+        : edge)));
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop, { once: true });
+    window.addEventListener('pointercancel', stop, { once: true });
+  };
+  return (
+    <button
+      className={styles.flowRouteHandle}
+      type="button"
+      aria-label={vertical ? '上下拖动这条横线' : '左右拖动这条竖线'}
+      title={vertical ? '上下拖动这条横线' : '左右拖动这条竖线'}
+      style={{ left: anchor.x, top: anchor.y }}
+      onPointerDown={onPointerDown}
+    >
+      <span aria-hidden="true" />
+    </button>
+  );
+}
+
 function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, starter, historyKey }: DrawingSurfaceProps) {
   /**
    * ★ 2026-10-06（教师）：「学生可以完全从空白开始画，也可以在教师准备好的基础上继续画」。
@@ -612,12 +727,13 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   const { flowToScreenPosition } = useReactFlow<FlowNode, Edge>();
   const nodeTypes = useMemo(() => ({ flow: FlowNodeEditor }), []);
   /*
-   * ★ 2026-10-06（教师：「全回原版」）：这里原来注册着一份自定义边（`FlowLabelEdge`）——
-   * **现在不注册了**：边的类型就是库内置的 `smoothstep`（见 `FLOW_EDGE_TYPE`），
-   * 线、标签、箭头全交给库。
-   * 🔴 千万别在这里写 `edgeTypes={{ smoothstep: … }}` —— 那是**替换**库内置的那份，
-   * 不是给它加东西；一写回去，「原版那种」就没了。
+   * ★ 2026-10-07（教师）：重新注册一份自定义边 —— 它**只**做「折线太短就画成直线」与
+   *   「绕行点」两件事，标签/箭头/配色/交互**全部**转交给库的 `BaseEdge`（见 `FlowEdge`）。
+   *
+   * 🔴 `FLOW_EDGE_TYPE` 是**我们自己**的类型名（不是 `smoothstep`）：这样 `edgeTypes` 注册的是
+   *   **新增**的一种边，而不是**替换**库内置的那份。
    */
+  const edgeTypes = useMemo(() => ({ [FLOW_EDGE_TYPE]: FlowEdge }), []);
   /** 位图快照：自己吐一份纯 SVG 再栅格化（**不用 `foreignObject`**，老 iPad 上那条路可能出空白图）。 */
   const scheduleRaster = useDrawingRaster({
     capture: async () => {
@@ -1417,6 +1533,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           nodes={visibleNodes}
           edges={visibleEdges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onNodesChange={disabled ? undefined : onNodesChange}
           onEdgesChange={disabled ? undefined : onEdgesChange}
           onConnect={disabled ? undefined : onConnect}
@@ -1443,25 +1560,6 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
             setSnapCandidateId(null);
           }}
           onConnectEnd={disabled ? undefined : onConnectEnd}
-          /*
-           * ★ 2026-10-07（教师）：「在移动某个图形时，**连接线接近直线时需要吸附成直线**，
-           *   否则可能会出现一个非常小的拐角，很难看」。
-           *
-           * 拖完一个框 ⇒ 与它**相连**的框若几乎同列，就把**它的** x 吸过去（邻居一个都不碰）。
-           * 判据与几何都在 `alignSnapX`（`@/lib/worksheet-flowchart-layout.ts`，有单元测试）。
-           * ⚠️ 用**函数式** `setNodes`：`nodes` 是这次渲染的闭包，拖动期间可能已经旧了。
-           * ⚠️ 这里**不是**管「正在拖动」那个标记的（那个读 `nodes` 上的 `dragging` 字段，
-           *   见上面那条变化检测 effect）—— 两者目的不同，别合并。
-           */
-          onNodeDragStop={disabled ? undefined : (_, node) => {
-            setNodes((current) => {
-              const snapped = alignSnapX(current, edges, node.id);
-              if (snapped === null || snapped === node.position.x) return current;
-              return current.map((item) => (
-                item.id === node.id ? { ...item, position: { ...item.position, x: snapped } } : item
-              ));
-            });
-          }}
           // ⚠️ 这里**故意没有** `onNodeDragStart/Stop`：节点拖动的「正在拖」信号读的是节点自己的
           //    `dragging` 字段（详见上面那条变化检测 effect）—— 用回调置标记会在两条 abort 路径上
           //    漏掉，标记一旦卡死，整个会话都记不下新步骤（★ 审查发现 I1）。
@@ -1525,6 +1623,34 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           🔴 它必须住在 `.flowStage` **里面**、而且排在 `</ReactFlow>` **之后**：离了舞台就会按外层
              卡片定位（教师 2026-10-06 实测差出「卡片头 + 工具条」那约 280px）。
         */}
+        {/*
+          ★ 2026-10-07（教师）：选中一条线时，折线上**还要出现一个控制柄**（删掉的是「拖动圆点
+          调走向」那套自由浮层，这个是**长在折线上**的把手 —— 见 `FlowRouteHandle` 的注释）。
+          ⚠️ 它必须住在 `.flowStage` 里面、排在 `</ReactFlow>` 之后，与下面那个 `overlay` 同一层：
+          离了舞台就会按外层卡片定位。
+          ⚠️ 正在改文字（`labelingEdge`）时不画：双击必然先触发一次单击，两个形态叠在一起会互相压住。
+        */}
+        {selectedEdgeId && !labelingEdge && (() => {
+          const anchors = edgeFlowAnchors(selectedEdgeId);
+          if (!anchors) return null;
+          const edge = edges.find((item) => item.id === selectedEdgeId);
+          const route = edge?.data as FlowEdgeData | undefined;
+          const vertical = edge?.sourceHandle === 'bottom' || edge?.sourceHandle === 'top';
+          // 有绕行点就画在绕行点上（那是横线 / 竖线所在），否则画在库算出来的路径中点。
+          const flowPoint = route?.routeX !== undefined && route?.routeY !== undefined
+            ? { x: route.routeX, y: route.routeY }
+            : { x: anchors.midX, y: anchors.midY };
+          return (
+            <FlowRouteHandle
+              edgeId={selectedEdgeId}
+              anchor={{ x: viewport.x + flowPoint.x * viewport.zoom, y: viewport.y + flowPoint.y * viewport.zoom }}
+              /* 竖直的边中间是**横线** ⇒ 拖它上下走；水平的边中间是**竖线** ⇒ 拖它左右走。 */
+              axis={vertical ? 'y' : 'x'}
+              vertical={vertical}
+              disabled={disabled}
+            />
+          );
+        })()}
         {overlay && (overlay.mode === 'label' ? (
           <input
             className={styles.flowEdgeInput}

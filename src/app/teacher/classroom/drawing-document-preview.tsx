@@ -135,9 +135,34 @@ function MindBranch({ node }: { node: Record<string, unknown> }) {
   return <li><span>{String(node.topic ?? '主题')}</span>{children.length > 0 && <ul>{children.map((child, index) => <MindBranch key={String(child.id ?? index)} node={child} />)}</ul>}</li>;
 }
 
+/**
+ * 思维导图**没有快照时**的近似渲染：把树退化成层级文字。
+ *
+ * ★ 2026-10-07（教师裁定 ②(a)）：**保持大纲，但要明写「近似预览」。**
+ *
+ * 🔴 为什么必须明写：这条回退与快照**不是同一张图** —— 没有布局、没有配色、没有分支形状
+ *   （真正的图是 mind-elixir 渲出来再抓的那张位图，AI 联系表与 Word 报告用的也是它）。
+ *   2026-10-06 教师报的「导图被画成了三行大纲文字」就是这个形状；那次只修到
+ *   「有快照就先画快照」，而这一支**快照缺席时**仍然长得和信息完整的预览一模一样。
+ * ⚠️ 而思维导图**比流程图更容易走到这一支**：它只在学生**动手**时才抓图
+ *   （流程图挂载后无条件先抓一张），学生改完就离开题目 ⇒ 那张图永远不来。
+ * ⚠️ 另一种走到这里的情形：值超过实时通道的预算时 `drawingPart` 会把矢量数据整个丢掉
+ *   （只留位图）⇒ `nodeData` 不在 ⇒ 大纲是**空的**（这里会照实说一句，而不是留一个白框）。
+ */
 function MindPreview({ data, backgroundUrl }: PreviewProps & { data: Record<string, unknown> }) {
   const root = row(data.nodeData);
-  return <div style={{ minHeight: 180, padding: 16, overflow: 'auto', background: backgroundUrl ? `#fff url(${backgroundUrl}) center/100% 100% no-repeat` : '#fff', color: '#334b66', fontSize: 13 }} role="img" aria-label="学生的思维导图作答"><ul style={{ margin: 0, paddingLeft: 22 }}>{root && <MindBranch node={root} />}</ul></div>;
+  return (
+    <div style={{ minHeight: 180, padding: 16, overflow: 'auto', background: backgroundUrl ? `#fff url(${backgroundUrl}) center/100% 100% no-repeat` : '#fff', color: '#334b66', fontSize: 13 }} role="img" aria-label="学生的思维导图作答（近似预览）">
+      {/* 🔴 这行字是这一支存在的理由的一半 —— 别为了「干净」删掉它：
+          没有它，教师会把一张只有层级、没有布局与配色的图当成学生画的那张。 */}
+      <div style={{ display: 'inline-block', marginBottom: 8, padding: '2px 7px', borderRadius: 5, background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', fontSize: 11 }}>
+        近似预览（快照还没到）—— 布局与配色请以快照为准
+      </div>
+      {root
+        ? <ul style={{ margin: 0, paddingLeft: 22 }}><MindBranch node={root} /></ul>
+        : <div style={{ color: '#94a3b8' }}>这份作答的结构也还没拿到，稍后会自己更新。</div>}
+    </div>
+  );
 }
 
 export function DrawingDocumentPreview(props: PreviewProps) {

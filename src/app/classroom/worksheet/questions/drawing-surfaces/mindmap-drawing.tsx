@@ -10,6 +10,7 @@ import { useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 // ★ 2026-10-07：底稿那一档的口径住在 `worksheet-drawing-starter.ts`（与流程图同一处），
 //   连同「怎么读一份导图数据」——本组件原来自己抄了一份 `readMindData`，已收口。
 import { mindMapOrStarter } from '@/lib/worksheet-drawing-starter.ts';
+import { mindmapDragStarted } from '@/lib/worksheet-mindmap-pan.ts';
 
 import type { DrawingSurfaceProps } from './types';
 import styles from '../../worksheet.module.css';
@@ -198,10 +199,22 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
        */
       instance.move(dx, dy);
     };
-    const onPointerUp = () => {
+    const onPointerUp = (event: PointerEvent) => {
       if (!panning) return;
+      /*
+       * ★ 2026-10-07（教师）：「学生用鼠标点击思维导图的**空白区域**，应该能够取消所有节点的选择状态」。
+       *
+       * 🔴 为什么得自己补：空白处的左键被我们在**捕获阶段**接管了（平移画布），
+       *   `stopPropagation()` 之后库自己那套「点空白 = 取消选中」**没机会跑**。
+       * ⚠️ 只在**没拖动**时补（`mindmapDragStarted`，纯函数、有用例）——
+       *   平移画布是「看一眼」，取消选中是「换个对象」，两件事不该顺手一起做。
+       * ⚠️ `clearSelection()` 是库的公开方法，它把**节点 + 摘要 + 连接线**的选中一起清掉
+       *   （`dist/MindElixir.js` 里就是 `unselectNodes + unselectSummary + unselectArrow`）。
+       */
+      const wasClick = !mindmapDragStarted(panning, { x: event.clientX, y: event.clientY });
       panning = null;
       if (hostEl) hostEl.style.cursor = '';
+      if (wasClick) instance.clearSelection();
     };
     hostEl?.addEventListener('pointerdown', onPointerDown, { capture: true });
     window.addEventListener('pointermove', onPointerMove);

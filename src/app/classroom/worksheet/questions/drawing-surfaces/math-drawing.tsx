@@ -8,8 +8,13 @@ import {
   MATH_TOOL_GROUPS,
   MATH_TOOL_ICONS,
   MATH_TOOLS,
+  arcLabelAt,
+  arcPathOf,
+  equalMarkOf,
+  parallelMarkOf,
   parallelogramOf,
   rectangleOf,
+  rightAngleOf,
   toolHintOf,
   toolsInGroup,
   trapezoidOf,
@@ -52,6 +57,8 @@ function readEntries(raw: unknown): MathEntry[] {
     if (row.kind === 'segment' || row.kind === 'line' || row.kind === 'arrow') return isPt(row.a) && isPt(row.b);
     if (row.kind === 'polyline') return Array.isArray(row.points) && row.points.length >= 2 && row.points.every(isPt);
     if (row.kind === 'angle') return isPt(row.vertex) && isPt(row.a) && isPt(row.b);
+    if (row.kind === 'angleArc' || row.kind === 'rightAngle') return isPt(row.vertex) && isPt(row.a) && isPt(row.b);
+    if (row.kind === 'equalMark' || row.kind === 'parallelMark') return isPt(row.a) && isPt(row.b);
     if (row.kind === 'label') return isPt(row.at) && typeof row.text === 'string';
     return false;
   });
@@ -69,6 +76,16 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
   const history = useRef<MathEntry[][]>([]);
   const [tool, setTool] = useState<MathTool>('point');
   const [labelText, setLabelText] = useState('');
+  /**
+   * ★ 2026-10-07：角弧那个「度数」框里的字。
+   *
+   * 🔴 **与 `labelText` 分开**，不复用：共用一个的话，学生在「文字」里写了"甲"、
+   *   再切到角弧，度数框里会留着"甲"，而它会**被写到角上**（学生看到的是一个
+   *   跟他刚才输入的东西有关的怪字，而他以为那是度数）。
+   * ⚠️ 也**不要**在 `chooseTool` 里清它 —— 学生填了度数、切去别的工具看一眼再切回来，
+   *   清掉就是丢他的输入。
+   */
+  const [arcText, setArcText] = useState('');
   const [canUndo, setCanUndo] = useState(false);
   /** ★ 2026-10-06：选中了第几条（`null` = 没选中）。「删除选中」按它动手。 */
   const [selected, setSelected] = useState<number | null>(null);
@@ -81,6 +98,8 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
   toolRef.current = tool;
   const labelTextRef = useRef(labelText);
   labelTextRef.current = labelText;
+  const arcTextRef = useRef(arcText);
+  arcTextRef.current = arcText;
   const disabledRef = useRef(disabled);
   disabledRef.current = disabled;
   const selectedRef = useRef<number | null>(selected);
@@ -227,7 +246,54 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
         }) as JXG.GeometryElement;
         return { entry, points: [], objects: [text] };
       }
-      // 六种形状在上面都 return 了；这一行只为让类型收敛（真走到这里说明有形状漏了实现）。
+      /*
+       * ★ 2026-10-07：四个几何记号。**几何全部来自 `worksheet-math-shapes.ts`** ——
+       *   画板只负责"把算好的点画上去"，一个三角函数都不许在这里出现
+       *   （教师预览是第二个渲染端，两边各推一套迟早分叉，而分叉的表现只是
+       *    "教师看到的记号比学生画的小一点"，没人会为此报 bug）。
+       * ⚠️ 三个记号 `points: []`（没有抓手）：它们太小，拖它比重新画一个还费劲；
+       *    选中 + 删除照旧可用（`objects` 里的形状本身就能被点中）。
+       */
+      if (entry.kind === 'equalMark') {
+        const tick = equalMarkOf(entry.a, entry.b);
+        if (!tick) return { entry, points: [], objects: [] };
+        const shape = board.create('segment', [tick[0], tick[1]], { ...lineAttrs, strokeWidth: 3 }) as JXG.GeometryElement;
+        return { entry, points: [], objects: [shape] };
+      }
+      if (entry.kind === 'parallelMark') {
+        const bar = parallelMarkOf(entry.a, entry.b);
+        if (!bar) return { entry, points: [], objects: [] };
+        const shape = board.create('segment', [bar[0], bar[1]], { ...lineAttrs, firstArrow: true, lastArrow: true }) as JXG.GeometryElement;
+        return { entry, points: [], objects: [shape] };
+      }
+      if (entry.kind === 'rightAngle') {
+        const square = rightAngleOf(entry.vertex, entry.a, entry.b);
+        if (!square) return { entry, points: [], objects: [] };
+        const shape = board.create('polyline', square, { ...lineAttrs, strokeWidth: 2 }) as JXG.GeometryElement;
+        return { entry, points: [], objects: [shape] };
+      }
+      if (entry.kind === 'angleArc') {
+        // ⚠️ 三个点用 `mkHandle`（未选中时藏起来，与线段端点同一条规矩）。
+        const a = mkHandle(entry.a);
+        const vertex = mkHandle(entry.vertex);
+        const b = mkHandle(entry.b);
+        const objects: JXG.GeometryElement[] = [a, vertex, b];
+        const arc = arcPathOf(entry.vertex, entry.a, entry.b);
+        if (arc) {
+          /*
+           * ⚠️ 用 `curve`（与自由线条那一支同种画法）而**不是**库自带的 `angle` 元素：
+           *   库那个自己决定画哪一段弧，而教师预览要照着同一个函数画 —— 两边必须同源。
+           *   （历史形状 `kind: 'angle'` 仍然用库自带的那个，那是为了与老作答长得一样。）
+           */
+          objects.push(board.create('curve', [arc.map(([x]) => x), arc.map(([, y]) => y)], { ...lineAttrs, strokeWidth: 2 }) as JXG.GeometryElement);
+        }
+        const at = entry.text ? arcLabelAt(entry.vertex, entry.a, entry.b) : null;
+        if (entry.text && at) {
+          objects.push(board.create('text', [at[0], at[1], entry.text], { fontSize: 14, strokeColor: '#263b53', fixed: disabled }) as JXG.GeometryElement);
+        }
+        return { entry, points: [a, vertex, b], objects };
+      }
+      // 六种老形状在上面都 return 了；这一行只为让类型收敛（真走到这里说明有形状漏了实现）。
       return { entry, points: [], objects: [] };
     };
 
@@ -276,6 +342,20 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
           a: [round3(item.points[0].X()), round3(item.points[0].Y())],
           vertex: [round3(item.points[1].X()), round3(item.points[1].Y())],
           b: [round3(item.points[2].X()), round3(item.points[2].Y())],
+        };
+      }
+      if (entry.kind === 'angleArc') {
+        // ⚠️ 角弧的三个点是**可拖的** ⇒ 必须按拖动后的位置存回去。
+        //   少这一支的表现是"拖了一下，松手又弹回去"，而屏幕上只是"没拖动"。
+        //   ⚠️ `points` 的顺序与 `angle` 那一支一致：[a, vertex, b]。
+        return {
+          kind: 'angleArc',
+          a: [round3(item.points[0].X()), round3(item.points[0].Y())],
+          vertex: [round3(item.points[1].X()), round3(item.points[1].Y())],
+          b: [round3(item.points[2].X()), round3(item.points[2].Y())],
+          // ⚠️ 文字**没有就不带那个键**（与 `readInk` 对 `texts` 的口径一致：
+          //    老值原样，不是凭空多一个空串）。
+          ...(entry.text ? { text: entry.text } : {}),
         };
       }
       if (entry.kind === 'label') {
@@ -444,6 +524,28 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
          *   老作答里还有（见 `renderEntry` 那一支与 `readEntries` 的校验）。
          *   **删的是入口，不是历史。**
          */
+        /*
+         * ★ 2026-10-07：四个记号。三个点的顺序统一是 `[a, vertex, b]`（**顶点在第二下**），
+         *   与提示语「一条边上、顶点、另一条边上」逐字对应。
+         * 🔴 先问一句几何函数"这样点算得出来吗"再落数据：算不出来的（两点重合、
+         *   两点几乎同向）**不落** —— 落了会得到一条看不见的记号，而学生在等它出现。
+         *   拖动类那条 `Math.hypot(...) < 0.3` 是同一个道理。
+         * ⚠️ 两个三击记号若是**两种顺序**，学生一定会点错，而表现是
+         *   "记号长到了错的地方"，不报错。
+         */
+        case 'equalMark':
+          return equalMarkOf(ats[0], ats[1]) ? [{ kind: 'equalMark', a: ats[0], b: ats[1] }] : null;
+        case 'parallelMark':
+          return parallelMarkOf(ats[0], ats[1]) ? [{ kind: 'parallelMark', a: ats[0], b: ats[1] }] : null;
+        case 'rightAngle':
+          return rightAngleOf(ats[1], ats[0], ats[2])
+            ? [{ kind: 'rightAngle', a: ats[0], vertex: ats[1], b: ats[2] }] : null;
+        case 'angleArc': {
+          const text = arcTextRef.current.trim();
+          if (!arcPathOf(ats[1], ats[0], ats[2])) return null;
+          return [{ kind: 'angleArc', a: ats[0], vertex: ats[1], b: ats[2],
+            ...(text ? { text: text.slice(0, 8) } : {}) }];
+        }
         default:
           return null;
       }
@@ -672,6 +774,18 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
             placeholder="写文字"
             value={labelText}
             onChange={(event) => setLabelText(event.target.value)}
+          />
+        )}
+        {tool === 'angleArc' && (
+          <input
+            className={styles.drawingToolbarEdgeLabel}
+            type="text"
+            maxLength={8}
+            disabled={disabled}
+            aria-label="要标的角度"
+            placeholder="如 30°"
+            value={arcText}
+            onChange={(event) => setArcText(event.target.value)}
           />
         )}
         <span className={styles.drawingToolbarHint}>{toolHintOf(tool)}</span>

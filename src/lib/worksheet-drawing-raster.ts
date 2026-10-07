@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { api } from './api';
-import { rasterDelayMs, CHAT_IMAGE_URL } from './worksheet-drawing.ts';
+import { CHAT_IMAGE_URL, rasterDelayMs, safeCapture } from './worksheet-drawing.ts';
 
 /**
  * 第三方画板的**位图快照**（★ 2026-10-06）。
@@ -138,7 +138,7 @@ export function useDrawingRaster({ capture, onUrl, delayMs = 800, maxDelayMs = 5
       timerRef.current = null;
       lastCaptureAtRef.current = Date.now();
       void (async () => {
-        const blob = await captureRef.current();
+        const blob = await safeCapture(captureRef.current);
         if (!blob || !aliveRef.current) return;
         const url = await uploadDrawingRaster(blob);
         if (!url || !aliveRef.current || tokenRef.current !== token) return;

@@ -119,3 +119,27 @@ export function rasterDelayMs(input: {
   if (sinceLast >= maxDelayMs) return 0;
   return Math.min(delayMs, maxDelayMs - sinceLast);
 }
+
+/**
+ * ★ 2026-10-07（审计抓到的思维导图那条）—— **抓图绝不抛，失败回 `null`。**
+ *
+ * 🔴 这条承诺是抓图那一套的（`worksheet-drawing-raster.ts` 的 `svgToPngBlob` 上写着
+ *   「抓图炸掉不该把作答那一步带走」），所以由**这一层**保证，而不是指望每个调用点的
+ *   `capture` 都守规矩：`svgToPngBlob` 守着，而思维导图调的是第三方库的 `exportPng`，
+ *   库失败时 **reject** ⇒ `useDrawingRaster` 里那句 `void (async () => { await capture() … })()`
+ *   成为 **unhandled rejection**（仓里没有兜底线），这一次快照静默不更新，屏幕上什么都不说。
+ * ⇒ 收在这里：四个画板一起受益，将来谁再写一个会 reject 的 capture 也漏不出去。
+ *
+ * ⚠️ 它住在**这个文件**而不是 `worksheet-drawing-raster.ts`：那个模块 import 了 `./api`
+ *   （webpack 风格、无扩展名），`node --test` 装载不起来 —— 而这条判据必须能跑
+ *  （与 `rasterDelayMs` 同一个理由，见 `worksheet-drawing-raster.test.ts` 的文件头）。
+ */
+export async function safeCapture(capture: () => Promise<Blob | null>): Promise<Blob | null> {
+  try {
+    return await capture();
+  } catch {
+    // ⚠️ **刻意不报错、也不弹提示**：抓图是派生数据（教师预览 / AI 联系表 / 报告都用它），
+    //    抓不到就这一次跳过 —— 作答本身一个字都不受影响，而打断学生去报一个他无能为力的错更坏。
+    return null;
+  }
+}

@@ -92,18 +92,43 @@ test('原有的上下相对关系原样保留 —— 不按连线重新分层', 
   );
 });
 
-test('连线按两端的相对位置选句柄', () => {
-  const nodes = [node('a', 100, 100), node('b', 100, 300)];
-  const out = tidyFlowchart(nodes, [edge('a', 'b')]);
-  assert.equal(out.edges[0].sourceHandle, 'bottom', 'b 在 a 正下方 ⇒ 从 a 的底边出');
-  assert.equal(out.edges[0].targetHandle, 'top', '⇒ 进 b 的顶边');
+/*
+  ⊘ 2026-10-07（**教师改主意**）：这两条原来钉的是「整理会按两端相对位置**重挑句柄**」——
+    那是 2026-10-06「只对齐 + 理顺连线」那一版的产物（他当时在选项里挑的正是「理顺连线」）。
+    他看过实物之后明确否掉了：
+    「另外**也不要去改变连接线所连接图形的节点**（= 图形上那几个连接点），这些都要保持原样。」
+  ⇒ 合成**一条反过来的**：连线一个字段都不许动 —— 包括句柄、两端、标注、绕行点。
+*/
+test('★ 整理**不动连线**（句柄 / 两端 / 标注 / 绕行点，一个字段都不许变）', () => {
+  const nodes = [node('a', 100, 100), node('b', 100, 300), node('c', 400, 100)];
+  const edges = [
+    { ...edge('a', 'b'), sourceHandle: 'bottom', targetHandle: 'top', data: { routeY: 42 } },
+    { ...edge('a', 'c'), sourceHandle: 'left', targetHandle: 'right', label: '是' },
+  ];
+  const out = tidyFlowchart(nodes, edges);
+  assert.deepEqual(out.edges, edges, '整理动了连线 —— 教师要求连线原样（那几个连接点尤其不能变）');
+  assert.equal(out.edges[0], edges[0], '没改就别新建对象（连引用都该是同一个）');
 });
 
-test('连线横向相接时改用左右句柄', () => {
-  const nodes = [node('a', 100, 100), node('b', 400, 100)];
-  const out = tidyFlowchart(nodes, [edge('a', 'b')]);
-  assert.equal(out.edges[0].sourceHandle, 'right', 'b 在 a 正右方 ⇒ 从 a 的右边出');
-  assert.equal(out.edges[0].targetHandle, 'left', '⇒ 进 b 的左边');
+/*
+  ★ 2026-10-07（教师）：「注意**只是微调**」——
+  这条钉一个**硬上限**：整理之后，没有任何一个框挪得比对齐容差更远。
+  它同时是「不重新分层」那条的反面网：任何「推倒重排」的实现都会一步跨过它。
+*/
+test('★ 「只是微调」的硬上限：没有任何一个框挪超过容差（24px）', () => {
+  const nodes = [
+    node('a', 100, 100), node('b', 400, 112), node('c', 700, 96),   // 三列，纵向各差十几像素
+    node('d', 100, 400), node('e', 402, 410), node('f', 699, 388),
+  ];
+  const out = tidyFlowchart(nodes, [edge('a', 'd'), edge('b', 'e'), edge('c', 'f')]);
+  for (const before of nodes) {
+    const after = find(out.nodes, before.id);
+    assert.ok(
+      Math.abs(after.position.x - before.position.x) <= 24.001
+      && Math.abs(after.position.y - before.position.y) <= 24.001,
+      `${before.id} 挪了 (${after.position.x - before.position.x}, ${after.position.y - before.position.y}) —— 那不是「微调」`,
+    );
+  }
 });
 
 test('整理不动连线上学生自己调过的路由点', () => {

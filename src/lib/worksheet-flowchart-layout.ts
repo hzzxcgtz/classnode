@@ -1,5 +1,17 @@
 /**
- * 「一键整理」的算法 —— **保守对齐**（★ 2026-10-06 教师报的问题后重写）。
+ * 「一键整理」的算法 —— **保守微调**（★ 2026-10-06 报的问题后重写；★ 2026-10-07 又收窄一次）。
+ *
+ * ★ 2026-10-07（教师，逐字）：「这个按钮的功能**只在微调**连接线和矩形的位置布局。注意只是微调，
+ *   比如把连接线当中的一些**很小的折线去掉，变成一根直线**，**不要去改变整个流程图各个图形的布局**，
+ *   另外**也不要去改变连接线所连接图形的节点**，这些都要保持原样。」
+ *   ⇒ 两件事：
+ *     · **只动矩形的位置**（吸附对齐 —— 两个框差一点点时把它们吸齐，连线自然就直了）；
+ *     · **连线一个字都不动**（⊘ 原来这里还会按两端相对位置**重挑句柄** ——
+ *       那是 2026-10-06「只对齐 + 理顺连线」那一版的产物，教师现在明确否掉了：
+ *       「连接线所连接的**节点**」（= 图形上的那几个连接点）要保持原样）。
+ *
+ * ⚠️ 「把很小的折线去掉」**是靠挪框实现的**，不是靠把线画斜：两个框的中心差在容差内就吸齐，
+ *    底部→顶部那条线自然成了**严格的竖线**（与 2026-10-07「一条斜线都不画」那条规矩相容）。
  *
  * 🔴 教师的原话：「『一键整理』会打乱我原有的结果，我的本意是简单的根据原有结构对对齐，
  *    连接线整理一下即可」。
@@ -85,29 +97,6 @@ function clusterValues(values: number[]): Map<number, number> {
 }
 
 /**
- * 按两端**当前的相对位置**给一条边选句柄 —— 只理顺「从哪边出、进哪边」，
- * 不改 source/target（那是拓扑，不归整理管）。
- *
- * 主方向取 |dy| 与 |dx| 里大的那个：上下关系为主就走上下，左右关系为主就走左右。
- * 平手（|dy| === |dx|）算竖直 —— 与画板里「流程图默认自上而下」的直觉一致。
- */
-function handlesFor(
-  sourceCenter: { x: number; y: number },
-  targetCenter: { x: number; y: number },
-): { sourceHandle: string; targetHandle: string } {
-  const dy = targetCenter.y - sourceCenter.y;
-  const dx = targetCenter.x - sourceCenter.x;
-  if (Math.abs(dy) >= Math.abs(dx)) {
-    return dy >= 0
-      ? { sourceHandle: 'bottom', targetHandle: 'top' }
-      : { sourceHandle: 'top', targetHandle: 'bottom' };
-  }
-  return dx >= 0
-    ? { sourceHandle: 'right', targetHandle: 'left' }
-    : { sourceHandle: 'left', targetHandle: 'right' };
-}
-
-/**
  * 整理一份流程图：**吸附对齐**（横/纵各一次）+ **理顺连线句柄**。
  *
  * ⚠️ 纯函数：不改传进来的数组与对象，返回全新的一份（React Flow 那套是受控数据流，
@@ -146,21 +135,11 @@ export function tidyFlowchart<N extends TidyNodeLike, E extends TidyEdgeLike>(
     };
   });
 
-  // 句柄按**整理后**的位置算 —— 对齐会把「上下关系」和「左右关系」的强弱翻过来，
-  // 用旧坐标选出来的句柄可能正好选反。
-  const byId = new Map(nextNodes.map((node) => [node.id, node]));
-  const centerOf = (node: TidyNodeLike) => ({
-    x: node.position.x + widthOf(node) / 2,
-    y: node.position.y + heightOf(node) / 2,
-  });
-  const nextEdges = edges.map((edge) => {
-    const source = byId.get(edge.source);
-    const target = byId.get(edge.target);
-    // 自环、或端点不在画布上的边：不猜，原样留着。
-    if (!source || !target || source === target) return edge;
-    const handles = handlesFor(centerOf(source), centerOf(target));
-    return { ...edge, ...handles };
-  });
-
-  return { nodes: nextNodes, edges: nextEdges };
+  /*
+   * ★ 2026-10-07（教师）：「**也不要去改变连接线所连接图形的节点**（那几个连接点），
+   *   这些都要保持原样」⇒ 连线**一个字段都不动**，原样返回。
+   * ⊘ 这里原来会按两端整理后的相对位置**重挑句柄**（`handlesFor`）—— 已删。
+   *   ⚠️ 别把它加回来：教师看的是「他连好的那根线有没有被搬到另一条边上」。
+   */
+  return { nodes: nextNodes, edges };
 }

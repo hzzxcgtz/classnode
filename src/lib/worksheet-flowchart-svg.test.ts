@@ -22,6 +22,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { escapeXml, flowchartSvg, readFlowRaster } from './worksheet-flowchart-svg.ts';
+/* ★ 2026-10-07：标签「默认让开多少」用到的两个量 —— 与快照这两个常量**对拍**（见下面那条）。 */
+import { FLOW_LABEL_CHAR, FLOW_LABEL_LINE } from './worksheet-flowchart-edge.ts';
 
 /** 断言有图 + 把 `| null` 收窄（`tsc` 也跑这个文件，解构 null 会红）。 */
 function shot(raw: unknown): { svg: string; width: number; height: number } {
@@ -285,7 +287,13 @@ test('★ 快照的线标签画在路径中点、带白底框 —— 与交回�
   const live = stripComments(fs.readFileSync(SNAPSHOT, 'utf8'));
   const labelAt = live.indexOf('const bgWidth = Array.from(edge.label)');
   assert.notEqual(labelAt, -1, '线标签那一句没找到（改成什么写法了？）—— 先修这条判据');
-  const labelBlock = live.slice(labelAt, labelAt + 700);
+  /*
+   * ⚠️ 切片**切到标签那段代码结束**（下一个 `for (const node of nodes) parts.push(nodeShape(node))`），
+   *    不写死字数：★ 2026-10-07 标签的偏移计算搬进来之后，700 字那个窗口当场就不够了
+   *    （判据红在「标签没有居中」上 —— 而代码其实是对的）。
+   */
+  const labelEnd = live.indexOf('for (const node of nodes) parts.push(nodeShape(node))', labelAt);
+  const labelBlock = live.slice(labelAt, labelEnd === -1 ? labelAt + 700 : labelEnd);
   assert.ok(labelBlock.length > 200, '切片太短 —— 别让它在空串上全绿');
   assert.match(labelBlock, /<rect/, '线标签没画白底框 —— 中点正好压在线段上，没有它字和线会叠在一起读不清');
   assert.match(labelBlock, /fill="#ffffff"/, '白底框的填充不是白色');
@@ -307,7 +315,13 @@ test('★ 线标签不依赖 `dominant-baseline`（Safari 15 支持不佳），�
   */
   const labelAt = live.indexOf('const bgWidth = Array.from(edge.label)');
   assert.notEqual(labelAt, -1, '线标签那一句没找到（改成什么写法了？）—— 先修这条判据');
-  const labelBlock = live.slice(labelAt, labelAt + 700);
+  /*
+   * ⚠️ 切片**切到标签那段代码结束**（下一个 `for (const node of nodes) parts.push(nodeShape(node))`），
+   *    不写死字数：★ 2026-10-07 标签的偏移计算搬进来之后，700 字那个窗口当场就不够了
+   *    （判据红在「标签没有居中」上 —— 而代码其实是对的）。
+   */
+  const labelEnd = live.indexOf('for (const node of nodes) parts.push(nodeShape(node))', labelAt);
+  const labelBlock = live.slice(labelAt, labelEnd === -1 ? labelAt + 700 : labelEnd);
   assert.ok(labelBlock.length > 200, '切片太短 —— 别让它在空串上全绿');
   assert.match(labelBlock, /dy="0\.35em"/, '标签的基线没有用 `dy`（em 相对字号）表达');
   assert.ok(!/dominant-baseline/.test(labelBlock), '线标签又在用 `dominant-baseline` —— Safari 15 上竖向位置会不可靠');
@@ -349,4 +363,41 @@ test('★ 快照也要把绕行点夹住（与画板同一个范围）', () => {
     /<path d="M 50 46 L 50 174 L 250 174 L 250 194"/,
     '越界的绕行点没被夹住 —— 教师那张图的「弧线折返」会在报告里重现，而画板上没有',
   );
+});
+
+/* ── ★ 2026-10-07：线上文字摆在线旁边（默认）／被拖过的位置 ─────────────────── */
+test('★ 线上文字默认摆在那一段线的**旁边**（竖线右侧 / 横线顶部），不压线', () => {
+  const { svg } = shot({ ...ROUTED, edges: [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'bottom', targetHandle: 'top', label: '是' }] });
+  /*
+   * 这条边的中段是**横线**（bottom→top，中点在 y = (46+194)/2 = 120）⇒ 字摆在**上方**：
+   *   120 − (17/2 + 4) = 107.5；白底框高 17 ⇒ 框顶 = 107.5 − 17 + 3 = 93.5。
+   * ⚠️ 那几个数是从 `flowLabelOffset`（画板与快照共用）来的 —— 这里钉的是**快照真的照做了**。
+   */
+  assert.match(svg, /<text x="150" y="107\.5"/, '字没有摆到线的上方');
+  assert.match(svg, /<rect x="140\.5" y="93\.5"/, '白底框没跟着一起挪（字和框会分家）');
+  // 反面对照：没有文字的线不该凭空多出这个框。
+  assert.ok(!/<rect x="140\.5" y="93\.5"/.test(shot({ ...ROUTED, edges: routed(150) }).svg), '没有文字的线也画了标签框');
+});
+
+test('★ 拖过的标签按拖到的位置画（快照与画板同一份偏移）', () => {
+  const { svg } = shot({
+    ...ROUTED,
+    edges: [{ id: 'e', source: 'a', target: 'b', sourceHandle: 'bottom', targetHandle: 'top', label: '是', data: { labelDX: 40, labelDY: -60 } }],
+  });
+  // 中点是 (150, 120) ⇒ 拖到 (190, 60)。
+  assert.match(svg, /<text x="190" y="60"/, '拖过的位置没有画出来（报告里还是老位置）');
+});
+
+/*
+  ★ 2026-10-07（教师）：「如果是竖线，默认在右侧；如果是横线，默认在上方」。
+  「让开多少」= **半个字宽 / 半行字** —— 这两个量必须与快照估文字尺寸用的那两个常量**同值**：
+  各写一个数必然分叉，而分叉的表现是「默认位置在画板与报告里差几像素」这种**不报错**的错。
+  ⚠️ 判据从**源码里现读**快照的常量（`constNumber`），不逐字写 17 / 13。
+*/
+test('★ 标签让开的距离用的「一行多高 / 一个字多宽」与快照那两个常量对拍', () => {
+  const live = stripComments(fs.readFileSync(SNAPSHOT, 'utf8'));
+  assert.equal(FLOW_LABEL_LINE, constNumber(live, 'LINE_HEIGHT'),
+    '「一行多高」两边对不上 —— 标签默认位置在画板与报告里会差几像素（谁也不报错）');
+  assert.equal(FLOW_LABEL_CHAR, constNumber(live, 'FONT_SIZE'),
+    '「一个字多宽」两边对不上 —— 横线右侧的标签会让开得不一样多');
 });

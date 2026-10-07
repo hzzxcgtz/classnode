@@ -171,3 +171,22 @@ test('折线上的控制柄：压在线上、轴由走向定、拖的位置夹�
    *   （读变化检测 effect 的守卫 + 依赖），在这里再来一条只会是同一件事的副本。
    */
 });
+
+/*
+  ★ 2026-10-07（教师）：「线上文字……如果是竖线，默认在右侧；如果是横线，默认在上方」，
+  并选了「**贴着线拖**」。几何在 `@/lib/worksheet-flowchart-edge.ts`（`flowLabelOffset` 等，
+  那边有纯函数用例）；这里只钉**接线**：偏移有没有加给库、把手有没有画、拖的时候夹没夹。
+
+  🔴 这一轮**没有**把标签从库手里拿回来 —— 库画的还是它（白底框/居中/配色全不动），
+     我们只是把它收到的那两个坐标挪一下。所以「全回原版」没有被推翻。
+*/
+test('★ 标签：偏移加给库的坐标（不是自己画）、把手跟着标签、拖的时候夹在「线附近」', () => {
+  assert.match(SOURCE, /const labelX = baseLabelX \+ labelOffset\.dx;/, '没有把标签偏移加给**库的入参** —— 那就变成我们自己摆标签了');
+  assert.match(SOURCE, /labelX=\{labelX\}/, 'BaseEdge 没拿到挪过的标签坐标');
+  assert.match(SOURCE, /<FlowLabelHandle/, '没有渲染拖标签的把手');
+  assert.match(SOURCE, /if \(!anchors \|\| !edge\?\.label\) return null/, '没有文字的线也画了把手 —— 没东西可拖');
+  assert.match(SOURCE, /clampLabelOffset\(/, '拖标签没有夹在「线附近」—— 拖丢了就找不回来了');
+  assert.match(SOURCE, /labelDX: next\.dx, labelDY: next\.dy/, '拖它没有把位置写回边数据');
+  assert.match(SOURCE, /labelX: labelX \+ labelOffset\.dx, labelY: labelY \+ labelOffset\.dy/, '锚点表没有吐出「标签画在哪」');
+  assert.match(SOURCE, /const \{ labelX, labelY \} = anchors;/, '就地输入框没有跟着标签走 —— 会停在线上与那几个字分家');
+});

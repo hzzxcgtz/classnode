@@ -91,6 +91,28 @@ test('指纹：位置 / 文字 / 连线算变化（反面对照）', () => {
   assert.notEqual(flowchartSignature([node()], [edge]), base, '多了一条线要算');
 });
 
+/*
+  ★ 2026-10-07（教师）：「线上文字……**贴着线拖**」。
+  🔴 指纹是「这一步算不算变化」的**唯一**判据（见那条变化检测 effect）——
+     漏了偏移这一项，学生拖完标签松手**一步都不会记**（按撤销退回去的是上一步，
+     看着像「撤销失灵」）。这与绕行点当年那条是同一个坑。
+*/
+test('指纹：标签的偏移算变化 —— 拖了标签必须能撤销', () => {
+  const edge = (data: Record<string, number>) => [{ id: 'e1', source: 'n1', target: 'n2', label: '是', data }];
+  const base = flowchartSignature([node()], edge({ labelDX: 10, labelDY: -20 }));
+  assert.notEqual(
+    flowchartSignature([node()], edge({ labelDX: 30, labelDY: -20 })),
+    base,
+    '往右挪了 20px 却没进指纹 ⇒ 这一次拖动不会记进撤销栈',
+  );
+  assert.notEqual(
+    flowchartSignature([node()], edge({ labelDX: 10, labelDY: -20, routeX: 99 })),
+    base,
+    '绕行点也要算（老规矩，这里顺手一起钉住）',
+  );
+  assert.equal(flowchartSignature([node()], edge({ labelDX: 10, labelDY: -20 })), base, '同样的数据要得到同样的指纹');
+});
+
 // ── 跨挂载存活的历史（★ 2026-10-06 教师在真机上发现全屏问题之后加的）──────────
 
 test('按 key 存的历史，换个实例也读得回来 —— 这是「切全屏不丢撤销」的全部依据', () => {

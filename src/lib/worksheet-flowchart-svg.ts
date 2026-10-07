@@ -14,7 +14,7 @@
  *    而这份快照正是教师与 AI 看到的那张图。两处都走同一份纯函数，别在这里再写一遍。
  */
 
-import { flowAnchorPoint, flowRoutePoint } from './worksheet-flowchart-edge.ts';
+import { flowAnchorPoint, flowLabelOffset, flowRoutePoint } from './worksheet-flowchart-edge.ts';
 
 const COLORS = {
   stroke: '#527198',
@@ -80,6 +80,9 @@ export interface FlowRasterEdge {
   label: string;
   routeX: number | null;
   routeY: number | null;
+  /** ★ 2026-10-07：标签被拖过的位置（相对线条中点）；没拖过是 `null` ⇒ 用默认那一侧。 */
+  labelDX: number | null;
+  labelDY: number | null;
 }
 
 /** XML 文本转义 —— 学生写的东西会原样进 SVG。 */
@@ -150,6 +153,8 @@ export function readFlowRaster(raw: unknown): { nodes: FlowRasterNode[]; edges: 
       label: typeof edge.label === 'string' ? edge.label : '',
       routeX: typeof edgeData?.routeX === 'number' && Number.isFinite(edgeData.routeX) ? edgeData.routeX : null,
       routeY: typeof edgeData?.routeY === 'number' && Number.isFinite(edgeData.routeY) ? edgeData.routeY : null,
+      labelDX: typeof edgeData?.labelDX === 'number' && Number.isFinite(edgeData.labelDX) ? edgeData.labelDX : null,
+      labelDY: typeof edgeData?.labelDY === 'number' && Number.isFinite(edgeData.labelDY) ? edgeData.labelDY : null,
     });
   }
   return { nodes, edges };
@@ -318,9 +323,21 @@ export function flowchartSvg(raw: unknown): { svg: string; width: number; height
        * ⚠️ 基线不用 `dominant-baseline`（Safari 15 对它支持不可靠），用 `dy="0.35em"` 把字抬到线上。
        */
       const bgWidth = Array.from(edge.label).length * FONT_SIZE + 6;
-      parts.push(`<rect x="${routeX - bgWidth / 2}" y="${routeY - LINE_HEIGHT + 3}" width="${bgWidth}" `
+      /*
+        ★ 2026-10-07（教师）：「如果是竖线，默认在右侧；如果是横线，默认在上方」+「贴着线拖」。
+        🔴 标签**不再压在线上了** ⇒ 快照也得挪（与画板同一份规则 `flowLabelOffset`）：
+           否则报告里那几个字还压着线，而画板上已经让开了 —— 两边都不报错的那种不一致。
+      */
+      const labelOffset = flowLabelOffset(
+        { sourceX: x1, sourceY: y1, sourcePosition: sourceSide, targetX: x2, targetY: y2, targetPosition: targetSide },
+        edge.label,
+        edge.labelDX === null || edge.labelDY === null ? null : { dx: edge.labelDX, dy: edge.labelDY },
+      );
+      const labelX = routeX + labelOffset.dx;
+      const labelY = routeY + labelOffset.dy;
+      parts.push(`<rect x="${labelX - bgWidth / 2}" y="${labelY - LINE_HEIGHT + 3}" width="${bgWidth}" `
         + `height="${LINE_HEIGHT}" rx="3" fill="#ffffff"/>`);
-      parts.push(`<text x="${routeX}" y="${routeY}" dy="0.35em" text-anchor="middle" `
+      parts.push(`<text x="${labelX}" y="${labelY}" dy="0.35em" text-anchor="middle" `
         + `font-family="${FONT}" font-size="${FONT_SIZE}" fill="#263b53">${escapeXml(edge.label)}</text>`);
     }
   }

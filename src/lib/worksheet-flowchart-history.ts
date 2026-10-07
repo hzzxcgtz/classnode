@@ -26,7 +26,7 @@ export interface HistoryEdgeLike {
   sourceHandle?: string | null;
   targetHandle?: string | null;
   label?: unknown;
-  data?: { routeX?: number; routeY?: number } | null;
+  data?: { routeX?: number; routeY?: number; labelDX?: number; labelDY?: number } | null;
 }
 
 export interface FlowSnapshot<N = unknown, E = unknown> { nodes: N[]; edges: E[] }
@@ -110,6 +110,9 @@ export function flowchartSignature(
       e.sourceHandle ?? '', e.targetHandle ?? '',
       typeof e.label === 'string' ? e.label : '',
       e.data?.routeX ?? null, e.data?.routeY ?? null,
+      /* ★ 2026-10-07（教师）：标签的偏移也是实质内容 —— 拖了标签必须**能撤销**，
+         而指纹是「这一步算不算变化」的唯一判据（漏了它 = 拖标签不记步）。 */
+      e.data?.labelDX ?? null, e.data?.labelDY ?? null,
     ]),
   ]);
 }

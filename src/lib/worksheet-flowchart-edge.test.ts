@@ -26,9 +26,14 @@ import assert from 'node:assert/strict';
 
 import {
   FLOW_HANDLE_HALF,
+  FLOW_LABEL_GAP,
+  FLOW_LABEL_LINE,
+  FLOW_LABEL_REACH,
   FLOW_STRAIGHT_SNAP,
   flowAnchorPoint,
   flowEdgeGeometry,
+  flowLabelOffset,
+  flowLabelWidth,
   flowRoutePoint,
   flowRouteTrack,
 } from './worksheet-flowchart-edge.ts';
@@ -243,4 +248,61 @@ test('端点约定直接决定「能走多远」—— 按边框算就会多出�
     FLOW_HANDLE_HALF,
     '差的正是那半个方块 —— 这就是教师看到的「拖到最两端时控制柄偏出线外一点」',
   );
+});
+
+/*
+  ===================== 线上文字摆在哪：**贴在线旁边 + 可以拖着走**（★ 2026-10-07 教师） =====================
+
+  教师：「如果是**竖线**，默认在**右侧**；如果是**横线**，默认在**上方**」，
+  并选了「**贴着线拖**」（拖得到处都是的话，这个标签就没意义了）。
+
+  ⚠️ 「线」指的是**标签待着的那一段**，不是整条边：竖直的边（bottom→top）中间那一段是**横的**
+     ⇒ 字在它上方；水平的边（right→left）中间那一段是**竖的** ⇒ 字在它右侧。
+     那一段的方向从 `flowRouteTrack().axis` 来（`axis === 'y'` ⇒ 中段是横的）。
+*/
+test('竖直的边（中段是横线）⇒ 默认摆在**上方**', () => {
+  const offset = flowLabelOffset(base, '是', null);
+  assert.equal(offset.dx, 0, '横线上方的字，左右不动');
+  assert.ok(offset.dy < 0, '要**往上**让开：白底框不能压在那条横线上');
+  assert.equal(offset.dy, -(FLOW_LABEL_LINE / 2 + FLOW_LABEL_GAP), '让开半行字 + 一点空隙');
+});
+
+test('水平的边（中段是竖线）⇒ 默认摆在**右侧**', () => {
+  const params = { sourceX: 0, sourceY: 50, targetX: 400, targetY: 50, sourcePosition: 'right', targetPosition: 'left' };
+  const offset = flowLabelOffset(params, '是', null);
+  assert.equal(offset.dy, 0, '竖线右侧的字，上下不动');
+  assert.ok(offset.dx > 0, '要**往右**让开');
+  assert.equal(offset.dx, flowLabelWidth('是') / 2 + FLOW_LABEL_GAP, '让开半个字宽 + 一点空隙');
+});
+
+test('标签越长，往右让开的距离越大 —— 否则白底框还是压着线', () => {
+  const params = { sourceX: 0, sourceY: 50, targetX: 400, targetY: 50, sourcePosition: 'right', targetPosition: 'left' };
+  const short = flowLabelOffset(params, '是', null);
+  const long = flowLabelOffset(params, '继续处理', null);
+  assert.ok(long.dx > short.dx, '四个字比一个字宽 ⇒ 要让开更多');
+  assert.equal(long.dx - short.dx, (flowLabelWidth('继续处理') - flowLabelWidth('是')) / 2, '差的就是那半个字宽');
+});
+
+test('拐弯的边（库不认绕行点、没有 track）⇒ 按两端的主方向猜', () => {
+  // 两端横向拉开得多 ⇒ 库把标签摆在**最长的那一段**上（那是横的）⇒ 上方。
+  const wide = { sourceX: 0, sourceY: 0, targetX: 400, targetY: 60, sourcePosition: 'bottom', targetPosition: 'left' };
+  assert.equal(flowRouteTrack(wide), null, '前提：拐弯的边没有 track（库不认绕行点）');
+  assert.equal(flowLabelOffset(wide, '是', null).dx, 0, '横的那一段 ⇒ 字在上方');
+  // 纵向拉开得多 ⇒ 最长的那一段是竖的 ⇒ 右侧。
+  const tall = { sourceX: 0, sourceY: 0, targetX: 60, targetY: 400, sourcePosition: 'bottom', targetPosition: 'left' };
+  assert.ok(flowLabelOffset(tall, '是', null).dx > 0, '竖的那一段 ⇒ 字在右侧');
+});
+
+test('拖过的位置优先生效 —— 不再用默认的那一侧', () => {
+  const moved = flowLabelOffset(base, '是', { dx: 40, dy: -30 });
+  assert.deepEqual(moved, { dx: 40, dy: -30 }, '拖到哪儿就是哪儿（还在「线附近」的范围里）');
+});
+
+test('贴着线拖：拖太远会被拉回**线附近**（方向不变，只缩短）', () => {
+  const far = flowLabelOffset(base, '是', { dx: 600, dy: 800 });
+  assert.equal(Math.round(Math.hypot(far.dx, far.dy)), FLOW_LABEL_REACH, '距离被夹到上限');
+  assert.ok(Math.abs(far.dx / far.dy - 600 / 800) < 1e-9, '方向不许变 —— 否则拖着拖着会拐弯');
+  const near = { dx: 30, dy: -20 };
+  assert.deepEqual(flowLabelOffset(base, '是', near), near, '范围里就原样，别顺手缩');
+  assert.deepEqual(flowLabelOffset(base, '是', { dx: 0, dy: 0 }), { dx: 0, dy: 0 }, '正好压回线上也是允许的（学生自己拖的）');
 });

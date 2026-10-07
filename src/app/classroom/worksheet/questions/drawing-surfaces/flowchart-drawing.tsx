@@ -45,10 +45,13 @@ import {
   type FlowSnapshot,
 } from '@/lib/worksheet-flowchart-history.ts';
 import {
+  clampLabelOffset,
   clampToTrack,
   flowAnchorPoint,
   flowEdgeGeometry,
+  flowLabelOffset,
   flowRouteTrack,
+  type FlowLabelOffset,
   type FlowRouteTrack,
   type SmoothStepFn,
 } from '@/lib/worksheet-flowchart-edge.ts';
@@ -83,7 +86,18 @@ type FlowData = { label: string; kind: FlowKind; locked?: boolean };
  *   （`FlowEdge`）把它喂给库的路径函数，其余一切照旧交库。
  * ⚠️ 老作答里可能存着这两个字段：读得到就用（学生之前调过的走向不该被抹掉）。
  */
-type FlowEdgeData = { routeX?: number; routeY?: number };
+type FlowEdgeData = {
+  routeX?: number;
+  routeY?: number;
+  /*
+   * ★ 2026-10-07（教师）：「如果是竖线，默认在右侧；如果是横线，默认在上方」+「贴着线拖」。
+   * ⚠️ 这两个字段**没写过就是「没拖过」** ⇒ 走默认那一侧（见 `flowLabelOffset`）。
+   *    老作答里没有它们 ⇒ 标签自动落到「线旁边」那一套新摆法上 ——
+   *    一个画板上**不许两套摆法并存**（同 `FLOW_EDGE_TYPE` 当年那条理由）。
+   */
+  labelDX?: number;
+  labelDY?: number;
+};
 
 /**
  * 工具按钮上的**形状图标**（★ 2026-10-06 教师：「分别加上一个形象的图形表示」）。
@@ -588,6 +602,17 @@ function edgeGeometryParams(
 }
 
 /**
+ * 边数据里的标签偏移 —— **两个轴都写过**才算「拖过」。
+ * ⚠️ 标签是**二维**拖的（与控制柄那个「只动一个轴」不同，见 `FlowLabelHandle`）：
+ *    一次拖动会把两个轴一起写下去 ⇒ 只写了一半的那种（老数据/坏数据）当**没拖过**处理，
+ *    退回默认那一侧 —— 比把它摆到一个说不清的位置强。
+ */
+function labelOffsetOf(route: FlowEdgeData | undefined): FlowLabelOffset | null {
+  if (route?.labelDX === undefined || route?.labelDY === undefined) return null;
+  return { dx: route.labelDX, dy: route.labelDY };
+}
+
+/**
  * ★ 2026-10-07（教师）：这一份自定义边**只做两件事**，其余**全部**交给库的 `BaseEdge`。
  *
  *   ① **「折线太短就画成直线」** —— 教师：「在移动某个图形时，连接线接近直线时需要吸附成
@@ -605,10 +630,17 @@ function FlowEdge({
   markerEnd, markerStart, style, pathOptions, interactionWidth, data,
 }: EdgeProps) {
   const route = data as FlowEdgeData | undefined;
-  const [path, labelX, labelY] = flowEdgeGeometry(
-    edgeGeometryParams({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition }, route, pathOptions),
-    smoothStepPath,
-  );
+  const params = edgeGeometryParams({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition }, route, pathOptions);
+  const [path, baseLabelX, baseLabelY] = flowEdgeGeometry(params, smoothStepPath);
+  /*
+   * ★ 2026-10-07（教师）：「如果是竖线，默认在右侧；如果是横线，默认在上方」+「贴着线拖」。
+   * 🔴 **不用把标签从库手里拿回来** —— 库画的还是它（白底框、居中、配色全不动），
+   *    我们只是把它收到的那两个坐标**挪一下**（`labelX/labelY` 是库的入参）。
+   *    所以这一轮没有推翻「全回原版」。
+   */
+  const labelOffset = flowLabelOffset(params, String(label ?? ''), labelOffsetOf(route));
+  const labelX = baseLabelX + labelOffset.dx;
+  const labelY = baseLabelY + labelOffset.dy;
   return (
     <BaseEdge
       id={id}
@@ -694,6 +726,74 @@ function FlowRouteHandle({
       title={vertical ? '上下拖动这条横线' : '左右拖动这条竖线'}
       style={{ left: anchor.x, top: anchor.y }}
       onPointerDown={onPointerDown}
+    >
+      <span aria-hidden="true" />
+    </button>
+  );
+}
+
+/**
+ * ★ 2026-10-07（教师）：「线上文字……**贴着线拖**」。
+ *
+ * 与 `FlowRouteHandle` **同一个套路**：一个把手浮在**标签**上（选中这条线时才出现），
+ * 拖它改的是 `data.labelDX/labelDY` —— 标签本身仍由库画，我们只挪它收到的坐标。
+ *
+ * ⚠️ 与控制柄的两点不同：
+ *   · 它是**二维**拖（拖到哪儿算哪儿），控制柄那个只动一个轴（那条线只能上下或左右走）；
+ *   · 拖到哪儿**有上限**（`clampLabelOffset`：夹在「线附近」）—— 教师选的就是这个。
+ * ⚠️ **完全透明**：字本身就是要拖的东西，再叠一个圈只会糊住它（提示靠光标 `grab` 与 title）。
+ * ⚠️ 双击 = 改这条线上的字：标签挪到线旁边之后，从线上双击容易点不到那几个字。
+ */
+function FlowLabelHandle({
+  edgeId, anchor, offset, disabled, onDragStateChange, onEdit,
+}: {
+  edgeId: string;
+  anchor: { x: number; y: number };
+  offset: FlowLabelOffset;
+  disabled: boolean;
+  onDragStateChange: (dragging: boolean) => void;
+  onEdit: () => void;
+}) {
+  const { setEdges, screenToFlowPosition } = useReactFlow<FlowNode, Edge>();
+  const onPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (disabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onDragStateChange(true);
+    /*
+     * ⚠️ 坐标**只在 `pointermove` 里读**（`PointerEvent` 本身覆盖触屏 ⇒ 不必过
+     *    `pointerClientPoint` 那个「认 TouchEvent」的纯函数，那是给 `onConnectEnd` 用的）。
+     * ⚠️ 起手点**第一帧才立**（`start === null` 那一格直接 return）：这样位移是从**手指按下的
+     *    那一点**算起的，字不会在第一帧「跳」到自己中心对上手指 —— 抓字角拖也照样跟手。
+     */
+    let start: { x: number; y: number } | null = null;
+    const move = (pointer: PointerEvent) => {
+      const point = screenToFlowPosition({ x: pointer.clientX, y: pointer.clientY });
+      if (!start) { start = point; return; }
+      const next = clampLabelOffset({ dx: offset.dx + (point.x - start.x), dy: offset.dy + (point.y - start.y) });
+      setEdges((current) => current.map((edge) => (edge.id === edgeId
+        ? { ...edge, data: { ...(edge.data as FlowEdgeData | undefined), labelDX: next.dx, labelDY: next.dy } }
+        : edge)));
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      onDragStateChange(false);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop, { once: true });
+    window.addEventListener('pointercancel', stop, { once: true });
+  };
+  return (
+    <button
+      className={styles.flowLabelHandle}
+      type="button"
+      aria-label="拖动这段文字（双击改字）"
+      title="拖动这段文字（双击改字）"
+      style={{ left: anchor.x, top: anchor.y }}
+      onPointerDown={onPointerDown}
+      onDoubleClick={(event) => { event.stopPropagation(); onEdit(); }}
     >
       <span aria-hidden="true" />
     </button>
@@ -1109,8 +1209,15 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
       undefined,
     );
     const [, labelX, labelY] = flowEdgeGeometry(params, smoothStepPath);
+    /*
+     * ★ 2026-10-07（教师）：「如果是竖线，默认在右侧；如果是横线，默认在上方」+「贴着线拖」。
+     * 🔴 `midX/midY` 是**线上的那个点**（取交点节点、算吸附距离用的）—— 标签**不再是**它：
+     *    标签摆在线的旁边 ⇒ 单独给一份 `labelX/labelY`（就地输入框、拖标签的把手都用它）。
+     */
+    const labelOffset = flowLabelOffset(params, String(edge.label ?? ''), labelOffsetOf(edge.data as FlowEdgeData | undefined));
     return {
       midX: labelX, midY: labelY, track: flowRouteTrack(params),
+      labelX: labelX + labelOffset.dx, labelY: labelY + labelOffset.dy, labelOffset,
       endX: to.x, endY: to.y, fromX: from.x, fromY: from.y,
       backX: back.x, backY: back.y,
       outX: out.x, outY: out.y,
@@ -1128,8 +1235,14 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   const edgeMidAnchor = (edgeId: string | null) => {
     const anchors = edgeFlowAnchors(edgeId);
     if (!anchors) return null;
-    const { midX, midY } = anchors;
-    return { x: viewport.x + midX * viewport.zoom, y: viewport.y + midY * viewport.zoom };
+    /*
+     * ★ 2026-10-07（教师）：「如果是竖线，默认在右侧；如果是横线，默认在上方」——
+     *   标签**不再压在线上了** ⇒ 就地输入框必须跟着**标签**（`labelX/labelY`）走，
+     *   否则输入框会停在那条线上、与它要改的那几个字分家。
+     * ⚠️ `midX/midY`（**线上**那个点）另有用处：交点节点、吸附距离 —— 那两处要的就是线上的点。
+     */
+    const { labelX, labelY } = anchors;
+    return { x: viewport.x + labelX * viewport.zoom, y: viewport.y + labelY * viewport.zoom };
   };
 
   /**
@@ -1742,6 +1855,27 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
               track={anchors.track}
               disabled={disabled}
               onDragStateChange={setRouteDragging}
+            />
+          );
+        })()}
+        {/*
+          ★ 2026-10-07（教师）：「线上文字……贴着线拖」。
+          ⚠️ 只有**这条线上真有字**时才画：没有字就没有可拖的东西（双击线改字那条入口仍在）。
+          ⚠️ 与控制柄同一层、同样住在 `.flowStage` 里面（离了舞台就会按外层卡片定位）。
+        */}
+        {selectedEdgeId && !labelingEdge && (() => {
+          const anchors = edgeFlowAnchors(selectedEdgeId);
+          const edge = edges.find((item) => item.id === selectedEdgeId);
+          if (!anchors || !edge?.label) return null;
+          return (
+            <FlowLabelHandle
+              edgeId={selectedEdgeId}
+              /* ★ 锚点就是**标签画在哪**（与库收到的坐标同源）—— 把手与字同源，不会分家。 */
+              anchor={{ x: viewport.x + anchors.labelX * viewport.zoom, y: viewport.y + anchors.labelY * viewport.zoom }}
+              offset={anchors.labelOffset}
+              disabled={disabled}
+              onDragStateChange={setRouteDragging}
+              onEdit={() => setLabelingEdge(selectedEdgeId)}
             />
           );
         })()}

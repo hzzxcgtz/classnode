@@ -2447,6 +2447,33 @@
 .flowRouteHandle:active > span { background: #eaf0f6; }
 
 /*
+  ★ 2026-10-07（教师）：「线上文字……**贴着线拖**」的把手 —— 浮在**线上文字**上面，
+  选中这条线时才出现（组件里管）。与控制柄那个**长得不一样**是故意的：
+
+    · **完全透明**（没有圆圈）：字本身就是要拖的那个东西，再叠一个圈只会把它糊住；
+      提示靠光标（`grab`）与 `title`。
+    · 命中区仍是 44px（触屏下限，`worksheet-tap-targets.test.ts` 会逐个量）。
+      ⚠️ 它压在字上会不会挡住别的操作？不会：它只在这条线**已被选中**、且**有字**时才出现，
+        而线上的字本来也没有别的点击入口（双击边改字那条还在，见组件里那个 `onEdit`）。
+*/
+.flowLabelHandle {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: grab;
+  box-shadow: none;
+  touch-action: none; /* 触屏上不许它被当成滚动手势 */
+  z-index: 7; /* 与控制柄同层：两者不会挨着（一个在线上、一个在字上） */
+}
+.flowLabelHandle:active { cursor: grabbing; }
+
+/*
  * ⊘ 2026-10-06（教师：「全回原版」）：这里原有 `.flowEdgeRouteHandle` 那三块样式 ——
  *   它是「拖动线中圆点调走向」那颗浮层圆点。教师定了「全回原版」之后，那颗圆点连同它的
  *   处理器一起删了（边交回库内置的 `smoothstep`，绕行点这一层不存在了）⇒ 样式也没有对象了。

@@ -207,9 +207,99 @@ export function flowRoutePoint(params: FlowEdgeGeometryParams): { x: number; y: 
   };
 }
 
+/*
+  ══════════════════════════════════════════════════════════════════════════════════
+   ★ 2026-10-07（教师）：**线上文字摆在哪** —— 默认贴在线旁边，而且可以**贴着线拖**
+  ══════════════════════════════════════════════════════════════════════════════════
+
+  教师两条：
+    · 「如果是**竖线**，默认在**右侧**；如果是**横线**，默认在**上方**」；
+    · 「**贴着线拖**」（在「自由拖」与「贴线拖」之间选的后者）。
+*/
+
+/**
+ * 线上文字那一行的**高度**（含白底框那点内边距）—— 估算「默认让开多少」用它。
+ * ⚠️ 与快照的 `LINE_HEIGHT` **同值同义**（都是「一行文字」）—— `worksheet-flowchart-svg.test.ts`
+ *    有一条判据把两边对起来：两处各写一个数必然分叉，而分叉的表现是
+ *    「默认位置在画板与报告里差几像素」这种**不报错**的错。
+ */
+export const FLOW_LABEL_LINE = 17;
+
+/** 估算文字宽度时**一个字**按多宽算（CJK 是满宽）—— 与快照的 `FONT_SIZE` 同值同义。 */
+export const FLOW_LABEL_CHAR = 13;
+
+/** 文字与线之间留的那点缝（流坐标）。 */
+export const FLOW_LABEL_GAP = 4;
+
+/**
+ * 标签能被拖到离**线条中点**多远（流坐标）—— 教师选的「贴着线拖」。
+ *
+ * 🔴 为什么要有上限：这个标签的意义就是「这条线上的字」——拖到别的框上面就没意义了，
+ *    而且「拖丢了怎么找回来」是个真麻烦（还要再加一颗「回到线上」的按钮）。
+ * ⚠️ 量的是**到中点的距离**（一个圆）：线本身穿过圆心 ⇒ **沿线滑动也在圈里**，
+ *    所以「往左挪一点躲开交点」这种事照样做得到（这正是想要的自由度）。
+ */
+export const FLOW_LABEL_REACH = 110;
+
+/** 标签相对**线条中点**的偏移。 */
+export interface FlowLabelOffset {
+  dx: number;
+  dy: number;
+}
+
+/** 估算一行文字的宽度（与快照同一个口径：每个字都按满宽算）。 */
+export function flowLabelWidth(label: string): number {
+  return Array.from(label).length * FLOW_LABEL_CHAR + 6;
+}
+
+/**
+ * 标签**默认**摆在哪一侧、让开多远。
+ *
+ * 「线」= **标签待着的那一段**，不是整条边：竖直的边（bottom→top）中间那一段是**横的**
+ * ⇒ 字摆在它**上方**；水平的边（right→left）中间那一段是**竖的** ⇒ 字摆在它**右侧**。
+ * 那一段的方向从 `flowRouteTrack().axis` 来（`axis === 'y'` ⇒ 中段是横的、由 `centerY` 定）。
+ *
+ * ⚠️ 让开的距离是**量着**来的，不是拍脑袋：往上让开**半行字**、往右让开**半个字宽**
+ *    —— 所以长标签会往右多让一点（否则白底框还是压着线）。
+ * ⚠️ 拐弯的边（库不认绕行点、`track` 是 `null`）按**两端的主方向**猜：库给这种边摆标签时
+ *    用的是「摆在**最长的那一段**上」（`getPoints` 里那句 `maxXDistance >= maxYDistance`）
+ *    ⇒ 横着拉开得多就落在横段上（⇒ 上方），反之落在竖段上（⇒ 右侧）。
+ */
+export function flowLabelDefaultOffset(params: FlowEdgeGeometryParams, label: string): FlowLabelOffset {
+  const track = flowRouteTrack(params);
+  const horizontal = track
+    ? track.axis === 'y'
+    : Math.abs(params.targetX - params.sourceX) >= Math.abs(params.targetY - params.sourceY);
+  if (horizontal) return { dx: 0, dy: -(FLOW_LABEL_LINE / 2 + FLOW_LABEL_GAP) };
+  return { dx: flowLabelWidth(label) / 2 + FLOW_LABEL_GAP, dy: 0 };
+}
+
+/** 把偏移夹到「线附近」（贴着线拖）—— 只缩不放，**方向不变**（否则拖着拖着会拐弯）。 */
+export function clampLabelOffset(offset: FlowLabelOffset): FlowLabelOffset {
+  const length = Math.hypot(offset.dx, offset.dy);
+  if (length === 0 || length <= FLOW_LABEL_REACH) return offset;
+  const scale = FLOW_LABEL_REACH / length;
+  return { dx: offset.dx * scale, dy: offset.dy * scale };
+}
+
+/**
+ * 标签最终偏多少：**拖过就听拖的**（并夹进「线附近」），**没拖过就用默认那一侧**。
+ *
+ * ⚠️ **默认位置不夹** —— 它就是「最合适的位置」：长标签在竖线的右侧本来就要让开更多
+ *    （比 `FLOW_LABEL_REACH` 还远），夹了反而会把白底框压回线上。
+ *    夹取是给**手拖**用的约束。
+ * ⚠️ 渲染时也要夹（不只是拖动那一下）：偏移可能是老数据，或者线一动它就跑出圈外了。
+ */
+export function flowLabelOffset(
+  params: FlowEdgeGeometryParams,
+  label: string,
+  offset: FlowLabelOffset | null,
+): FlowLabelOffset {
+  return offset ? clampLabelOffset(offset) : flowLabelDefaultOffset(params, label);
+}
+
 /** 两端句柄是不是**同一条轴**上对着的（`bottom→top` / `top→bottom` / `right→left` / `left→right`）。 */
-function isStraightPair(sourcePosition: string, targetPosition: string): 'v' | 'h' | null {
-  const pair = `${sourcePosition}->${targetPosition}`;
+function isStraightPair(sourcePosition: string, targetPosition: string): 'v' | 'h' | null {  const pair = `${sourcePosition}->${targetPosition}`;
   if (pair === 'bottom->top' || pair === 'top->bottom') return 'v';
   if (pair === 'right->left' || pair === 'left->right') return 'h';
   return null;

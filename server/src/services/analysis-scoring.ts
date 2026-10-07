@@ -113,7 +113,11 @@ export function aiScoringConfigOf(node: QuestionNode, unit = '分'): AiScoringCo
 export function parseAiAnalysisResult(
   raw: unknown,
   config: AiScoringConfig,
-  entries: Array<{ studentId: string; anonLabel: string }>,
+  /**
+   * ★ 2026-10-07：多了个可选的 `name` —— 模型**可能只回姓名**（把 `#7` 丢掉）。
+   *   只在「本轮名单里**唯一**」时认它；不唯一就不认（那个人进 `missing`）。
+   */
+  entries: Array<{ studentId: string; anonLabel: string; name?: string }>,
 ): { narrative: string; perStudent: StoredAiScoring | null; missing: string[] } | { error: string } {
   if (typeof raw !== 'string') return { error: '模型没有返回可用内容' };
   if (!config.enabled) return { narrative: raw, perStudent: null, missing: [] };
@@ -138,6 +142,22 @@ export function parseAiAnalysisResult(
   if (!narrative) return { error: '模型没有返回可用内容' };
 
   const byLabel = new Map(entries.map((entry) => [entry.anonLabel, entry.studentId]));
+  /*
+   * ★ 2026-10-07（标签改用「姓名 + 学号」之后新增）—— **姓名别名**。
+   *   模型偶尔会把 `张伟#7` 写成 `张伟`（丢掉 `#学号`）⇒ 整班收不到分，
+   *   而教师只看到一句「本次只拿到 0/N」。代价太大，所以认。
+   * 🔴 但**只在唯一时**认：`nameCount !== 1` 就不放进来 ⇒ 那个人落进 `missing`，
+   *   教师看得见（**响亮地失败**）—— 这正是换标签的目的。
+   * ⚠️ 与标签撞车的名字也不放（`byLabel.has`）：那说明名册本身有病，不在这里替它做主。
+   */
+  const nameCount = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.name) nameCount.set(entry.name, (nameCount.get(entry.name) ?? 0) + 1);
+  }
+  for (const entry of entries) {
+    if (!entry.name || nameCount.get(entry.name) !== 1 || byLabel.has(entry.name)) continue;
+    byLabel.set(entry.name, entry.studentId);
+  }
   const found = new Map<string, { studentId: string; score: number | null; reason: string; advice: string }>();
   for (const item of blockScores ?? []) {
     if (!item || typeof item !== 'object') continue;

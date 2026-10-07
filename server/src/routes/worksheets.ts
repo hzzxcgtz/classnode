@@ -1716,10 +1716,15 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
      *   这里也收不进来（`byLabel` 里没有他们）。防的是「学生端显示一个没有任何依据的分」。
      */
     const scorable = new Set(payload.scorableLabels);
+    // ★ 2026-10-07：姓名只喂给**解析**这一侧（模型偶尔会只回姓名、丢掉 `#学号`）——
+    //   不进载荷、不进 aggregate。名册用的就是上面构造载荷那一份，标签与姓名才是同一批人。
+    const nameOfParticipant = new Map(participants.map((participant) => [participant.participantId, participant.name]));
     const parsed = parseAiAnalysisResult(
       result.content ?? '',
       payload.aiScoring,
-      payload.entries.filter((entry) => scorable.has(entry.anonLabel)),
+      payload.entries
+        .filter((entry) => scorable.has(entry.anonLabel))
+        .map((entry) => ({ ...entry, name: nameOfParticipant.get(entry.studentId) })),
     );
     if ('error' in parsed) return res.status(502).json({ error: parsed.error });
     const narrative = normalizeNarrative(parsed.narrative);

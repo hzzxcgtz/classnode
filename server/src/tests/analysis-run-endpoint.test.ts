@@ -535,3 +535,34 @@ test('★ 重渲（GET 载荷）与再发送（run 提示词）用的是同一�
     assert.ok(sent.includes(label), `发出去的提示词里没有 ${label} —— 两条路径喂了不同的名册`);
   }
 });
+
+/*
+  ★ 2026-10-07：**接线**也要钉 —— 上面那些单元判据证的是 `parseAiAnalysisResult` 认得别名，
+  可它认不认**取决于端点有没有把姓名喂进去**。喂不进去的表现是「模型只回姓名时整班收不到分」，
+  而屏幕上一片正常（只是一批人进了「缺谁」）—— 单测对这一层是**恒真**的。
+*/
+test('★ 端到端：模型只回姓名（丢掉 #学号），分照样收得到', async (t) => {
+  const db = await openTempDb();
+  const fake = await startFakeCoze(
+    '整体不错。<classnode-scores>{"scores":[{"student":"张伟","score":4,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>',
+  );
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const agent = await makeAgent(p, 'coze', fake.base);
+  const { worksheet, classroom } = await seed(p, {
+    analysisAgentId: agent.id,
+    node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
+  });
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+
+  const post = await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+  if (post.status !== 200) assert.fail(`生成载荷 HTTP ${post.status}: ${await post.text()}`);
+  const run = await fetch(runUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+  assert.equal(run.status, 200, await run.text());
+
+  const row = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
+  const perStudent = row.perStudent as { scores: Array<{ studentId: string }>; missing?: string[] } | null;
+  assert.equal(perStudent?.scores.length, 1, '只回姓名也要收得到 —— 端点必须把姓名喂进解析那一侧');
+  assert.equal(perStudent?.missing, undefined);
+});

@@ -216,3 +216,57 @@ test('★ 部分结果必须读得出来（读取那一侧不许再要求「一�
   // 反面对照：越界分数仍然整份拒收（逐行校验没松）。
   assert.equal(readStoredAiScoring({ ...stored, scores: [{ studentId: 's1', score: 9, reason: 'x', advice: 'y' }] }, config, ['s1', 's2']), null);
 });
+
+/*
+  ★ 2026-10-07（教师：联系表标签改用「姓名 + 学号」）——
+  模型**可能只回姓名**（把 `#7` 丢掉）。丢掉就整班收不到分，而教师看到的只是一句
+  「本次只拿到 0/N」—— 代价太大，所以认。
+  🔴 但**只在姓名唯一时**认：不唯一时必须**响亮地失败**（那个人进 `missing`）——
+     猜一个的后果正是这次换标签要修的那件事（分贴到别人头上）。
+*/
+const SCORE_CONFIG = { enabled: true, maxScore: 5, unit: '分', criteria: '' };
+const scored = (student: string) =>
+  `解读<classnode-scores>{"scores":[{"student":"${student}","score":4,"reason":"好","advice":"再补。"}]}</classnode-scores>`;
+
+test('★ 标签原样匹配优先', () => {
+  const result = parseAiAnalysisResult(scored('张伟#7'), SCORE_CONFIG, [
+    { studentId: 's1', anonLabel: '张伟#7', name: '张伟' },
+  ]);
+  assert.ok(!('error' in result));
+  if ('error' in result) return;
+  assert.equal(result.perStudent?.scores[0].studentId, 's1');
+  assert.deepEqual(result.missing, []);
+});
+
+test('★ 姓名在本轮名单里唯一时，只回姓名也认', () => {
+  const result = parseAiAnalysisResult(scored('张伟'), SCORE_CONFIG, [
+    { studentId: 's1', anonLabel: '张伟#7', name: '张伟' },
+    { studentId: 's2', anonLabel: '李四#12', name: '李四' },
+  ]);
+  assert.ok(!('error' in result));
+  if ('error' in result) return;
+  assert.equal(result.perStudent?.scores[0].studentId, 's1', '只回姓名就整班收不到分，代价太大');
+  assert.deepEqual(result.missing, ['s2']);
+});
+
+test('🔴 姓名不唯一 ⇒ **不许猜**，那个人进 missing', () => {
+  const result = parseAiAnalysisResult(scored('张伟'), SCORE_CONFIG, [
+    { studentId: 's1', anonLabel: '张伟#7', name: '张伟' },
+    { studentId: 's2', anonLabel: '张伟#9', name: '张伟' },
+  ]);
+  assert.ok(!('error' in result));
+  if ('error' in result) return;
+  assert.equal(result.perStudent, null, '猜一个的后果是分贴到别人头上 —— 宁可没有');
+  assert.deepEqual(result.missing, ['s1', 's2'], '两个人一起进 missing，教师看得见');
+});
+
+test('🔴 别名不与标签抢：某人真名恰好等于另一个人的标签 ⇒ 不认别名（名册有病，不在这里替它做主）', () => {
+  const result = parseAiAnalysisResult(scored('张伟#7'), SCORE_CONFIG, [
+    { studentId: 's1', anonLabel: '张伟#7', name: '张伟' },
+    { studentId: 's2', anonLabel: '李四#12', name: '张伟#7' },
+  ]);
+  assert.ok(!('error' in result));
+  if ('error' in result) return;
+  assert.equal(result.perStudent?.scores.length, 1);
+  assert.equal(result.perStudent?.scores[0].studentId, 's1', '标签优先 —— 别名不许把它顶掉');
+});

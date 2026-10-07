@@ -313,3 +313,21 @@
   cursor: pointer;
 }
 .scoreMissingAction:hover { background: #fdfaf3; }
+
+/*
+ * ★ 2026-10-07：评分行旁边的「第 N 格 · 代号」—— 教师拿它与上方联系表核对
+ *（模型看串格时分会贴到别人头上，而这件事只能靠人眼发现）。
+ */
+.scoreCell {
+  margin-left: 8px;
+  color: #94a3b8;
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+/* 那句「怎么用」的说明：安静的旁注，不抢评分的注意力。 */
+.scoreCheckHint {
+  padding: 8px 16px 0;
+  color: #7b8ea3;
+  font-size: 0.72rem;
+  line-height: 1.6;
+}

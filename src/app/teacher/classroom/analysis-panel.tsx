@@ -7,6 +7,7 @@ import type { WorksheetAnalysisPayload } from '@/lib/types';
 import { moduleCountUnit } from './worksheet-tile-state';
 import { activeWorksheetAnalysisTask, startWorksheetAnalysisTask } from '@/lib/worksheet-analysis-background';
 import { worksheetAnalysisProgressLabel } from '@/lib/worksheet-analysis-progress';
+import { cellLabelOf } from '@/lib/worksheet-analysis-cells';
 import { Markdown } from '@/lib/markdown';
 import { normalizeWorksheetAnalysisMarkdown } from '@/lib/worksheet-analysis-markdown';
 import styles from './analysis-panel.module.css';
@@ -335,10 +336,27 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                存下来的这一份是**那次分析时**用的文字，旧分析里的仍是当年的「评分要求」原文。 */
             <div className={styles.scoreCriteria}>评分标准：{payload.perStudent.criteria}</div>
           )}
+          {/*
+            ★ 2026-10-07（教师：40 人一起交给智能体）—— **模型看串格是会发生的事**：
+            解析只要求「代号在名单里」，认错了也照收 ⇒ 分会贴到别人头上，而**两边都不报错**。
+            能核对的那张「代号 ↔ 真名 ↔ 第几格」对照表原来藏在「查看发送数据」折叠区里，
+            不看就无从核对 ⇒ 现在把它搬到每一行评分旁边（`cellLabelOf` 与联系表同一个编号），
+            并在上面写一句怎么用。
+          */}
+          <div className={styles.scoreCheckHint}>
+            下面每条评分都标着它对应的「第几格」（与上方联系表同一个编号）。
+            要是某条评价跟那位同学画的对不上，多半是智能体把格子看串了 —— 点「重新生成」再跑一次通常就好。
+          </div>
           <div className={styles.scoreList}>
             {payload.perStudent.scores.map((item) => (
               <div className={styles.scoreRow} key={item.studentId}>
-                <span className={styles.scoreName}>{payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '未命名学生'}</span>
+                <span className={styles.scoreName}>
+                  {payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '未命名学生'}
+                  {(() => {
+                    const cell = cellLabelOf(payload.entries, item.studentId);
+                    return cell ? <span className={styles.scoreCell}>{cell}</span> : null;
+                  })()}
+                </span>
                 <strong className={styles.scoreValue}>
                   {item.score === null ? '暂无法评分' : `${item.score} / ${payload.perStudent!.maxScore} ${payload.perStudent!.unit}`}
                 </strong>

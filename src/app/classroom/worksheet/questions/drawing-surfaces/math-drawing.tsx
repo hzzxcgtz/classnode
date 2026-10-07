@@ -8,7 +8,6 @@ import {
   MATH_TOOL_GROUPS,
   MATH_TOOL_ICONS,
   MATH_TOOLS,
-  lineThrough,
   parallelogramOf,
   rectangleOf,
   toolHintOf,
@@ -359,19 +358,12 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
       if (!spec) return;
 
       if (currentTool === 'free') return;                       // 自由线条走拖动，不走点击
-      if (currentTool === 'parallel' || currentTool === 'perpendicular') {
-        // 参照线 = **最近画的那条线段/直线/射线**（学生的心智：我刚画的那条）。
-        const ref = [...runtime.current].reverse().find((item) => item.entry.kind === 'segment'
-          || item.entry.kind === 'line' || item.entry.kind === 'arrow');
-        if (!ref) return;                                       // 没有参照线 ⇒ 什么也不做（提示语里写了要先画一条）
-        const points = ref.points.map((p) => [p.X(), p.Y()] as Pt);
-        const ends = lineThrough(at, [points[0], points[1]], currentTool === 'parallel' ? 'parallel' : 'perpendicular');
-        if (!ends) return;
-        pushHistory();
-        addEntry({ kind: 'line', a: ends[0], b: ends[1] });
-        publish();
-        return;
-      }
+      /*
+       * ⊘ ★ 2026-10-07：这里原来是「平行线 / 垂线」两支 —— 参照线只在自己画的线里找
+       *   （下面那句 `runtime.current`），而**底图上的边不是画板对象** ⇒ 学生站在老师给的
+       *   几何图前面点它们，什么都不会发生，屏幕上也不解释。两个工具已砍掉。
+       * ⚠️ 真要加回来，先解决"参照得到底图上的边"这件事，别只把这段贴回来。
+       */
       if (currentTool === 'label') {
         const text = labelTextRef.current.trim();
         if (!text) return;                                      // 空文字不落一个看不见的标签
@@ -422,8 +414,12 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
           return [{ kind: 'polyline', closed: true, points: parallelogramOf(ats[0], ats[1], ats[2]) }];
         case 'trapezoid':
           return [{ kind: 'polyline', closed: true, points: trapezoidOf(ats) }];
-        case 'angle':
-          return [{ kind: 'angle', a: ats[0], vertex: ats[1], b: ats[2] }];
+        /*
+         * ⊘ ★ 2026-10-07：`case 'angle'`（画两条臂 + 一段弧）随「角」这个工具一起删了。
+         *   ⚠️ 但 `kind: 'angle'` 这个**形状**必须一直读得回来、画得出来 ——
+         *   老作答里还有（见 `renderEntry` 那一支与 `readEntries` 的校验）。
+         *   **删的是入口，不是历史。**
+         */
         default:
           return null;
       }

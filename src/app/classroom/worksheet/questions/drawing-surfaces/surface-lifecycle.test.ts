@@ -330,18 +330,22 @@ test('★ 2026-10-06（教师）：数学作图补齐工具（撤销 / 自由线
   const shapes = stripComments(fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', '..', 'lib', 'worksheet-math-shapes.ts'), 'utf8'));
   const preview = stripComments(fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', 'teacher', 'classroom', 'drawing-document-preview.tsx'), 'utf8'));
   // ① 工具条由**工具表**生成（写死几个按钮就与几何表分叉了）；表里必须有教师点名的那些。
-  for (const tool of ['point', 'segment', 'arrow', 'circle', 'free', 'triangle', 'rectangle', 'parallelogram', 'trapezoid', 'angle', 'parallel', 'perpendicular', 'label', 'select']) {
+  //    ★ 2026-10-07：平行线 / 垂线 / 角 砍掉了（换成四个几何记号的活由后面的任务接）。
+  for (const tool of ['select', 'point', 'segment', 'arrow', 'circle', 'free', 'triangle', 'rectangle',
+    'parallelogram', 'trapezoid', 'label']) {
     assert.ok(shapes.includes(`value: '${tool}'`), `工具表里少了 ${tool}`);
   }
   // ⊘ 教师 2026-10-06 划掉的五个：直线 / 正方形 / 中点 / 垂直平分线 / 角平分线
+  //   ★ 2026-10-07 划掉的三个：平行线 / 垂线 / 角
   //   —— 工具表与几何实现都要清干净（不留没有入口的死代码）。
-  for (const gone of ['line', 'square', 'midpoint', 'perp-bisector', 'bisector']) {
+  for (const gone of ['line', 'square', 'midpoint', 'perp-bisector', 'bisector',
+    'parallel', 'perpendicular', 'angle']) {
     assert.ok(!shapes.includes(`value: '${gone}'`), `划掉的工具还在工具表里：${gone}`);
   }
-  for (const dead of ['squareOf', 'midpointOf', 'perpendicularBisectorOf', 'bisectorEndOf']) {
+  for (const dead of ['squareOf', 'midpointOf', 'perpendicularBisectorOf', 'bisectorEndOf', 'lineThrough']) {
     assert.ok(!shapes.includes(dead), `划掉的工具的几何实现还留着：${dead}`);
   }
-  // ★ 图标 + 分组：按钮是「图标 + 文字」，工具条按 基础/多边形/角与线/其他 分组渲染。
+  // ★ 图标 + 分组：按钮是「图标 + 文字」，工具条按 基础/多边形/其他 分组渲染。
   assert.match(shapes, /MATH_TOOL_ICONS: Record<MathTool, string>/, '没有图标表');
   assert.match(live, /MATH_TOOL_ICONS\[item\.value\]/, '工具条按钮没有用图标');
   assert.match(live, /MATH_TOOL_GROUPS\.map\(/, '工具条没有分组渲染（归类应当来自数据）');
@@ -357,6 +361,8 @@ test('★ 2026-10-06（教师）：数学作图补齐工具（撤销 / 自由线
   assert.match(live, /aria-label="要写上去的文字"/, '没有写文字的输入框');
   assert.match(live, /if \(!text\) return;/, '空文字也会落一个看不见的标签');
   // ⑤ 三种新形状在**教师端预览**里也要画得出来（否则学生画了、教师看不见）。
+  // ⚠️ 这里指的是**历史形状**（老「角」画的带臂角）：2026-10-07 砍掉了「角」这个**工具**，
+  //    但形状要一直读得回来 —— 老作答里还有。
   for (const kind of ["item.kind === 'polyline'", "item.kind === 'angle'", "item.kind === 'label'"]) {
     assert.ok(preview.includes(kind), `教师端预览没有渲染 ${kind}`);
   }
@@ -364,6 +370,10 @@ test('★ 2026-10-06（教师）：数学作图补齐工具（撤销 / 自由线
   for (const kind of ["row.kind === 'polyline'", "row.kind === 'angle'", "row.kind === 'label'"]) {
     assert.ok(live.includes(kind), `readEntries 不认 ${kind}`);
   }
+  // ★ 2026-10-07：砍掉「角」这个**工具**，但 `kind: 'angle'` 这个**形状**必须一直画得出来
+  //   （老作答里还有）。删的是入口，不是历史 —— 少这一支，那些题会**静默变成空白**。
+  //   ⚠️ 上面 ⑤⑥ 钉的是**预览**与**读入**，唯独没钉 `renderEntry`，而作答变空白正从那里开始。
+  assert.match(live, /entry\.kind === 'angle'/, 'renderEntry 不再画历史形状 angle ⇒ 老作答变成空白');
 });
 
 test('★ 2026-10-06（教师）数学作图三问：不要坐标系、拖动绘制、拖动过程要看得见', () => {

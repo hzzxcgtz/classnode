@@ -24,14 +24,12 @@ export type MathEntry =
 export type MathTool =
   | 'point' | 'segment' | 'arrow' | 'circle' | 'free'
   | 'triangle' | 'rectangle' | 'parallelogram' | 'trapezoid'
-  | 'angle' | 'parallel' | 'perpendicular'
   | 'label' | 'select';
 
 /** 工具条上的**分组**（★ 2026-10-06 教师：「整个工具栏 UI 重新设计一下，归类要科学」）。 */
 export const MATH_TOOL_GROUPS = [
   { value: 'basic', label: '基础' },
   { value: 'polygon', label: '多边形' },
-  { value: 'angle', label: '角与线' },
   { value: 'other', label: '其他' },
 ] as const;
 
@@ -46,6 +44,17 @@ export type MathToolGroup = (typeof MATH_TOOL_GROUPS)[number]['value'];
  *   ⚠️ 连带删掉的还有它们的几何实现（`squareOf` / `midpointOf` /
  *   `perpendicularBisectorOf` / `bisectorEndOf`）—— **不许留没有入口的死代码**
  *   （本仓的规矩：死代码会被人当成「还有人用」而不敢动）。
+ *
+ * ⊘ ★ 2026-10-07（教师）又划掉了三个：「平行线 / 垂线 / 角」。理由与上一版不同，
+ *   是**底图**这条主线带来的：
+ *   · 平行线/垂线的参照线只在自己画的线里找（`math-drawing.tsx` 的 `runtime.current`），
+ *     而**底图上的边不是画板对象** ⇒ 学生站在老师给的几何图前面点它，**什么都不发生**，
+ *     屏幕上也不解释（本仓最怕的静默 no-op）；
+ *   · 「角」画的是**两条臂 + 一段弧**，而底图上那两条边已经在图里，再描一遍是多余的。
+ *   ⚠️ `lineThrough` 跟着删了（连同它那两个只服务它的帮手）。
+ *   ⚠️ 连带的一个结论值得记下来：删完之后这一档**只剩「选择」一个工具依赖"画板里已有什么"**，
+ *     其余工具全是"点 N 个位置"⇒ 底图上与空白画布上行为完全一致，
+ *     不需要任何"按有没有底图"的分叉。
  */
 export const MATH_TOOLS: ReadonlyArray<{
   value: MathTool;
@@ -54,6 +63,9 @@ export const MATH_TOOLS: ReadonlyArray<{
   drag?: true;
   group: MathToolGroup;
 }> = [
+  // ★ 2026-10-07：「选择」挪到**第一个** —— 它是每一个工具的出口（画错了要能选、能删），
+  //   排在最后一行要翻整个工具条才找得到。
+  { value: 'select', label: '选择', clicks: 1, group: 'basic' },
   { value: 'point', label: '点', clicks: 1, group: 'basic' },
   { value: 'segment', label: '线段', clicks: 2, drag: true, group: 'basic' },
   { value: 'arrow', label: '射线', clicks: 2, drag: true, group: 'basic' },
@@ -62,12 +74,8 @@ export const MATH_TOOLS: ReadonlyArray<{
   { value: 'rectangle', label: '长方形', clicks: 2, drag: true, group: 'polygon' },
   { value: 'parallelogram', label: '平行四边形', clicks: 3, group: 'polygon' },
   { value: 'trapezoid', label: '梯形', clicks: 4, group: 'polygon' },
-  { value: 'angle', label: '角', clicks: 3, group: 'angle' },
-  { value: 'parallel', label: '平行线', clicks: 1, group: 'angle' },
-  { value: 'perpendicular', label: '垂线', clicks: 1, group: 'angle' },
   { value: 'free', label: '自由线条', clicks: 0, group: 'other' },
   { value: 'label', label: '文字', clicks: 1, group: 'other' },
-  { value: 'select', label: '选择', clicks: 1, group: 'other' },
 ];
 
 /**
@@ -87,9 +95,8 @@ export const MATH_TOOL_ICONS: Record<MathTool, string> = {
   rectangle: 'M4 6.5 h16 v11 H4 Z',
   parallelogram: 'M8 6.5 h12 l-4 11 H4 Z',
   trapezoid: 'M7 6.5 h10 l3 11 H4 Z',
-  angle: 'M5 19 L19 19 M5 19 L15.5 5.5 M9 19 A4.5 4.5 0 0 0 12.4 14.4',
-  parallel: 'M6 4.5 L10 19.5 M14 4.5 L18 19.5',
-  perpendicular: 'M4 19 h16 M12 19 V4.5',
+  // ⚠️ 这两撇是原来 `parallel`（已被砍掉）的图标，字形 `M6 4.5 L10 19.5 M14 4.5 L18 19.5` ——
+  //    它就是 `∥` 的字形，2026-10-07 原样留给**新**的「平行记号」（`parallelMark`）用。
   free: 'M3 16.5c2.5-7 4.5 3.5 7-2s4 3.5 7-2.5',
   label: 'M6 6 h12 M12 6 V19',
   select: 'M5.5 3.5 l13 7.5 -5.5 1 3.5 6.5 -2.8 1.3 -3.4-6.5 -4.8 3.4 Z',
@@ -109,8 +116,6 @@ export function toolHintOf(tool: MathTool): string {
   if (MATH_TOOLS.find((item) => item.value === tool)?.drag) return '按住拖动即可画出这个图形';
   const clicks = MATH_TOOLS.find((item) => item.value === tool)?.clicks ?? 1;
   if (tool === 'point') return '点击画板添加点';
-  if (tool === 'parallel') return '先画一条线段或直线，再点一个位置作它的平行线';
-  if (tool === 'perpendicular') return '先画一条线段或直线，再点一个位置作它的垂线';
   if (tool === 'label') return '先在右边写好文字，再点画板放置';
   if (tool === 'select') return '点一下图形选中它，再点右边的「删除选中」；点空白处取消';
   if (tool === 'trapezoid') return '依次点击四个顶点（上底、下底各自平行）';
@@ -142,31 +147,14 @@ export function trapezoidOf(points: Pt[]): Pt[] {
   return points.slice(0, 4).map(([x, y]) => [round(x), round(y)] as Pt);
 }
 
-/** 从 a 指向 b 的单位向量（两点重合时回 [1,0]，避免 NaN 把整张图画崩）。 */
-function directionOf(a: Pt, b: Pt): Pt {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const len = Math.hypot(dx, dy);
-  return len === 0 ? [1, 0] : [dx / len, dy / len];
-}
-
-/** 以 `at` 为中心、沿 `dir` 方向、长度 `length` 的线段两个端点。 */
-function segmentAlong(at: Pt, dir: Pt, length: number): [Pt, Pt] {
-  return [
-    [round(at[0] - dir[0] * length / 2), round(at[1] - dir[1] * length / 2)],
-    [round(at[0] + dir[0] * length / 2), round(at[1] + dir[1] * length / 2)],
-  ];
-}
-
-/**
- * 过 `through` 作 `ref`（一条已有线段/射线）的平行线或垂线。
- * `ref` 是 `[p, q]` 两个点；两点重合时回 `null`（说不清方向，宁可不画）。
+/*
+ * ⊘ ★ 2026-10-07：这里原来有 `directionOf` / `segmentAlong` / `lineThrough` 三个函数，
+ *   服务的是「平行线」「垂线」两个工具。两个工具砍掉之后它们**一个调用点都没有了**
+ *   ⇒ 一并删除（本仓的规矩：死代码会被人当成「还有人用」而不敢动）。
+ *
+ * ⚠️ 那两个工具被砍的理由值得留在这里，因为将来一定会有人想加回来：
+ *   它们的参照线只在自己画的线里找（`math-drawing.tsx` 的 `runtime.current`），
+ *   而**底图上的边不是画板对象** ⇒ 学生站在老师给的几何图前面点它们，
+ *   什么都不会发生，屏幕上也不解释。真要加回来，先解决"参照得到底图上的边"这件事。
  */
-export function lineThrough(through: Pt, ref: [Pt, Pt], mode: 'parallel' | 'perpendicular', length = 12): [Pt, Pt] | null {
-  const [p, q] = ref;
-  if (p[0] === q[0] && p[1] === q[1]) return null;
-  const [ux, uy] = directionOf(p, q);
-  const dir: Pt = mode === 'parallel' ? [ux, uy] : [-uy, ux];
-  return segmentAlong(through, dir, length);
-}
 

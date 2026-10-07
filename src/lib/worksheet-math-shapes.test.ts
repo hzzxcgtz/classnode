@@ -1,20 +1,23 @@
 /**
  * 数学作图的**图形构造**（纯几何）与工具表。
  *
- * 🔴 断言里刻意用**整数/半整数**坐标：这几条判据（对角和相等、平行/垂直方向、中点性质）
+ * 🔴 断言里刻意用**整数/半整数**坐标：这几条判据（对角和相等、中点性质、记号的中点与法向）
  *    都能一眼心算出来 —— 写一堆小数只会让人核对不了，也就没人核对了。
  * ⊘ 2026-10-06 第二版：教师划掉了「直线 / 正方形 / 中点 / 垂直平分线 / 角平分线」，
  *    对应的几何实现（`squareOf` / `midpointOf` / `perpendicularBisectorOf` / `bisectorEndOf`）
  *    也一并删了 —— 用例跟着删，不留「测着一个没有入口的函数」。
+ * ⊘ 2026-10-07：又划掉了「平行线 / 垂线 / 角」（`lineThrough` 跟着删）。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   MATH_TOOL_GROUPS,
   MATH_TOOL_ICONS,
   MATH_TOOLS,
-  lineThrough,
   parallelogramOf,
   rectangleOf,
   toolHintOf,
@@ -22,22 +25,31 @@ import {
   trapezoidOf,
 } from './worksheet-math-shapes.ts';
 
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const stripComments = (source: string) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const shapesSource = stripComments(fs.readFileSync(path.join(HERE, 'worksheet-math-shapes.ts'), 'utf8'));
+
 test('阳性对照：工具表里的点击次数与中文名都在（否则下面几条对空表永远绿）', () => {
-  // 14 个：点/线段/射线/圆 · 三角形/长方形/平行四边形/梯形 · 角/平行线/垂线 · 自由线条/文字/选择。
-  assert.ok(MATH_TOOLS.length >= 14, `工具只有 ${MATH_TOOLS.length} 个`);
+  // ★ 2026-10-07：14 个 → 11 个（砍掉平行线 / 垂线 / 角；四个记号在 Task 3 进来）。
+  assert.ok(MATH_TOOLS.length >= 11, `工具只有 ${MATH_TOOLS.length} 个`);
   for (const tool of MATH_TOOLS) {
     assert.ok(tool.label.length > 0, `${tool.value} 没有中文名`);
     assert.ok(tool.clicks >= 0, `${tool.value} 的点击次数不对`);
   }
-  // 教师 2026-10-06 点名要的：自由线条 + 多边形族 + 角/平行线/垂线/中点/垂直平分线/角平分线。
-  for (const value of ['point', 'segment', 'arrow', 'circle', 'free', 'triangle', 'rectangle',
-    'parallelogram', 'trapezoid', 'angle', 'parallel', 'perpendicular', 'label', 'select']) {
+  for (const value of ['select', 'point', 'segment', 'arrow', 'circle', 'triangle', 'rectangle',
+    'parallelogram', 'trapezoid', 'free', 'label']) {
     assert.ok(MATH_TOOLS.some((tool) => tool.value === value), `少了工具：${value}`);
   }
-  // ⊘ 教师 2026-10-06 划掉的五个**不该**再出现在工具条上。
-  for (const gone of ['line', 'square', 'midpoint', 'perp-bisector', 'bisector']) {
+  // ⊘ 2026-10-06 划掉的五个 + ★ 2026-10-07 划掉的三个（平行线 / 垂线 / 角）。
+  for (const gone of ['line', 'square', 'midpoint', 'perp-bisector', 'bisector',
+    'parallel', 'perpendicular', 'angle']) {
     assert.ok(!MATH_TOOLS.some((tool) => tool.value === gone), `划掉的工具还在：${gone}`);
   }
+});
+
+test('★ 2026-10-07：砍掉的三个工具，几何实现也不许留着（死代码会被下一个人当成「还有人用」）', () => {
+  assert.ok(!shapesSource.includes('lineThrough'), 'lineThrough 还在 —— 已经没有入口了');
 });
 
 test('长方形：两个对角点 ⇒ 轴对齐的四个顶点', () => {
@@ -56,26 +68,10 @@ test('梯形：四个顶点原样保留（我们**不**替学生摆正）', () =
 });
 
 
-test('平行线 / 垂线：过给定点、方向对（与参照线平行或垂直）', () => {
-  const ref: [[number, number], [number, number]] = [[0, 0], [4, 0]];
-  const parallel = lineThrough([1, 3], ref, 'parallel');
-  assert.ok(parallel, '平行线没画出来');
-  assert.equal(parallel[0][1], 3);
-  assert.equal(parallel[1][1], 3, '平行线应当是水平的');
-  const perpendicular = lineThrough([1, 3], ref, 'perpendicular');
-  assert.ok(perpendicular, '垂线没画出来');
-  assert.equal(perpendicular[0][0], 1);
-  assert.equal(perpendicular[1][0], 1, '垂线应当是竖直的');
-  // 参照线退化成一点 ⇒ 宁可不画（说不清方向），不许抛。
-  assert.equal(lineThrough([0, 0], [[2, 2], [2, 2]], 'parallel'), null);
-});
-
-
 test('工具提示：说清要点几下（多击图形靠这句话才用得起来）', () => {
   assert.match(toolHintOf('triangle'), /3/);
   assert.match(toolHintOf('trapezoid'), /四个顶点/);
   assert.match(toolHintOf('free'), /拖动/);
-  assert.match(toolHintOf('parallel'), /先画一条线段或直线/);
   assert.match(toolHintOf('label'), /写好文字/);
   assert.equal(toolHintOf('point'), '点击画板添加点');
   assert.match(toolHintOf('select'), /删除选中/);
@@ -98,6 +94,7 @@ test('★ 2026-10-06（教师）：每个工具都要有**图标**，且分组�
   for (const group of MATH_TOOL_GROUPS) {
     assert.ok(toolsInGroup(group.value).length > 0, `分组 ${group.label} 是空的（会渲染出一条空的分割线）`);
   }
-  // ④ 「选择」排在最后一组（它是操作，不是画图）。
-  assert.equal(MATH_TOOLS[MATH_TOOLS.length - 1].value, 'select');
+  // ④ 「选择」排在**第一个**（它是每一个工具的出口：画错了要能选、能删）。
+  //    ★ 2026-10-07 教师在这份设计里看到的排法就是 [选择][点][线段][射线][圆]…
+  assert.equal(MATH_TOOLS[0].value, 'select');
 });

@@ -32,7 +32,7 @@ export function InkPreview({ value, node }: { value: InkValue; node?: WorksheetQ
   const backgroundUrl = background.url ? worksheetAssetUrl(background.url) : null;
   if (value.drawing) {
     return (
-      <div style={{ overflow: 'hidden', border: '1px solid #e2e8f0', borderRadius: 4, background: '#fff' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid #e2e8f0', borderRadius: 4, background: '#fff' }}>
         <DrawingDocumentPreview document={value.drawing} width={box.w} height={box.h} backgroundUrl={backgroundUrl} />
       </div>
     );
@@ -41,6 +41,13 @@ export function InkPreview({ value, node }: { value: InkValue; node?: WorksheetQ
     <svg
       viewBox={`0 0 ${box.w} ${box.h}`}
       width="100%"
+      /*
+       * ★ 2026-10-07（教师）：「一眼看到完整的图……不要使用滚动条了」。
+       * `height="100%"` + 默认的 `preserveAspectRatio`（`xMidYMid meet` ⇒ **等比缩放、居中留白**）
+       * ⇒ 整幅画缩进框里，不出滚动条。
+       * ⚠️ 容器没有确定高度时（抽屉那一路）`height: 100%` 会退回 `auto` ⇒ 与原来一模一样，不会塌。
+       */
+      height="100%"
       style={{ display: 'block', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 4 }}
       role="img"
       aria-label="学生的手写作答"

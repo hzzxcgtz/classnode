@@ -11,7 +11,13 @@ type PreviewProps = {
   backgroundUrl: string | null;
 };
 
-const SVG_STYLE = { display: 'block', width: '100%', background: '#fff' } as const;
+/*
+ * ★ 2026-10-07（教师）：「学生在画流程图的时候，能够**一眼看到完整的图**……不要使用滚动条了」。
+ * `maxHeight: '100%'` + SVG 自己的 `viewBox`（有内在宽高比）⇒ 框不够高时**等比缩小**，不溢出。
+ * ⚠️ 百分比要解析得上，容器必须有**确定高度**（看板那一格由 `tile-answer.tsx` 的 `fill` 给）；
+ *    没有确定高度时（抽屉那一支）`max-height` 等价于 `none` ⇒ 与原来一模一样。
+ */
+const SVG_STYLE = { display: 'block', width: '100%', maxHeight: '100%', background: '#fff' } as const;
 
 function pair(raw: unknown): Pair | null {
   if (!Array.isArray(raw) || raw.length !== 2) return null;
@@ -175,7 +181,8 @@ export function DrawingDocumentPreview(props: PreviewProps) {
       <img
         src={worksheetAssetUrl(props.document.image)}
         alt="学生的作图作答（快照）"
-        style={{ display: 'block', width: '100%', height: 'auto', background: '#fff' }}
+        /* ★ 同上：宽度铺满、但**高度不许超过框**（超出时按比例收窄 ⇒ 整张图都看得见）。 */
+        style={{ display: 'block', width: '100%', height: 'auto', maxHeight: '100%', objectFit: 'contain', background: '#fff' }}
       />
     );
   }

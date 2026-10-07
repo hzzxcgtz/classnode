@@ -78,7 +78,17 @@ export function TileAnswerBody({ answer }: { answer: TileAnswer }) {
   // 滚动条」）：外面那一层是 column flex + `overflowY: auto`，而子项默认 `flex-shrink: 1`
   // 会被压到刚好塞下 —— 那时没有任何东西溢出，滚动条永远不出现，长内容**直接被切掉**
   //（不报错，只是「后半截没了」）。不许被压，那一层才会真的溢出、才谈得上滚。
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flexShrink: 0 }}>{renderCompact(view, answer.node)}</div>;
+  //
+  // ★ 2026-10-07（教师）：「学生在画流程图的时候，能够**一眼看到完整的图**，也就是说可以缩放一下，
+  //   不要使用滚动条了」⇒ **绘图这一支反过来**：它要**填满剩余空间**（`flex: 1; minHeight: 0`），
+  //   这样下面那幅图才拿得到一个**确定的高度**去等比缩放（`max-height: 100%` 要有确定的百分比基准）。
+  //   文字类作答照旧走上面那条 `flexShrink: 0`（长答案该滚就滚）。
+  const fill = view.kind === 'ink';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, ...(fill ? { flex: 1, minHeight: 0 } : { flexShrink: 0 }) }}>
+      {renderCompact(view, answer.node)}
+    </div>
+  );
 }
 
 function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.ReactNode {

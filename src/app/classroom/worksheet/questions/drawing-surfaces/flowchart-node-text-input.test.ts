@@ -98,3 +98,27 @@ test('连线标签的输入框保持非受控 —— 它是「中文能打」的
     '连线标签靠 defaultValue（非受控）才躲过了组合态被打断。把它改成 value= 受控会让它也打不了中文。',
   );
 });
+
+/*
+  ★ 2026-10-07（教师）：「双击一个图形框修改里面的文字的时候，**这个框本身不要变大**，
+  只需选中里边所有的文字」。
+
+  🔴 原来输入框的宽度是**按字数算**的（`Array.from(editing ? draft : data.label).length + 2` 个 em，
+     还跟着正在打的草稿走）—— 而框的宽度是**内容撑出来**的 ⇒ 从双击那一刻起、更别说边打边长，
+     框就一直跟着输入框变大。
+  ✅ 现在进编辑态时**量一下当时那行字有多宽**，输入框就用那个宽度 ⇒ 框一点不动。
+  ⚠️ 认 `offsetWidth`（布局像素）**不认** `getBoundingClientRect()`：后者会被画布缩放乘一遍
+     （缩放 2 倍时量出来的宽度也是 2 倍），写错了在缩放过或没缩放过时看着都「差不多」。
+  ⚠️ 变异：把 `style` 那一句换回 `{ width: \`${textWidth}em\` }` ⇒ 这条判据必须红（施工时验过）。
+*/
+test('★ 进编辑态不许把框撑大 —— 输入框的宽度取「当时那行字」量出来的值', () => {
+  const block = nodeTextInputSource(SOURCE);
+  assert.ok(block.length > 200, `输入框那一块没抠出来（${block.length}）—— 先修这条判据，别让它在空串上全绿`);
+  assert.match(block, /style=\{editWidth === null \? undefined : \{ width: editWidth \}\}/, '输入框的宽度不是「量出来的那个值」');
+  assert.ok(!/\btextWidth\b/.test(block), '宽度又回去按字数算了 —— 框会跟着输入框一起变大');
+  const start = blockBetween(SOURCE, 'const startEditing', '};');
+  assert.ok(start.length > 80, `进编辑那一段没抠出来（${start.length}）—— 先修这条判据`);
+  // ⚠️ 窗口放宽到 300 字：那一段中间可能夹着注释（施工时 40 字就被自己的注释挤红了）。
+  assert.match(start, /setEditWidth\([\s\S]{0,300}?offsetWidth/, '没有在换成输入框**之前**把那行字的宽度量下来');
+  assert.ok(!/getBoundingClientRect/.test(start), '用了 `getBoundingClientRect` —— 它被画布缩放乘过一遍，量出来的宽度是错的');
+});

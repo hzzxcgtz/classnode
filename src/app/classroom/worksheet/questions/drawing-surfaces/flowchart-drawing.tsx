@@ -172,8 +172,21 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
    *    连线标签那个就地输入框一直是这么做的（`defaultValue`），是本文件里「中文能打」的对照物。
    */
   const [draft, setDraft] = useState(data.label);
-  /** ⚠️ 宽度跟着**正在编辑的那一份**走：编辑时看 draft，平时看 store 里的 label。 */
-  const textWidth = Math.min(30, Math.max(10, Array.from(editing ? draft : data.label).length + 2));
+  /**
+   * ★ 2026-10-07（教师）：「双击一个图形框修改里面的文字的时候，**这个框本身不要变大**，
+   *   只需选中里边所有的文字」。
+   *
+   * 🔴 原来输入框的宽度是**按字数算**的（`字数 + 2` 个 em，还跟着正在打的草稿走）——
+   *    框的宽度是**内容撑出来**的，于是从双击那一刻起（更别说边打边长）框就跟着输入框变。
+   * ✅ 进编辑态时**量一下当时那行字有多宽**，输入框就用那个宽度 ⇒ 框一点不动。
+   * ⚠️ 必须用 `offsetWidth`（**布局像素**），不能用 `getBoundingClientRect()` ——
+   *    后者会被画布的缩放乘一遍（缩放 2 倍时量出来的宽度也是 2 倍）。
+   * ⚠️ 全局 `box-sizing: border-box`（`globals.css`）⇒ 输入框的 `width` 含它自己的内边距，
+   *    不会比量出来的那行字更宽 ⇒ 框不会因为那几个像素又撑大。
+   */
+  const labelRef = useRef<HTMLSpanElement | null>(null);
+  /** 进编辑那一刻量到的宽度；`null` = 没量到（退回样式表里的默认宽度）。 */
+  const [editWidth, setEditWidth] = useState<number | null>(null);
   /**
    * 提交草稿（blur / Enter / Escape 都汇到这里）。
    * ⚠️ 只在**真改了**的时候才写 store：双击进来什么都没动就点走，不该产生一次「内容变更」
@@ -182,6 +195,21 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
   const commitLabel = () => {
     setEditing(false);
     if (draft !== data.label) instance.updateNodeData(id, { label: draft });
+  };
+  /**
+   * 双击进入编辑：**先把当前那行字的宽度量下来**，再换成输入框。
+   * ⚠️ 量必须在**这一刻**做 —— 下一帧这个 span 就被输入框替换掉了，没得量。
+   */
+  const startEditing = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    const label = labelRef.current;
+    /*
+     * ⚠️ **空标签**（学生把字删光过）量出来只有内边距那几个像素 ⇒ 输入框会细成一条缝，
+     *    自己打的字都看不见。那种情况退回样式表里的默认宽度（框有 `min-width`，不会因此变大）。
+     */
+    setEditWidth(label && data.label.length > 0 ? Math.round(label.offsetWidth) : null);
+    setDraft(data.label);
+    setEditing(true);
   };
   /** ★ 连接点是**一个小圆点**、没有文字 ⇒ 它不能有那个可编辑文字输入框（否则图上多一个空框）。 */
   const isJunction = data.kind === 'junction';
@@ -218,7 +246,9 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
           aria-label="节点文字"
           autoFocus
           value={draft}
-          style={{ width: `${textWidth}em` }}
+          /* ★ 宽度 = 进编辑那一刻量下来的那行字的宽度 ⇒ 框**一点不动**（见 `editWidth` 的注释）。
+             `null` 时才不写内联宽度，让样式表里那个默认值接手。 */
+          style={editWidth === null ? undefined : { width: editWidth }}
           onChange={(event) => setDraft(event.target.value)}
           /* ★ 2026-10-06（教师）：「双击一个图形框，默认**全选**里面的文字，方便修改」。
              input 只在编辑态存在（渲染条件是 `editing && …`）⇒ 这个 focus **就是**「刚进入编辑」
@@ -238,9 +268,10 @@ function FlowNodeEditor({ id, data, selected }: NodeProps<FlowNode>) {
         />
       ) : (
         <span
+          ref={labelRef}
           className={styles.flowNodeLabel}
           title={data.locked ? undefined : '双击修改文字'}
-          onDoubleClick={(event) => { event.stopPropagation(); setDraft(data.label); setEditing(true); }}
+          onDoubleClick={startEditing}
         >{data.label}</span>
       ))}
     </div>

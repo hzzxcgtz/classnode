@@ -2612,6 +2612,30 @@
 .mindmapCanvasWithBackground :global(me-main),
 .mindmapCanvasWithBackground :global(.map-container) { background: transparent !important; }
 
+/*
+  ★ 2026-10-07（教师）：「两个图标能不能去掉？什么意义。」
+
+  那两个图标是**库自带工具条**（`class="mind-elixir-toolbar rb"`）里的前两个 —— 照 `dist/MindElixir.js`
+  的构造，右下那一组一共四个按钮，**每个都带 id**：
+      W("fullscreen","full")    全屏
+      W("toCenter","living")    回到中心
+      W("zoomout","zoomout")    −
+      W("zoomin","zoomin")      +
+  · **全屏**：库自己那套全屏 —— 而我们**已经有了自己的「全屏画板」按钮**（卡片右上）⇒
+    两个入口、两套行为，学生按了哪一个都不一样，但没有一处提示。
+  · **回到中心**：把视图移回根节点（树长大跑出屏幕之后用得上）。
+
+  🔴 藏它们用的是**库自己给的 id**（`W` 里逐字 `n.id = e`）。⚠️ 这是**依赖库内部实现**的写法：
+     库升级把 id 改名 ⇒ 这两条规则**静默失效**，按钮又回来。所以
+     `mindmap-toolbar.test.ts` 那条判据会读库的产物对拍一遍 —— 改了就红，而不是悄悄失效。
+
+  ⚠️ 为什么不是 `toolBar: false` + 自己画 `−` / `+`：教师 2026-10-06 明确说过
+     「它有工具条就用它的，**尽量不要自己画**」—— 为了去掉两个按钮而自己重画整条工具条，
+     违背那一条，而且以后库改了图标/行为我们还得跟。藏掉多一点 CSS、少一套重复实现。
+*/
+.mindmapCanvas :global(.mind-elixir-toolbar #fullscreen),
+.mindmapCanvas :global(.mind-elixir-toolbar #toCenter) { display: none; }
+
 .flowNode {
   min-width: 150px;
   min-height: 54px;

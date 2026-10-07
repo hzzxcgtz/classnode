@@ -523,14 +523,20 @@ export const api = {
    * ★ M7b：**唯一会外发的那一次调用**（把全班作业发给第三方 AI）。
    * 界面静默调用，但必须先经过 `computeWorksheetAnalysis` 返回的 `canSend` 能力闸门。
    */
-  runWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string) =>
+  /**
+   * ★ 2026-10-07：`only` = **只补这几个人**（模型上次漏掉的那几个）。
+   * ⚠️ 补跑**只补分、不动整体解读**（服务端那条规矩）—— 少发几个人还有一个好处：
+   *    联系表上的小标签更不容易被模型看串。
+   */
+  runWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string, only?: string[]) =>
     request<{
       narrative: string;
       perStudent: WorksheetAnalysisPayload['perStudent'];
       agentId: string;
       model: string;
     }>(
-      `/api/worksheets/${worksheetId}/analysis/${questionId}/run?classroomId=${encodeURIComponent(classroomId)}`,
+      `/api/worksheets/${worksheetId}/analysis/${questionId}/run?classroomId=${encodeURIComponent(classroomId)}`
+      + (only && only.length > 0 ? `&only=${encodeURIComponent(only.join(','))}` : ''),
       { method: 'POST' }),
   /**
    * 第 index 张联系表的图片 URL（**给 `<img src>` 用**，不走 `request`）。

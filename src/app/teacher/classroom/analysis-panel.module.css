@@ -298,3 +298,18 @@
 }
 .scoreMissing strong { color: #6b4d14; }
 .scoreMissing span { color: #9a8354; }
+
+/* 「只补这 N 人」那颗按钮 —— 与提示条同一族颜色，尺寸按本仓的点击下限来。 */
+.scoreMissingAction {
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid #d9c294;
+  border-radius: 8px;
+  background: #fff;
+  color: #7a5a1d;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.scoreMissingAction:hover { background: #fdfaf3; }

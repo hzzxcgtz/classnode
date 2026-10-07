@@ -1616,10 +1616,34 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     }
 
     const knobs = await loadAnalysisKnobs(prisma);
-    const entries = entriesFromAggregate(row.aggregate);
+    /**
+     * ★ 2026-10-07（教师：40 人一起交给智能体）—— `?only=id1,id2`：**只补这几个人**。
+     *
+     * 用途是「模型这次漏了 3 个」时的那一下补跑。除了省时间，还有一个更要紧的好处：
+     * 一次少发几个人 ⇒ 联系表上的小标签更不容易被看串（那正是「分贴到别人头上」的诱因）。
+     *
+     * ⚠️ 从**已存的条目快照**里筛（那正是教师刚才看到的那些人），不去重查数据库 ——
+     *    两次之间学生可能又改了、又交了，换来的一批与面板上那份对不上。
+     */
+    const allEntries = entriesFromAggregate(row.aggregate);
+    const only = (() => {
+      const raw = req.query.only;
+      const text = Array.isArray(raw) ? raw.join(',') : typeof raw === 'string' ? raw : '';
+      const ids = text.split(',').map((part) => part.trim()).filter(Boolean);
+      return ids.length > 0 ? new Set(ids) : null;
+    })();
+    const entries = only ? allEntries.filter((entry) => only.has(entry.studentId)) : allEntries;
+    const scoped = only !== null;
+    if (scoped && entries.length === 0) {
+      return res.status(400).json({ error: '这几个人不在这次分析的名单里（可能有人的作答已经被清掉了）' });
+    }
     const payload = buildAnalysisPayload({
       question: analysisQuestionMeta(target.node, target.heading, target.scoringUnit),
-      entries, total: row.totalCount, knobs,
+      entries,
+      /* ⚠️ 只补几个人时，分母也用这几个 —— 否则提示词里写「已交 3/40」，
+         模型会去追那 37 个根本不在图里的人。 */
+      total: scoped ? entries.length : row.totalCount,
+      knobs,
     });
 
     // 第一道闸（界面用的也是它）
@@ -1674,7 +1698,8 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
      * ✅ 现在：新分数**并进**已存的那份（同一个人以新的为准，没覆盖到的保留旧分），
      *   并把「**还没有分的人**」算出来存进去 ⇒ 教师面板据此显示「本次只拿到 X/Y，缺：…」。
      */
-    const studentIds = payload.entries.map((entry) => entry.studentId);
+    /* 「还缺谁」按**全班**算（不是这一轮发出去的那几个）—— 面板要的是「谁还没有分」。 */
+    const studentIds = allEntries.map((entry) => entry.studentId);
     const existing = await prisma.worksheetQuestionAnalysis.findUnique({
       where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
       select: { perStudent: true },
@@ -1688,18 +1713,27 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const missing = studentIds.filter((id) => !scored.has(id));
     const perStudent = merged === null ? null : { ...merged, ...(missing.length > 0 ? { missing } : {}) };
 
+    /*
+     * ★ 2026-10-07（教师问：「只补这几个人的话，AI 对整体的分析是不是也要更新呢？」）——
+     *   **要，但不能在这里更新**：补跑只发了几个人，模型给的那段「整体解读」说的是这几个人，
+     *   拿它盖掉全班那份是错的 ✗。所以补跑**只补分、不动整体解读**，
+     *   而「整体解读是按几个人写的」这一条由面板对照 `covered` 与现有分数自己说出来
+     *   （见 `analysis-panel.tsx`）——人齐了它会提示「点重新生成，按完整的人重写一遍整体分析」。
+     */
     await prisma.worksheetQuestionAnalysis.update({
       where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
       // ⚠️ 只动 AI 结果字段。`aggregate`/`totalCount`/`computedAt` 一个字都不动。
       data: {
-        narrative,
+        ...(scoped && row.narrative ? {} : { narrative }),
         ...(perStudent === null ? {} : { perStudent: perStudent as unknown as Prisma.InputJsonValue }),
         agentId: agent.id,
         model: agent.platform,
       },
     });
     res.json({
-      narrative,
+      /* ⚠️ 补跑那一轮**不动**整体解读 ⇒ 回给界面的也必须是**存下来的那一份**，
+         否则面板会拿一段「只说了 3 个人」的文字当全班结论显示。 */
+      narrative: scoped && row.narrative ? row.narrative : narrative,
       perStudent,
       agentId: agent.id,
       model: agent.platform,

@@ -221,7 +221,10 @@ function readStrokes(raw: unknown[]): InkValue['strokes'] {
  * **顺序按 `studentId` 升序**：模型会说「第 3 格」「上面第 5 条」，顺序不确定就映射不回去。
  */
 export function selectAnalyzeEntries(
-  answers: RawAnswer[], participants: Participant[], questionId: string, question?: QuestionNode,
+  answers: RawAnswer[],
+  participants: Participant[],
+  questionId: string,
+  question?: QuestionNode,
 ): AnalyzeEntry[] {
   // 参与者名单仍然要 —— 它挡的是「库里有一行谁的名单里都没有的作答」（脏数据）。
   const known = new Set(participants.map((p) => p.participantId));

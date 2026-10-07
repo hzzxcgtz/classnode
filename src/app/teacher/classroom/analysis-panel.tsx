@@ -40,8 +40,12 @@ export interface WorksheetAnalysisState {
   /** 联系表的图没取回来（服务端缺 sharp 时回 503）。没有它，界面上只有一个**坏图**。 */
   sheetFailed: boolean;
   markSheetFailed: () => void;
-  /** 后台重新整理数据并调用远端智能体；无需二次确认。 */
-  run: () => Promise<void>;
+  /**
+   * 后台重新整理数据并调用远端智能体；无需二次确认。
+   * ★ 2026-10-07：`only` = **只补这几个人**（模型上次漏掉的那几个）；
+   *   不传就是全班 —— 补跑只补分、不动整体解读，见服务端那条注释。
+   */
+  run: (only?: string[]) => Promise<void>;
   unit: string;
 }
 
@@ -126,7 +130,7 @@ export function useWorksheetAnalysis(
 
   useEffect(() => { void load(); }, [load]);
 
-  const run = useCallback(async () => {
+  const run = useCallback(async (only?: string[]) => {
     setOperation('analyzing');
     setRunStage('preparing');
     setRunElapsedSeconds(0);
@@ -141,6 +145,7 @@ export function useWorksheetAnalysis(
       const task = startWorksheetAnalysisTask({
         classroomId, worksheetId, questionId,
         questionLabel: payload?.questionLabel ?? '本题',
+        ...(only && only.length > 0 ? { only } : {}),
       });
       const out = await task.promise;
       stageTimers.forEach((timer) => window.clearTimeout(timer));
@@ -274,7 +279,26 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                 ? '本次没有拿到任何逐生评分。'
                 : `本次只拿到 ${got}/${got + missing.length} 份评分。`}
               {names.length > 0 && <> 还没拿到分的：<strong>{names.join('、')}</strong>。</>}
-              <span>再点一次「重新生成」会重新请智能体评一遍 —— 已经拿到的分不会丢。</span>
+              {/*
+                ★ 2026-10-07（教师问：「只补这几个人的话，AI 对整体的分析是不是也要更新呢？」）——
+                答案：**要**。补跑只补分、不动整体解读（模型那段解读只说了这几个人，
+                拿它盖掉全班那份是错的）。所以这里把「整体解读是按几个人写的」直接说出来：
+                  拿到的分比解读当时覆盖的人多 ⇒ 那份整体解读已经旧了，人齐了就提示重写一遍。
+              */}
+              {(payload.perStudent?.scores.length ?? 0) > (payload.covered ?? 0) && (
+                <span>
+                  整体分析是按当时 <strong>{payload.covered}</strong> 人写的，现在已经有 {payload.perStudent?.scores.length} 人有分 ——
+                  点「重新生成」可以按完整的人重写一遍整体分析。
+                </span>
+              )}
+              {missing.length > 0 && (
+                <button type="button" className={styles.scoreMissingAction} onClick={() => void state.run(missing)}>
+                  只补这 {missing.length} 人
+                </button>
+              )}
+              {missing.length > 0 && (
+                <span>补跑只补这几个人的分（已经拿到的分不会丢，整体分析不动）。</span>
+              )}
             </div>
           );
         })()

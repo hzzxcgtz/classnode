@@ -200,13 +200,25 @@ export function readStoredAiScoring(
       advice: typeof row.advice === 'string' ? row.advice.slice(0, AI_SCORE_ADVICE_MAX) : '',
     });
   }
-  if (scores.length !== studentIds.length || new Set(scores.map((item) => item.studentId)).size !== studentIds.length) return null;
+  /*
+   * ★ 2026-10-07（教师：40 人一起交给智能体）—— 这里原来要求 `scores.length === studentIds.length`：
+   *   **读的时候也要求「一个都不能少」**。而写入那一侧已经改成「拿到几份存几份」了 ⇒
+   *   部分结果**存得进、读不出**：面板上一片空白，而且**不报错**（比存不进去更难查）。
+   * ✅ 去掉那条完整性要求：逐行校验照旧（越界分数、名字对不上仍然整份拒收），
+   *   「还缺谁」由写入那一侧算好存在 `missing` 里带给界面。
+   */
+  if (new Set(scores.map((item) => item.studentId)).size !== scores.length) return null;
+  /* ★ 2026-10-07：「还缺谁」也一起读出来 —— 教师面板靠它提示「本次只拿到 X/Y」。 */
+  const missing = Array.isArray(source.missing)
+    ? source.missing.filter((id): id is string => typeof id === 'string' && known.has(id))
+    : [];
   return {
     maxScore: config.maxScore,
     unit: config.unit,
     criteria: typeof source.criteria === 'string' ? source.criteria.slice(0, AI_SCORE_CRITERIA_MAX) : '',
     ...(config.parts ? { parts: config.parts } : {}),
     scores,
+    ...(missing.length > 0 ? { missing } : {}),
   };
 }
 

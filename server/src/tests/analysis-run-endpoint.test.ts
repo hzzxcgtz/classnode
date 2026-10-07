@@ -44,7 +44,9 @@ async function openTempDb() {
  * （`/v1/files/upload` · `/v3/chat` · `/v3/chat/retrieve` · `/v3/chat/message/list`）。
  * `answer` 就是它「模型」的产出 —— 传 `''` 可以模拟「模型返回空」。
  */
-async function startFakeCoze(answer: string): Promise<{ base: string; close: () => void; hits: string[]; messages: string[] }> {
+async function startFakeCoze(answer: string): Promise<{ base: string; close: () => void; hits: string[]; messages: string[]; setAnswer: (next: string) => void }> {
+  /* ★ 2026-10-07：支持两次调用之间换「模型」的产出 —— 「补跑不动整体解读」那一条靠它才验得出来。 */
+  let current = answer;
   const hits: string[] = [];
   // 真正发出去的那段提示词（`additional_messages[*].content`）。**只有在这里才验得到**：
   // 界面上的预览没有这段文本，`buildAnalysisMessage` 的用例又够不到「题面 → 载荷 → 提示词」这条线。
@@ -67,7 +69,7 @@ async function startFakeCoze(answer: string): Promise<{ base: string; close: () 
     res.json({
       code: 0,
       data: [{
-        id: 'm1', conversation_id: 'conv-1', role: 'assistant', content: answer,
+        id: 'm1', conversation_id: 'conv-1', role: 'assistant', content: current,
         content_type: 'text', type: 'answer', created_at: 1, updated_at: 1,
       }],
     });
@@ -75,7 +77,7 @@ async function startFakeCoze(answer: string): Promise<{ base: string; close: () 
   const server: Server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
-  return { base: `http://127.0.0.1:${port}`, close: () => server.close(), hits, messages };
+  return { base: `http://127.0.0.1:${port}`, close: () => server.close(), hits, messages, setAnswer: (next: string) => { current = next; } };
 }
 
 async function withServer(prisma: PrismaClient) {
@@ -232,6 +234,63 @@ test('★ 模型漏人 ⇒ 照样写（拿到几份存几份），并点名报�
   assert.equal(perStudent?.scores?.length, 1, '这一轮拿到的那一份要落库');
   assert.equal(perStudent?.missing?.length, 1, '缺的那一个要点名存下来（教师据此补跑）');
   assert.ok(row.narrative, '解读也要照存（它是独立的一份）');
+});
+
+/*
+  ★ 2026-10-07（教师问：「只补这几个人的话，**AI 对整体的分析是不是也要更新呢**？」）——
+  答案：**要，但不能在这一轮里更新**。补跑只发了几个人，模型给的那段「整体解读」说的就是这几个人，
+  拿它盖掉全班那份是错的。⇒ 补跑**只补分、不动整体解读**；「整体解读是按几个人写的」由面板
+  自己对照着说出来（人齐了提示教师重新生成一遍）。
+  这条用例把「不动整体解读」钉死：第二次跑之前**换掉模型产出**，跑完解读必须还是第一次那段。
+*/
+test('★ 只补这几个人：只发他们、把分并进去、**不动整体解读**', async (t) => {
+  const db = await openTempDb();
+  const first = '全班整体不错。<classnode-scores>{"scores":[{"student":"User_001","score":4,"reason":"思路清楚","advice":"再补一个分支。"}]}</classnode-scores>';
+  const fake = await startFakeCoze(first);
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const agent = await makeAgent(p, 'coze', fake.base);
+  const { worksheet, classroom } = await seed(p, {
+    analysisAgentId: agent.id,
+    node: { ...(DRAWING as Record<string, unknown>), data: { aiScoringEnabled: true, aiScoringMaxScore: 5 } } as Prisma.InputJsonValue,
+  });
+  const second = await p.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });
+  const secondResponse = await p.worksheetResponse.create({
+    data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: second.id },
+  });
+  await p.worksheetAnswer.create({
+    data: {
+      responseId: secondResponse.id, questionId: 'q3', status: 'submitted',
+      value: { format: 'ink/v1', canvas: { w: 320, h: 240 }, strokes: [{ points: [[0.2, 0.2], [0.8, 0.8]], width: 0.01, color: '#111111' }] },
+    },
+  });
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+  await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+
+  // 第一次：全班（模型只评了其中一个）
+  const full = await fetch(runUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+  assert.equal(full.status, 200);
+  const afterFull = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
+  const firstNarrative = afterFull.narrative;
+  const firstPerStudent = afterFull.perStudent as { scores: Array<{ studentId: string }>; missing?: string[] };
+  assert.equal(firstPerStudent.scores.length, 1);
+  assert.equal(firstPerStudent.missing?.length, 1);
+  const missingId = firstPerStudent.missing![0];
+
+  // 第二次：只补那一个（模型这次给的是**另一段**解读 —— 它不该被采用）
+  fake.setAnswer('只看了看这一个同学。<classnode-scores>{"scores":[{"student":"User_001","score":5,"reason":"补上了","advice":"很好。"}]}</classnode-scores>');
+  const scopedUrl = `${runUrl(srv.base, worksheet.id, 'q3', classroom.id)}&only=${missingId}`;
+  const scoped = await fetch(scopedUrl, { method: 'POST' });
+  assert.equal(scoped.status, 200, '补跑不该失败');
+  const afterScoped = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
+  assert.equal(afterScoped.narrative, firstNarrative, '补跑把「全班整体解读」换成了「只看了这一个同学」——那正是教师担心的那件事');
+  const merged = afterScoped.perStudent as { scores: Array<{ studentId: string }>; missing?: string[] };
+  assert.equal(merged.scores.length, 2, '补跑要把缺的那个人补上，并保留之前那位');
+  assert.equal(merged.missing, undefined, '人齐了就不该再报「缺谁」');
+  // 回给界面的也必须还是存下来的那段（否则面板会拿「只看了一个人」那段当全班结论显示）。
+  const body = await scoped.json() as { narrative?: string };
+  assert.equal(body.narrative, firstNarrative);
 });
 
 test('🔴 平台收不了图 ⇒ 400，且**一次网络都没发**', async (t) => {

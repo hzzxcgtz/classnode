@@ -48,6 +48,8 @@ function announce(detail: WorksheetAnalysisNotice): void {
  * 同一课堂、学习单、小题在进行中只保留一个请求，避免关闭后重新打开又重复发送。
  */
 export function startWorksheetAnalysisTask(input: {
+  /** ★ 2026-10-07：只补这几个人（模型上次漏掉的那几个）；不给就是全班。 */
+  only?: string[];
   classroomId: string;
   worksheetId: string;
   questionId: string;
@@ -71,7 +73,7 @@ export function startWorksheetAnalysisTask(input: {
       window.setTimeout(() => {
         if (tasks.get(key) === task && task.stage === 'sending') task.stage = 'analyzing';
       }, 900);
-      return api.runWorksheetAnalysis(classroomId, worksheetId, questionId);
+      return api.runWorksheetAnalysis(classroomId, worksheetId, questionId, input.only);
     })
     .then(async (result) => {
       task.stage = 'finalizing';

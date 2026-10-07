@@ -195,3 +195,24 @@ test('新分析缺少逐生详细建议时：**那一行不算数**（学生不�
   assert.deepEqual(result.perStudent?.scores.map((row) => row.studentId), ['s2'], '缺建议的那一行不许单独存（学生那边会只有半张卡）');
   assert.deepEqual(result.missing, ['s1'], '但它要出现在「缺谁」里 —— 教师补跑时才会带上他');
 });
+
+/*
+  ★ 2026-10-07：**部分结果存得进、读不出** —— 写入那一侧改成「拿到几份存几份」之后，
+  读取那一侧原来还要求 `scores.length === studentIds.length` ⇒ 部分结果被整份判为无效，
+  面板上一片空白，而且**不报错**（比存不进去更难查）。
+  ⇒ 这条钉住：逐行校验照旧，但**不要求一个都不能少**。
+*/
+test('★ 部分结果必须读得出来（读取那一侧不许再要求「一个都不能少」）', () => {
+  const config = { enabled: true, maxScore: 5, unit: '分', criteria: '看结构' };
+  const stored = {
+    maxScore: 5, unit: '分', criteria: '看结构',
+    scores: [{ studentId: 's1', score: 4, reason: '不错', advice: '继续。' }],
+    missing: ['s2'],
+  };
+  const read = readStoredAiScoring(stored, config, ['s1', 's2']);
+  assert.ok(read, '部分结果被整份判无效 —— 教师会在面板上看到一片空白（而库里其实有分）');
+  assert.equal(read.scores.length, 1);
+  assert.deepEqual(read.missing, ['s2'], '「还缺谁」要一起读出来，面板靠它提示');
+  // 反面对照：越界分数仍然整份拒收（逐行校验没松）。
+  assert.equal(readStoredAiScoring({ ...stored, scores: [{ studentId: 's1', score: 9, reason: 'x', advice: 'y' }] }, config, ['s1', 's2']), null);
+});

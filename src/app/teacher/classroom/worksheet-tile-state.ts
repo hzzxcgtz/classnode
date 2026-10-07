@@ -131,10 +131,14 @@ export type WorksheetTileState =
   | { kind: 'loading' }
   | { kind: 'empty' }
   | { kind: 'no-progress' }
-  // ★ 2026-09-25：`index`（0-based 拍平序）换成 `heading`（两级题号，`任务一 · 2`）。
-  // 格子上写的从来就是「第几题」，而拍平序把**任务**也数了一号 ⇒ 它后面每一题的号都偏大。
-  | { kind: 'working'; heading: string | null; typeLabel: string | null; cells: WorksheetCellStatus[]; headings: string[] }
-  | { kind: 'stuck'; heading: string | null; typeLabel: string | null; minutes: number; cells: WorksheetCellStatus[]; headings: string[] }
+  // ★ 2026-09-25：`index`（0-based 拍平序）换成**两级题号**（`任务一 · 2`）——
+  //    格子上写的从来就是「第几题」，而拍平序把**任务**也数了一号 ⇒ 它后面每一题的号都偏大。
+  // ★ 2026-10-07（教师）：「这个地方不用写得这么详细，就写上**正在做第几小题**就可以了，
+  //    哪个任务、任务的名称是什么，都不需要了」——
+  //    ⇒ 这一格只要**小题号**（`AnswerableQuestion.label`，就是那个连续计数器里的数）：
+  //      `number`。两级题号（`headings` 那一份）是**抽屉 / 矩阵**要的，它们各自的类型里还留着。
+  | { kind: 'working'; number: string | null; cells: WorksheetCellStatus[]; headings: string[] }
+  | { kind: 'stuck'; number: string | null; minutes: number; cells: WorksheetCellStatus[]; headings: string[] }
   | { kind: 'all-submitted'; cells: WorksheetCellStatus[]; headings: string[] };
 
 export interface WorksheetTileInput {
@@ -195,17 +199,18 @@ export function worksheetTileState(input: WorksheetTileInput): WorksheetTileStat
   if (cells.every((status) => status === 'submitted')) return { kind: 'all-submitted', cells, headings };
 
   const at = activeQuestionIndex(items, cells, known.lastQuestionId, liveQuestionId);
-  const typeLabel = at === null ? null : questionTypeLabel(items[at].node.type);
-  const heading = at === null ? null : items[at].heading;
+  /* ⚠️ 用 `label`（全卷连续计数器里那个数），**不是** `heading`（带任务前缀的两级题号）——
+     教师 2026-10-07：「就写上正在做第几小题就可以了，哪个任务、任务的名称是什么，都不需要了」。 */
+  const number = at === null ? null : items[at].label;
   // 🔴 `lastAt === null` ⇒ **不算「停住了」**（见 `ParticipantWorksheetProgress.lastAt`）：
   // `now - null` 在 JS 里是 `now`（一个 1.7e12 量级的数），它会让这一格**立刻**报停住了，
   // 而那些题可能刚刚才被答过。判据宁可少报，也不许把「不知道」编成「他卡了 5 分钟」。
   const idleMs = known.lastAt === null ? null : now - known.lastAt;
   if (online && idleMs !== null && idleMs > WORKSHEET_STUCK_AFTER_MS) {
     // `Math.floor` 而不是四舍五入：8 分 59 秒说「8 分钟」是准的，说「9 分钟」是提前量。
-    return { kind: 'stuck', heading, typeLabel, minutes: Math.floor(idleMs / 60_000), cells, headings };
+    return { kind: 'stuck', number, minutes: Math.floor(idleMs / 60_000), cells, headings };
   }
-  return { kind: 'working', heading, typeLabel, cells, headings };
+  return { kind: 'working', number, cells, headings };
 }
 
 /**

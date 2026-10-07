@@ -85,12 +85,16 @@ test('🔴 一条广播都没收到 ⇒ no-progress，**不是**「还没开始�
   assert.deepEqual(state({ progress: undefined }), { kind: 'no-progress' });
 });
 
-test('正在做：最后一次保存的那一题 + 题型（题号是两级题号，题型走注册表的中文名）', () => {
+test('正在做：最后一次保存的那一题 —— 这一格只要**小题号**（★ 2026-10-07 教师）', () => {
   const result = state({ progress: progress({ q2: 'draft' }, 'q2', NOW - 1000) });
+  /*
+   * ★ 2026-10-07（教师）：「就写上**正在做第几小题**就可以了，哪个任务、任务的名称是什么，
+   *   都不需要了」⇒ 这一格交出去的是 `number`（连续计数器里的那个数），
+   *   而**不是**带任务前缀的两级题号（`heading`）—— 后者是抽屉 / 矩阵要的，它们自己的类型里还留着。
+   */
   assert.deepEqual(result, {
     kind: 'working',
-    heading: '2',
-    typeLabel: '填空题',
+    number: '2',
     cells: ['unanswered', 'draft', 'unanswered'],
     headings: ['1', '2', '3'],
   });
@@ -100,7 +104,7 @@ test('🔴 「正在做哪题」= 最后一次保存的那题，不是第一道�
   // 学生先在第 1 题上写了草稿、再跳到第 3 题写：格子必须说第 3 题。
   // 改成「第一道 draft」就会说第 1 题 —— 而两处都不报错。
   const result = state({ progress: progress({ q1: 'draft', q3: 'draft' }, 'q3', NOW - 1000) });
-  assert.equal(result.kind === 'working' ? result.heading : 'x', '3');
+  assert.equal(result.kind === 'working' ? result.number : 'x', '3');
 });
 
 test('方格阵 = 逐题状态（未答 / 作答中 / 已提交），顺序与题目顺序一致', () => {
@@ -128,7 +132,7 @@ test('🔴 停住了：在线 + 距最后一次作答刚好超过 5 分钟', () 
     progress: progress({ q1: 'draft' }, 'q1', NOW - WORKSHEET_STUCK_AFTER_MS - 1000),
   });
   assert.equal(result.kind, 'stuck');
-  assert.equal(result.kind === 'stuck' ? result.heading : 'x', '1');
+  assert.equal(result.kind === 'stuck' ? result.number : 'x', '1');
   assert.equal(result.kind === 'stuck' ? result.minutes : -1, 5);
 });
 
@@ -178,14 +182,23 @@ test('分钟数向下取整（8 分 59 秒说 8 分钟，不说 9 分钟）', ()
 
 test('🔴 最后一次作答的那题被教师删掉 ⇒ 退到「第一道还在作答中的题」，不编题号', () => {
   const result = state({ progress: progress({ q1: 'draft', gone: 'draft' }, 'gone', NOW - 1000) });
-  assert.equal(result.kind === 'working' ? result.heading : 'x', '1');
+  assert.equal(result.kind === 'working' ? result.number : 'x', '1');
 });
 
-test('🔴 说不出在哪一题（最后作答那题已删、也没有在答的题）⇒ heading 为 null 而不是猜一道', () => {
+/**
+ * 格子正文写的是**小题号**（`number`，教师 2026-10-07 起），而 `activeAnswer` 给的是
+ * **两级题号**（`heading`，抽屉/矩阵还要用它）—— 两者说的是不是同一题，用这条判。
+ * ⚠️ 后缀相配就够：全卷题号是一个**连续计数器**（见 `flattenAnswerable`），
+ *    小题号在同一份学习单里唯一 ⇒ 两个不同的小题号不可能同时配上同一个两级题号。
+ */
+function sameQuestion(number: string | null, heading: string | null | undefined): boolean {
+  return number !== null && typeof heading === 'string' && (heading === number || heading.endsWith(` · ${number}`));
+}
+
+test('🔴 说不出在哪一题（最后作答那题已删、也没有在答的题）⇒ number 为 null 而不是猜一道', () => {
   // q1 已提交、q2 没作答、最后一次作答的 q_gone 已被删掉：题号确实推不出来。
   const result = state({ progress: progress({ q1: 'submitted', gone: 'draft' }, 'gone', NOW - 1000) });
-  assert.equal(result.kind === 'working' ? result.heading : 'x', null);
-  assert.equal(result.kind === 'working' ? result.typeLabel : 'x', null);
+  assert.equal(result.kind === 'working' ? result.number : 'x', null);
 });
 
 test('收到的作答全都不在这份学习单上了（题被删光）⇒ no-progress，不说「正在做第 N 题」', () => {
@@ -250,20 +263,26 @@ test('🔴 任务不占格子：三题全交 ⇒ all-submitted（任务被当成
   assert.deepEqual(result, { kind: 'all-submitted', cells: ['submitted', 'submitted', 'submitted'], headings: ['任务一 · 1', '任务一 · 2', '任务一 · 3'] });
 });
 
-test('格子上的题号带任务前缀', () => {
+/*
+ * ⊘ 2026-10-07（**教师改主意**）：这条原来钉的是「格子上的题号**带任务前缀**（`任务一 · 2`）」。
+ *   教师看过之后说：「就写上**正在做第几小题**就可以了，哪个任务、任务的名称是什么，都不需要了」
+ *   ⇒ 现在反过来：这一格只写**小题号**。
+ * ⚠️ 但 `headings[]`（方格阵里每个方块的 tooltip 用它）**仍然保留两级题号** —— 鼠标停在方块上时
+ *   要认得出是哪一题，而那里有地方写全。两个字段各喂一个界面，别再合并。
+ */
+test('格子正文只写**小题号**；两级题号留给 tooltip 那一份', () => {
   const result = state({ nodes: IN_TASK, progress: progress({ q2: 'draft' }, 'q2', NOW - 1000) });
   assert.deepEqual(result, {
     kind: 'working',
-    heading: '任务一 · 2',
-    typeLabel: '填空题',
+    number: '2',
     cells: ['unanswered', 'draft', 'unanswered'],
     headings: ['任务一 · 1', '任务一 · 2', '任务一 · 3'],
   });
 });
 
-test('🔴 停住了：也带同一个题号', () => {
+test('🔴 停住了：也带同一个题号（这里同样是**小题号**，不带任务前缀）', () => {
   const result = state({ nodes: IN_TASK, progress: progress({ q1: 'draft' }, 'q1', NOW - WORKSHEET_STUCK_AFTER_MS - 1), online: true });
-  assert.equal(result.kind === 'stuck' ? result.heading : 'x', '任务一 · 1');
+  assert.equal(result.kind === 'stuck' ? result.number : 'x', '1');
 });
 
 test('题目树里只有任务、一道可作答的题都没有 ⇒ empty（不是「一道题都还没答」）', () => {
@@ -334,7 +353,7 @@ test('🔴 预览的那一题 = 格子正文那一题（共用同一个 activeQu
   // 格子上那一行说的题号，与这里挑出来的**同一题**（两级题号同源）。
   // ⚠️ 局部变量**不能叫 `state`** —— 本文件顶上那个 `state()` 是造格子的助手，撞名会 TDZ。
   const tile = state({ nodes, progress: progress({ q1: 'submitted', q2: 'submitted', q3: 'draft' }, 'q3', NOW - 1000) });
-  assert.equal(tile.kind === 'working' ? tile.heading : null, answer?.heading);
+  assert.ok(sameQuestion(tile.kind === 'working' ? tile.number : null, answer?.heading), '标题与下方预览不许各说各的');
 });
 
 /**
@@ -390,7 +409,7 @@ test('🔴 他此刻正在编辑的那一题优先于「最后一次落库的那
 
   // 🔴 **标题与预览必须同源**：格子正文说的题号也得是 q2，不是 q1。
   const tile = state({ nodes, progress: progress({ q1: 'submitted' }, 'q1', NOW - 1000), liveQuestionId: 'q2' });
-  assert.equal(tile.kind === 'working' ? tile.heading : null, answer?.heading, '标题与下方预览不许各说各的');
+  assert.ok(sameQuestion(tile.kind === 'working' ? tile.number : null, answer?.heading), '标题与下方预览不许各说各的');
 });
 
 test('★ 没有实时预览时，退回「最后一次落库的那一题」', () => {

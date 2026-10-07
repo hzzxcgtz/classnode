@@ -90,3 +90,32 @@ export function readDrawingBackground(node: Pick<WorksheetQuestionNode, 'type' |
 export function drawingModesFor(node: Pick<WorksheetQuestionNode, 'type' | 'data'>): DrawingMode[] {
   return [readDrawingTool(node)];
 }
+
+/**
+ * 「改动停下来多久抓一张」与「**最多**隔多久必抓一张」这两条一起算出的等待时间。
+ *
+ * 🔴 只有防抖的那一版（`delayMs` 一条）在**学生连续画**的时候**一张都不抓** ——
+ *    每次改动都把计时器重置，于是图永远停在「他上一次停手时」那一张。
+ *    教师 2026-10-07：「我在学生端修改流程图……**图没有及时更新**」——
+ *    方块与状态行跟着**保存**（1.5 秒）立刻变，而图跟着**抓图**，两条节拍不一样，
+ *    屏幕上的表现就是「旁边的字变了、画没变」。
+ * ✅ 加一条**上限**：距上次抓图超过 `maxDelayMs` 就缩短这次要等的时间 ⇒
+ *    连续画的时候也能定期刷新（学生端多花的是「每 N 秒一次 SVG→PNG」，见下）。
+ * ⚠️ 上限**不能太短**：抓一张要跑一次 SVG→PNG（老 iPad 上是实打实的开销），
+ *    而这条通道本来就是**为教师那一格**服务的，不能让学生端卡顿。
+ */
+export function rasterDelayMs(input: {
+  now: number;
+  /** 上一次**真正抓图**的时刻；`null` = 还没抓过。 */
+  lastCaptureAt: number | null;
+  /** 改动停下来多久抓（防抖）。 */
+  delayMs: number;
+  /** 最多隔多久必抓一张。 */
+  maxDelayMs: number;
+}): number {
+  const { now, lastCaptureAt, delayMs, maxDelayMs } = input;
+  if (lastCaptureAt === null) return delayMs;
+  const sinceLast = Math.max(0, now - lastCaptureAt);
+  if (sinceLast >= maxDelayMs) return 0;
+  return Math.min(delayMs, maxDelayMs - sinceLast);
+}

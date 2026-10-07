@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { api } from './api';
-import { CHAT_IMAGE_URL } from './worksheet-drawing.ts';
+import { rasterDelayMs, CHAT_IMAGE_URL } from './worksheet-drawing.ts';
 
 /**
  * 第三方画板的**位图快照**（★ 2026-10-06）。
@@ -88,6 +88,11 @@ export interface DrawingRasterOptions {
   onUrl?: (url: string) => void;
   /** 改动停下来多久抓一次。太短会在学生连笔时反复抓图（老 iPad 上是卡顿），太长会漏掉最后一笔。 */
   delayMs?: number;
+  /**
+   * ★ 2026-10-07：**最多**隔这么久必抓一张（学生连续画的时候也定期刷新）。
+   * ⚠️ 别把它调到 1～2 秒：抓图是 SVG→PNG，学生端（老 iPad）会实打实地卡。
+   */
+  maxDelayMs?: number;
 }
 
 /**
@@ -97,12 +102,14 @@ export interface DrawingRasterOptions {
  *    （迟到的上传结果不会再回调 —— 那会在已经换走的题上写一笔）。
  * ⚠️ 反复抓同一内容会重复上传：`pending` 记号保证「学生连续改三下」只传最后一张。
  */
-export function useDrawingRaster({ capture, onUrl, delayMs = 800 }: DrawingRasterOptions): () => void {
+export function useDrawingRaster({ capture, onUrl, delayMs = 800, maxDelayMs = 5000 }: DrawingRasterOptions): () => void {
   const captureRef = useRef(capture);
   const onUrlRef = useRef(onUrl);
   const timerRef = useRef<number | null>(null);
   const tokenRef = useRef(0);
   const aliveRef = useRef(true);
+  /** 上一次**真正抓起图**的时刻（`null` = 还没抓过）—— 上限那条判据要看它。 */
+  const lastCaptureAtRef = useRef<number | null>(null);
   captureRef.current = capture;
   onUrlRef.current = onUrl;
 
@@ -119,8 +126,17 @@ export function useDrawingRaster({ capture, onUrl, delayMs = 800 }: DrawingRaste
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     const token = tokenRef.current + 1;
     tokenRef.current = token;
+    /* ★ 2026-10-07：等待时间**不只是**防抖 —— 还有一条「最多隔多久必抓一张」的上限
+       （学生连续画的时候，只有防抖就永远不抓）。 */
+    const wait = rasterDelayMs({
+      now: Date.now(),
+      lastCaptureAt: lastCaptureAtRef.current,
+      delayMs,
+      maxDelayMs,
+    });
     timerRef.current = window.setTimeout(() => {
       timerRef.current = null;
+      lastCaptureAtRef.current = Date.now();
       void (async () => {
         const blob = await captureRef.current();
         if (!blob || !aliveRef.current) return;
@@ -128,6 +144,6 @@ export function useDrawingRaster({ capture, onUrl, delayMs = 800 }: DrawingRaste
         if (!url || !aliveRef.current || tokenRef.current !== token) return;
         onUrlRef.current?.(url);
       })();
-    }, delayMs);
-  }, [delayMs]);
+    }, wait);
+  }, [delayMs, maxDelayMs]);
 }

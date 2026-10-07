@@ -7,17 +7,14 @@ import { zh_CN as zhCN } from 'mind-elixir/i18n';
 import 'mind-elixir/style.css';
 
 import { useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
+// ★ 2026-10-07：底稿那一档的口径住在 `worksheet-drawing-starter.ts`（与流程图同一处），
+//   连同「怎么读一份导图数据」——本组件原来自己抄了一份 `readMindData`，已收口。
+import { mindMapOrStarter } from '@/lib/worksheet-drawing-starter.ts';
 
 import type { DrawingSurfaceProps } from './types';
 import styles from '../../worksheet.module.css';
 
-function readMindData(raw: unknown): MindElixirData | null {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const row = raw as Record<string, unknown>;
-  return row.nodeData && typeof row.nodeData === 'object' ? raw as MindElixirData : null;
-}
-
-export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange, onImage }: DrawingSurfaceProps) {
+export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange, onImage, starter }: DrawingSurfaceProps) {
   const host = useRef<HTMLDivElement | null>(null);
   const mind = useRef<MindElixirInstance | null>(null);
   const scheduleRaster = useRef<() => void>(() => {});
@@ -139,7 +136,14 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
         },
       },
     });
-    instance.init(readMindData(data) ?? MindElixir.new('中心主题'));
+    /*
+     * ★ 2026-10-07（教师裁定）：**底稿只作起点** ——
+     *   · 他有自己的作答（哪怕删到只剩中心主题）⇒ 用他的，**整棵树都算他的**；
+     *   · 还没有作答 ⇒ 拿底稿当起点。
+     * 🔴 与流程图那档**刻意不同**：那边交上去时按 id 把底稿剔掉，而导图的底稿是**骨架**、
+     *   学生要填的正是骨架本身 ⇒ 照搬会把学生填的内容连骨架一起删掉（见 `mindMapOrStarter`）。
+     */
+    instance.init((mindMapOrStarter(data, starter?.data) ?? MindElixir.new('中心主题')) as MindElixirData);
     if (disabled) instance.disableEdit();
     /**
      * 🔴 **建完就选中根节点**。`mind-elixir` 的 `addChild()` / `insertSibling()` 用的是
@@ -329,6 +333,28 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * 「恢复初始图」—— 把画布退回教师给的起点（★ 2026-10-07 教师：初始图其他绘图题也要）。
+   *
+   * 🔴 三件事缺一不可：
+   *   ① **建完要选中根节点**：库的 `addChild()` 吃「当前选中节点」，而 `init()` 之后什么都没选中
+   *      ⇒ 不选的话学生一按「添加子主题」就是**静默 no-op**（上面 `selectNode` 那一段有实测）；
+   *   ② 要**主动 `onChange`**：与流程图不同 —— 那边「恢复」是改 React state、由既有的发布 effect
+   *      带出去；这边只有一个库实例，不改 state ⇒ 不主动交就等于「恢复了但没保存」；
+   *   ③ 要 `scheduleRaster()`：快照跟着更新，否则教师那一格仍是旧的那张。
+   * ⚠️ 存的这一份是**整棵树**（教师裁定：底稿只作起点，学生交上去的整棵树都算他的）
+   *   —— 所以恢复之后再交，交的仍是他自己那份，不需要任何「剔除」。
+   */
+  const restoreStarter = () => {
+    const instance = mind.current;
+    const base = mindMapOrStarter(null, starter?.data);
+    if (!instance || !base) return;
+    instance.init(base as MindElixirData);
+    const rootElement = instance.findEle(instance.nodeData.id);
+    if (rootElement) instance.selectNode(rootElement);
+    onChange(instance.getData());
+    scheduleRaster.current();
+  };
   return (
     <div className={styles.thirdPartySurface}>
       {/*
@@ -348,6 +374,12 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
             （插入子节点 / 父节点 / 同级节点）—— 工具条下方那行提示已经写明。
           ⚠️ 删的是「我们的按钮」，**不是**「加节点的能力」。
         */}
+        {/* ★ 2026-10-07（教师：「初始图开关不仅流程图要，其他绘图题也要」）——
+            「恢复初始图」与流程图那一档**同形**：只要这一题有底稿就**无条件**出现
+            （它是唯一的回退路径：学生把底稿改乱了只能靠它回去）。 */}
+        {starter && (
+          <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={restoreStarter}>恢复初始图</button>
+        )}
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => mind.current?.undo()}>撤销</button>
         <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => mind.current?.redo()}>重做</button>
         <span className={styles.drawingToolbarHint}>双击节点写字；长按节点打开菜单（增删、上移下移、连接）；滚轮缩放</span>

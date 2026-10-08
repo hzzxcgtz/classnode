@@ -425,11 +425,10 @@ function WorksheetEditorBody() {
     <QuestionCard
       key={row.node.id}
       heading={row.heading}
-      index={row.index}
+      label={row.label}
       expanded
       focusedMode
       onToggle={() => selectQuestion(row.node.id, row.taskId)}
-      inTask={row.taskId !== null}
       taskId={row.taskId}
       onDragStart={event => startDrag(event, row.node.id, row.taskId ?? '', row.index)}
       node={row.node}
@@ -622,7 +621,7 @@ function WorksheetEditorBody() {
                         data-outline-layer={task.node.id}
                       >
                         <button type="button" onClick={() => selectQuestion(row.node.id, task.node.id)}>
-                          <span className="worksheet-editor-outline-number">{row.index + 1}</span>
+                          <span className="worksheet-editor-outline-number">{row.label}</span>
                           <span className="worksheet-editor-outline-question-copy">
                             <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{editorQuestionTypeLabel(row.node)}</strong>
                             <em>{row.node.prompt.trim() || '未填写题干'}</em>
@@ -632,7 +631,7 @@ function WorksheetEditorBody() {
                           type="button"
                           className="worksheet-editor-outline-drag"
                           onPointerDown={event => startDrag(event, row.node.id, task.node.id, row.index)}
-                          aria-label={`拖动第 ${row.index + 1} 题调整顺序`}
+                          aria-label={`拖动第 ${row.label} 题调整顺序`}
                           title="拖动调整题目顺序"
                         >⠿</button>
                       </div>
@@ -667,7 +666,7 @@ function WorksheetEditorBody() {
                   <span>任务 {activeBlock.task.index + 1}</span>
                   <h2>{activeQuestion ? '编辑题目' : '编辑任务'}</h2>
                 </div>
-                {activeQuestion && <span>第 {activeQuestion.index + 1} 题 / 共 {activeQuestion.total} 题</span>}
+                {activeQuestion && <span>第 {activeQuestion.label} 题 / 共 {totals.questions} 题</span>}
               </div>
               <TaskCard
                 index={activeBlock.task.index}
@@ -691,6 +690,7 @@ function WorksheetEditorBody() {
             <>
               <div className="worksheet-editor-canvas-head">
                 <div><span>独立题目</span><h2>编辑题目</h2></div>
+                <span>第 {activeQuestion.label} 题 / 共 {totals.questions} 题</span>
               </div>
               {renderQuestionCard(activeQuestion)}
             </>

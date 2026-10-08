@@ -2374,6 +2374,15 @@
 .drawingSurfaceToolbar button:active { transform: translateY(1px); }
 .drawingWorkspaceHeader button:disabled,
 .drawingSurfaceToolbar button:disabled { cursor: default; opacity: .55; }
+.drawingFullscreenButton {
+  min-width: 96px;
+  padding: 0 14px !important;
+}
+.drawingFullscreenButton span {
+  color: currentColor;
+  font-size: .8rem;
+  font-weight: 700;
+}
 
 .thirdPartySurface { background: #fff; }
 /* ★ 2026-10-06：流程图的浮层（选中连线的删除按钮、双击连线的就地输入框）摆在这个舞台上。 */
@@ -2667,7 +2676,7 @@
 
 /* ★ 2026-10-06：数学作图的**拖动预览层**（拖动过程的线条画在这里，必然可见）。 */
 .mathStage { position: relative; }
-.mathCanvas[data-infinite-dot-grid='true'] {
+.thirdPartyCanvas[data-infinite-dot-grid='true'] {
   background-color: #fff;
   background-image: radial-gradient(circle, rgba(126, 132, 140, .42) .65px, transparent .78px);
   background-position: 0 0;
@@ -3029,4 +3038,5 @@
   .drawingToolbarActions { padding-right: 0; }
   .drawingToolbarHint { flex-basis: 100%; }
   .drawingWorkspaceHeader span { display: none; }
+  .drawingWorkspaceHeader .drawingFullscreenButton span { display: inline; }
 }

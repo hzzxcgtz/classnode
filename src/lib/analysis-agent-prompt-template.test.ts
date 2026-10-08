@@ -23,6 +23,8 @@ test('分析智能体模板保持清晰的四段结构，运行期协议不重�
     assert.ok(ANALYSIS_AGENT_PROMPT_TEMPLATE.includes(heading), `缺少结构：${heading}`);
   }
   assert.ok(!ANALYSIS_AGENT_PROMPT_TEMPLATE.includes('<classnode-scores>'), '动态机器协议不应重复写死在教师模板里');
+  assert.match(ANALYSIS_AGENT_PROMPT_TEMPLATE, /写给同学们的话/);
+  assert.match(ANALYSIS_AGENT_PROMPT_TEMPLATE, /不点名、不排名/);
 });
 
 test('Coze 教师模板已同步最新姓名学号与评分协议，并保留 12 个学科模块', () => {
@@ -32,6 +34,7 @@ test('Coze 教师模板已同步最新姓名学号与评分协议，并保留 12
   assert.match(COZE_TEMPLATE, /教师提供的初始图不是学生成果/);
   assert.match(COZE_TEMPLATE, /七、学科模块粘贴区/);
   assert.match(COZE_TEMPLATE, /将本文后面选定的一个“学科模块”完整粘贴到这里/);
+  assert.match(COZE_TEMPLATE, /### 写给同学们的话/);
   assert.ok(!COZE_TEMPLATE.includes('v2.2.0'), 'Coze 模板仍残留旧版本号');
   assert.ok(!COZE_TEMPLATE.includes('逐一评价每个已提交作答的学生'), 'Coze 模板仍要求给不可评分作答猜分');
   assert.equal((COZE_TEMPLATE.match(/^### 版本 \d+：/gm) ?? []).length, 12, '全学科的 12 个模块不完整');

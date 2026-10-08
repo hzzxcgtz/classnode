@@ -1,42 +1,29 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { platformColors, platformLabels, classroomModeLabels } from '@/lib/constants';
 import {
-  platformLabels, platformColors, platformBadgeBg,
-  classroomModeLabels, classroomModeColors,
-} from '@/lib/constants';
-import {
-  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
-  RadialBarChart, RadialBar,
+  Bar, BarChart, Cell, Pie, PieChart, RadialBar, RadialBarChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import type { AgentSummary, BackupFile, ClassSummary, ClassroomHistoryItem, DashboardClassroom, ShieldWord, StorageStats } from '@/lib/types';
+import type {
+  AgentSummary, BackupFile, ClassroomHistoryItem, ClassroomWarningSummary,
+  DashboardClassroom, ShieldWord, StorageStats, WebappSummary, WorksheetSummary,
+} from '@/lib/types';
 import { TeacherPageHeader } from '@/lib/components';
 
 type ChartPayloadItem = {
   name?: string;
   value?: number;
   color?: string;
-  payload?: { name?: string };
+  payload?: { name?: string; label?: string };
 };
 
-// ─── 区块卡片 ──────────────────────────────────────────────
-
-function SectionCard({ title, icon, children }: {
-  title: string; icon: React.ReactNode; children: React.ReactNode;
-}) {
-  return (
-    <section className="dashboard-section-card">
-      <div className="dashboard-section-card-header">
-        <span>{icon}</span>
-        <h2>{title}</h2>
-      </div>
-      <div className="dashboard-section-card-body">{children}</div>
-    </section>
-  );
-}
-
-// ─── 问候语 ────────────────────────────────────────────────
+const COLORS = {
+  primary: '#4f759d', primarySoft: '#91abc3', green: '#4e8063',
+  amber: '#a7773e', red: '#a85d5d', grey: '#c6d0d9', slate: '#6f8295',
+};
 
 function greeting() {
   const hour = new Date().getHours();
@@ -48,48 +35,90 @@ function greeting() {
   return '晚上好';
 }
 
-// ─── 自定义 Tooltip ─────────────────────────────────────────
-
-function ChartTooltip({ active, payload }: { active?: boolean; payload?: ChartPayloadItem[] }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{ background: '#1e293b', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: "0.75rem", color: '#f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}>
-      {payload.map((entry, i: number) => (
-        <div key={i} style={{ color: '#f1f5f9' }}>{entry.payload?.name || entry.name}: {entry.value}</div>
-      ))}
-    </div>
-  );
+function formatBytes(bytes: number) {
+  if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)} GB`;
+  if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
 }
 
-function StackedBarTooltip({ active, payload }: { active?: boolean; payload?: ChartPayloadItem[] }) {
+function formatDuration(ms: number) {
+  if (ms <= 0) return '无记录';
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 60) return `${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest > 0 ? `${hours} 小时 ${rest} 分钟` : `${hours} 小时`;
+}
+
+function formatDate(value?: string | Date | null, withTime = false) {
+  if (!value) return '-';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('zh-CN', withTime
+    ? { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }
+    : { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
+async function loadAllWorksheets(): Promise<WorksheetSummary[]> {
+  const first = await api.getWorksheets({ page: 1, pageSize: 100 });
+  const pages = Math.ceil(first.total / first.pageSize);
+  if (pages <= 1) return first.items;
+  const rest = await Promise.all(
+    Array.from({ length: pages - 1 }, (_, index) => api.getWorksheets({ page: index + 2, pageSize: 100 })),
+  );
+  return [first, ...rest].flatMap(result => result.items);
+}
+
+function ChartTooltip({ active, payload, suffix = '' }: {
+  active?: boolean;
+  payload?: ChartPayloadItem[];
+  suffix?: string;
+}) {
   if (!active || !payload?.length) return null;
-  const total = payload.reduce((sum, item) => sum + (item.value || 0), 0);
-  const usageItem = payload.find((item) => item.name === '使用次数');
   return (
-    <div style={{ background: '#1e293b', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: "0.75rem", color: '#f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}>
-      <div style={{ fontWeight: 600, marginBottom: 4, color: '#e2e8f0' }}>{payload[0]?.payload?.name}</div>
-      {payload.filter((item) => item.name !== '使用次数').map((entry, i: number) => (
-        <div key={i} style={{ color: entry.color || '#f1f5f9' }}>
-          {entry.name}: {entry.value}人
+    <div className="dashboard-chart-tooltip">
+      {payload.map((entry, index) => (
+        <div key={`${entry.name}-${index}`}>
+          {entry.payload?.label || entry.payload?.name || entry.name}: {Number(entry.value || 0).toLocaleString()}{suffix}
         </div>
       ))}
-      {usageItem && (
-        <div style={{ color: '#956834' }}>使用次数: {usageItem.value}</div>
-      )}
-      <div style={{ borderTop: '1px solid #334155', marginTop: 3, paddingTop: 3, color: '#f1f5f9' }}>
-        总计: {total}人
-      </div>
     </div>
   );
 }
 
-// ─── KPI 卡片 ────────────────────────────────────────────────
-
-function KpiCard({ label, value, icon, trend, trendUp }: {
-  label: string; value: string | number; icon: React.ReactNode; trend?: string; trendUp?: boolean;
+function SectionCard({ title, description, icon, action, wide, children }: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  action?: React.ReactNode;
+  wide?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <section className="dashboard-kpi-card">
+    <section className={`dashboard-section-card${wide ? ' is-wide' : ''}`}>
+      <div className="dashboard-section-card-header">
+        <span className="dashboard-section-card-icon">{icon}</span>
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        {action && <div className="dashboard-section-action">{action}</div>}
+      </div>
+      <div className="dashboard-section-card-body">{children}</div>
+    </section>
+  );
+}
+
+function KpiCard({ label, value, note, tone = 'blue', icon }: {
+  label: string;
+  value: string | number;
+  note: string;
+  tone?: 'blue' | 'green' | 'amber' | 'red';
+  icon: React.ReactNode;
+}) {
+  return (
+    <section className={`dashboard-kpi-card tone-${tone}`}>
       <div className="dashboard-kpi-card-main">
         <div>
           <div className="dashboard-kpi-label">{label}</div>
@@ -97,31 +126,41 @@ function KpiCard({ label, value, icon, trend, trendUp }: {
         </div>
         <span className="dashboard-kpi-icon">{icon}</span>
       </div>
-      {trend && (
-        <div className={`dashboard-kpi-trend${trendUp ? ' is-positive' : ''}`}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            {trendUp
-              ? <polyline points="18 15 12 9 6 15" />
-              : <polyline points="6 9 12 15 18 9" />
-            }
-          </svg>
-          <span>{trend}</span>
-        </div>
-      )}
+      <div className="dashboard-kpi-note">{note}</div>
     </section>
   );
 }
 
-// ─── 主组件 ────────────────────────────────────────────────
+function MiniStats({ items }: {
+  items: Array<{ label: string; value: string | number; tone?: 'default' | 'green' | 'amber' | 'red' }>;
+}) {
+  return (
+    <div className="dashboard-mini-stats">
+      {items.map(item => (
+        <div key={item.label} className={`dashboard-mini-stat tone-${item.tone || 'default'}`}>
+          <strong>{typeof item.value === 'number' ? item.value.toLocaleString() : item.value}</strong>
+          <span>{item.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyBlock({ children }: { children: React.ReactNode }) {
+  return <div className="dashboard-empty-block">{children}</div>;
+}
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [agents, setAgents] = useState<AgentSummary[]>([]);
-  const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [allClassrooms, setAllClassrooms] = useState<DashboardClassroom[]>([]);
   const [history, setHistory] = useState<ClassroomHistoryItem[]>([]);
+  const [worksheets, setWorksheets] = useState<WorksheetSummary[]>([]);
+  const [webapps, setWebapps] = useState<WebappSummary[]>([]);
   const [backups, setBackups] = useState<BackupFile[]>([]);
   const [shieldWords, setShieldWords] = useState<ShieldWord[]>([]);
+  const [warnings, setWarnings] = useState<ClassroomWarningSummary[]>([]);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
 
   useEffect(() => {
@@ -131,760 +170,208 @@ export default function DashboardPage() {
 
   async function loadData() {
     setLoading(true);
+    setLoadError(false);
     try {
-      const [a, c, cr, h, b, sw, ss] = await Promise.all([
-        api.getAgents(),
-        api.getClasses(),
-        api.getAllClassrooms().catch(() => []),
-        api.getHistory().catch(() => []),
-        api.getBackups().catch(() => []),
-        api.getShieldWords().catch(() => []),
-        api.getStorageStats().catch(() => null),
+      let partialFailure = false;
+      const safe = async <T,>(promise: Promise<T>, fallback: T): Promise<T> => {
+        try {
+          return await promise;
+        } catch {
+          partialFailure = true;
+          return fallback;
+        }
+      };
+      const [agentData, classroomData, historyData, worksheetData, webappData, backupData, shieldData, warningData, storageData] = await Promise.all([
+        safe(api.getAgents(), [] as AgentSummary[]),
+        safe(api.getAllClassrooms(), [] as DashboardClassroom[]),
+        safe(api.getHistory(), [] as ClassroomHistoryItem[]),
+        safe(loadAllWorksheets(), [] as WorksheetSummary[]),
+        safe(api.getWebapps(), [] as WebappSummary[]),
+        safe(api.getBackups(), [] as BackupFile[]),
+        safe(api.getShieldWords(), [] as ShieldWord[]),
+        safe(api.getWarningsSummary(), [] as ClassroomWarningSummary[]),
+        safe(api.getStorageStats(), null as StorageStats | null),
       ]);
-      setAgents(a || []);
-      setClasses(c || []);
-      setAllClassrooms(cr || []);
-      setHistory(h || []);
-      setBackups(b || []);
-      setShieldWords(sw || []);
-      setStorageStats(ss);
-    } catch {}
-    setLoading(false);
+      setAgents(agentData || []);
+      setAllClassrooms(classroomData || []);
+      setHistory(historyData || []);
+      setWorksheets(worksheetData || []);
+      setWebapps(webappData || []);
+      setBackups(backupData || []);
+      setShieldWords(shieldData || []);
+      setWarnings(warningData || []);
+      setStorageStats(storageData);
+      setLoadError(partialFailure);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
-
-  // ── AI 智能体 ──
-  const agentTotal = agents.length;
-  const agentEnabled = agents.filter(a => a.enabled !== false).length;
-  const agentDisabled = agentTotal - agentEnabled;
-  const agentOk = agents.filter(a => a.lastCheckOk === true).length;
-  const agentError = agents.filter(a => a.lastCheckAt !== null && a.lastCheckOk === false).length;
-  const agentPending = agentTotal - agentOk - agentError;
-  const healthPercent = agentTotal > 0 ? Math.round((agentOk / agentTotal) * 100) : 0;
-  const gaugeColor = healthPercent >= 80 ? '#3f7859' : healthPercent >= 50 ? '#956834' : '#a85d5d';
-  const agentPlatforms = agents.reduce((acc: Record<string, number>, a) => {
-    const p = a.platform || 'unknown';
-    acc[p] = (acc[p] || 0) + 1;
-    return acc;
-  }, {});
-
-  // ── 班级 ──
-  const classTotal = classes.length;
-  const classTotalStudents = classes.reduce((sum, c) => sum + (c._count?.students || 0), 0);
-  const classGroupTotal = classes.reduce((sum, c) => sum + (c._count?.groups || 0), 0);
-  const classUsage = classes.map(c => {
-    const count = allClassrooms.filter(cr =>
-      cr.classes.some((cc) => cc.classId === c.id)
-    ).length;
-    return { id: c.id, name: c.name, usageCount: count };
-  });
-  const classByUsage = classUsage.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 5);
-
-  // ── 课堂 ──
-  const classroomTotal = allClassrooms.length;
-  const classroomActive = allClassrooms.filter(c => c.status === 'active').length;
-  const classroomPaused = allClassrooms.filter(c => c.status === 'paused').length;
-  const classroomEnded = allClassrooms.filter(c => c.status === 'ended').length;
-  const classroomByMode = allClassrooms.reduce((acc: Record<string, number>, c) => {
-    const m = c.mode || 'standard';
-    acc[m] = (acc[m] || 0) + 1;
-    return acc;
-  }, {});
-  const classroomTotalInteractions = allClassrooms.reduce(
-    (sum, c) => sum + c._count.interactions, 0,
-  );
-
-  // ── 数据管理 ──
-  const historyTotal = history.length;
-  const historyParticipants = history.reduce(
-    (sum, h) => sum + (Number(h.participantCount) || 0), 0,
-  );
-
-  // ── 备份 ──
-  const backupTotal = backups.length;
-  const backupTotalSize = backups.reduce((sum, b) => sum + (b.size || 0), 0);
-  const backupLatest = backupTotal > 0
-    ? new Date(backups.reduce((latest, backup) => new Date(backup.createdAt) > new Date(latest.createdAt) ? backup : latest).createdAt)
-    : null;
-
-  // ── 屏蔽词 ──
-  const shieldCustomCount = shieldWords.filter(w => !w.builtin).length;
-  const shieldBuiltinCount = shieldWords.filter(w => w.builtin).length;
-  const shieldEnabled = true;
-
-  const formatBytes = (bytes: number) =>
-    bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : bytes >= 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${bytes} B`;
-
-  const formatChars = (n: number) =>
-    n >= 10000 ? `${(n / 10000).toFixed(1)}万` : `${n}`;
-
-  // ── 渲染 ──
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50vh' }}>
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
-          <circle cx="12" cy="12" r="10" strokeDasharray="50" strokeDashoffset="15" strokeLinecap="round" />
-        </svg>
-        <span style={{ marginLeft: 10, color: '#94a3b8', fontSize: "0.875rem" }}>加载中...</span>
+      <div className="dashboard-loading" aria-label="正在加载仪表盘">
+        <div className="dashboard-loading-head" />
+        <div className="dashboard-loading-kpis">{Array.from({ length: 4 }, (_, index) => <div key={index} />)}</div>
+        <div className="dashboard-loading-sections">{Array.from({ length: 4 }, (_, index) => <div key={index} />)}</div>
       </div>
     );
   }
 
-  const platformEntries = Object.entries(agentPlatforms).sort((a, b) => b[1] - a[1]);
-  const modeEntries = Object.entries(classroomByMode).sort((a, b) => b[1] - a[1]);
-
-  // Recharts 数据
-  const platformData = platformEntries.map(([k, v]) => ({
-    name: platformLabels[k] || k,
-    count: v,
-    color: platformColors[k] || '#64748b',
-    bg: platformBadgeBg[k] || '#f1f5f9',
+  const agentTotal = agents.length;
+  const agentEnabled = agents.filter(agent => agent.enabled !== false).length;
+  const agentOk = agents.filter(agent => agent.enabled !== false && agent.lastCheckOk === true).length;
+  const agentError = agents.filter(agent => agent.enabled !== false && agent.lastCheckAt !== null && agent.lastCheckOk === false).length;
+  const agentPending = agents.filter(agent => agent.enabled !== false && agent.lastCheckAt === null).length;
+  const healthPercent = agentEnabled > 0 ? Math.round((agentOk / agentEnabled) * 100) : 0;
+  const healthColor = agentError > 0 ? COLORS.red : agentPending > 0 ? COLORS.amber : COLORS.green;
+  const platformData = Object.entries(agents.reduce<Record<string, number>>((result, agent) => {
+    result[agent.platform || 'unknown'] = (result[agent.platform || 'unknown'] || 0) + 1;
+    return result;
+  }, {})).sort((a, b) => b[1] - a[1]).map(([key, value]) => ({
+    name: platformLabels[key] || key, value, color: platformColors[key] || COLORS.slate,
   }));
 
-  const modeData = modeEntries.map(([k, v]) => ({
-    name: classroomModeLabels[k] || k,
-    count: v,
-    color: classroomModeColors[k] || '#64748b',
+  const classroomActive = allClassrooms.filter(classroom => classroom.status === 'active').length;
+  const classroomPaused = allClassrooms.filter(classroom => classroom.status === 'paused').length;
+  const classroomEnded = allClassrooms.filter(classroom => classroom.status === 'ended').length;
+  const classroomParticipants = allClassrooms.filter(classroom => classroom.status !== 'ended')
+    .reduce((sum, classroom) => sum + (Number(classroom.participantCount) || 0), 0);
+  const classroomStatusData = [
+    { name: '进行中', value: classroomActive, color: COLORS.green },
+    { name: '已暂停', value: classroomPaused, color: COLORS.amber },
+    { name: '已结束', value: classroomEnded, color: COLORS.grey },
+  ].filter(item => item.value > 0);
+  const classroomModeData = Object.entries(allClassrooms.reduce<Record<string, number>>((result, classroom) => {
+    result[classroom.mode || 'standard'] = (result[classroom.mode || 'standard'] || 0) + 1;
+    return result;
+  }, {})).map(([mode, value]) => ({ name: classroomModeLabels[mode] || mode, value }));
+  const recentClassrooms = [...allClassrooms]
+    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 5);
+
+  const worksheetTotal = worksheets.length;
+  const worksheetUsed = worksheets.filter(worksheet => worksheet.classroomCount > 0).length;
+  const worksheetUnused = worksheetTotal - worksheetUsed;
+  const worksheetQuestionTotal = worksheets.reduce((sum, worksheet) => sum + worksheet.questionCount, 0);
+  const worksheetSubmitted = history.reduce((sum, classroom) => sum + classroom.worksheetSubmitted, 0);
+  const worksheetAnswers = history.reduce((sum, classroom) => sum + classroom.worksheetTotal, 0);
+  const worksheetUsageData = [
+    { name: '已用于课堂', value: worksheetUsed, color: COLORS.primary },
+    { name: '尚未使用', value: worksheetUnused, color: COLORS.grey },
+  ].filter(item => item.value > 0);
+  const topWorksheets = [...worksheets]
+    .sort((a, b) => b.classroomCount - a.classroomCount || b.questionCount - a.questionCount).slice(0, 5);
+  const worksheetBarData = topWorksheets.map(worksheet => ({
+    name: worksheet.title.length > 8 ? `${worksheet.title.slice(0, 8)}…` : worksheet.title,
+    label: worksheet.title, value: worksheet.classroomCount,
   }));
 
-  const stackedClassData = classByUsage.map(c => {
-    const cls = classes.find(cl => cl.id === c.id);
-    const maleCount = cls?.maleCount || 0;
-    const femaleCount = cls?.femaleCount || 0;
-    const unknownCount = Math.max(0, (cls?._count?.students || 0) - maleCount - femaleCount);
-    return {
-      name: c.name.length > 6 ? c.name.slice(0, 6) + '…' : c.name,
-      usageCount: c.usageCount,
-      maleCount,
-      femaleCount,
-      unknownCount,
-    };
-  });
+  const webappTotal = webapps.length;
+  const webappUsed = webapps.filter(webapp => webapp.classroomCount > 0).length;
+  const webappUnused = webappTotal - webappUsed;
+  const webappParticipants = history.reduce((sum, classroom) => sum + classroom.webappUsageCount, 0);
+  const webappDuration = history.reduce((sum, classroom) => sum + classroom.webappDurationMs, 0);
+  const webappUsageData = [
+    { name: '已关联课堂', value: webappUsed, color: COLORS.green },
+    { name: '尚未使用', value: webappUnused, color: COLORS.grey },
+  ].filter(item => item.value > 0);
+  const topWebapps = [...webapps]
+    .sort((a, b) => b.classroomCount - a.classroomCount || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 5);
+  const webappBarData = topWebapps.map(webapp => ({
+    name: webapp.name.length > 8 ? `${webapp.name.slice(0, 8)}…` : webapp.name,
+    label: webapp.name, value: webapp.classroomCount,
+  }));
 
-  // ── 头像 ──
-  const classAvatarData = [...classes]
-    .sort((a, b) => (b.uploadedAvatarCount || 0) - (a.uploadedAvatarCount || 0))
-    .slice(0, 5)
-    .map(c => ({
-      name: c.name.length > 8 ? c.name.slice(0, 8) + '…' : c.name,
-      total: c._count?.students || 0,
-      uploadedAvatar: c.uploadedAvatarCount || 0,
-      remainingTokens: c.totalTokens || 0,
-    }));
-
-  const hasAgentData = agentTotal > 0;
-  const hasClassData = classTotal > 0;
-  const hasClassroomData = classroomTotal > 0;
-  const hasHistoryData = historyTotal > 0;
+  const backupLatest = backups.length > 0
+    ? backups.reduce((latest, backup) => new Date(backup.createdAt) > new Date(latest.createdAt) ? backup : latest)
+    : null;
+  const backupSize = backups.reduce((sum, backup) => sum + (backup.size || 0), 0);
+  const warningCount = warnings.reduce((sum, classroom) => sum + classroom.warningCount, 0);
+  const enabledShieldWords = shieldWords.filter(word => word.enabled).length;
+  const totalStorage = storageStats ? storageStats.avatars.teacher.totalSize + storageStats.avatars.student.totalSize
+    + storageStats.classIcons.totalSize + storageStats.agentLogos.totalSize + storageStats.classroomAttachments.totalSize : 0;
+  const storageData = storageStats ? [
+    { name: '课堂附件', value: storageStats.classroomAttachments.totalSize },
+    { name: '学生头像', value: storageStats.avatars.student.totalSize },
+    { name: '教师头像', value: storageStats.avatars.teacher.totalSize },
+    { name: '班级图标', value: storageStats.classIcons.totalSize },
+    { name: '智能体标志', value: storageStats.agentLogos.totalSize },
+  ] : [];
 
   return (
-    <div>
-
-      <TeacherPageHeader title="仪表盘" description={`${greeting()}，这里汇总系统与课堂运行情况。`} actions={
-        <button className="btn btn-primary" onClick={loadData}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+    <div className="dashboard-page">
+      <TeacherPageHeader title="仪表盘" description={`${greeting()}，这里汇总当前系统的资源与运行状态。`} actions={
+        <button className="btn btn-primary" onClick={() => void loadData()}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
           刷新数据
         </button>
       } />
 
-      {/* ═══ 核心 KPI 行 ═══ */}
+      {loadError && <div className="dashboard-load-warning" role="alert">部分统计没有加载出来，请检查服务状态后重新刷新。</div>}
+
       <div className="dashboard-kpi-grid">
-        <KpiCard
-          label="AI 智能体"
-          value={`${agentEnabled}/${agentTotal}`}
-          trend={agentError > 0 ? `${agentError} 个异常` : '全部健康'}
-          trendUp={agentError === 0}
-          icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>}
-        />
-        <KpiCard
-          label="班级总数"
-          value={classTotal}
-          trend={`${classTotalStudents} 名学生 · ${classGroupTotal} 个分组`}
-          trendUp
-          icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>}
-        />
-        <KpiCard
-          label="进行中课堂"
-          value={classroomActive > 0 ? `${classroomActive}/${classroomTotal}` : classroomTotal}
-          trend={classroomActive > 0 ? `${classroomActive} 个课堂正在进行` : '暂无活跃课堂'}
-          trendUp={classroomActive > 0}
-          icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>}
-        />
-        <KpiCard
-          label="总互动次数"
-          value={classroomTotalInteractions}
-          trend={`${historyTotal} 节历史课堂`}
-          trendUp
-          icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>}
-        />
+        <KpiCard label="AI 智能体" value={`${agentOk}/${agentEnabled}`} note={agentError > 0 ? `${agentError} 个连接异常` : agentPending > 0 ? `${agentPending} 个尚未检测` : '已启用智能体状态正常'} tone={agentError > 0 ? 'red' : agentPending > 0 ? 'amber' : 'green'} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M9 10h.01M15 10h.01M9 15h6M12 2v3" /></svg>} />
+        <KpiCard label="当前课堂" value={classroomActive} note={classroomPaused > 0 ? `${classroomPaused} 个已暂停，${classroomParticipants} 个参与者` : `${classroomParticipants} 个参与者，当前无暂停课堂`} tone={classroomPaused > 0 ? 'amber' : classroomActive > 0 ? 'green' : 'blue'} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>} />
+        <KpiCard label="学习单" value={`${worksheetUsed}/${worksheetTotal}`} note={worksheetUnused > 0 ? `${worksheetUnused} 份尚未用于课堂` : worksheetTotal > 0 ? '全部学习单均已投入使用' : '还没有学习单'} tone={worksheetUnused > 0 ? 'amber' : 'blue'} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4" /><rect x="9" y="2" width="6" height="4" rx="1" /><path d="m8 12 2 2 4-4" /><path d="M8 18h8" /></svg>} />
+        <KpiCard label="探究空间" value={`${webappUsed}/${webappTotal}`} note={webappUnused > 0 ? `${webappUnused} 个网页尚未关联课堂` : webappTotal > 0 ? '全部网页均已关联课堂' : '还没有探究网页'} tone={webappUnused > 0 ? 'amber' : 'blue'} icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" /></svg>} />
       </div>
 
-      {/* ═══ 四宫格核心卡片 ═══ */}
       <div className="dashboard-section-grid">
-
-        {/* ─── AI 智能体 ─── */}
-        <SectionCard title="AI 智能体"
-          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2" strokeLinecap="round">
-            <rect x="4" y="4" width="16" height="16" rx="3" />
-            <path d="M9 12h6" /><path d="M12 9v6" />
-          </svg>}
-        >
-          {!hasAgentData ? (
-            <div style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8', fontSize: "0.75rem" }}>
-              暂无智能体数据
+        <SectionCard title="AI 智能体" description="连接健康度、接入方式与实际使用情况" action={<a href="/teacher/agents/">管理智能体</a>} icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M9 10h.01M15 10h.01M9 15h6M12 2v3" /></svg>}>
+          {agentTotal === 0 ? <EmptyBlock>还没有配置 AI 智能体。</EmptyBlock> : <>
+            <MiniStats items={[{ label: '全部', value: agentTotal }, { label: '启用中', value: agentEnabled, tone: 'green' }, { label: '异常', value: agentError, tone: agentError > 0 ? 'red' : 'default' }, { label: '未检测', value: agentPending, tone: agentPending > 0 ? 'amber' : 'default' }]} />
+            <div className="dashboard-chart-pair">
+              <div className="dashboard-chart-block"><h3>健康度</h3><div className="dashboard-gauge"><ResponsiveContainer width="100%" height={126}><RadialBarChart innerRadius="58%" outerRadius="86%" data={[{ value: healthPercent, fill: healthColor }]} startAngle={180} endAngle={0} barSize={12}><RadialBar dataKey="value" cornerRadius={6} background={{ fill: '#e7edf2' }} /></RadialBarChart></ResponsiveContainer><div><strong style={{ color: healthColor }}>{healthPercent}%</strong><span>启用智能体</span></div></div></div>
+              <div className="dashboard-chart-block"><h3>接入方式</h3><div className="dashboard-donut-row"><ResponsiveContainer width={112} height={112}><PieChart><Pie data={platformData} dataKey="value" innerRadius={31} outerRadius={48} stroke="none">{platformData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip content={<ChartTooltip suffix=" 个" />} /></PieChart></ResponsiveContainer><div className="dashboard-chart-legend">{platformData.slice(0, 4).map(item => <div key={item.name}><i style={{ background: item.color }} /><span>{item.name}</span><strong>{item.value}</strong></div>)}</div></div></div>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* 数字概览 + 健康状态 */}
-              <div style={{ display: 'flex', gap: 12 }}>
-                {[
-                  { label: '总接入', value: agentTotal, color: 'var(--primary)', bg: 'var(--primary-tint)' },
-                  { label: '启用中', value: agentEnabled, color: '#10b981', bg: '#f0fdf4' },
-                  { label: '已停用', value: agentDisabled, color: '#94a3b8', bg: '#f8fafc' },
-                ].map(s => (
-                  <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
-                    <div style={{ fontSize: "1.25rem", fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
-                      {s.value}
-                    </div>
-                    <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>{s.label}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* 健康度 & 接入方式 — 双环形图 */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {/* 健康度 */}
-                <div>
-                  <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 6 }}>智能体健康度</div>
-                  {agentTotal > 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
-                        <ResponsiveContainer width={80} height={80}>
-                          <RadialBarChart
-                            innerRadius="50%"
-                            outerRadius="85%"
-                            data={[{ name: '健康度', value: healthPercent, fill: gaugeColor }]}
-                            startAngle={180}
-                            endAngle={0}
-                            barSize={10}
-                          >
-                            <RadialBar dataKey="value" cornerRadius={5} background={{ fill: '#e2e8f0' }} />
-                          </RadialBarChart>
-                        </ResponsiveContainer>
-                        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: gaugeColor, lineHeight: 1 }}>
-                            {healthPercent}%
-                          </div>
-                          <div style={{ fontSize: '0.5rem', color: '#94a3b8', marginTop: 1 }}>健康率</div>
-                        </div>
-                      </div>
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3f7859', flexShrink: 0 }} />
-                          <span style={{ color: '#64748b', flex: 1 }}>健康</span>
-                          <span style={{ fontWeight: 600, color: '#3f7859' }}>{agentOk}</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#a85d5d', flexShrink: 0 }} />
-                          <span style={{ color: '#64748b', flex: 1 }}>异常</span>
-                          <span style={{ fontWeight: 600, color: agentError === 0 ? '#94a3b8' : '#934e4e' }}>{agentError}</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#d1d5db', flexShrink: 0 }} />
-                          <span style={{ color: '#64748b', flex: 1 }}>未检测</span>
-                          <span style={{ fontWeight: 600, color: agentPending === 0 ? '#94a3b8' : '#94a3b8' }}>{agentPending}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: "0.688rem", color: '#94a3b8', padding: '4px 0' }}>暂无数据</div>
-                  )}
-                </div>
-
-                {/* 接入方式分布 */}
-                <div>
-                  <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 6 }}>接入方式分布</div>
-                  {platformData.length > 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
-                        <ResponsiveContainer width={80} height={80}>
-                          <PieChart>
-                            <Pie
-                              data={platformData}
-                              cx="50%" cy="50%"
-                              innerRadius={24} outerRadius={36}
-                              dataKey="count"
-                              startAngle={90} endAngle={-270}
-                              stroke="none"
-                            >
-                              {platformData.map((entry, i) => (
-                                <Cell key={i} fill={entry.color} />
-                              ))}
-                            </Pie>
-                            <Tooltip content={<ChartTooltip />} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        {platformData.map(s => (
-                          <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
-                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-                            <span style={{ color: '#64748b', flex: 1 }}>{s.name}</span>
-                            <span style={{ fontWeight: 600, color: s.color }}>
-                              {agentTotal > 0 ? Math.round((s.count / agentTotal) * 100) : 0}%
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: "0.688rem", color: '#94a3b8', padding: '4px 0' }}>暂无数据</div>
-                  )}
-                </div>
-              </div>
-
-              {/* 智能体使用率 */}
-              {storageStats && storageStats.agentUsage.length > 0 && (
-                <div>
-                  <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
-                    智能体使用率
-                  </div>
-                  <table style={{ width: '100%', fontSize: "0.688rem", borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
-                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0' }}>智能体名称</th>
-                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>状态</th>
-                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>被引用数</th>
-                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                            调用次数
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                              <line x1="12" y1="5" x2="12" y2="19" />
-                              <polyline points="19 12 12 19 5 12" />
-                            </svg>
-                          </span>
-                        </th>
-                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>总字数</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {storageStats.agentUsage.slice(0, 5).map((a) => {
-                        const agentInfo = agents.find(ag => ag.id === a.id);
-                        const isEnabled = agentInfo?.enabled !== false;
-                        const isHealthy = agentInfo?.lastCheckOk === true;
-                        const isError = agentInfo?.lastCheckAt !== null && agentInfo?.lastCheckOk === false;
-                        let statusLabel = '停用';
-                        let statusColor = '#94a3b8';
-                        let statusBg = '#f1f5f9';
-                        if (isEnabled && agentInfo?.lastCheckAt === null) {
-                          statusLabel = '未检测';
-                          statusColor = '#94a3b8';
-                          statusBg = '#f1f5f9';
-                        } else if (isEnabled && isHealthy) {
-                          statusLabel = '健康';
-                          statusColor = '#3f7859';
-                          statusBg = '#f0fdf4';
-                        } else if (isEnabled && isError) {
-                          statusLabel = '异常';
-                          statusColor = '#934e4e';
-                          statusBg = '#f8eeee';
-                        }
-                        return (
-                        <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '5px 4px', color: '#0f172a', fontWeight: 600, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {a.name}
-                          </td>
-                          <td style={{ padding: '5px 4px', textAlign: 'center' }}>
-                            <span style={{ display: 'inline-block', padding: '1px 5px', borderRadius: 4, fontSize: "0.625rem", background: statusBg, color: statusColor }}>
-                              {statusLabel}
-                            </span>
-                          </td>
-                          <td style={{ padding: '5px 4px', textAlign: 'center', color: '#475569' }}>{a.classroomCount}</td>
-                          <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 600, color: '#6366f1' }}>{a.totalCalls}</td>
-                          <td style={{ padding: '5px 4px', textAlign: 'center', color: '#94a3b8' }}>{formatChars(a.totalChars)}</td>
-                        </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
+            {storageStats?.agentUsage.length ? <div className="dashboard-table-wrap"><table className="dashboard-table"><thead><tr><th>智能体</th><th>状态</th><th>关联课堂</th><th>调用次数</th></tr></thead><tbody>{storageStats.agentUsage.slice(0, 5).map(usage => { const agent = agents.find(item => item.id === usage.id); const status = agent?.enabled === false ? '已停用' : agent?.lastCheckOk === true ? '正常' : agent?.lastCheckAt ? '异常' : '未检测'; return <tr key={usage.id}><td className="dashboard-primary-cell">{usage.name}</td><td><span className={`dashboard-status status-${status === '正常' ? 'ok' : status === '异常' ? 'error' : 'muted'}`}>{status}</span></td><td>{usage.classroomCount}</td><td>{usage.totalCalls.toLocaleString()}</td></tr>; })}</tbody></table></div> : null}
+          </>}
         </SectionCard>
 
-        {/* ─── 课堂管理 ─── */}
-        <SectionCard title="课堂管理"
-          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2" strokeLinecap="round">
-            <rect x="2" y="3" width="20" height="14" rx="2" />
-            <line x1="8" y1="21" x2="16" y2="21" />
-            <line x1="12" y1="17" x2="12" y2="21" />
-          </svg>}
-        >
-          {!hasClassroomData ? (
-            <div style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8', fontSize: "0.75rem" }}>
-              暂无课堂数据
+        <SectionCard title="课堂运行" description="当前课堂状态与最近创建的课堂" action={<a href="/teacher/">查看课堂</a>} icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>}>
+          {allClassrooms.length === 0 ? <EmptyBlock>还没有课堂，创建课堂后会在这里显示运行状态。</EmptyBlock> : <>
+            <MiniStats items={[{ label: '进行中', value: classroomActive, tone: 'green' }, { label: '已暂停', value: classroomPaused, tone: classroomPaused > 0 ? 'amber' : 'default' }, { label: '已结束', value: classroomEnded }, { label: '当前参与者', value: classroomParticipants }]} />
+            <div className="dashboard-chart-pair">
+              <div className="dashboard-chart-block"><h3>课堂状态</h3><div className="dashboard-donut-row"><ResponsiveContainer width={118} height={118}><PieChart><Pie data={classroomStatusData} dataKey="value" innerRadius={32} outerRadius={50} stroke="none">{classroomStatusData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip content={<ChartTooltip suffix=" 个" />} /></PieChart></ResponsiveContainer><div className="dashboard-chart-legend">{classroomStatusData.map(item => <div key={item.name}><i style={{ background: item.color }} /><span>{item.name}</span><strong>{item.value}</strong></div>)}</div></div></div>
+              <div className="dashboard-chart-block"><h3>课堂模式</h3><ResponsiveContainer width="100%" height={118}><BarChart data={classroomModeData} margin={{ top: 8, right: 6, left: 2, bottom: 0 }}><XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} /><YAxis hide allowDecimals={false} /><Tooltip content={<ChartTooltip suffix=" 个" />} cursor={{ fill: '#f3f6f8' }} /><Bar dataKey="value" fill={COLORS.primarySoft} radius={[5, 5, 0, 0]} barSize={24} /></BarChart></ResponsiveContainer></div>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* 数字概览 */}
-              <div style={{ display: 'flex', gap: 12 }}>
-                {[
-                  { label: '进行中', value: classroomActive, color: '#10b981', bg: '#f0fdf4' },
-                  { label: '已暂停', value: classroomPaused, color: '#956834', bg: '#faf4eb' },
-                  { label: '已结束', value: classroomEnded, color: '#94a3b8', bg: '#f8fafc' },
-                ].map(s => (
-                  <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
-                    <div style={{ fontSize: "1.25rem", fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
-                      {s.value}
-                    </div>
-                    <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>{s.label}</div>
-                  </div>
-                ))}
-              </div>
-              {/* 双环形图：模式占比 + 课堂附件空间占比 */}
-              {modeData.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  {/* 模式占比 */}
-                  <div>
-                    <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 6 }}>模式占比</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
-                        <ResponsiveContainer width={80} height={80}>
-                          <PieChart>
-                            <Pie
-                              data={modeData}
-                              cx="50%" cy="50%"
-                              innerRadius={24} outerRadius={36}
-                              dataKey="count"
-                              startAngle={90} endAngle={-270}
-                              stroke="none"
-                            >
-                              {modeData.map((entry, i) => (
-                                <Cell key={i} fill={entry.color} />
-                              ))}
-                            </Pie>
-                            <Tooltip content={<ChartTooltip />} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        {modeData.map(s => (
-                          <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.688rem" }}>
-                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-                            <span style={{ color: '#64748b', flex: 1 }}>{s.name}</span>
-                            <span style={{ fontWeight: 600, color: s.color }}>
-                              {classroomTotal > 0 ? Math.round((s.count / classroomTotal) * 100) : 0}%
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 空间占比 */}
-                  <div>
-                    <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 6 }}>空间占比</div>
-                    {(() => {
-                      const spaceColors = ['#6366f1', '#8b5cf6', '#a78bfa', '#94a3b8'];
-                      const attachmentClassrooms = storageStats?.classroomAttachments.classrooms ?? [];
-                      const sorted = [...attachmentClassrooms].sort((a, b) => b.totalSize - a.totalSize);
-                      const top3 = sorted.slice(0, 3).filter((cr) => cr.totalSize > 0);
-                      const others = sorted.slice(3).reduce((sum, cr) => sum + cr.totalSize, 0);
-                      const totalSize = sorted.reduce((sum, cr) => sum + cr.totalSize, 0);
-                      const spaceData = top3.map((cr, i: number) => ({
-                        name: cr.title || '(未命名)',
-                        value: totalSize > 0 ? cr.totalSize : 0,
-                        color: spaceColors[i],
-                      }));
-                      if (others > 0) spaceData.push({ name: '其它', value: others, color: spaceColors[3] });
-                      return spaceData.length > 0 ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
-                            <ResponsiveContainer width={80} height={80}>
-                              <PieChart>
-                                <Pie
-                                  data={spaceData}
-                                  cx="50%" cy="50%"
-                                  innerRadius={24} outerRadius={36}
-                                  dataKey="value"
-                                  startAngle={90} endAngle={-270}
-                                  stroke="none"
-                                >
-                                  {spaceData.map((entry, i) => (
-                                    <Cell key={i} fill={entry.color} />
-                                  ))}
-                                </Pie>
-                                <Tooltip content={<ChartTooltip />} />
-                              </PieChart>
-                            </ResponsiveContainer>
-                          </div>
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            {spaceData.map((s) => (
-                              <div key={s.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: "0.688rem" }}>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-                                  <span style={{ color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 90 }}>{s.name}</span>
-                                </span>
-                                <span style={{ fontWeight: 600, color: s.name === '其它' ? '#94a3b8' : s.color }}>
-                                  {totalSize > 0 ? Math.round((s.value / totalSize) * 100) : 0}%
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: "0.688rem", color: '#94a3b8', padding: '4px 0' }}>暂无数据</div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              )}
-
-              {/* 课堂空间占用量 */}
-              {storageStats && storageStats.classroomAttachments.classrooms.filter((cr) => cr.attachmentCount > 0).length > 0 && (
-                <div>
-                  <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
-                    课堂空间占用量
-                  </div>
-                  <table style={{ width: '100%', fontSize: "0.688rem", borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ color: '#94a3b8', textAlign: 'left' }}>
-                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', width: 6 }}>#</th>
-                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0' }}>课堂名称</th>
-                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>状态</th>
-                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>附件数</th>
-                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                            占用空间
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                              <line x1="12" y1="5" x2="12" y2="19" />
-                              <polyline points="19 12 12 19 5 12" />
-                            </svg>
-                          </span>
-                        </th>
-                        <th style={{ padding: '5px 4px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>对话轮数</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...storageStats.classroomAttachments.classrooms]
-                        .filter((cr) => cr.attachmentCount > 0)
-                        .sort((a, b) => b.totalSize - a.totalSize)
-                        .slice(0, 5)
-                        .map((cr, i: number) => (
-                        <tr key={cr.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '5px 4px', color: '#94a3b8', textAlign: 'center' }}>{i + 1}</td>
-                          <td style={{ padding: '5px 4px', color: '#0f172a', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {cr.title || '(未命名)'}
-                          </td>
-                          <td style={{ padding: '5px 4px', textAlign: 'center' }}>
-                            <span style={{
-                              display: 'inline-block', padding: '1px 5px', borderRadius: 4, fontSize: "0.625rem",
-                              background: cr.status === 'active' ? '#dcfce7' : cr.status === 'ended' ? '#f1f5f9' : '#f5ecdd',
-                              color: cr.status === 'active' ? '#3f7859' : cr.status === 'ended' ? '#94a3b8' : '#956834',
-                            }}>
-                              {cr.status === 'active' ? '进行中' : cr.status === 'ended' ? '已结束' : '已暂停'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 600, color: '#0f172a' }}>{cr.attachmentCount}</td>
-                          <td style={{ padding: '5px 4px', textAlign: 'center', color: '#64748b' }}>{cr.totalSizeText}</td>
-                          <td style={{ padding: '5px 4px', textAlign: 'center', color: '#64748b' }}>{cr.totalRounds}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
+            <div className="dashboard-table-wrap"><table className="dashboard-table"><thead><tr><th>最近课堂</th><th>状态</th><th>参与者</th><th>互动对象</th></tr></thead><tbody>{recentClassrooms.map(classroom => <tr key={classroom.id}><td><span className="dashboard-primary-cell">{classroom.title || '未命名课堂'}</span><small>{formatDate(classroom.createdAt, true)}</small></td><td><span className={`dashboard-status status-${classroom.status === 'active' ? 'ok' : classroom.status === 'paused' ? 'warning' : 'muted'}`}>{classroom.status === 'active' ? '进行中' : classroom.status === 'paused' ? '已暂停' : '已结束'}</span></td><td>{classroom.participantCount}</td><td>{classroom._count.interactions}</td></tr>)}</tbody></table></div>
+          </>}
         </SectionCard>
 
-        {/* ─── 班级管理 ─── */}
-        <SectionCard title="班级管理"
-          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2" strokeLinecap="round">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-            <circle cx="9" cy="7" r="4" />
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-          </svg>}
-        >
-          {!hasClassData ? (
-            <div style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8', fontSize: "0.75rem" }}>
-              暂无班级数据
+        <SectionCard title="学习单" description="资源规模、课堂引用与历史作答情况" action={<a href="/teacher/worksheets/">管理学习单</a>} icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-4" /><rect x="9" y="2" width="6" height="4" rx="1" /><path d="m8 12 2 2 4-4" /><path d="M8 18h8" /></svg>}>
+          {worksheetTotal === 0 ? <EmptyBlock>还没有学习单，创建后会统计题目与课堂使用情况。</EmptyBlock> : <>
+            <MiniStats items={[{ label: '学习单', value: worksheetTotal }, { label: '已使用', value: worksheetUsed, tone: 'green' }, { label: '题目总数', value: worksheetQuestionTotal }, { label: '近期提交题次', value: worksheetSubmitted }]} />
+            <div className="dashboard-chart-pair">
+              <div className="dashboard-chart-block"><h3>使用状态</h3><div className="dashboard-donut-row"><ResponsiveContainer width={118} height={118}><PieChart><Pie data={worksheetUsageData} dataKey="value" innerRadius={32} outerRadius={50} stroke="none">{worksheetUsageData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip content={<ChartTooltip suffix=" 份" />} /></PieChart></ResponsiveContainer><div className="dashboard-chart-legend">{worksheetUsageData.map(item => <div key={item.name}><i style={{ background: item.color }} /><span>{item.name}</span><strong>{item.value}</strong></div>)}</div></div></div>
+              <div className="dashboard-chart-block"><h3>课堂引用较多的学习单</h3>{worksheetBarData.some(item => item.value > 0) ? <ResponsiveContainer width="100%" height={118}><BarChart data={worksheetBarData} margin={{ top: 8, right: 6, left: 2, bottom: 0 }}><XAxis dataKey="name" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} /><YAxis hide allowDecimals={false} /><Tooltip content={<ChartTooltip suffix=" 个课堂" />} cursor={{ fill: '#f3f6f8' }} /><Bar dataKey="value" fill={COLORS.primary} radius={[5, 5, 0, 0]} barSize={22} /></BarChart></ResponsiveContainer> : <EmptyBlock>目前还没有学习单被课堂引用。</EmptyBlock>}</div>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* 数字概览 */}
-              <div style={{ display: 'flex', gap: 12 }}>
-                {[
-                  { label: '总班级', value: classTotal, color: '#10b981', bg: '#f0fdf4' },
-                  { label: '总学生', value: classTotalStudents, color: '#8b5cf6', bg: '#f5f3ff' },
-                  { label: '总分组', value: classGroupTotal, color: '#956834', bg: '#faf4eb' },
-                ].map(s => (
-                  <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
-                    <div style={{ fontSize: "1.25rem", fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
-                      {s.value}
-                    </div>
-                    <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>{s.label}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {/* 左: 最常用班级 */}
-                {stackedClassData.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
-                      最常用班级
-                    </div>
-                    <ResponsiveContainer width="100%" height={180}>
-                      <ComposedChart data={stackedClassData} margin={{ top: 0, right: 10, bottom: 0, left: 10 }}>
-                        <XAxis dataKey="name" tick={{ fontSize: "0.688rem", fill: '#475569' }} axisLine={false} tickLine={false} />
-                        <YAxis hide />
-                        <Tooltip content={<StackedBarTooltip />} cursor={{ fill: '#f1f5f9' }} />
-                        <Bar dataKey="unknownCount" stackId="gender" fill="#cbd5e1" radius={[4, 4, 0, 0]} barSize={24} name="未设置" />
-                        <Bar dataKey="femaleCount" stackId="gender" fill="#f472b6" barSize={24} name="女生" />
-                        <Bar dataKey="maleCount" stackId="gender" fill="#6366f1" barSize={24} name="男生" />
-                        <Line type="monotone" dataKey="usageCount" stroke="#956834" strokeWidth={2} dot={{ r: 3, fill: '#956834' }} name="使用次数" />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                    <div style={{ display: 'flex', gap: 14, fontSize: "0.688rem", marginTop: 6, justifyContent: 'center' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#6366f1', flexShrink: 0 }} />
-                        <span style={{ color: '#475569' }}>男生</span>
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#f472b6', flexShrink: 0 }} />
-                        <span style={{ color: '#475569' }}>女生</span>
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#cbd5e1', flexShrink: 0 }} />
-                        <span style={{ color: '#94a3b8' }}>未设置</span>
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <span style={{ width: 12, height: 2, background: '#956834', flexShrink: 0, borderRadius: 1 }} />
-                        <span style={{ color: '#475569' }}>使用次数</span>
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* 右: 头像分配概况 */}
-                {classAvatarData.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8 }}>
-                      头像分配概况
-                    </div>
-                    <table style={{ width: '100%', fontSize: "0.688rem", borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ color: '#94a3b8' }}>
-                          <th style={{ padding: '4px 6px', borderBottom: '1px solid #e2e8f0' }}>班级</th>
-                          <th style={{ padding: '4px 6px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                              装饰人数
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                                <line x1="12" y1="5" x2="12" y2="19" />
-                                <polyline points="19 12 12 19 5 12" />
-                              </svg>
-                            </span>
-                          </th>
-                          <th style={{ padding: '4px 6px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>奖励次数</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {classAvatarData.map(c => (
-                          <tr key={c.name} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '5px 6px', color: '#0f172a', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
-                              {c.name}
-                            </td>
-                            <td style={{ padding: '5px 6px', textAlign: 'center', color: c.uploadedAvatar > 0 ? '#6366f1' : '#94a3b8' }}>{c.uploadedAvatar}</td>
-                            <td style={{ padding: '5px 6px', textAlign: 'center', fontWeight: 600, color: c.remainingTokens > 0 ? '#10b981' : '#94a3b8' }}>{c.remainingTokens}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+            <div className="dashboard-table-wrap"><table className="dashboard-table"><thead><tr><th>学习单</th><th>题目</th><th>关联课堂</th><th>最近更新</th></tr></thead><tbody>{topWorksheets.map(worksheet => <tr key={worksheet.id}><td className="dashboard-primary-cell">{worksheet.title}</td><td>{worksheet.questionCount}</td><td>{worksheet.classroomCount}</td><td>{formatDate(worksheet.updatedAt)}</td></tr>)}</tbody></table></div>
+            <p className="dashboard-section-note">最近的历史课堂中已产生 {worksheetAnswers.toLocaleString()} 条作答记录，其中 {worksheetSubmitted.toLocaleString()} 条已经提交。</p>
+          </>}
         </SectionCard>
 
-        {/* ─── 数据管理 ─── */}
-        <SectionCard title="数据管理"
-          icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="2" strokeLinecap="round">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>}
-        >
-          {!hasHistoryData && backupTotal === 0 && shieldCustomCount === 0 && shieldBuiltinCount === 0 ? (
-            <div style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8', fontSize: "0.75rem" }}>
-              暂无数据
+        <SectionCard title="探究空间" description="网页资源、课堂关联与历史使用记录" action={<a href="/teacher/webapps/">管理探究空间</a>} icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" /></svg>}>
+          {webappTotal === 0 ? <EmptyBlock>还没有探究网页，上传后会统计课堂关联与使用情况。</EmptyBlock> : <>
+            <MiniStats items={[{ label: '网页资源', value: webappTotal }, { label: '已关联', value: webappUsed, tone: 'green' }, { label: '尚未使用', value: webappUnused, tone: webappUnused > 0 ? 'amber' : 'default' }, { label: '近期使用人次', value: webappParticipants }]} />
+            <div className="dashboard-chart-pair">
+              <div className="dashboard-chart-block"><h3>关联状态</h3><div className="dashboard-donut-row"><ResponsiveContainer width={118} height={118}><PieChart><Pie data={webappUsageData} dataKey="value" innerRadius={32} outerRadius={50} stroke="none">{webappUsageData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip content={<ChartTooltip suffix=" 个" />} /></PieChart></ResponsiveContainer><div className="dashboard-chart-legend">{webappUsageData.map(item => <div key={item.name}><i style={{ background: item.color }} /><span>{item.name}</span><strong>{item.value}</strong></div>)}</div></div></div>
+              <div className="dashboard-chart-block"><h3>课堂引用较多的网页</h3>{webappBarData.some(item => item.value > 0) ? <ResponsiveContainer width="100%" height={118}><BarChart data={webappBarData} margin={{ top: 8, right: 6, left: 2, bottom: 0 }}><XAxis dataKey="name" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} /><YAxis hide allowDecimals={false} /><Tooltip content={<ChartTooltip suffix=" 个课堂" />} cursor={{ fill: '#f3f6f8' }} /><Bar dataKey="value" fill={COLORS.green} radius={[5, 5, 0, 0]} barSize={22} /></BarChart></ResponsiveContainer> : <EmptyBlock>目前还没有探究网页被课堂引用。</EmptyBlock>}</div>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-                {[
-                  { label: '已结束课堂', value: historyTotal, color: '#7c3aed', bg: '#f5f3ff' },
-                  { label: '参与人次', value: historyParticipants, color: '#0891b2', bg: '#ecfeff' },
-                  ...(backupTotal > 0 ? [
-                    { label: '备份文件', value: `${backupTotal} 个 · ${formatBytes(backupTotalSize)}`, color: '#059669', bg: '#f0fdf4' },
-                    { label: '最近备份', value: backupLatest ? backupLatest.toLocaleDateString('zh-CN') : '-', color: '#0f172a', bg: '#f8fafc' },
-                  ] : [
-                    { label: '备份文件', value: 0, color: '#94a3b8', bg: '#f8fafc' },
-                  ]),
-                ].map(s => (
-                  <div key={s.label} style={{ background: s.bg, borderRadius: 10, padding: '12px 10px', textAlign: 'center' }}>
-                    <div style={{ fontSize: "1.125rem", fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
-                      {typeof s.value === 'number' ? s.value.toLocaleString() : s.value}
-                    </div>
-                    <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>
-                      {s.label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* 屏蔽词统计 */}
-              {(shieldCustomCount > 0 || shieldBuiltinCount > 0) && (
-                <div>
-                  <div style={{ fontSize: "0.688rem", fontWeight: 600, color: '#64748b', marginBottom: 8, marginTop: 4 }}>
-                    屏蔽词
-                  </div>
-                  <div style={{ display: 'flex', gap: 12 }}>
-                    {[
-                      { label: '自定义屏蔽词', value: shieldCustomCount, color: '#934e4e', bg: '#f8eeee' },
-                      { label: '系统屏蔽词', value: shieldBuiltinCount, color: '#7c3aed', bg: '#f5f3ff' },
-                    ].map(s => (
-                      <div key={s.label} style={{ flex: 1, background: s.bg, borderRadius: 10, padding: '12px 10px', textAlign: 'center' }}>
-                        <div style={{ fontSize: "1.125rem", fontWeight: 700, color: s.color, lineHeight: 1.1 }}>
-                          {s.value.toLocaleString()}
-                        </div>
-                        <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>
-                          {s.label}
-                        </div>
-                      </div>
-                    ))}
-                    <div style={{ flex: 1, background: shieldEnabled ? '#f0fdf4' : '#f8eeee', borderRadius: 10, padding: '12px 10px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: shieldEnabled ? '#3f7859' : '#a85d5d', display: 'inline-block', flexShrink: 0 }} />
-                        <span style={{ fontSize: "0.75rem", fontWeight: 600, color: shieldEnabled ? '#3f7859' : '#934e4e' }}>
-                          {shieldEnabled ? '已开启' : '未开启'}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: "0.688rem", color: '#64748b', marginTop: 2 }}>屏蔽词开关</div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+            <div className="dashboard-table-wrap"><table className="dashboard-table"><thead><tr><th>探究网页</th><th>入口文件</th><th>关联课堂</th><th>最近更新</th></tr></thead><tbody>{topWebapps.map(webapp => <tr key={webapp.id}><td className="dashboard-primary-cell">{webapp.name}</td><td><span className="dashboard-code-cell">{webapp.entryPath}</span></td><td>{webapp.classroomCount}</td><td>{formatDate(webapp.updatedAt)}</td></tr>)}</tbody></table></div>
+            <p className="dashboard-section-note">最近的历史课堂记录到 {webappParticipants.toLocaleString()} 人次使用探究空间，累计记录时长 {formatDuration(webappDuration)}。</p>
+          </>}
         </SectionCard>
 
+        <SectionCard title="数据与系统管理" description="存储、备份、课堂安全与需要关注的运行信息" wide action={<a href="/teacher/history/">查看数据管理</a>} icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7" /></svg>}>
+          <MiniStats items={[{ label: '近期历史课堂', value: history.length }, { label: '存储占用', value: formatBytes(totalStorage) }, { label: '最近备份', value: backupLatest ? formatDate(backupLatest.createdAt) : '暂无' }, { label: '安全提醒', value: warningCount, tone: warningCount > 0 ? 'red' : 'green' }]} />
+          <div className="dashboard-system-grid">
+            <div className="dashboard-chart-block dashboard-storage-chart"><h3>资源存储占用</h3>{storageStats ? <ResponsiveContainer width="100%" height={210}><BarChart data={storageData} layout="vertical" margin={{ top: 4, right: 24, left: 12, bottom: 0 }}><XAxis type="number" hide /><YAxis type="category" dataKey="name" width={68} tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} /><Tooltip formatter={(value) => formatBytes(Number(value || 0))} cursor={{ fill: '#f3f6f8' }} /><Bar dataKey="value" fill={COLORS.primarySoft} radius={[0, 5, 5, 0]} barSize={15} /></BarChart></ResponsiveContainer> : <EmptyBlock>暂时没有读取到存储信息。</EmptyBlock>}</div>
+            <div className="dashboard-system-list"><h3>备份状态</h3><div className="dashboard-system-list-items"><div><span>备份文件</span><strong>{backups.length} 个</strong></div><div><span>备份总大小</span><strong>{formatBytes(backupSize)}</strong></div><div><span>最近备份</span><strong>{backupLatest ? formatDate(backupLatest.createdAt, true) : '尚未备份'}</strong></div></div></div>
+            <div className="dashboard-system-list"><h3>需要关注</h3><div className="dashboard-attention-list">{agentError > 0 && <div className="tone-error"><strong>{agentError} 个智能体连接异常</strong><span>请到 AI 智能体页面检查连接</span></div>}{agentPending > 0 && <div className="tone-warning"><strong>{agentPending} 个智能体尚未检测</strong><span>建议在上课前完成连接测试</span></div>}{warningCount > 0 && <div className="tone-error"><strong>{warningCount} 条课堂安全提醒</strong><span>涉及 {warnings.length} 个课堂</span></div>}{classroomPaused > 0 && <div className="tone-warning"><strong>{classroomPaused} 个课堂处于暂停状态</strong><span>可以恢复课堂或结束课堂</span></div>}{agentError === 0 && agentPending === 0 && warningCount === 0 && classroomPaused === 0 && <div className="tone-ok"><strong>当前没有需要处理的异常</strong><span>{enabledShieldWords} 个屏蔽词正在生效</span></div>}</div></div>
+          </div>
+        </SectionCard>
       </div>
     </div>
   );

@@ -246,7 +246,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
                     与上面那个开关标签（「让学生在这张底稿上继续画」）同义 ⇒ 只留后半句。 */}
                 学生将在这张图上继续绘制，初始图本身不计入作答。
               </p>
-              <div style={{ height: 380, border: '1px solid #e4ecf4', borderRadius: 10, overflow: 'hidden' }}>
+              <div className="worksheet-editor-starter-canvas">
                 <FlowchartDrawing
                   data={starter.tool === 'flowchart' ? starter.data : undefined}
                   backgroundUrl={starterBackgroundUrl}
@@ -264,7 +264,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
                 学生将在这张图上继续绘制；导图这一档，交上来的**整张图**都算他的作答
                 （只有发给智能体的那一句说明会提示「初始图不算学生的成果」）。
               </p>
-              <div style={{ height: 380, border: '1px solid #e4ecf4', borderRadius: 10, overflow: 'hidden' }}>
+              <div className="worksheet-editor-starter-canvas">
                 <MindmapDrawing
                   data={starter.tool === 'mind-map' ? starter.data : undefined}
                   backgroundUrl={starterBackgroundUrl}
@@ -278,7 +278,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
               <p className="worksheet-editor-drawing-note">
                 在这里绘制题目底图。学生能看到它，但不能选中、移动、旋转或删除其中的对象。
               </p>
-              <div style={{ height: 380, border: '1px solid #e4ecf4', borderRadius: 10, overflow: 'hidden' }}>
+              <div className="worksheet-editor-starter-canvas">
                 <MathDrawing
                   data={starter.tool === 'math' ? starter.data : undefined}
                   backgroundUrl={starterBackgroundUrl}

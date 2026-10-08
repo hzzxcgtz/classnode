@@ -615,12 +615,19 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
     };
     /** 每一步之前先把「当前这份坐标」压进撤销栈。 */
     const pushHistory = () => {
-      history.current.push(snapshot());
+      const current = snapshot();
+      const previous = history.current[history.current.length - 1];
+      // 只点了一下控制点但没有移动时，不应制造一条看不见的撤销记录。
+      if (previous && JSON.stringify(previous) === JSON.stringify(current)) return;
+      history.current.push(current);
       if (history.current.length > 50) history.current.shift();
       setCanUndo(true);
     };
     const addEntry = (entry: MathEntry) => {
       runtime.current.push(renderEntry(entry));
+      // Polygon 在 canvas 渲染器中不会因仅修改 runtime 数组而主动刷新；新增后立即重绘，
+      // 避免平行四边形等闭合图形要等下一次点击/切换工具才出现。
+      board.update();
     };
     commitLabelRef.current = (raw: string) => {
       const editor = labelEditorRef.current;
@@ -950,6 +957,19 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
     };
     const onCursorDown = (event: PointerEvent) => {
       hostEl.focus({ preventScroll: true });
+      /*
+       * JSXGraph 会直接拖动控制点，但不会替应用写撤销快照。控制点属于当前已选图形时，
+       * 在内核开始移动它之前保存整张画布；否则“缩放圆后撤销”会退回上一次新增图形，
+       * 看起来像把旁边的对象一起删掉。`pushHistory` 会过滤只点不拖产生的重复快照。
+       */
+      if (!disabled && toolRef.current === 'select') {
+        const hit = studentHitAt(event);
+        const item = hit ? runtime.current[hit.index] : null;
+        if (hit && hit.index === selectedRef.current
+          && item?.points.some((point) => point.id === hit.target.id)) {
+          pushHistory();
+        }
+      }
       syncPanCursor(event, true);
     };
     const onCursorMove = (event: PointerEvent) => {

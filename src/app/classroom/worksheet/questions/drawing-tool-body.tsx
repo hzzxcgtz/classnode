@@ -101,8 +101,9 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
     >
       <div className={styles.drawingWorkspaceHeader}>
         <div><strong>{TOOL_LABELS[tool]}</strong><span>本题使用此工具作答</span></div>
-        <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" onClick={() => setMaximized(value => !value)} aria-label={maximized ? '退出全屏画板' : '全屏画板'} data-tooltip={maximized ? '退出全屏画板' : '全屏画板'}>
+        <button className={`${styles.drawingToolbarButton} ${styles.drawingFullscreenButton}`} type="button" onClick={() => setMaximized(value => !value)} aria-label={maximized ? '退出全屏画板' : '全屏画板'}>
           <DrawingToolbarIcon name={maximized ? 'fullscreenExit' : 'fullscreen'} className={styles.drawingToolbarIcon} />
+          <span>{maximized ? '退出全屏' : '全屏'}</span>
         </button>
       </div>
       <Surface

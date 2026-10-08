@@ -37,6 +37,37 @@ test('★ 默认点阵不是有限图片，而是由画布容器无限重复铺�
   assert.match(dotGrid, /r="0\.72" fill="#aeb4bc"/, '其他绘图画板仍在使用偏大或偏蓝的点阵');
 });
 
+test('★ 基础绘图和思维导图同样把默认点阵当作无限背景', () => {
+  for (const file of ['basic-drawing.tsx', 'mindmap-drawing.tsx']) {
+    const source = stripComments(fs.readFileSync(path.join(HERE, file), 'utf8'));
+    assert.match(source, /usesInfiniteDotGrid/, `${file} 没有识别默认点阵`);
+    assert.match(source, /data-infinite-dot-grid=\{usesInfiniteDotGrid \? 'true' : undefined\}/,
+      `${file} 没有把无限点阵状态交给画布容器`);
+  }
+});
+
+test('★ 流程图的点阵由 React Flow 背景层铺满并随视口变化', () => {
+  const source = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  assert.match(source, /\(!backgroundUrl \|\| usesInfiniteDotGrid\) && <Background/,
+    '流程图仍把默认点阵当作一张有限背景图片');
+});
+
+test('★ 全屏入口保留图标和文字，基础绘图使用统一分组图标工具栏', () => {
+  const body = stripComments(fs.readFileSync(path.resolve(HERE, '..', 'drawing-tool-body.tsx'), 'utf8'));
+  assert.match(body, /DrawingToolbarIcon name=\{maximized \? 'fullscreenExit' : 'fullscreen'\}/,
+    '全屏入口缺少状态图标');
+  assert.match(body, /\{maximized \? '退出全屏' : '全屏'\}/,
+    '全屏入口没有保留文字，教师和学生只能猜图标');
+
+  const basic = stripComments(fs.readFileSync(path.join(HERE, 'basic-drawing.tsx'), 'utf8'));
+  for (const group of ['绘制', '笔触', '编辑记录']) {
+    assert.ok(basic.includes(`>${group}</span>`), `基础绘图工具栏缺少“${group}”分组`);
+  }
+  for (const icon of ['pencil', 'eraser', 'undo', 'redo', 'clear']) {
+    assert.match(basic, new RegExp(`DrawingToolbarIcon name="${icon}"`), `基础绘图缺少 ${icon} 图标`);
+  }
+});
+
 test('★ 旋转光标保持弯曲双向箭头，但尺寸收小到 24px', () => {
   const css = fs.readFileSync(path.resolve(HERE, '..', '..', 'worksheet.module.css'), 'utf8');
   assert.match(css, /math-rotate\.svg'\) 12 12/, '旋转光标的热点没有随缩小后的图形居中');

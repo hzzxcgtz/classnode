@@ -19,6 +19,8 @@ import styles from '../../worksheet.module.css';
 export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange, onImage, starter }: DrawingSurfaceProps) {
   const host = useRef<HTMLDivElement | null>(null);
   const mind = useRef<MindElixirInstance | null>(null);
+  const usesInfiniteDotGrid = typeof backgroundUrl === 'string'
+    && backgroundUrl.split(/[?#]/, 1)[0].endsWith('/worksheet/drawing-backgrounds/dot-grid.svg');
   const scheduleRaster = useRef<() => void>(() => {});
   // ⚠️ 走 ref 而不是把 `scheduleRaster` 塞进那个 `[]` 依赖的 effect：实例只挂载一次，
   //    而 `capture` 每次渲染都是新的闭包 —— 用 ref 转发才能让副作用里的调用拿到最新的那一个。
@@ -424,7 +426,8 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
       <div
         ref={host}
         className={`${styles.thirdPartyCanvas} ${styles.mindmapCanvas} ${backgroundUrl ? styles.mindmapCanvasWithBackground : ''}`}
-        style={backgroundUrl ? { backgroundImage: `url(${backgroundUrl})` } : undefined}
+        data-infinite-dot-grid={usesInfiniteDotGrid ? 'true' : undefined}
+        style={backgroundUrl && !usesInfiniteDotGrid ? { backgroundImage: `url(${backgroundUrl})` } : undefined}
       />
     </div>
   );

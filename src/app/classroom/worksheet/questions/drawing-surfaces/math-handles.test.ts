@@ -150,4 +150,17 @@ test('★ 多图形重建是一次完整刷新事务，切换工具后不能等�
     '重建完成后没有一次性 fullUpdate，图形会等到下一次点击才出现');
   assert.match(SOURCE, /for \(let objectIndex = objects\.length - 1; objectIndex >= 0; objectIndex -= 1\)/,
     '依赖对象没有按 JSXGraph 建议的创建逆序清理');
+  assert.match(SOURCE, /const addEntry[\s\S]{0,180}?board\.update\(\)/,
+    '新增闭合图形后没有立即刷新，平行四边形会等下一次点击才出现');
+});
+
+test('★ 拖动控制点前先记录完整快照，撤销缩放不能误删其他图形', () => {
+  const at = SOURCE.indexOf('const onCursorDown = (event: PointerEvent) =>');
+  assert.notEqual(at, -1, '找不到控制点按下入口');
+  const body = SOURCE.slice(at, SOURCE.indexOf('const onCursorMove', at));
+  assert.match(body, /hit\.index === selectedRef\.current/, '未限定当前选中图形，点旁边对象也会污染历史');
+  assert.match(body, /item\?\.points\.some/, '没有确认按下的是可拖控制点');
+  assert.match(body, /pushHistory\(\)/, '控制点开始拖动前没有保存整张画布');
+  assert.match(SOURCE, /JSON\.stringify\(previous\) === JSON\.stringify\(current\)/,
+    '只点未拖时会不断制造空撤销步骤');
 });

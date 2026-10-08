@@ -805,6 +805,8 @@ function FlowLabelHandle({
 }
 
 function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, starter, historyKey }: DrawingSurfaceProps) {
+  const usesInfiniteDotGrid = typeof backgroundUrl === 'string'
+    && backgroundUrl.split(/[?#]/, 1)[0].endsWith('/worksheet/drawing-backgrounds/dot-grid.svg');
   /**
    * ★ 2026-10-06（教师）：「学生可以完全从空白开始画，也可以在教师准备好的基础上继续画」。
    *
@@ -1834,7 +1836,10 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
             : '拖动图形；从任意连接点连线；双击文字修改'}
         </span>
       </div>
-      <div className={`${styles.thirdPartyCanvas} ${styles.flowStage}`} style={backgroundUrl ? { backgroundImage: `url(${backgroundUrl})` } : undefined}>
+      <div
+        className={`${styles.thirdPartyCanvas} ${styles.flowStage}`}
+        style={backgroundUrl && !usesInfiniteDotGrid ? { backgroundImage: `url(${backgroundUrl})` } : undefined}
+      >
         <ReactFlow
           nodes={visibleNodes}
           edges={visibleEdges}
@@ -1890,7 +1895,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           maxZoom={2.2}
           deleteKeyCode={disabled ? null : ['Backspace', 'Delete']}
         >
-          {!backgroundUrl && <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#cbd7e5" />}
+          {(!backgroundUrl || usesInfiniteDotGrid) && <Background variant={BackgroundVariant.Dots} gap={20} size={0.7} color="#aeb4bc" />}
           <Controls showInteractive={false} />
         </ReactFlow>
         {/*

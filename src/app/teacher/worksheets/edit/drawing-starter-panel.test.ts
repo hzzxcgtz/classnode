@@ -36,8 +36,11 @@ test('★ 底稿面板：用学生的画板、写回带 tool 的 drawingStarter�
   assert.match(source, /type="checkbox"[\s\S]{0,200}?role="switch"[\s\S]{0,120}?checked=\{!!starter\}/, '没有「要不要设底稿」的开关');
   assert.match(source, /drawingStarter: undefined/, '取消开关没有清掉底稿');
   assert.match(source, /window\.confirm/, '已经有底稿时取消没有确认 —— 一次误点就丢一张图');
-  // ④ 画板要有明确高度：它靠量出容器尺寸才初始化（这条路径我们修过两次：scale(0) / overflowHidden）。
-  assert.match(source, /height: 380/, '底稿画板没有给固定高度 —— 量不出尺寸它不会初始化');
+  // ④ 画板要有明确且足够大的高度：它靠量出容器尺寸才初始化。
+  assert.match(source, /className="worksheet-editor-starter-canvas"/, '底稿画板没有使用统一的大画布容器');
+  const css = fs.readFileSync(path.resolve(import.meta.dirname, '..', '..', '..', 'globals.css'), 'utf8');
+  assert.match(css, /\.worksheet-editor-starter-canvas\s*\{[\s\S]{0,240}?height:\s*min\(620px, 72vh\)/,
+    '教师编辑画布高度仍然过小，或没有明确尺寸');
   // ⑤ 数学作图也复用学生画板来制作不可修改的题目底图。
   assert.match(source, /import MathDrawing from '@\/app\/classroom\/worksheet\/questions\/drawing-surfaces\/math-drawing'/,
     '数学初始图没有复用学生端画板');

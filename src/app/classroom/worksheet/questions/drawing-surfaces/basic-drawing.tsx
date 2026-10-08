@@ -10,6 +10,7 @@ import {
 import { dataUrlToBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 
 import type { DrawingSurfaceProps } from './types';
+import DrawingToolbarIcon from './drawing-toolbar-icon';
 import styles from '../../worksheet.module.css';
 
 function readPaths(raw: unknown): CanvasPath[] {
@@ -30,6 +31,8 @@ export default function BasicDrawing({ data, backgroundUrl, disabled, onChange, 
   const [eraser, setEraser] = useState(false);
   const [color, setColor] = useState('#1f2937');
   const [width, setWidth] = useState(2);
+  const usesInfiniteDotGrid = typeof backgroundUrl === 'string'
+    && backgroundUrl.split(/[?#]/, 1)[0].endsWith('/worksheet/drawing-backgrounds/dot-grid.svg');
 
   useEffect(() => {
     if (initialPaths.current.length > 0) void canvas.current?.loadPaths(initialPaths.current);
@@ -72,18 +75,30 @@ export default function BasicDrawing({ data, backgroundUrl, disabled, onChange, 
   return (
     <div className={styles.thirdPartySurface}>
       <div className={styles.drawingSurfaceToolbar} role="toolbar" aria-label="基础绘图工具">
-        <button className={styles.drawingToolbarButton} type="button" aria-pressed={!eraser} disabled={disabled} onClick={() => setEraseMode(false)}>画笔</button>
-        <button className={styles.drawingToolbarButton} type="button" aria-pressed={eraser} disabled={disabled} onClick={() => setEraseMode(true)}>橡皮</button>
-        <label>颜色<input type="color" value={color} disabled={disabled} onChange={(event) => setColor(event.target.value)} /></label>
-        <label>粗细<select value={width} disabled={disabled} onChange={(event) => setWidth(Number(event.target.value))}>
-          <option value={1}>细</option><option value={2}>中</option><option value={4}>粗</option>
-        </select></label>
-        <span className={styles.drawingToolbarSpacer} />
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={undo}>撤销</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={redo}>重做</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => { canvas.current?.resetCanvas(); onChange({ paths: [] }); }}>清空</button>
+        <span className={styles.drawingToolbarGroup}>
+          <span className={styles.drawingToolbarGroupLabel}>绘制</span>
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="画笔" data-tooltip="画笔" aria-pressed={!eraser} disabled={disabled} onClick={() => setEraseMode(false)}><DrawingToolbarIcon name="pencil" className={styles.drawingToolbarIcon} /></button>
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="橡皮" data-tooltip="橡皮" aria-pressed={eraser} disabled={disabled} onClick={() => setEraseMode(true)}><DrawingToolbarIcon name="eraser" className={styles.drawingToolbarIcon} /></button>
+        </span>
+        <span className={styles.drawingToolbarGroup}>
+          <span className={styles.drawingToolbarGroupLabel}>笔触</span>
+          <label>颜色<input type="color" value={color} disabled={disabled} aria-label="画笔颜色" onChange={(event) => setColor(event.target.value)} /></label>
+          <label>粗细<select value={width} disabled={disabled} aria-label="画笔粗细" onChange={(event) => setWidth(Number(event.target.value))}>
+            <option value={1}>细</option><option value={2}>中</option><option value={4}>粗</option>
+          </select></label>
+        </span>
+        <span className={`${styles.drawingToolbarGroup} ${styles.drawingToolbarActions}`}>
+          <span className={styles.drawingToolbarGroupLabel}>编辑记录</span>
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="撤销" data-tooltip="撤销" disabled={disabled} onClick={undo}><DrawingToolbarIcon name="undo" className={styles.drawingToolbarIcon} /></button>
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="重做" data-tooltip="重做" disabled={disabled} onClick={redo}><DrawingToolbarIcon name="redo" className={styles.drawingToolbarIcon} /></button>
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton} ${styles.drawingToolbarDanger}`} type="button" aria-label="清空" data-tooltip="清空" disabled={disabled} onClick={() => { canvas.current?.resetCanvas(); onChange({ paths: [] }); }}><DrawingToolbarIcon name="clear" className={styles.drawingToolbarIcon} /></button>
+        </span>
+        <span className={styles.drawingToolbarHint}>
+          <strong className={styles.drawingToolbarHintLabel}>操作提示</strong>
+          选择画笔或橡皮后直接在画布上拖动
+        </span>
       </div>
-      <div className={styles.thirdPartyCanvas}>
+      <div className={styles.thirdPartyCanvas} data-infinite-dot-grid={usesInfiniteDotGrid ? 'true' : undefined}>
         <ReactSketchCanvas
           ref={canvas}
           width="100%"
@@ -91,7 +106,7 @@ export default function BasicDrawing({ data, backgroundUrl, disabled, onChange, 
           strokeColor={color}
           strokeWidth={width}
           eraserWidth={Math.max(8, width * 4)}
-          backgroundImage={backgroundUrl ?? undefined}
+          backgroundImage={backgroundUrl && !usesInfiniteDotGrid ? backgroundUrl : undefined}
           preserveBackgroundImageAspectRatio="none"
           exportWithBackgroundImage={false}
           readOnly={disabled}

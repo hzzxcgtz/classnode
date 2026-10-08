@@ -114,3 +114,16 @@ test('任务说明默认折叠，避免每道题上方常驻一块低频输入�
   assert.match(source, /<span>任务说明<\/span>/);
   assert.match(source, /'已填写' : '选填'/);
 });
+
+test('教师编辑页的侧栏、编辑区标题和题目徽章共用全卷连续题号', () => {
+  const page = fs.readFileSync(path.join(EDITOR_DIR, 'page.tsx'), 'utf8');
+  const card = fs.readFileSync(path.join(EDITOR_DIR, 'question-card.tsx'), 'utf8');
+
+  assert.match(page, /worksheet-editor-outline-number">\{row\.label\}/,
+    '任务侧栏仍在使用任务内下标');
+  assert.match(page, /第 \{activeQuestion\.label\} 题 \/ 共 \{totals\.questions\} 题/,
+    '编辑区标题仍显示任务内“第 N 题 / 共 N 题”');
+  assert.match(page, /label=\{row\.label\}/, '题目卡没有收到全卷连续题号');
+  assert.match(card, /const badgeLabel = label \|\| heading/,
+    '题目卡徽章仍使用任务内 index + 1');
+});

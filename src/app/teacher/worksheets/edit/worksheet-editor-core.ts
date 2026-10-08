@@ -2624,6 +2624,8 @@ export type EditorRow =
     node: WorksheetQuestionNode;
     /** 两级题号（与看板 / 抽屉 / 导出 / 报错同一份）。 */
     heading: string;
+    /** 全卷连续的纯数字序号；任务标题已在分组标题中显示时使用。 */
+    label: string;
     index: number;
     total: number;
     /** 属于哪个任务；`null` = 散题。 */
@@ -2633,7 +2635,7 @@ export type EditorRow =
 export function editorRenderRows(nodes: WorksheetQuestionNode[]): EditorRow[] {
   const rows: EditorRow[] = [];
   // 题号只算一次（`flattenAnswerable` 的 DFS 顺序与本函数逐字相同，所以查表拿得到）。
-  const headings = new Map(flattenAnswerable(nodes).map((item) => [item.node.id, item.heading]));
+  const headings = new Map(flattenAnswerable(nodes).map((item) => [item.node.id, item]));
 
   const pushQuestion = (
     node: WorksheetQuestionNode,
@@ -2642,7 +2644,16 @@ export function editorRenderRows(nodes: WorksheetQuestionNode[]): EditorRow[] {
     taskId: string | null,
   ) => {
     // 取不到题号 = 两套遍历漂了。给空串而不是编一个号（屏幕上会看得出来）。
-    rows.push({ kind: 'question', node, heading: headings.get(node.id) ?? '', index, total, taskId });
+    const numbering = headings.get(node.id);
+    rows.push({
+      kind: 'question',
+      node,
+      heading: numbering?.heading ?? '',
+      label: numbering?.label ?? '',
+      index,
+      total,
+      taskId,
+    });
     const kids = kidsOf(node);
     kids.forEach((child, childIndex) => pushQuestion(child, childIndex, kids.length, taskId));
   };

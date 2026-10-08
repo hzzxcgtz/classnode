@@ -2443,6 +2443,11 @@ test('🔴 F2/F3：编辑页要渲染的行由**一个纯函数**给出，且与
     ['1', '2', '3', '4', '[任务]任务一', '任务一 · 5', '[任务]任务二', '任务二 · 6'],
     '★ 题号就是 `flattenAnswerable` 那一份；任务自己占一行（`[任务]`）',
   );
+  assert.deepEqual(
+    rows.filter((row) => row.kind === 'question').map((row) => row.kind === 'question' ? row.label : ''),
+    ['1', '2', '3', '4', '5', '6'],
+    '侧栏使用全卷连续序号，进入新任务时不能重新从 1 开始',
+  );
   // 🔴 F2 的要害：深度 ≥2 的那两道题**在渲染行里**（旧实现里它们不渲染、判据却查它们）。
   assert.deepEqual(
     rows.filter((row) => row.kind === 'question' && row.node.id.startsWith('q_child')).map((row) => row.node.id),

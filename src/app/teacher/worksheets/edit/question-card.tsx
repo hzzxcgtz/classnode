@@ -181,7 +181,7 @@ function HeadSwitch({ checked, onChange, label, title, text }: {
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ heading, index, expanded, focusedMode = false, onToggle, inTask, taskId, onDragStart, node, inheritedPoints, pointsUnit, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onNotice, onRemove }: {
+export function QuestionCard({ heading, label, expanded, focusedMode = false, onToggle, taskId, onDragStart, node, inheritedPoints, pointsUnit, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onNotice, onRemove }: {
   /**
    * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
    * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
@@ -189,12 +189,11 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
    * 🔴 它取代了原来的 `index + 1`（容器内下标）。那个数在正常路径上就错：两个任务时
    * 同屏有**两张「第 1 题」**，而保存失败说「任务二 · 1 的分值只填了一个框」——
    * 教师得在两处「第 1 题」之间猜是哪一张。
-   * ⚠️ `index` 同时是**折叠态徽章**上那个「任务一 · 2」的来源（`badgeLabel`），
-   *    所以它必须留着 —— 「换位是同层内的」这条规则也仍然成立（拖拽那一路）。
+   * 视觉徽章使用 `label`（全卷连续号），完整的 `heading` 留给读屏名称与报错文案。
    */
   heading: string;
-  /** 同层内的位置（0-based）—— 折叠态徽章用它，**不是**给换位边界用的了（见下）。 */
-  index: number;
+  /** 全卷连续的纯数字题号；任务标题由外层承担时只显示这一项。 */
+  label: string;
   /**
    * ★ 2026-09-26（spec 第 2 步）：**这张卡展开了没有**（一页 20 题，只展开一张）。
    * 折叠态只画一行摘要（题号 · 题型 · 题干一行 · 分值 · 工具）；展开态才是今天这一整张。
@@ -203,8 +202,6 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
   /** 工作台聚焦模式下当前题始终展开，摘要行只承担题号与题型说明。 */
   focusedMode?: boolean;
   onToggle: () => void;
-  /** ★ 2026-09-26：这道题是不是**任务里的小题**（决定徽章显不显示任务名前缀）。 */
-  inTask: boolean;
   /** ★ 2026-09-26（spec 第 5 步）：它所在的那一层 —— 任务 id，顶层散题是 `null`。 */
   taskId: string | null;
   /** ★ 2026-09-26：指针落在把手上 ⇒ 开始拖（拖动中不该顺手把卡片展开）。 */
@@ -337,14 +334,14 @@ export function QuestionCard({ heading, index, expanded, focusedMode = false, on
   /**
    * ★ 2026-09-26（教师）：「这个任务一有点多余」—— 那道题**就在**标题写着「任务一」的
    * 容器里，徽章上再拼一遍前缀是同一句话说两次（一屏 20 行就是 20 遍）。
-   * ⇒ 任务里的小题显示**任务内序号**（`1` `2` `3`），任务名由**容器头**承担；
+   * ⇒ 任务里的小题显示**全卷连续序号**（`1` `2` `3`），任务名由**容器头**承担；
    * 散题（不在任何任务里）仍用 `heading`（它本来就是裸的 `1` `2`）。
    * ⚠️ `aria-label` 仍用完整的 `heading` —— 读屏用户听得见「这道题在哪个任务里」，
    * 而屏幕上看不见的**前缀**在那里是有用的。
-   * ⚠️ 保存失败的报错仍写 `任务二 · 1`（那是全局文案）；教师靠**容器头 + 序号**对得上，
+   * ⚠️ 保存失败的报错仍写 `任务二 · 6`（那是全局文案）；教师靠**容器头 + 序号**对得上，
    * 而容器头就在眼前 —— 这是本次取舍的代价，写在 `editorRenderRows` 那一侧也可以。
    */
-  const badgeLabel = inTask ? String(index + 1) : heading;
+  const badgeLabel = label || heading;
   /** ★ 2026-09-26：这道题**会不会判分**（开关关掉 ⇒ 答案与分值一起隐藏）。 */
   const gradedOn = gradesOnSubmit(node);
   const showInputModeRow = typeOption?.graded === false || isInkNode(node) || node.inputMode === 'photo';

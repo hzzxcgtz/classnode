@@ -7,6 +7,7 @@ import {
   arcPathOf,
   equalMarkOf,
   parallelMarkOf,
+  rightAngleCornerOf,
   rightAngleOf,
 } from '@/lib/worksheet-math-shapes.ts';
 import type { DrawingDocument } from '@/lib/worksheet-drawing-document';
@@ -100,12 +101,24 @@ function MathPreview({ data, width, height, backgroundUrl }: PreviewProps & { da
         */
         if (item.kind === 'polyline') {
           const list = Array.isArray(item.points) ? item.points.map((point) => pair(point)) : [];
-          const pts = list.filter((point): point is Pair => !!point).map((point) => project(point));
+          const userPoints = list.filter((point): point is Pair => !!point);
+          const pts = userPoints.map((point) => project(point));
           if (pts.length < 2) return null;
           const d = pts.map(([x, y]) => `${x},${y}`).join(' ');
-          return item.closed
-            ? <polygon key={index} points={d} fill="none" stroke="#365b82" strokeWidth="2" />
-            : <polyline key={index} points={d} fill="none" stroke="#365b82" strokeWidth="2" />;
+          if (!item.closed) return <polyline key={index} points={d} fill="none" stroke="#365b82" strokeWidth="2" />;
+          return (
+            <g key={index}>
+              <polygon points={d} fill="none" stroke="#365b82" strokeWidth="2" />
+              {userPoints.map((vertex, vertexIndex) => {
+                const prev = userPoints[(vertexIndex - 1 + userPoints.length) % userPoints.length];
+                const next = userPoints[(vertexIndex + 1) % userPoints.length];
+                const corner = rightAngleCornerOf(vertex, prev, next);
+                return corner ? <polyline key={vertexIndex}
+                  points={corner.map((point) => project(point).join(',')).join(' ')}
+                  fill="none" stroke="#647b94" strokeWidth="1.4" /> : null;
+              })}
+            </g>
+          );
         }
         if (item.kind === 'angle') {
           const vertex = pair(item.vertex); const armA = pair(item.a); const armB = pair(item.b);
@@ -132,6 +145,34 @@ function MathPreview({ data, width, height, backgroundUrl }: PreviewProps & { da
           if (!at || !text) return null;
           const [x, y] = project(at);
           return <text key={index} x={x} y={y} fontSize="14" fontWeight="600" fill="#263b53" textAnchor="middle">{text}</text>;
+        }
+        if (item.kind === 'coordinateSystem' || item.kind === 'numberLine') {
+          const a = pair(item.a); const b = pair(item.b);
+          if (!a || !b) return null;
+          const minX = Math.min(a[0], b[0]); const maxX = Math.max(a[0], b[0]);
+          const centerY = item.kind === 'numberLine' ? a[1] : (a[1] + b[1]) / 2;
+          const [x1, y] = project([minX, centerY]); const [x2] = project([maxX, centerY]);
+          const tickRatios = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+          const ticks = tickRatios.map((ratio) => minX + (maxX - minX) * ratio);
+          if (item.kind === 'numberLine') {
+            const [zeroX] = project([(minX + maxX) / 2, centerY]);
+            return <g key={index}>
+              <line x1={x1} y1={y} x2={x2} y2={y} stroke="#365b82" strokeWidth="2" markerEnd="url(#math-preview-arrow)" />
+              {ticks.map((x) => { const [tx] = project([x, centerY]); return <line key={x} x1={tx} y1={y - 4} x2={tx} y2={y + 4} stroke="#365b82" strokeWidth="1.4" />; })}
+              <text x={zeroX} y={y + 16} fontSize="12" fill="#365b82" textAnchor="middle">0</text>
+            </g>;
+          }
+          const minY = Math.min(a[1], b[1]); const maxY = Math.max(a[1], b[1]);
+          const centerX = (a[0] + b[0]) / 2;
+          const [vx, vy1] = project([centerX, minY]); const [, vy2] = project([centerX, maxY]);
+          const yTicks = tickRatios.map((ratio) => minY + (maxY - minY) * ratio);
+          return <g key={index}>
+            <line x1={x1} y1={y} x2={x2} y2={y} stroke="#365b82" strokeWidth="2" markerEnd="url(#math-preview-arrow)" />
+            <line x1={vx} y1={vy1} x2={vx} y2={vy2} stroke="#365b82" strokeWidth="2" markerEnd="url(#math-preview-arrow)" />
+            {ticks.map((x) => { const [tx] = project([x, centerY]); return <line key={`x-${x}`} x1={tx} y1={y - 4} x2={tx} y2={y + 4} stroke="#365b82" strokeWidth="1.4" />; })}
+            {yTicks.map((value) => { const [, ty] = project([centerX, value]); return <line key={`y-${value}`} x1={vx - 4} y1={ty} x2={vx + 4} y2={ty} stroke="#365b82" strokeWidth="1.4" />; })}
+            <text x={vx + 7} y={y + 15} fontSize="12" fill="#365b82">0</text>
+          </g>;
         }
         /*
          * ★ 2026-10-07：四个几何记号。**与画板共用同一组纯函数**
@@ -181,6 +222,14 @@ function MathPreview({ data, width, height, backgroundUrl }: PreviewProps & { da
         if (!first || !second) return null;
         const [x1, y1] = project(first); const [x2, y2] = project(second);
         if (item.kind === 'circle') return <circle key={index} cx={x1} cy={y1} r={Math.hypot(x2 - x1, y2 - y1)} fill="none" stroke="#365b82" strokeWidth="2" />;
+        if (item.kind === 'line') {
+          // 作答里存的是定义直线的两个点；教师预览也要延伸到画框两端，不能退化成线段。
+          const dx = x2 - x1; const dy = y2 - y1;
+          const length = Math.hypot(dx, dy) || 1;
+          const extend = (width + height) / length;
+          return <line key={index} x1={x1 - dx * extend} y1={y1 - dy * extend}
+            x2={x2 + dx * extend} y2={y2 + dy * extend} stroke="#365b82" strokeWidth="2" />;
+        }
         return <line key={index} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#365b82" strokeWidth="2" markerEnd={item.kind === 'arrow' ? 'url(#math-preview-arrow)' : undefined} />;
       })}
     </svg>

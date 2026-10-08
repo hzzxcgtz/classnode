@@ -3,7 +3,7 @@
  *
  * 🔴 断言里刻意用**整数/半整数**坐标：这几条判据（对角和相等、中点性质、记号的中点与法向）
  *    都能一眼心算出来 —— 写一堆小数只会让人核对不了，也就没人核对了。
- * ⊘ 2026-10-06 第二版：教师划掉了「直线 / 正方形 / 中点 / 垂直平分线 / 角平分线」，
+ * ⊘ 2026-10-06 第二版：教师划掉了「正方形 / 中点 / 垂直平分线 / 角平分线」，
  *    对应的几何实现（`squareOf` / `midpointOf` / `perpendicularBisectorOf` / `bisectorEndOf`）
  *    也一并删了 —— 用例跟着删，不留「测着一个没有入口的函数」。
  * ⊘ 2026-10-07：又划掉了「平行线 / 垂线 / 角」（`lineThrough` 跟着删）。
@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  AUTO_RIGHT_ANGLE_SIDE,
   MARK_ARROW_LEN,
   MARK_ARC_RADIUS,
   MARK_ARC_SEGMENTS,
@@ -22,16 +23,20 @@ import {
   MARK_TICK_LEN,
   MATH_BOX,
   MATH_TOOL_GROUPS,
-  MATH_TOOL_ICONS,
   MATH_TOOLS,
   arcLabelAt,
   arcPathOf,
   backgroundPlacement,
   equalMarkOf,
+  fitMathBoundingBox,
   parallelMarkOf,
   parallelogramOf,
   rectangleOf,
+  rightAngleCornerOf,
   rightAngleOf,
+  rotatePolygonPoints,
+  snapPolygonVertex,
+  triangleOf,
   toolHintOf,
   toolsInGroup,
   trapezoidOf,
@@ -41,22 +46,30 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const stripComments = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const shapesSource = stripComments(fs.readFileSync(path.join(HERE, 'worksheet-math-shapes.ts'), 'utf8'));
+const iconSource = stripComments(fs.readFileSync(path.resolve(HERE, '..', 'app', 'classroom', 'worksheet', 'questions', 'drawing-surfaces', 'math-toolbar-icon.tsx'), 'utf8'));
 
 test('阳性对照：工具表里的点击次数与中文名都在（否则下面几条对空表永远绿）', () => {
-  // ★ 2026-10-07：14 个 → 11 个（砍掉平行线 / 垂线 / 角；四个记号在 Task 3 进来）。
-  assert.ok(MATH_TOOLS.length >= 11, `工具只有 ${MATH_TOOLS.length} 个`);
+  assert.equal(MATH_TOOLS.length, 12, `精简后的工具数不对：${MATH_TOOLS.length}`);
   for (const tool of MATH_TOOLS) {
     assert.ok(tool.label.length > 0, `${tool.value} 没有中文名`);
     assert.ok(tool.clicks >= 0, `${tool.value} 的点击次数不对`);
   }
-  for (const value of ['select', 'point', 'segment', 'arrow', 'circle', 'triangle', 'rectangle',
-    'parallelogram', 'trapezoid', 'free', 'label']) {
+  for (const value of ['select', 'segment', 'arrow', 'circle', 'triangle', 'rectangle',
+    'parallelogram', 'trapezoid', 'coordinateSystem', 'numberLine', 'free', 'label']) {
     assert.ok(MATH_TOOLS.some((tool) => tool.value === value), `少了工具：${value}`);
   }
   // ⊘ 2026-10-06 划掉的五个 + ★ 2026-10-07 划掉的三个（平行线 / 垂线 / 角）。
-  for (const gone of ['line', 'square', 'midpoint', 'perp-bisector', 'bisector',
-    'parallel', 'perpendicular', 'angle']) {
+  for (const gone of ['point', 'line', 'angleArc', 'rightAngle', 'equalMark', 'parallelMark',
+    'square', 'midpoint', 'perp-bisector', 'bisector', 'parallel', 'perpendicular', 'angle']) {
     assert.ok(!MATH_TOOLS.some((tool) => tool.value === gone), `划掉的工具还在：${gone}`);
+  }
+  assert.equal(MATH_TOOLS.find((tool) => tool.value === 'segment')?.label, '线段');
+  assert.equal(MATH_TOOLS.find((tool) => tool.value === 'arrow')?.label, '箭头');
+  assert.equal(MATH_TOOLS.find((tool) => tool.value === 'free')?.label, '铅笔');
+  assert.equal(MATH_TOOLS.find((tool) => tool.value === 'coordinateSystem')?.label, '添加直角坐标系');
+  assert.equal(MATH_TOOLS.find((tool) => tool.value === 'numberLine')?.label, '添加数轴');
+  for (const value of ['triangle', 'parallelogram', 'trapezoid']) {
+    assert.equal(MATH_TOOLS.find((tool) => tool.value === value)?.drag, true, `${value} 不是拖动绘制`);
   }
 });
 
@@ -71,30 +84,68 @@ test('长方形：两个对角点 ⇒ 轴对齐的四个顶点', () => {
 });
 
 
-test('平行四边形：三个顶点 ⇒ 第四个由「对角和相等」定出', () => {
-  assert.deepEqual(parallelogramOf([0, 0], [4, 0], [5, 3]), [[0, 0], [4, 0], [5, 3], [1, 3]]);
+test('三种多边形：一次拖动的包围框直接生成顶点', () => {
+  assert.deepEqual(triangleOf([0, 0], [4, 3]), [[2, 3], [4, 0], [0, 0]]);
+  assert.deepEqual(parallelogramOf([0, 0], [10, 4]), [[2.2, 4], [10, 4], [7.8, 0], [0, 0]]);
+  assert.deepEqual(trapezoidOf([0, 0], [10, 4]), [[2, 4], [8, 4], [10, 0], [0, 0]]);
 });
 
-test('梯形：四个顶点原样保留（我们**不**替学生摆正）', () => {
-  assert.deepEqual(trapezoidOf([[0, 0], [6, 0], [4, 2], [2, 2]]), [[0, 0], [6, 0], [4, 2], [2, 2]]);
+test('多边形顶点：相邻边接近垂直时吸成严格直角，距离较远时不干预', () => {
+  const triangle = [[0, 0], [4, 0], [0.15, 3.9]] as [number, number][];
+  const snapped = snapPolygonVertex(triangle, 0, triangle[0], 0.2);
+  const before = [triangle[2][0] - snapped[0], triangle[2][1] - snapped[1]];
+  const after = [triangle[1][0] - snapped[0], triangle[1][1] - snapped[1]];
+  assert.ok(Math.abs(before[0] * after[0] + before[1] * after[1]) < 0.01, '相邻边没有吸成 90°');
+  assert.deepEqual(snapPolygonVertex([[0, 0], [4, 0], [2, 3]], 0, [0, 0], 0.05), [0, 0],
+    '离直角约束较远时不应拉走顶点');
 });
 
+test('多边形整体旋转：拖动顶点外圈时所有顶点绕中心保持刚性', () => {
+  const rotated = rotatePolygonPoints([[2, 0], [0, 2], [-2, 0]], [0, 0], [2, 0], [0, 2]);
+  const clean = (value: number) => {
+    const rounded = Math.round(value * 1000) / 1000;
+    return Object.is(rounded, -0) ? 0 : rounded;
+  };
+  const rounded = rotated.map(([x, y]) => [clean(x), clean(y)]);
+  assert.deepEqual(rounded, [[0, 2], [-2, 0], [0, -2]]);
+});
 
-test('工具提示：说清要点几下（多击图形靠这句话才用得起来）', () => {
-  assert.match(toolHintOf('triangle'), /3/);
-  assert.match(toolHintOf('trapezoid'), /四个顶点/);
+test('四边形顶点：接近对边平行时吸附到最近的平行约束', () => {
+  const points = [[0.08, 0.04], [4, 0], [5, 3], [1, 3]] as [number, number][];
+  assert.deepEqual(snapPolygonVertex(points, 0, points[0], 0.15), [0.08, 0]);
+  const oneSide = snapPolygonVertex([[0.08, 0.3], [4, 0], [5, 3], [1, 3]], 0, [0.08, 0.3], 0.1);
+  const movedEdge = [oneSide[0] - 1, oneSide[1] - 3];
+  const oppositeEdge = [4 - 5, 0 - 3];
+  assert.ok(Math.abs(movedEdge[0] * oppositeEdge[1] - movedEdge[1] * oppositeEdge[0]) < 0.01,
+    '被吸附的邻边没有与对边平行');
+});
+
+test('自动直角提示：只有相邻边垂直时返回小方框', () => {
+  assert.deepEqual(rightAngleCornerOf([0, 0], [4, 0], [0, 3]), [
+    [AUTO_RIGHT_ANGLE_SIDE, 0],
+    [AUTO_RIGHT_ANGLE_SIDE, AUTO_RIGHT_ANGLE_SIDE],
+    [0, AUTO_RIGHT_ANGLE_SIDE],
+  ]);
+  assert.equal(rightAngleCornerOf([0, 0], [4, 0], [1, 3]), null, '非直角不应显示垂直符号');
+});
+
+test('工具提示：多边形与基础图形统一说明拖动，文字说明就地输入', () => {
+  assert.match(toolHintOf('triangle'), /拖动/);
+  assert.match(toolHintOf('trapezoid'), /拖动/);
   assert.match(toolHintOf('free'), /拖动/);
-  assert.match(toolHintOf('label'), /写好文字/);
-  assert.equal(toolHintOf('point'), '点击画板添加点');
+  assert.match(toolHintOf('label'), /点击画布.*输入文字/);
   assert.match(toolHintOf('select'), /删除选中/);
 });
 
-test('★ 2026-10-06（教师）：每个工具都要有**图标**，且分组要「科学」（归类是数据，不是写死的 JSX）', () => {
-  // ① 图标一个都不能少（缺图标的按钮在屏幕上只是「少了一小块」，没人会报 bug）。
+test('★ 2026-10-07（教师）：每个工具都要有手绘 SVG 图标，且分组要「科学」（归类是数据，不是写死的 JSX）', () => {
+  // ① 图标一个都不能少，并且统一使用同一套手绘 SVG 视觉语言。
   for (const tool of MATH_TOOLS) {
-    const icon = MATH_TOOL_ICONS[tool.value];
-    assert.ok(typeof icon === 'string' && icon.length > 8, `${tool.value} 没有图标`);
+    assert.ok(iconSource.includes(`${tool.value}:`), `${tool.value} 没有图标`);
   }
+  assert.doesNotMatch(iconSource, /@phosphor-icons/, '数学工具图标仍依赖通用图标库');
+  assert.match(iconSource, /<svg/, '数学工具图标没有使用自绘 SVG');
+  assert.match(iconSource, /viewBox="0 0 24 24"/, '图标没有统一到 24×24 坐标系');
+  assert.match(iconSource, /opacity="\.1"/, '图标缺少用于建立层次的轻填色');
   // ② 每个工具的 `group` 必须是声明过的组（写错一个字符串，那一组会静默少一个按钮）。
   const groups = new Set(MATH_TOOL_GROUPS.map((group) => group.value));
   for (const tool of MATH_TOOLS) {
@@ -109,6 +160,16 @@ test('★ 2026-10-06（教师）：每个工具都要有**图标**，且分组�
   // ④ 「选择」排在**第一个**（它是每一个工具的出口：画错了要能选、能删）。
   //    ★ 2026-10-07 教师在这份设计里看到的排法就是 [选择][点][线段][射线][圆]…
   assert.equal(MATH_TOOLS[0].value, 'select');
+});
+
+test('适应画布：按真实视口比例扩展，并给四周保留像素安全边距', () => {
+  const box = fitMathBoundingBox([[-10, -10], [10, 10]], 1000, 500, 50);
+  const width = box[2] - box[0];
+  const height = box[1] - box[3];
+  assert.equal(width / height, 2, '结果比例没有匹配画布，JSXGraph 会二次调整并裁掉边缘');
+  assert.ok(box[0] < -10 && box[2] > 10 && box[1] > 10 && box[3] < -10,
+    '图形贴到画布边缘，没有安全边距');
+  assert.deepEqual(fitMathBoundingBox([], 1000, 500), [...MATH_BOX], '空画布没有回到默认视野');
 });
 
 /**
@@ -186,20 +247,14 @@ test('★ 四个记号在退化输入上一律回 null（两点重合 ⇒ 不许
   assert.equal(arcPathOf([0, 0], [0, 0], [0, 4]), null);
 });
 
-test('★ 工具表里四个记号都在，clicks 与需求一致，且各有图标与提示', () => {
-  assert.equal(MATH_TOOLS.find((t) => t.value === 'equalMark')?.clicks, 2);
-  assert.equal(MATH_TOOLS.find((t) => t.value === 'parallelMark')?.clicks, 2);
-  assert.equal(MATH_TOOLS.find((t) => t.value === 'rightAngle')?.clicks, 3);
-  assert.equal(MATH_TOOLS.find((t) => t.value === 'angleArc')?.clicks, 3);
-  for (const value of ['angleArc', 'rightAngle', 'equalMark', 'parallelMark'] as const) {
-    const icon = MATH_TOOL_ICONS[value];
-    assert.ok(typeof icon === 'string' && icon.length > 8, `${value} 没有图标`);
-    assert.ok(toolHintOf(value).length > 0, `${value} 没有提示语`);
+test('★ 四个标注入口已移除，但历史作答所需的纯几何函数继续可用', () => {
+  for (const value of ['angleArc', 'rightAngle', 'equalMark', 'parallelMark']) {
+    assert.ok(!MATH_TOOLS.some((tool) => tool.value === value), `标注工具仍在：${value}`);
   }
-  // 两个三击记号的提示语要说的是**同一件事的顺序**（顶点在第二下）——
-  // 两种顺序共存的话，学生点错的表现是"记号长到了错的地方"，不报错。
-  assert.match(toolHintOf('angleArc'), /顶点/);
-  assert.match(toolHintOf('rightAngle'), /顶点/);
+  assert.ok(equalMarkOf([0, 0], [4, 0]));
+  assert.ok(parallelMarkOf([0, 0], [4, 0]));
+  assert.ok(rightAngleOf([0, 0], [4, 0], [0, 4]));
+  assert.ok(arcPathOf([0, 0], [4, 0], [0, 4]));
 });
 
 test('★ 角弧走的一定是**小弧**：两条边都指向左边时不许绕一大圈（两个方向都要）', () => {

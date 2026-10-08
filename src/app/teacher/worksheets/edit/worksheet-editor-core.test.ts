@@ -2100,10 +2100,10 @@ test('🔴 readCorrectKeys：空串与坏元素丢掉（服务端 `readStrings` 
 // ⚠️ 「那一行画不画」的判据在 `question-card.tsx`（组件层，本仓没有 jsdom / testing-library，
 // 没有回归网）—— 这里能钉住的只有它脚下的那三格数据。
 
-test('★ newQuestion(drawing)：默认使用画板，并带空白底图与自由绘图底座', () => {
+test('★ newQuestion(drawing)：默认使用点阵画板与自由绘图底座', () => {
   const question = newQuestion('drawing');
   assert.equal(question.inputMode, 'handwriting');
-  assert.deepEqual(question.data, { drawingTool: 'free', drawingBackgroundPreset: 'blank' });
+  assert.deepEqual(question.data, { drawingTool: 'free' });
   assert.equal('answers' in question.data, false, '画布配置不是答案键，不能让绘图题进入本地判分');
   assert.equal(question.prompt, '');
   assert.deepEqual(question.children, []);

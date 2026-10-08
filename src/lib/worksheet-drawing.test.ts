@@ -40,14 +40,15 @@ test('新版作图工具严格单选，非法值回落到基础绘图', () => {
   assert.equal(readDrawingTool(drawing({ drawingTool: 'unknown' })), 'free');
 });
 
-test('内置底图都能读出发布路径，自定义底图只接受安全上传地址', () => {
+test('旧底图选择全部归一为点阵；只有数学作图接受安全的图片底图', () => {
   for (const preset of DRAWING_BACKGROUND_PRESETS) {
     assert.deepEqual(readDrawingBackground(drawing({ drawingBackgroundPreset: preset.value })), {
-      preset: preset.value,
-      url: preset.url,
+      preset: 'dot-grid',
+      url: '/worksheet/drawing-backgrounds/dot-grid.svg',
     });
   }
   assert.deepEqual(readDrawingBackground(drawing({
+    drawingTool: 'math',
     drawingBackgroundPreset: 'custom',
     drawingBackgroundImageUrl: '/uploads/chat/chat-123e4567-e89b-12d3-a456-426614174000.png',
   })), {
@@ -55,8 +56,12 @@ test('内置底图都能读出发布路径，自定义底图只接受安全上�
     url: '/uploads/chat/chat-123e4567-e89b-12d3-a456-426614174000.png',
   });
   assert.deepEqual(readDrawingBackground(drawing({
-    drawingBackgroundPreset: 'custom', drawingBackgroundImageUrl: 'https://example.com/tracker.png',
-  })), { preset: 'blank', url: null });
+    drawingTool: 'math', drawingBackgroundPreset: 'custom', drawingBackgroundImageUrl: 'https://example.com/tracker.png',
+  })), { preset: 'dot-grid', url: '/worksheet/drawing-backgrounds/dot-grid.svg' });
+  assert.equal(readDrawingBackground(drawing({
+    drawingTool: 'flowchart', drawingBackgroundPreset: 'custom',
+    drawingBackgroundImageUrl: '/uploads/chat/chat-123e4567-e89b-12d3-a456-426614174000.png',
+  })).preset, 'dot-grid');
 });
 
 test('★ 2026-10-06（教师）：「背景默认应该是点阵图」', () => {
@@ -66,9 +71,7 @@ test('★ 2026-10-06（教师）：「背景默认应该是点阵图」', () => 
   assert.equal(DEFAULT_DRAWING_BACKGROUND, 'dot-grid');
   // 点阵有图可贴（否则学生会看到一个「点阵」但其实是纯白）。
   assert.match(String(readDrawingBackground({ type: 'drawing', data: {} }).url), /dot-grid\.svg$/);
-  // 教师显式挑的档位照旧生效（默认值不许盖掉明确的选择）。
-  assert.equal(readDrawingBackground({ type: 'drawing', data: { drawingBackgroundPreset: 'blank' } }).preset, 'blank');
-  assert.equal(readDrawingBackground({ type: 'drawing', data: { drawingBackgroundPreset: 'coordinate' } }).preset, 'coordinate');
-  // 反面对照：这条判据本身能红（空白档仍在列表里、仍然可选）。
-  assert.ok(DRAWING_BACKGROUND_PRESETS.some((option) => option.value === 'blank'));
+  // 历史选择也统一归一，教师端不再提供背景预设选择器。
+  assert.equal(readDrawingBackground({ type: 'drawing', data: { drawingBackgroundPreset: 'blank' } }).preset, 'dot-grid');
+  assert.equal(readDrawingBackground({ type: 'drawing', data: { drawingBackgroundPreset: 'coordinate' } }).preset, 'dot-grid');
 });

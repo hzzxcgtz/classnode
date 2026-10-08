@@ -4,10 +4,10 @@ import { useRef, useState } from 'react';
 
 // ⚠️ 学生端那块画板是**默认导出**（我们直接复用它，而不是再写一份）。
 import FlowchartDrawing from '@/app/classroom/worksheet/questions/drawing-surfaces/flowchart-drawing';
+import MathDrawing from '@/app/classroom/worksheet/questions/drawing-surfaces/math-drawing';
 import MindmapDrawing from '@/app/classroom/worksheet/questions/drawing-surfaces/mindmap-drawing';
 import { api } from '@/lib/api';
 import {
-  DRAWING_BACKGROUND_PRESETS,
   DRAWING_TOOL_OPTIONS,
   readDrawingBackground,
   readDrawingTool,
@@ -86,17 +86,13 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
     return (
       <div className="worksheet-editor-drawing-settings">
         <p className="worksheet-editor-drawing-note">
-          照片模式不使用作图工具、画布底图和初始图。
+          照片模式不使用作图工具和初始图。
         </p>
       </div>
     );
   }
 
   const selectedTool = DRAWING_TOOL_OPTIONS.find(option => option.value === tool);
-  const selectedBackground = background.preset === 'custom'
-    ? { label: '自定义底图', description: '教师为这一题上传的专用底图' }
-    : DRAWING_BACKGROUND_PRESETS.find(option => option.value === background.preset);
-
   return (
     <div className="worksheet-editor-drawing-settings">
       <section className="worksheet-editor-drawing-section" aria-labelledby={`drawing-tool-${node.id}`}>
@@ -129,61 +125,52 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
         {selectedTool ? <p className="worksheet-editor-drawing-note">{selectedTool.description}</p> : null}
       </section>
 
-      <section className="worksheet-editor-drawing-section" aria-labelledby={`drawing-background-${node.id}`}>
-        <div className="worksheet-editor-drawing-heading">
-          <div>
-            <h5 id={`drawing-background-${node.id}`}><EditorIcon kind="background" />画布底图</h5>
-            <p>仅作参照，不会合并进学生笔迹。</p>
+      {tool === 'math' ? (
+        <section className="worksheet-editor-drawing-section" aria-labelledby={`drawing-background-${node.id}`}>
+          <div className="worksheet-editor-drawing-heading">
+            <div>
+              <h5 id={`drawing-background-${node.id}`}><EditorIcon kind="background" />图片底图</h5>
+              <p>可上传题图作为不可修改的底层；学生只能在图片上方作答。</p>
+            </div>
           </div>
-        </div>
-        <div className="worksheet-editor-drawing-swatches">
-          {DRAWING_BACKGROUND_PRESETS.map(option => {
-            const checked = background.preset === option.value;
-            return (
+          <div className="worksheet-editor-drawing-swatches">
+            <button
+              type="button"
+              className="worksheet-editor-drawing-swatch is-custom"
+              data-checked={background.preset === 'custom' ? '1' : '0'}
+              aria-pressed={background.preset === 'custom'}
+              disabled={uploading}
+              title="上传本题的图片底图"
+              onClick={() => inputRef.current?.click()}
+            >
+              <span
+                className="worksheet-editor-drawing-swatch-preview"
+                style={background.preset === 'custom' && background.url
+                  ? { backgroundImage: `url(${worksheetAssetUrl(background.url)})` }
+                  : { backgroundImage: 'url(/worksheet/drawing-backgrounds/dot-grid.svg)' }}
+              />
+              <strong>{uploading ? '上传中…' : background.preset === 'custom' ? '更换图片' : '上传图片'}</strong>
+            </button>
+            {background.preset === 'custom' ? (
               <button
-                key={option.value}
                 type="button"
-                className="worksheet-editor-drawing-swatch"
-                data-checked={checked ? '1' : '0'}
-                aria-pressed={checked}
-                title={option.description}
-                onClick={() => onDataChange({ drawingBackgroundPreset: option.value, drawingBackgroundImageUrl: undefined })}
-              >
-                <span className="worksheet-editor-drawing-swatch-preview" style={option.url ? { backgroundImage: `url(${option.url})` } : undefined} />
-                <strong>{option.label}</strong>
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            className="worksheet-editor-drawing-swatch is-custom"
-            data-checked={background.preset === 'custom' ? '1' : '0'}
-            aria-pressed={background.preset === 'custom'}
-            disabled={uploading}
-            title="上传数轴、示意图或这一题的专用底图"
-            onClick={() => inputRef.current?.click()}
-          >
-            <span
-              className="worksheet-editor-drawing-swatch-preview"
-              style={background.preset === 'custom' && background.url
-                ? { backgroundImage: `url(${worksheetAssetUrl(background.url)})` }
-                : undefined}
-            >{background.preset === 'custom' && background.url ? null : '+'}</span>
-            <strong>{uploading ? '上传中…' : '自定义'}</strong>
-          </button>
-        </div>
-        {selectedBackground ? <p className="worksheet-editor-drawing-note">{selectedBackground.description}</p> : null}
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          hidden
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void uploadBackground(file);
-          }}
-        />
-      </section>
+                className="worksheet-editor-drawing-tool"
+                onClick={() => onDataChange({ drawingBackgroundPreset: undefined, drawingBackgroundImageUrl: undefined })}
+              >移除图片</button>
+            ) : null}
+          </div>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void uploadBackground(file);
+            }}
+          />
+        </section>
+      ) : null}
 
       {/*
         ★ 2026-10-06（教师）：「底稿要设一个开关，选择要不要设置底稿」。
@@ -215,7 +202,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
                *   禁掉就等于留了一份他自己删不掉的脏数据。
                */
               disabled={!starterSupported && !starter}
-              title={starterSupported ? undefined : '这一档还不支持初始图（目前支持流程图与思维导图）'}
+              title={starterSupported ? undefined : '这一档还不支持初始图'}
               onChange={(event) => {
                 if (!event.target.checked) {
                   if (starter && !window.confirm('清掉初始图会丢掉已经画好的内容，确定吗？')) return;
@@ -235,18 +222,11 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
                 if (blank) onDataChange({ drawingStarter: blank });
               }}
             />
-            <span>让学生从这张初始图开始画</span>
+            <span>{tool === 'math' ? '使用教师绘制的数学底图' : '让学生从这张初始图开始画'}</span>
           </label>
         </div>
-        {/*
-          ⊘ ★ 2026-10-06（教师最终拍板）：「**锁定初始图**」那个开关**已整个删除**（连同它的副说明
-            「学生只能添加，不能修改或删除你给的框与连线。」）。
-          🔴 教师原话：「我觉得教师把初始图锁定也不对，这样学生端很多操作都无法进行了，我觉得还是
-             不要锁定，因为学生端已经有恢复初始图功能了。」
-          ⇒ 初始图永远可改可删；回退只靠学生端那颗「恢复初始图」（无条件出现）。
-          ⚠️ **别**把这个开关加回来；题目数据里那个历史字段（`drawingStarterLocked`）学生端一律忽略
-             （见 `src/lib/worksheet-drawing-starter.ts`）。
-        */}
+        {/* 流程图与思维导图允许学生接着编辑；数学图在学生端作为独立锁定底层渲染。
+            不再提供通用“锁定”开关，避免一种设置同时控制三种语义不同的画板。 */}
         {starter ? (
           starter.tool !== tool ? (
             /* ★ 2026-10-07：底稿属于**另一个画板**（教师中途换过作图工具）。
@@ -293,10 +273,23 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
                 />
               </div>
             </>
+          ) : tool === 'math' ? (
+            <>
+              <p className="worksheet-editor-drawing-note">
+                在这里绘制题目底图。学生能看到它，但不能选中、移动、旋转或删除其中的对象。
+              </p>
+              <div style={{ height: 380, border: '1px solid #e4ecf4', borderRadius: 10, overflow: 'hidden' }}>
+                <MathDrawing
+                  data={starter.tool === 'math' ? starter.data : undefined}
+                  backgroundUrl={starterBackgroundUrl}
+                  disabled={false}
+                  onChange={(next: unknown) => onDataChange({ drawingStarter: { tool: 'math', data: next } })}
+                />
+              </div>
+            </>
           ) : (
-            /* 数学作图 / 自由画：教师这次只要了流程图与思维导图两档 —— 照实说，别给一个画不了东西的空框。 */
             <p className="worksheet-editor-drawing-note">
-              初始图目前支持<b>流程图</b>与<b>思维导图</b>；把上面的作图工具改成这两档就能在这里画。
+              基础绘图暂不支持结构化初始图。
             </p>
           )
         ) : null}

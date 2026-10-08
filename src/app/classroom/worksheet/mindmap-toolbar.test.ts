@@ -18,6 +18,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LIB = fs.readFileSync(
   path.resolve(HERE, '../../../../node_modules/mind-elixir/dist/MindElixir.js'), 'utf8');
 const CSS = fs.readFileSync(path.join(HERE, 'worksheet.module.css'), 'utf8');
+const SURFACE = fs.readFileSync(path.join(HERE, 'questions', 'drawing-surfaces', 'mindmap-drawing.tsx'), 'utf8');
 
 test('🔴 库仍然用那两个 id 造按钮（改了名字这条会红，而不是静默失效）', () => {
   assert.match(LIB, /W\("fullscreen",\s*"full"\)/,
@@ -26,15 +27,18 @@ test('🔴 库仍然用那两个 id 造按钮（改了名字这条会红，而�
     '库不再用 `toCenter` 这个 id 造「回到中心」按钮了 —— 上面那条 CSS 已经失效');
 });
 
-test('★ CSS 藏的正是那两个 id，而且**只藏这两个**（缩放那两颗要留着）', () => {
-  assert.match(CSS, /\.mindmapCanvas :global\(\.mind-elixir-toolbar #fullscreen\)/);
-  assert.match(CSS, /\.mindmapCanvas :global\(\.mind-elixir-toolbar #toCenter\)/);
-  assert.doesNotMatch(CSS, /#zoomin|#zoomout/,
-    '把放大/缩小也藏了 —— 那两颗是学生要用的（工具条上唯一还留着的功能）');
+test('★ 右下库工具条整体隐藏，视图操作进入统一的分组工具栏', () => {
+  assert.match(CSS, /\.mindmapCanvas :global\(\.mind-elixir-toolbar\.rb\)\s*\{\s*display:\s*none/);
+  for (const label of ['放大', '缩小', '适应画布']) {
+    assert.ok(SURFACE.includes(`aria-label="${label}"`), `统一工具栏缺少「${label}」`);
+  }
+  assert.match(SURFACE, /instance\.scaleFit\(\); instance\.toCenter\(\)/,
+    '适应画布没有同时缩放并居中');
 });
 
-test('★ 藏的写法是 `display: none`，不是把它从 DOM 里删掉（库自己还要给它绑事件）', () => {
-  const at = CSS.indexOf('.mind-elixir-toolbar #fullscreen');
+test('★ 藏的写法是 `display: none`，方向工具条仍由库提供', () => {
+  const at = CSS.indexOf('.mind-elixir-toolbar.rb');
   const rule = CSS.slice(at, CSS.indexOf('}', at));
   assert.match(rule, /display:\s*none/);
+  assert.match(SURFACE, /toolBar: true/, '库的方向工具条也被关掉了');
 });

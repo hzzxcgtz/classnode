@@ -1,16 +1,11 @@
 /**
  * 绘图题的**底稿**（★ 2026-10-06，教师：「学生可以完全从空白开始画，也可以在教师准备好的基础上继续画」）。
  *
- * 教师的三条决定（逐字）：
- *   · 「先拿流程图当试点」；
- *   · **A 底稿不算学生的作答** ⇒ 学生交上去的 `data` 里**只留他自己画的**；
- *   · B **底稿永远可改可删**（2026-10-06 教师最终拍板，逐字：
- *     「我觉得教师把初始图锁定也不对，这样学生端很多操作都无法进行了，我觉得还是不要锁定，
- *      因为学生端已经有恢复初始图功能了。」）
- *     ⇒ 这里**没有**「锁定初始图」这一档：
- *       · 底稿的框可以拖、可以删、文字可以改；底稿的连线可以删、也可以改标注；
- *       · 回退**只靠「恢复初始图」**（学生端那颗按钮无条件出现，见 `flowchart-drawing.tsx`）；
- *       · 题目数据里那个历史字段（`drawingStarterLocked`）**一律忽略** —— 不迁移、不写回、不报错。
+ * 底稿的交互语义按画板区分：
+ *   · 流程图、思维导图是可接续编辑的初始结构，学生可以直接修改；
+ *   · 数学作图是教师题目底图，学生只能在其上新增作答，不能选中或修改底图对象；
+ *   · 题目数据里的历史字段 `drawingStarterLocked` 仍然一律忽略，锁定规则由画板类型决定，
+ *     不再由一个容易产生冲突的通用开关决定。
  *
  * 🔴 为什么放在**单独一个纯模块**里：这里是「底稿 ⇄ 学生作答」的**唯一**换算处
  *    （合并给画板看、剔除后存回去）。两处各写一遍必然分叉 —— 而分叉的表现是
@@ -36,8 +31,10 @@ export interface DrawingStarter {
 /**
  * 读题目上那份底稿。认不出就回 `null`（**不抛**：题目数据可以被手改过）。
  *
- * 🔴 2026-10-06（教师最终拍板）：**不再回 `locked`** —— 「锁定初始图」那一档整个撤掉了，
- *    底稿永远可改可删。题目数据里那个历史字段（`drawingStarterLocked`）在这里**一个字都不读**：
+ * 不返回 `locked`：题目数据里那个历史字段（`drawingStarterLocked`）在这里一个字都不读；
+ * 数学底图是否可编辑由数学画板的独立底图层保证，流程图与思维导图则保持可接续编辑。
+ *
+ * 历史字段可能仍存在于已保存题目中，因此继续采取下面的兼容策略：
  *    已保存的题可能带着它（`true` / `false` / 乱值），一律忽略 —— 不迁移、不写回、不报错。
  */
 export function readDrawingStarter(node: { type?: string; data?: Record<string, unknown> }): DrawingStarter | null {
@@ -154,9 +151,7 @@ export function mergeFlowchart(starter: FlowchartPayload, mine: FlowchartPayload
  *   对模型说一句假话（「本题的图里有教师预先给出的初始图」）—— 两边都不报错，
  *   而模型会把学生自己画的那张当成教师给的（见 `hasDrawingStarter` 的那一段）。
  *
- * ⚠️ **数学作图 / 自由画这一版没有初始图**（教师这次只要了流程图与思维导图两档）⇒
- *   返回 `null`，调用方据此把那个开关**禁用**并说明原因 ——
- *   不许「写一个空壳」：空壳在学生端读不出来，等于没底稿，而面板上开关却是开着的。
+ * ⚠️ 自由画仍没有结构化初始图；数学作图使用与学生作答相同的 `{elements}` 数据。
  */
 export function blankStarterFor(tool: DrawingMode): DrawingStarter | null {
   if (tool === 'flowchart') return { tool: 'flowchart', data: { nodes: [], edges: [] } };
@@ -169,6 +164,7 @@ export function blankStarterFor(tool: DrawingMode): DrawingStarter | null {
   if (tool === 'mind-map') {
     return { tool: 'mind-map', data: { nodeData: { id: 'starter-root', topic: '中心主题', children: [] } } };
   }
+  if (tool === 'math') return { tool: 'math', data: { elements: [] } };
   return null;
 }
 

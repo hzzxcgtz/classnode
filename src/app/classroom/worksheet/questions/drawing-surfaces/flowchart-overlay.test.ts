@@ -52,15 +52,12 @@ test('起点锚点沿**首段方向**走（不是「起点→终点」直线近�
 });
 
 test('删除图标是一个小叉叉（不再是垃圾桶）', () => {
-  const icons = blockBetween(SOURCE, 'const FLOW_ICONS', '};');
-  assert.ok(icons.length > 200, '`FLOW_ICONS` 没抠出来 —— 先修这条判据');
-  assert.ok(!/trash:/.test(icons.split('close:')[1] ?? icons) || /close:/.test(icons),
-    '图标表里没有那个叉叉');
   // 渲染处引的是叉叉那一个键，不再是垃圾桶。
   // ⚠️ 锚点用**类名**，不用 `aria-label` —— 那个是 `{overlay.label}`（变量，不是字面量）。
   const render = blockBetween(SOURCE, 'className={styles.flowEdgeFloat}', '</button>');
   assert.ok(render.length > 50, '删除按钮那段没抠出来 —— 先修这条判据');
-  assert.ok(!/FLOW_ICONS\.trash/.test(render), '删除按钮还在用垃圾桶图标');
+  assert.match(render, /DrawingToolbarIcon name="close"/, '删除按钮没有使用小叉叉图标');
+  assert.ok(!/name="delete"/.test(render), '删除按钮又换回垃圾桶图标');
 });
 
 /*

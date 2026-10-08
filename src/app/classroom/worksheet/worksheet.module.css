@@ -2338,28 +2338,37 @@
 .drawingSurfaceToolbar select,
 .drawingSurfaceToolbar input[type='color'] {
   min-height: 40px;
-  border: 1px solid #dde6f0;
-  border-radius: 10px;
+  border: 1px solid #d8e1ea;
+  border-radius: 9px;
   background: #fff;
-  color: #33506f;
+  color: #355574;
   font: inherit;
-  box-shadow: 0 1px 2px rgba(16, 42, 67, .06);
-  transition: border-color .12s ease, box-shadow .12s ease, background .12s ease;
+  box-shadow: 0 1px 2px rgba(35, 57, 79, .035);
+  transition: border-color .14s ease, box-shadow .14s ease, background .14s ease, color .14s ease, transform .1s ease;
 }
 .drawingSurfaceToolbar button:hover:not(:disabled),
 .drawingWorkspaceHeader button:hover:not(:disabled) {
-  border-color: #b9cadd;
-  box-shadow: 0 2px 6px rgba(16, 42, 67, .10);
+  border-color: #aebdcb;
+  background: #f3f7fa;
+  box-shadow: 0 2px 5px rgba(35, 57, 79, .07);
 }
 
 .drawingWorkspaceHeader button,
 .drawingSurfaceToolbar button { padding: 7px 12px; font-weight: 650; cursor: pointer; }
 .drawingToolbarButton { min-height: 44px !important; }
 .drawingSurfaceToolbar button[aria-pressed='true'] {
-  border-color: #527198;
-  background: #eaf0f6;
-  color: #294d73;
-  box-shadow: inset 0 1px 2px rgba(16, 42, 67, .08);
+  border-color: #3f668d;
+  background: #3f668d;
+  color: #f8fbff;
+  box-shadow: 0 2px 5px rgba(39, 77, 115, .16);
+}
+.drawingSurfaceToolbar button:focus-visible,
+.drawingSurfaceToolbar select:focus-visible,
+.drawingSurfaceToolbar input:focus-visible,
+.drawingWorkspaceHeader button:focus-visible {
+  outline: 3px solid rgba(69, 107, 145, .2);
+  outline-offset: 2px;
+  border-color: #456b91;
 }
 .drawingWorkspaceHeader button:active,
 .drawingSurfaceToolbar button:active { transform: translateY(1px); }
@@ -2495,14 +2504,18 @@
   z-index: 6;
 }
 .drawingSurfaceToolbar {
-  min-height: 54px;
-  padding: 7px 10px;
+  position: relative;
+  z-index: 10;
+  min-height: 64px;
+  padding: 8px 12px;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 7px;
-  border-bottom: 1px solid #dbe5ef;
-  background: #fff;
+  gap: 7px 9px;
+  border-bottom: 1px solid #d5e0eb;
+  background: #f8fafc;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
+  overflow: visible;
 }
 .drawingSurfaceToolbar label {
   min-height: 40px;
@@ -2515,39 +2528,129 @@
 }
 .drawingSurfaceToolbar select { padding: 0 8px; }
 .drawingSurfaceToolbar input[type='color'] { width: 42px; padding: 4px; }
-.drawingToolbarSpacer { flex: 1 1 16px; }
+.drawingToolbarSpacer { display: none; }
 /*
   ★ 2026-10-06（教师）：「整个工具栏 UI 重新设计一下，归类要科学。」
   数学作图那一排按 基础 / 多边形 / 角与线 / 其他 分组：组内紧凑、组间一条细线 + 一个小标题。
-  ⚠️ 按钮改成「图标 + 文字」⇒ 让按钮变成 flex（图标与文字基线对齐，不然图标会偏高）。
+  按钮只显示图标；分组标题保留文字，让整排仍能快速扫读。
 */
-.drawingSurfaceToolbar button { display: inline-flex; align-items: center; gap: 5px; }
+.drawingSurfaceToolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
 .drawingToolbarGroup {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding-right: 9px;
-  border-right: 1px solid #e4ecf4;
+  flex: 0 0 auto;
+  gap: 5px;
+  padding: 0 10px 0 0;
+  border-right: 1px solid #d6e0e9;
 }
-.drawingToolbarGroup:last-of-type { border-right: 0; padding-right: 0; }
 .drawingToolbarGroupLabel {
-  color: #93a6b8;
-  font-size: .688rem;
-  font-weight: 700;
-  letter-spacing: .03em;
+  flex: 0 0 auto;
+  margin-right: 2px;
+  color: #647a91;
+  font-size: .675rem;
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: .025em;
   white-space: nowrap;
 }
-.drawingToolbarIcon {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.drawingToolbarActions {
+  padding-right: 0;
+  border-right: 0;
 }
-.drawingToolbarHint { color: #7b8da1; font-size: .75rem; }
+.drawingToolbarContext {
+  flex: 1 0 100%;
+  padding: 8px 0 0;
+  border-top: 1px solid #dbe5ee;
+  border-right: 0;
+}
+.drawingToolbarIcon {
+  position: relative;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  color: currentColor;
+}
+.drawingToolbarIconButton {
+  position: relative;
+  width: 44px;
+  min-width: 44px;
+  padding: 0 !important;
+}
+.drawingToolbarIconButton:hover,
+.drawingToolbarIconButton:focus-visible { z-index: 3; }
+/* 名称只在停留片刻后出现；键盘聚焦也能看到，图标按钮不会牺牲可访问性。 */
+.drawingToolbarIconButton::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 60;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 7px;
+  background: #263b53;
+  color: #f8fbff;
+  box-shadow: 0 5px 14px rgba(17, 37, 58, .2);
+  font-size: .75rem;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -2px);
+  transition: opacity .12s ease, transform .12s ease, visibility 0s linear .12s;
+}
+.drawingToolbarIconButton:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+  transition-delay: .55s;
+}
+.drawingToolbarIconButton:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+  transition-delay: .15s;
+}
+.drawingToolbarHint {
+  flex: 1 0 100%;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-top: 1px solid #e1e8ef;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #61778e;
+  font-size: .75rem;
+  line-height: 1.45;
+}
+.drawingToolbarHintLabel {
+  flex: 0 0 auto;
+  color: #365f88;
+  font-size: .688rem;
+  font-weight: 750;
+  letter-spacing: .04em;
+}
+.drawingToolbarDanger:not(:disabled) { color: #8f4d43; }
+.drawingSurfaceToolbar .drawingToolbarDanger:hover:not(:disabled) {
+  border-color: #d7b5af;
+  background: #fff7f5;
+  color: #7f3e35;
+}
 
 .thirdPartyCanvas {
   position: relative;
@@ -2564,29 +2667,80 @@
 
 /* ★ 2026-10-06：数学作图的**拖动预览层**（拖动过程的线条画在这里，必然可见）。 */
 .mathStage { position: relative; }
+.mathCanvas[data-infinite-dot-grid='true'] {
+  background-color: #fff;
+  background-image: radial-gradient(circle, rgba(126, 132, 140, .42) .65px, transparent .78px);
+  background-position: 0 0;
+  background-repeat: repeat;
+  background-size: 20px 20px;
+}
+.mathCanvas[data-pan-cursor='grab'],
+.mathCanvas[data-pan-cursor='grab'] canvas { cursor: grab !important; }
+.mathCanvas[data-pan-cursor='grabbing'],
+.mathCanvas[data-pan-cursor='grabbing'] canvas { cursor: grabbing !important; }
+.mathCanvas[data-pan-cursor='move'],
+.mathCanvas[data-pan-cursor='move'] canvas { cursor: move !important; }
+.mathCanvas[data-pan-cursor='vertex'],
+.mathCanvas[data-pan-cursor='vertex'] canvas { cursor: pointer !important; }
+.mathCanvas[data-pan-cursor='rotate'],
+.mathCanvas[data-pan-cursor='rotate'] canvas,
+.mathCanvas[data-pan-cursor='rotating'],
+.mathCanvas[data-pan-cursor='rotating'] canvas {
+  cursor: url('/cursors/math-rotate.svg') 12 12, crosshair !important;
+}
 .mathOverlay { position: absolute; inset: 0; pointer-events: none; }
+/* 画布文字：点击落点后就地输入，Enter / 失焦提交，Escape 取消。 */
+.mathLabelEditor {
+  position: absolute;
+  z-index: 7;
+  width: 132px;
+  min-height: 38px;
+  transform: translate(-6px, -50%);
+  padding: 6px 9px;
+  border: 1.5px solid #7f9dbc;
+  border-radius: 8px;
+  background: #fff;
+  color: #263b53;
+  font: inherit;
+  box-shadow: 0 3px 10px rgba(16, 42, 67, .14);
+  pointer-events: auto;
+}
 /*
-  ★ 2026-10-06：选中图形后就地浮出的「删除」按钮（教师选的 A 方案）。
-  ⚠️ 44×44 是**硬要求**（`worksheet-tap-targets.test.ts` 逐个 <button> 量命中区）；
-  ⚠️ 压在图形上方 12px 处，并自带白底+描边，免得在深色图形上糊成一团。
+  删除的**命中区**仍是 44×44（老 iPad 上好点），可见部分缩成里面 24px 的叉号小圆。
 */
 .mathFloatingDelete {
   position: absolute;
   width: 44px;
   height: 44px;
   transform: translate(-50%, calc(-100% - 12px));
-  border: 1px solid #e7c9a9;
-  border-radius: 12px;
-  background: #fff;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: #b45309;
-  font: inherit;
-  font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 3px 10px rgba(16, 42, 67, .18);
+  box-shadow: none;
   pointer-events: auto;
+  z-index: 6;
 }
 .mathFloatingDelete:disabled { cursor: default; opacity: .55; }
+.mathFloatingDelete > svg {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  box-sizing: border-box;
+  border: 1px solid #e7c9a9;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(16, 42, 67, .18);
+}
+.mathFloatingDelete:hover > svg { background: #fff7ed; }
+.mathFloatingDelete:active > svg { background: #ffedd5; }
 .mathCanvas { cursor: crosshair; }
+.mathCanvas[data-tool-cursor='select'] { cursor: grab; }
+.mathCanvas[data-tool-cursor='label'],
+.mathCanvas[data-tool-cursor='label'] canvas { cursor: text !important; }
 .mathCanvas :global(svg) { touch-action: none; }
 /*
   🔴 2026-10-06：这里原来有两条覆盖 —— `me-main { height: 100% }` 与
@@ -2609,32 +2763,46 @@
 */
 .mindmapCanvas :global(.map-container),
 .mindmapCanvas :global(.map-canvas) { cursor: grab; }
+.mindmapCanvas :global(me-parent) { cursor: move; }
+.mindmapCanvas :global(me-tpc),
+.mindmapCanvas :global(me-tpc[contenteditable='true']) { cursor: text; }
 .mindmapCanvasWithBackground :global(me-main),
 .mindmapCanvasWithBackground :global(.map-container) { background: transparent !important; }
 
-/*
-  ★ 2026-10-07（教师）：「两个图标能不能去掉？什么意义。」
-
-  那两个图标是**库自带工具条**（`class="mind-elixir-toolbar rb"`）里的前两个 —— 照 `dist/MindElixir.js`
-  的构造，右下那一组一共四个按钮，**每个都带 id**：
-      W("fullscreen","full")    全屏
-      W("toCenter","living")    回到中心
-      W("zoomout","zoomout")    −
-      W("zoomin","zoomin")      +
-  · **全屏**：库自己那套全屏 —— 而我们**已经有了自己的「全屏画板」按钮**（卡片右上）⇒
-    两个入口、两套行为，学生按了哪一个都不一样，但没有一处提示。
-  · **回到中心**：把视图移回根节点（树长大跑出屏幕之后用得上）。
-
-  🔴 藏它们用的是**库自己给的 id**（`W` 里逐字 `n.id = e`）。⚠️ 这是**依赖库内部实现**的写法：
-     库升级把 id 改名 ⇒ 这两条规则**静默失效**，按钮又回来。所以
-     `mindmap-toolbar.test.ts` 那条判据会读库的产物对拍一遍 —— 改了就红，而不是悄悄失效。
-
-  ⚠️ 为什么不是 `toolBar: false` + 自己画 `−` / `+`：教师 2026-10-06 明确说过
-     「它有工具条就用它的，**尽量不要自己画**」—— 为了去掉两个按钮而自己重画整条工具条，
-     违背那一条，而且以后库改了图标/行为我们还得跟。藏掉多一点 CSS、少一套重复实现。
-*/
-.mindmapCanvas :global(.mind-elixir-toolbar #fullscreen),
-.mindmapCanvas :global(.mind-elixir-toolbar #toCenter) { display: none; }
+/* 右下视图操作已经进入统一工具栏；隐藏库的重复入口，左侧方向工具条继续保留。 */
+.mindmapCanvas :global(.mind-elixir-toolbar.rb) { display: none; }
+.mindmapCanvas :global(.mind-elixir-toolbar.lt) {
+  padding: 6px;
+  border: 1px solid #d6e1ec;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .96);
+  color: #33506f;
+  box-shadow: 0 6px 18px rgba(26, 54, 82, .12);
+  font-size: 1rem;
+}
+.mindmapCanvas :global(.mind-elixir-toolbar.lt span) {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease, transform .1s ease;
+}
+.mindmapCanvas :global(.mind-elixir-toolbar.lt span + span) { margin-top: 4px; }
+.mindmapCanvas :global(.mind-elixir-toolbar.lt span:hover) {
+  background: #edf3f8;
+  color: #294d73;
+}
+.mindmapCanvas :global(.mind-elixir-toolbar.lt span:active) {
+  transform: translateY(1px);
+  opacity: 1;
+}
+.mindmapCanvas :global(.mind-elixir-toolbar.lt svg) {
+  width: 20px;
+  height: 20px;
+}
 
 .flowNode {
   min-width: 150px;
@@ -2646,7 +2814,10 @@
   background: #fff;
   color: #263b53;
   box-shadow: 0 3px 12px rgb(58 83 111 / .1);
+  cursor: move;
 }
+.flowStage :global(.react-flow__pane) { cursor: grab; }
+.flowStage :global(.react-flow__pane.dragging) { cursor: grabbing; }
 .flowNode[data-selected='1'] { border-color: #365f88; box-shadow: 0 0 0 3px rgb(82 113 152 / .16); }
 .flowNode_process { border-radius: 9px; }
 .flowNode_terminator { border-radius: 999px; }
@@ -2802,6 +2973,7 @@
 }
 .flowNode input:disabled { opacity: 1; -webkit-text-fill-color: currentColor; }
 .flowNode :global(.react-flow__handle) {
+  cursor: crosshair;
   width: 12px;
   height: 12px;
   border: 2px solid #527198;
@@ -2851,6 +3023,10 @@
 
 @media (max-width: 720px) {
   .thirdPartyCanvas { min-height: 430px; }
+  .drawingSurfaceToolbar { padding: 9px 10px 8px; gap: 8px; }
+  .drawingToolbarGroup { flex-wrap: wrap; padding-right: 8px; }
+  .drawingToolbarGroupLabel { flex-basis: 100%; }
+  .drawingToolbarActions { padding-right: 0; }
   .drawingToolbarHint { flex-basis: 100%; }
   .drawingWorkspaceHeader span { display: none; }
 }

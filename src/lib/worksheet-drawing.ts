@@ -74,16 +74,18 @@ export function readDrawingBackground(node: Pick<WorksheetQuestionNode, 'type' |
   url: string | null;
 } {
   if (node.type !== 'drawing') return { preset: 'blank', url: null };   // 不是作图题 ⇒ 与「没挑过」无关
+  /*
+   * 所有画板统一使用点阵；历史的空白/方格/横线等选择不再影响显示。
+   * 唯一例外是数学题的教师图片底图：它是题目内容，不是装饰背景，学生只能在上面作答。
+   */
   const rawPreset = node.data.drawingBackgroundPreset;
-  if (rawPreset === 'custom') {
+  if (readDrawingTool(node) === 'math' && rawPreset === 'custom') {
     const rawUrl = node.data.drawingBackgroundImageUrl;
     return typeof rawUrl === 'string' && CHAT_IMAGE_URL.test(rawUrl)
       ? { preset: 'custom', url: rawUrl }
-      : { preset: 'blank', url: null };
+      : { preset: DEFAULT_DRAWING_BACKGROUND, url: '/worksheet/drawing-backgrounds/dot-grid.svg' };
   }
-  // ★ 2026-10-06：兜底从「第一位（空白）」改成 **DEFAULT_DRAWING_BACKGROUND（点阵）**。
-  const preset = DRAWING_BACKGROUND_PRESETS.find(option => option.value === rawPreset)
-    ?? DRAWING_BACKGROUND_PRESETS.find(option => option.value === DEFAULT_DRAWING_BACKGROUND)!;
+  const preset = DRAWING_BACKGROUND_PRESETS.find(option => option.value === DEFAULT_DRAWING_BACKGROUND)!;
   return { preset: preset.value, url: preset.url };
 }
 

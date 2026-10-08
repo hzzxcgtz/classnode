@@ -13,6 +13,7 @@ import { mindMapOrStarter } from '@/lib/worksheet-drawing-starter.ts';
 import { mindmapDragStarted } from '@/lib/worksheet-mindmap-pan.ts';
 
 import type { DrawingSurfaceProps } from './types';
+import DrawingToolbarIcon from './drawing-toolbar-icon';
 import styles from '../../worksheet.module.css';
 
 export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange, onImage, starter }: DrawingSurfaceProps) {
@@ -226,7 +227,20 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
      * `<foreignObject>` 再栅格化，而老 iPad（Safari 15）对它的支持很勉强 ——
      * 出来的可能是**空白图**且不报错。开着这个开关它会改成画 `<text>`。
      */
-    const publish = () => {
+    const publish = (detail?: unknown) => {
+      /**
+       * MindElixir 在双击节点、刚把原文字隐藏并插入 `#input-box` 时，就先发送一次
+       * `operation: { name: 'beginEdit' }`。这一刻数据一个字都没有改变；若马上把数据写回 React，
+       * 教师底稿编辑器会同步重渲染，而库的双击处理器还在继续访问刚才那棵 DOM，某些子节点上
+       * 就会撞到 `Cannot read properties of null (reading 'style')`。
+       * 真正改完文字时库还会发送 `finishEdit`，只在那时保存与抓图即可。
+       */
+      if (
+        typeof detail === 'object'
+        && detail !== null
+        && 'name' in detail
+        && (detail as { name?: unknown }).name === 'beginEdit'
+      ) return;
       onChange(instance.getData());
       scheduleRaster.current();
     };
@@ -371,10 +385,8 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
   return (
     <div className={styles.thirdPartySurface}>
       {/*
-        🔴 这里**只留「撤销 / 重做」**：库自带的 UI 里没有它们（它的工具条是视图操作、
-        长按菜单是节点操作），而 iPad 上没有 Ctrl+Z —— 少了这两颗，学生改错一步就回不去。
-        其余（加子/同级节点、适应画布、回到中心、全屏、缩放、方向）全部交给库自己的 UI，
-        我们不再画第二份。
+        这里统一承载视图与编辑记录；节点增删仍交给库的长按菜单，方向仍使用库的左侧工具条。
+        库原有的右下视图工具条由 CSS 隐藏，避免出现两套功能重复、样式不一致的入口。
       */}
       <div className={styles.drawingSurfaceToolbar} role="toolbar" aria-label="思维导图工具">
         {/*
@@ -390,12 +402,24 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
         {/* ★ 2026-10-07（教师：「初始图开关不仅流程图要，其他绘图题也要」）——
             「恢复初始图」与流程图那一档**同形**：只要这一题有底稿就**无条件**出现
             （它是唯一的回退路径：学生把底稿改乱了只能靠它回去）。 */}
-        {starter && (
-          <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={restoreStarter}>恢复初始图</button>
-        )}
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => mind.current?.undo()}>撤销</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => mind.current?.redo()}>重做</button>
-        <span className={styles.drawingToolbarHint}>双击节点写字；长按节点打开菜单（增删、上移下移、连接）；滚轮缩放</span>
+        <span className={styles.drawingToolbarGroup}>
+          <span className={styles.drawingToolbarGroupLabel}>视图</span>
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="放大" data-tooltip="放大" onClick={() => { const instance = mind.current; if (instance) instance.scale(instance.scaleVal * 1.1); }}><DrawingToolbarIcon name="zoomIn" className={styles.drawingToolbarIcon} /></button>
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="缩小" data-tooltip="缩小" onClick={() => { const instance = mind.current; if (instance) instance.scale(instance.scaleVal / 1.1); }}><DrawingToolbarIcon name="zoomOut" className={styles.drawingToolbarIcon} /></button>
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="适应画布" data-tooltip="适应画布" onClick={() => { const instance = mind.current; if (instance) { instance.scaleFit(); instance.toCenter(); } }}><DrawingToolbarIcon name="fit" className={styles.drawingToolbarIcon} /></button>
+        </span>
+        <span className={`${styles.drawingToolbarGroup} ${styles.drawingToolbarActions}`}>
+          <span className={styles.drawingToolbarGroupLabel}>编辑记录</span>
+          {starter && (
+            <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="恢复初始图" data-tooltip="恢复初始图" disabled={disabled} onClick={restoreStarter}><DrawingToolbarIcon name="restore" className={styles.drawingToolbarIcon} /></button>
+          )}
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="撤销" data-tooltip="撤销" disabled={disabled} onClick={() => mind.current?.undo()}><DrawingToolbarIcon name="undo" className={styles.drawingToolbarIcon} /></button>
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="重做" data-tooltip="重做" disabled={disabled} onClick={() => mind.current?.redo()}><DrawingToolbarIcon name="redo" className={styles.drawingToolbarIcon} /></button>
+        </span>
+        <span className={styles.drawingToolbarHint}>
+          <strong className={styles.drawingToolbarHintLabel}>操作提示</strong>
+          双击节点写字；长按节点打开菜单（增删、上移下移、连接）；滚轮缩放
+        </span>
       </div>
       <div
         ref={host}
@@ -405,4 +429,3 @@ export default function MindmapDrawing({ data, backgroundUrl, disabled, onChange
     </div>
   );
 }
-

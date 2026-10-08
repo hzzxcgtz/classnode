@@ -6,16 +6,20 @@ import JXG from 'jsxgraph';
 import { dataUrlToBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 import {
   MATH_TOOL_GROUPS,
-  MATH_TOOL_ICONS,
   MATH_TOOLS,
   arcLabelAt,
   arcPathOf,
   backgroundPlacement,
   equalMarkOf,
+  fitMathBoundingBox,
   parallelMarkOf,
   parallelogramOf,
   rectangleOf,
+  rightAngleCornerOf,
   rightAngleOf,
+  rotatePolygonPoints,
+  snapPolygonVertex,
+  triangleOf,
   toolHintOf,
   toolsInGroup,
   trapezoidOf,
@@ -25,6 +29,8 @@ import {
 } from '@/lib/worksheet-math-shapes.ts';
 
 import type { DrawingSurfaceProps } from './types';
+import DrawingToolbarIcon from './drawing-toolbar-icon';
+import MathToolbarIcon from './math-toolbar-icon';
 import styles from '../../worksheet.module.css';
 
 /** 一条运行时记录：`coords` 是**作答里的那份坐标**，`points` 是 jsxgraph 里的可拖点。 */
@@ -32,6 +38,8 @@ type RuntimeEntry = {
   entry: MathEntry;
   points: JXG.Point[];
   objects: JXG.GeometryElement[];
+  /** 命中时还要认多边形自动创建的各条 border；它们不单独参与清理。 */
+  hitObjects?: JXG.GeometryElement[];
   /** 自由线条没有可拖点（它是一串坐标画出来的曲线）⇒ 快照直接读它。 */
   freehand?: Pt[];
 };
@@ -60,33 +68,22 @@ function readEntries(raw: unknown): MathEntry[] {
     if (row.kind === 'angle') return isPt(row.vertex) && isPt(row.a) && isPt(row.b);
     if (row.kind === 'angleArc' || row.kind === 'rightAngle') return isPt(row.vertex) && isPt(row.a) && isPt(row.b);
     if (row.kind === 'equalMark' || row.kind === 'parallelMark') return isPt(row.a) && isPt(row.b);
+    if (row.kind === 'coordinateSystem' || row.kind === 'numberLine') return isPt(row.a) && isPt(row.b);
     if (row.kind === 'label') return isPt(row.at) && typeof row.text === 'string';
     return false;
   });
 }
 
-export default function MathDrawing({ data, backgroundUrl, disabled, onChange, onImage }: DrawingSurfaceProps) {
+export default function MathDrawing({ data, backgroundUrl, disabled, onChange, onImage, starter }: DrawingSurfaceProps) {
   const host = useRef<HTMLDivElement | null>(null);
   /** 拖动过程的实时线条画在这块覆盖层上（见 effect 里 `drawPreview` 的注释）。 */
   const overlay = useRef<HTMLCanvasElement | null>(null);
-  const boardRef = useRef<JXG.Board | null>(null);
   const runtime = useRef<RuntimeEntry[]>([]);
-  /** 多击工具已经点下的那些位置（三角形要 3 个、梯形要 4 个……）。 */
-  const pending = useRef<{ tool: MathTool; ats: Pt[]; marks: JXG.Point[] } | null>(null);
   /** 撤销栈：每一步之前的那份**坐标**（不含 jsxgraph 对象）。 */
   const history = useRef<MathEntry[][]>([]);
-  const [tool, setTool] = useState<MathTool>('point');
-  const [labelText, setLabelText] = useState('');
-  /**
-   * ★ 2026-10-07：角弧那个「度数」框里的字。
-   *
-   * 🔴 **与 `labelText` 分开**，不复用：共用一个的话，学生在「文字」里写了"甲"、
-   *   再切到角弧，度数框里会留着"甲"，而它会**被写到角上**（学生看到的是一个
-   *   跟他刚才输入的东西有关的怪字，而他以为那是度数）。
-   * ⚠️ 也**不要**在 `chooseTool` 里清它 —— 学生填了度数、切去别的工具看一眼再切回来，
-   *   清掉就是丢他的输入。
-   */
-  const [arcText, setArcText] = useState('');
+  const [tool, setTool] = useState<MathTool>('select');
+  const [labelDraft, setLabelDraft] = useState('');
+  const [labelEditor, setLabelEditor] = useState<{ at: Pt; x: number; y: number } | null>(null);
   const [canUndo, setCanUndo] = useState(false);
   /** ★ 2026-10-06：选中了第几条（`null` = 没选中）。「删除选中」按它动手。 */
   const [selected, setSelected] = useState<number | null>(null);
@@ -97,12 +94,8 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
   const toolRef = useRef(tool);
   toolRef.current = tool;
-  const labelTextRef = useRef(labelText);
-  labelTextRef.current = labelText;
-  const arcTextRef = useRef(arcText);
-  arcTextRef.current = arcText;
-  const disabledRef = useRef(disabled);
-  disabledRef.current = disabled;
+  const labelEditorRef = useRef(labelEditor);
+  labelEditorRef.current = labelEditor;
   const selectedRef = useRef<number | null>(selected);
   selectedRef.current = selected;
   const selectRef = useRef<((index: number | null) => void) | null>(null);
@@ -111,8 +104,9 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
   const undoRef = useRef<(() => void) | null>(null);
   const clearRef = useRef<(() => void) | null>(null);
   const deleteSelectedRef = useRef<(() => void) | null>(null);
-  /** 视图：放大 / 缩小 / 复位（替代库自带那条导航条）。 */
-  const viewRef = useRef<((action: 'in' | 'out' | 'reset') => void) | null>(null);
+  const commitLabelRef = useRef<((text: string) => void) | null>(null);
+  /** 视图：放大 / 缩小 / 适应画布（替代库自带那条导航条）。 */
+  const viewRef = useRef<((action: 'in' | 'out' | 'fit') => void) | null>(null);
   const scheduleRasterRef = useRef<() => void>(() => {});
   scheduleRasterRef.current = useDrawingRaster({
     capture: async () => {
@@ -130,16 +124,20 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
      *   而 `backgroundUrl` 是 `DrawingSurfaceProps` 的字段、四个画板共用 ⇒ **不许为了消歧改 props**。
      */
     const backgroundUrlProp = backgroundUrl;
+    const usesInfiniteDotGrid = typeof backgroundUrlProp === 'string'
+      && backgroundUrlProp.split(/[?#]/, 1)[0].endsWith('/worksheet/drawing-backgrounds/dot-grid.svg');
+    host.current.dataset.infiniteDotGrid = usesInfiniteDotGrid ? 'true' : 'false';
+    const starterData = starter?.tool === 'math' ? starter.data : null;
+    const hasSavedMathData = !!data && typeof data === 'object' && !Array.isArray(data)
+      && Array.isArray((data as Record<string, unknown>).elements);
+    if (host.current) host.current.dataset.toolCursor = 'select';
     const board = JXG.JSXGraph.initBoard(host.current, {
       /** ★ 2026-10-06：**明确用 canvas 渲染**（位图快照直接读这块 canvas；老 iPad 上 SVG 更慢）。 */
       renderer: 'canvas',
       boundingbox: [-10, 8, 10, -8],
       /**
-       * ★ 2026-10-06（教师）：「为什么背景里还有直角坐标系？」
-       * 🔴 因为**画板自带**的那套坐标系一直在画（`axis: true, grid: true`），
-       *    而参考线本来就该由**这一题的背景预设**决定（点阵/小方格/坐标纸/数轴，
-       *    教师在编辑器里选）—— 两套一起出现时，小学的画线段题上会凭空多出 x/y 轴。
-       * ⇒ 画板一律**不画**坐标系与网格；要坐标系的题让教师选「坐标纸」那张背景。
+       * JSXGraph 自带网格会连坐标轴一起带出来，因此继续关闭；默认点阵由容器无限重复铺设，
+       * 直角坐标系与数轴则由工具栏按需添加，三者职责不混在一起。
        */
       axis: false,
       grid: false,
@@ -164,23 +162,23 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
        *
        * 🔴 它**只有这一种长相**（库渲染的，改不了结构，只能整条换掉），而那四个平移箭头
        *    在触摸屏上尤其没用（学生本来就该直接拖）。⇒ 关掉它，改成我们自己工具条右侧的
-       *    「放大 / 缩小 / 复位」三颗（与整个应用的观感一致，也是 44px 命中区）。
+       *    「放大 / 缩小 / 适应画布」三颗（与整个应用的观感一致，也是 44px 命中区）。
        *    这**推翻了**我先前那句「有工具条就用它的」—— 那句话在**能用**的前提下成立，
        *    而这条导航条的实际观感被教师否掉了。
        */
       showNavigation: false,
       showScreenshot: false,
       /**
-       * 平移改为**双指**（`needTwoFingers`）：单指在画板上要么作图、要么拖控制点，
-       * 让单指同时还能平移画布会让「点一下」和「挪一下」分不清（老 iPad 上尤其明显）。
-       * 缩放仍然支持滚轮（桌面）与**捏合**（触屏）—— 那两个是库自己处理的。
+       * 选择档在空白处直接拖动画布；绘图档的拖动由下面捕获阶段的监听接管，不会误触平移。
+       * 鼠标不要求 Shift、触屏不要求双指，才符合“空白处抓住整张纸移动”的直觉。
        */
-      pan: { enabled: !disabled, needTwoFingers: true },
-      zoom: { wheel: !disabled },
+      pan: { enabled: !disabled, needShift: false, needTwoFingers: false },
+      // 默认 1.25 倍变化太猛；每格只变化 1.02 倍，并继续以指针位置为中心。
+      zoom: { wheel: !disabled, needShift: false, factorX: 1.02, factorY: 1.02 },
     });
-    boardRef.current = board;
     const pointAttrs = { size: 3, strokeColor: '#527198', fillColor: '#ffffff', fixed: disabled, name: '' };
-    const lineAttrs = { strokeColor: '#365b82', strokeWidth: 2, fixed: disabled };
+    const lineAttrs = { strokeColor: '#365b82', strokeWidth: 2, fixed: disabled, highlight: false };
+    const starterObjects = new Set<JXG.GeometryElement>();
 
     /**
      * ★ 2026-10-07（教师）：「线段两端的点只有当我选中这个线段的时候才会出现；
@@ -188,16 +186,24 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
      *
      * 🔴 两种工厂、**不是**一个带默认参数的工厂：它们的用途是两件事 ——
      *   · `mkHandle` 是图形的**端点**（学生只是画了条线，不该看起来像"标了两个点"）；
-     *   · `mkMark` 是**反馈**（多击工具点到第几下）与**作答本身**（独立的「点」）。
+     *   · `mkMark` 只用于兼容历史作答里的独立「点」（新工具栏已经不再提供“点”）。
      *   一个带默认值的工厂会让调用点写成 `mkPoint(at)` / `mkPoint(at, true)` ——
      *   而"哪个参数是什么意思"没人看得出来，加一个调用点就会选错。
      *
-     * ⚠️ 靠库的一个性质省掉一整套判断：`Board.getAllObjectsUnderMouse` 先判
-     *   `visPropCalc.visible`（我核过 jsxgraph 的产物）⇒ 不可见的点**也点不中、也拖不动**。
-     *   所以"未选中时藏端点"和"未选中时端点不可拖"是**同一件事**，不用各写一遍。
-     *   代价：想拖端点得先选中它 —— 而那正是这一版要的心智（先选、再改）。
+     * ⚠️ `visible: false` 不能用来“藏”端点：JSXGraph 会同时把它移出命中检测，结果是
+     *   线段和多边形的顶点都无法拖动。这里让点保持 visible，只把描边和填充设为透明；
+     *   点自己的 `precision` 继续提供鼠标 / 触控命中区，所以视觉上没有大圆，交互仍在。
+     *   选中图形后再恢复不透明度，露出小控制点，告诉学生哪些位置可以微调。
      */
-    const mkHandle = (at: Pt) => board.create('point', at, { ...pointAttrs, visible: false }) as JXG.Point;
+    const mkHandle = (at: Pt) => board.create('point', at, {
+      ...pointAttrs,
+      visible: true,
+      strokeOpacity: 0,
+      fillOpacity: 0,
+      highlightStrokeOpacity: 0,
+      highlightFillOpacity: 0,
+      precision: { mouse: 8, pen: 12, touch: 30 },
+    }) as JXG.Point;
     const mkMark = (at: Pt) => board.create('point', at, pointAttrs) as JXG.Point;
 
     /**
@@ -226,8 +232,58 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
         // 闭合（三角形/长方形/正方形/平行四边形/梯形）：把顶点做成**可拖的点** ⇒ 学生能微调。
         if (entry.closed) {
           const points = entry.points.map((point) => mkHandle(point));
-          const shape = board.create('polygon', points, { ...lineAttrs, borders: lineAttrs }) as JXG.GeometryElement;
-          return { entry, points, objects: [...points, shape] };
+          points.forEach((point, movedIndex) => {
+            point.on('drag', () => {
+              const candidate: Pt = [point.X(), point.Y()];
+              const current = points.map((item) => [item.X(), item.Y()] as Pt);
+              // 12px 是吸附视觉半径；换成用户坐标后，缩放前后力度保持一致。
+              const pixelsPerUnit = Number.isFinite(board.unitX) && board.unitX > 0 ? board.unitX : 48;
+              const snapped = snapPolygonVertex(current, movedIndex, candidate, 12 / pixelsPerUnit);
+              if (snapped[0] !== candidate[0] || snapped[1] !== candidate[1]) {
+                point.setPositionDirectly(JXG.COORDS_BY_USER, snapped);
+              }
+            });
+          });
+          // JSXGraph 运行时 Polygon 有公开的 `borders`，但当前随包类型漏掉了这个字段。
+          const shape = board.create('polygon', points, {
+            ...lineAttrs,
+            hasInnerPoints: true,
+            fillColor: 'none',
+            fillOpacity: 0,
+            highlightFillColor: 'none',
+            highlightFillOpacity: 0,
+            borders: { ...lineAttrs, highlightStrokeWidth: 2 },
+          }) as unknown as JXG.GeometryElement & { borders: JXG.GeometryElement[] };
+          const cornerObjects: JXG.GeometryElement[] = [];
+          points.forEach((vertex, vertexIndex) => {
+            const prev = points[(vertexIndex - 1 + points.length) % points.length];
+            const next = points[(vertexIndex + 1) % points.length];
+            const corner = () => rightAngleCornerOf(
+              [vertex.X(), vertex.Y()],
+              [prev.X(), prev.Y()],
+              [next.X(), next.Y()],
+            );
+            const markerPoints = [0, 1, 2].map((markerIndex) => board.create('point', [
+              () => corner()?.[markerIndex][0] ?? vertex.X(),
+              () => corner()?.[markerIndex][1] ?? vertex.Y(),
+            ], { visible: false, fixed: true, name: '' }) as JXG.Point);
+            const markerAttrs = {
+              ...lineAttrs,
+              fixed: true,
+              strokeColor: '#647b94',
+              strokeWidth: 1.4,
+              visible: () => corner() !== null,
+            };
+            const first = board.create('segment', [markerPoints[0], markerPoints[1]], markerAttrs) as JXG.GeometryElement;
+            const second = board.create('segment', [markerPoints[1], markerPoints[2]], markerAttrs) as JXG.GeometryElement;
+            cornerObjects.push(...markerPoints, first, second);
+          });
+          return {
+            entry,
+            points,
+            objects: [...points, shape, ...cornerObjects],
+            hitObjects: [...points, shape, ...shape.borders],
+          };
         }
         // 开放（自由线条）：直接按坐标画一条曲线（几十上百个点，不必建 JXG.Point）。
         const xs = entry.points.map(([x]) => x);
@@ -251,6 +307,82 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
           fontSize: 14, strokeColor: '#263b53', fixed: disabled,
         }) as JXG.GeometryElement;
         return { entry, points: [], objects: [text] };
+      }
+      if (entry.kind === 'coordinateSystem' || entry.kind === 'numberLine') {
+        /*
+         * 两个透明端点是整组坐标工具的尺寸控制柄。选中后沿用普通线段的规则露出小圆点；
+         * 轴、刻度与文字全部使用动态坐标，因此拖动控制柄时整组实时缩放，不必销毁重建。
+         */
+        const a = mkHandle(entry.a);
+        const b = mkHandle(entry.b);
+        if (entry.kind === 'numberLine') {
+          let aligning = false;
+          const keepHorizontal = (moved: JXG.Point, other: JXG.Point) => {
+            if (aligning) return;
+            aligning = true;
+            other.setPositionDirectly(JXG.COORDS_BY_USER, [other.X(), moved.Y()]);
+            aligning = false;
+          };
+          a.on('drag', () => keepHorizontal(a, b));
+          b.on('drag', () => keepHorizontal(b, a));
+        }
+        const minX = () => Math.min(a.X(), b.X());
+        const maxX = () => Math.max(a.X(), b.X());
+        const centerX = () => (a.X() + b.X()) / 2;
+        const centerY = () => (a.Y() + b.Y()) / 2;
+        const minY = () => Math.min(a.Y(), b.Y());
+        const maxY = () => Math.max(a.Y(), b.Y());
+        const attrs = { ...lineAttrs, fixed: true, highlight: false };
+        const objects: JXG.GeometryElement[] = [a, b];
+        const hitObjects: JXG.GeometryElement[] = [a, b];
+        const supportPoint = (x: () => number, y: () => number) => {
+          const point = board.create('point', [x, y], { visible: false, fixed: true, name: '' }) as JXG.Point;
+          objects.push(point);
+          return point;
+        };
+        const segment = (from: JXG.Point, to: JXG.Point, extra: Record<string, unknown> = {}) => {
+          const line = board.create('segment', [from, to], { ...attrs, ...extra }) as JXG.GeometryElement;
+          objects.push(line);
+          hitObjects.push(line);
+          return line;
+        };
+        const left = supportPoint(minX, centerY);
+        const right = supportPoint(maxX, centerY);
+        segment(left, right, {
+          ...attrs, lastArrow: true,
+        });
+        const tickRatios = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+        for (const ratio of tickRatios) {
+          const x = () => minX() + (maxX() - minX()) * ratio;
+          segment(
+            supportPoint(x, () => centerY() - 0.16),
+            supportPoint(x, () => centerY() + 0.16),
+            { strokeWidth: 1.35 },
+          );
+        }
+        if (entry.kind === 'coordinateSystem') {
+          segment(supportPoint(centerX, minY), supportPoint(centerX, maxY), { lastArrow: true });
+          for (const ratio of tickRatios) {
+            const y = () => minY() + (maxY() - minY()) * ratio;
+            segment(
+              supportPoint(() => centerX() - 0.16, y),
+              supportPoint(() => centerX() + 0.16, y),
+              { strokeWidth: 1.35 },
+            );
+          }
+          objects.push(board.create('text', [() => maxX() - 0.35, () => centerY() - 0.45, 'x'], {
+            fontSize: 13, strokeColor: '#365b82', fixed: true,
+          }) as JXG.GeometryElement);
+          objects.push(board.create('text', [() => centerX() + 0.25, () => maxY() - 0.35, 'y'], {
+            fontSize: 13, strokeColor: '#365b82', fixed: true,
+          }) as JXG.GeometryElement);
+        }
+        const zero = board.create('text', [centerX, () => centerY() - 0.42, '0'], {
+          fontSize: 12, strokeColor: '#365b82', fixed: true, anchorX: 'middle', anchorY: 'top',
+        }) as JXG.GeometryElement;
+        objects.push(zero);
+        hitObjects.push(zero);
+        return { entry, points: [a, b], objects, hitObjects };
       }
       /*
        * ★ 2026-10-07：四个几何记号。**几何全部来自 `worksheet-math-shapes.ts`** ——
@@ -321,16 +453,27 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
     };
 
     const clearAll = () => {
-      runtime.current.forEach((item) => item.objects.forEach((object) => board.removeObject(object)));
-      runtime.current = [];
-      if (pending.current) {
-        pending.current.marks.forEach((mark) => board.removeObject(mark));
-        pending.current = null;
+      /*
+       * JSXGraph 明确要求批量删除按创建逆序进行。多边形还带自动 border 与动态直角标记，
+       * 正序先删顶点会递归删掉依赖对象，后面再删同一批对象时容易留下未刷新的 Canvas 帧。
+       */
+      for (let itemIndex = runtime.current.length - 1; itemIndex >= 0; itemIndex -= 1) {
+        const objects = runtime.current[itemIndex].objects;
+        for (let objectIndex = objects.length - 1; objectIndex >= 0; objectIndex -= 1) {
+          board.removeObject(objects[objectIndex]);
+        }
       }
+      runtime.current = [];
     };
     const renderAll = (entries: MathEntry[]) => {
-      clearAll();
-      runtime.current = entries.map(renderEntry);
+      // 切工具/取消选中会走这里；无论图形多少，都只在全部重建完成后刷新一次画面。
+      board.suspendUpdate();
+      try {
+        clearAll();
+        runtime.current = entries.map(renderEntry);
+      } finally {
+        board.unsuspendUpdate(); // 内部会 fullUpdate，不能等下一次画布点击才补绘
+      }
     };
 
     /** 画板上现在真正是什么 ⇒ 存回作答里的那串坐标（拖过的点也按拖动后的位置算）。 */
@@ -385,6 +528,13 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
         const el = item.objects[0] as unknown as { X: () => number; Y: () => number };
         return { kind: 'label', at: [round3(el.X()), round3(el.Y())], text: entry.text };
       }
+      if (entry.kind === 'coordinateSystem' || entry.kind === 'numberLine') {
+        return {
+          kind: entry.kind,
+          a: [round3(item.points[0].X()), round3(item.points[0].Y())],
+          b: [round3(item.points[1].X()), round3(item.points[1].Y())],
+        };
+      }
       return entry;
     });
 
@@ -417,15 +567,21 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
       renderAll(snapshot());
       if (index === null) return;
       const item = runtime.current[index];
-      item?.objects.forEach((object) => {
+      (item?.hitObjects ?? item?.objects ?? []).forEach((object) => {
         const shape = object as unknown as { setAttribute?: (attrs: Record<string, unknown>) => void };
         shape.setAttribute?.({ strokeColor: '#b45309', strokeWidth: 3, highlight: false });
       });
       /*
-       * ★ 2026-10-07：端点只在这一刻露出来，而且**放大** —— 它现在是唯一的抓手，
-       *   而 `size: 3` 是"顺带可见"时代的尺寸，在 iPad 上抓不住。
+       * 只露出小控制点；好不好抓由上面的透明命中区 / precision 保证，不再靠把圆画大。
        */
-      item?.points.forEach((point) => point.setAttribute({ visible: true, size: 6 }));
+      item?.points.forEach((point) => point.setAttribute({
+        visible: true,
+        size: 3,
+        strokeOpacity: 1,
+        fillOpacity: 1,
+        highlightStrokeOpacity: 1,
+        highlightFillOpacity: 1,
+      }));
     };
     /**
      * 一条记录在屏幕上的代表点（浮动删除按钮的锚点）。
@@ -466,11 +622,20 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
     const addEntry = (entry: MathEntry) => {
       runtime.current.push(renderEntry(entry));
     };
+    commitLabelRef.current = (raw: string) => {
+      const editor = labelEditorRef.current;
+      // 先关编辑器，避免 Enter 引发的 blur 再提交一次。
+      labelEditorRef.current = null;
+      setLabelEditor(null);
+      setLabelDraft('');
+      const text = raw.trim().slice(0, 12);
+      if (!editor || !text) return;
+      pushHistory();
+      addEntry({ kind: 'label', at: editor.at, text });
+      publish();
+    };
 
-    /**
-     * 点一下画板：按**当前工具**决定这是第几下、以及什么时候成形。
-     * 每个工具要几下，全在 `MATH_TOOLS`（纯数据）里；这里只做分派。
-     */
+    /** 画板按下：选择图形；文字和拖动画图由下面的 DOM 捕获监听接管。 */
     const handleDown = (event: PointerEvent) => {
       if (disabled) return;
       /**
@@ -478,106 +643,45 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
        * 那句是给绘图工具用的（点既有图形时只让内核拖动它），选择档恰恰要处理「点到了图形」。
        */
       if (toolRef.current === 'select') {
-        const hits = studentHitsUnderMouse(event);
-        // `getAllObjectsUnderMouse` 的类型是 `unknown[]`（库的历史包袱）⇒ 这里只做一次窄化。
-        const target = hits[0] as JXG.GeometryElement | undefined;
-        const index = target === undefined ? -1 : runtime.current.findIndex((item) => item.objects.includes(target));
+        const hit = studentHitAt(event);
+        const index = hit?.index ?? -1;
+        /*
+         * 已经选中的图形不能再次 applySelection：它会 renderAll、把指针刚按住的控制点
+         * 换成一个新对象，JSXGraph 随即失去本次拖动目标。保留原对象后，直线定义点和
+         * 三角形顶点都能从这次 pointerdown 直接开始拖。
+         */
+        if (index >= 0 && index === selectedRef.current) return;
         selectRef.current?.(index >= 0 ? index : null);
         return;
       }
-      // 拖动既有控制点时 JSXGraph 同样会发 down；此时只让内核处理拖动，不再新建图形。
+      // 其它现有工具都由拖动完成；按在既有控制点上时只让 JSXGraph 负责调整。
       if (studentHitsUnderMouse(event).length > 0) return;
-      const coords = board.getUsrCoordsOfMouse(event);
-      const at: Pt = [round3(coords[0]), round3(coords[1])];
-      const currentTool = toolRef.current;
-      const spec = MATH_TOOLS.find((item) => item.value === currentTool);
-      if (!spec) return;
-
-      if (currentTool === 'free') return;                       // 自由线条走拖动，不走点击
-      /*
-       * ⊘ ★ 2026-10-07：这里原来是「平行线 / 垂线」两支 —— 参照线只在自己画的线里找
-       *   （下面那句 `runtime.current`），而**底图上的边不是画板对象** ⇒ 学生站在老师给的
-       *   几何图前面点它们，什么都不会发生，屏幕上也不解释。两个工具已砍掉。
-       * ⚠️ 真要加回来，先解决"参照得到底图上的边"这件事，别只把这段贴回来。
-       */
-      if (currentTool === 'label') {
-        const text = labelTextRef.current.trim();
-        if (!text) return;                                      // 空文字不落一个看不见的标签
-        pushHistory();
-        addEntry({ kind: 'label', at, text: text.slice(0, 12) });
-        publish();
-        return;
-      }
-      if (spec.clicks <= 1) {
-        pushHistory();
-        addEntry({ kind: 'point', p: at });
-        publish();
-        return;
-      }
-
-      // 多击工具：记下已经点过的位置，凑够次数再成形。
-      if (!pending.current || pending.current.tool !== currentTool) {
-        if (pending.current) pending.current.marks.forEach((mark) => board.removeObject(mark));
-        pending.current = { tool: currentTool, ats: [], marks: [] };
-      }
-      pending.current.ats.push(at);
-      pending.current.marks.push(mkMark(at));
-      if (pending.current.ats.length < spec.clicks) return;
-
-      const ats = pending.current.ats;
-      const marks = pending.current.marks;
-      pending.current = null;
-      marks.forEach((mark) => board.removeObject(mark));
-      const formed = buildEntry(currentTool, ats);
-      if (!formed) return;
-      pushHistory();
-      formed.forEach(addEntry);
-      publish();
     };
 
-    /** 手势点完 ⇒ 该长出什么形状（几何全在 `@/lib/worksheet-math-shapes.ts`，这里只拼数据）。 */
-    const buildEntry = (currentTool: MathTool, ats: Pt[]): MathEntry[] | null => {
+    /** 一次拖动结束后生成正式图形。 */
+    const buildEntry = (currentTool: MathTool, start: Pt, end: Pt): MathEntry | null => {
+      const needsArea = currentTool === 'triangle' || currentTool === 'rectangle'
+        || currentTool === 'parallelogram' || currentTool === 'trapezoid'
+        || currentTool === 'coordinateSystem';
+      if (needsArea && (Math.abs(end[0] - start[0]) < 0.3 || Math.abs(end[1] - start[1]) < 0.3)) return null;
+      if (currentTool === 'numberLine' && Math.abs(end[0] - start[0]) < 0.3) return null;
       switch (currentTool) {
         case 'segment': case 'arrow':
-          return [{ kind: currentTool, a: ats[0], b: ats[1] }];
+          return { kind: currentTool, a: start, b: end };
+        case 'coordinateSystem':
+          return { kind: 'coordinateSystem', a: start, b: end };
+        case 'numberLine':
+          return { kind: 'numberLine', a: start, b: [end[0], start[1]] };
         case 'circle':
-          return [{ kind: 'circle', center: ats[0], edge: ats[1] }];
+          return { kind: 'circle', center: start, edge: end };
         case 'triangle':
-          return [{ kind: 'polyline', closed: true, points: ats.slice(0, 3) }];
+          return { kind: 'polyline', closed: true, points: triangleOf(start, end) };
         case 'rectangle':
-          return [{ kind: 'polyline', closed: true, points: rectangleOf(ats[0], ats[1]) }];
+          return { kind: 'polyline', closed: true, points: rectangleOf(start, end) };
         case 'parallelogram':
-          return [{ kind: 'polyline', closed: true, points: parallelogramOf(ats[0], ats[1], ats[2]) }];
+          return { kind: 'polyline', closed: true, points: parallelogramOf(start, end) };
         case 'trapezoid':
-          return [{ kind: 'polyline', closed: true, points: trapezoidOf(ats) }];
-        /*
-         * ⊘ ★ 2026-10-07：`case 'angle'`（画两条臂 + 一段弧）随「角」这个工具一起删了。
-         *   ⚠️ 但 `kind: 'angle'` 这个**形状**必须一直读得回来、画得出来 ——
-         *   老作答里还有（见 `renderEntry` 那一支与 `readEntries` 的校验）。
-         *   **删的是入口，不是历史。**
-         */
-        /*
-         * ★ 2026-10-07：四个记号。三个点的顺序统一是 `[a, vertex, b]`（**顶点在第二下**），
-         *   与提示语「一条边上、顶点、另一条边上」逐字对应。
-         * 🔴 先问一句几何函数"这样点算得出来吗"再落数据：算不出来的（两点重合、
-         *   两点几乎同向）**不落** —— 落了会得到一条看不见的记号，而学生在等它出现。
-         *   拖动类那条 `Math.hypot(...) < 0.3` 是同一个道理。
-         * ⚠️ 两个三击记号若是**两种顺序**，学生一定会点错，而表现是
-         *   "记号长到了错的地方"，不报错。
-         */
-        case 'equalMark':
-          return equalMarkOf(ats[0], ats[1]) ? [{ kind: 'equalMark', a: ats[0], b: ats[1] }] : null;
-        case 'parallelMark':
-          return parallelMarkOf(ats[0], ats[1]) ? [{ kind: 'parallelMark', a: ats[0], b: ats[1] }] : null;
-        case 'rightAngle':
-          return rightAngleOf(ats[1], ats[0], ats[2])
-            ? [{ kind: 'rightAngle', a: ats[0], vertex: ats[1], b: ats[2] }] : null;
-        case 'angleArc': {
-          const text = arcTextRef.current.trim();
-          if (!arcPathOf(ats[1], ats[0], ats[2])) return null;
-          return [{ kind: 'angleArc', a: ats[0], vertex: ats[1], b: ats[2],
-            ...(text ? { text: text.slice(0, 8) } : {}) }];
-        }
+          return { kind: 'polyline', closed: true, points: trapezoidOf(start, end) };
         default:
           return null;
       }
@@ -586,13 +690,11 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
     /**
      * ★ 2026-10-06（教师两条批注合成一条路）：
      *   ① 「能不能在画图时使用拖拽的方式，不要用不同位置点鼠标的方式」；
-     *   ② 「自由线条拖拽过程中线条要可见」。
+     *   ② 「铅笔拖拽过程中线条要可见」。
      *
      * ⇒ 统一成**拖动绘制**：按下 → 过程画在覆盖层上（必然可见）→ 松手一次性成正式图形。
-     *   · 两类工具走这条路：`free`（自由线条）与 `drag: true` 的两点图形
-     *     （线段/直线/射线/圆/长方形/正方形）；
-     *   · 三点以上的图形（三角形、梯形、角、平分线、中点、垂直平分线）**只能继续多点** ——
-     *     几何上两个位置定不下来，这不是交互偏好问题；
+     *   · `free` 是铅笔轨迹；工具表里 `drag: true` 的图形都由起点与终点确定包围框；
+     *   · 三角形、平行四边形、梯形也统一拖动生成，生成后仍可拖各顶点微调；
      *   · 走捕获阶段并 `stopPropagation`：不然 JSXGraph 会把这次按下也当成「在画板上点了一下」；
      *   · 落点在任何既有图形上时**不接管**（那多半是要拖那个控制点）。
      */
@@ -623,6 +725,14 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
     };
 
     let drag: { tool: MathTool; start: Pt; user: Pt[]; screen: Pt[] } | null = null;
+    let polygonMove: { index: number; start: Pt; origins: Pt[]; moved: boolean } | null = null;
+    let polygonRotation: {
+      index: number;
+      center: Pt;
+      startPointer: Pt;
+      origins: Pt[];
+      moved: boolean;
+    } | null = null;
 
     /**
      * 拖动过程中的实时预览：**纯屏幕坐标**，直接画在覆盖层上。
@@ -643,6 +753,25 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
         overlayCtx.arc(screenStart[0], screenStart[1], Math.hypot(screenNow[0] - screenStart[0], screenNow[1] - screenStart[1]), 0, Math.PI * 2);
       } else if (currentTool === 'rectangle') {
         overlayCtx.rect(screenStart[0], screenStart[1], screenNow[0] - screenStart[0], screenNow[1] - screenStart[1]);
+      } else if (currentTool === 'coordinateSystem') {
+        const centerX = (screenStart[0] + screenNow[0]) / 2;
+        const centerY = (screenStart[1] + screenNow[1]) / 2;
+        overlayCtx.moveTo(screenStart[0], centerY);
+        overlayCtx.lineTo(screenNow[0], centerY);
+        overlayCtx.moveTo(centerX, screenStart[1]);
+        overlayCtx.lineTo(centerX, screenNow[1]);
+      } else if (currentTool === 'triangle' || currentTool === 'parallelogram' || currentTool === 'trapezoid') {
+        // 几何函数按“用户坐标 y 向上”计算；预览层 y 向下，所以进出各翻转一次。
+        const a: Pt = [screenStart[0], -screenStart[1]];
+        const b: Pt = [screenNow[0], -screenNow[1]];
+        const points = (currentTool === 'triangle' ? triangleOf(a, b)
+          : currentTool === 'parallelogram' ? parallelogramOf(a, b) : trapezoidOf(a, b))
+          .map(([x, y]) => [x, -y] as Pt);
+        points.forEach(([x, y], index) => { if (index === 0) overlayCtx.moveTo(x, y); else overlayCtx.lineTo(x, y); });
+        overlayCtx.closePath();
+      } else if (currentTool === 'numberLine') {
+        overlayCtx.moveTo(screenStart[0], screenStart[1]);
+        overlayCtx.lineTo(screenNow[0], screenStart[1]);
       } else {
         overlayCtx.moveTo(screenStart[0], screenStart[1]);
         overlayCtx.lineTo(screenNow[0], screenNow[1]);
@@ -653,6 +782,21 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
     const onDragDown = (event: PointerEvent) => {
       if (disabled || event.button !== 0) return;
       const currentTool = toolRef.current;
+      if (currentTool === 'label') {
+        /*
+         * 文字落点必须在捕获阶段完整接管。之前它走 `board.on('down')`，同一次按下已经先让
+         * JSXGraph 启动了“拖图形/平移画布”；React 随后把输入框自动聚焦，打断那次手势，
+         * 就会留下图形被拖出视区、看起来像“点击后消失”的状态。
+         */
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        const coords = board.getUsrCoordsOfMouse(event);
+        const at: Pt = [round3(coords[0]), round3(coords[1])];
+        const rect = hostEl.getBoundingClientRect();
+        setLabelDraft('');
+        setLabelEditor({ at, x: event.clientX - rect.left, y: event.clientY - rect.top });
+        return;
+      }
       const isDragTool = currentTool === 'free'
         || (MATH_TOOLS.find((item) => item.value === currentTool)?.drag ?? false);
       if (!isDragTool) return;
@@ -665,6 +809,161 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
       const local = toLocal(event);
       drag = { tool: currentTool, start: at, user: [at], screen: [local] };
       drawPreview(currentTool, local, local);
+    };
+    /**
+     * 选择档拖闭合图形的内部/边线 ⇒ 整体平移；拖顶点仍交给 JSXGraph，只改那一个顶点。
+     * 首次按住尚未选中的多边形也能直接开始拖，不必先点一下、再拖第二次。
+     */
+    const onPolygonMoveDown = (event: PointerEvent) => {
+      if (disabled || event.button !== 0 || toolRef.current !== 'select') return;
+      const hit = studentHitAt(event);
+      if (!hit) return;
+      const item = runtime.current[hit.index];
+      if (item.entry.kind !== 'polyline' || !item.entry.closed
+        || item.points.some((point) => point.id === hit.target.id)) return;
+      event.stopImmediatePropagation();
+      event.preventDefault();
+      hostEl.focus({ preventScroll: true });
+      if (selectedRef.current !== hit.index) selectRef.current?.(hit.index);
+      const movingItem = runtime.current[hit.index];
+      const coords = board.getUsrCoordsOfMouse(event);
+      polygonMove = {
+        index: hit.index,
+        start: [coords[0], coords[1]],
+        origins: movingItem.points.map((point) => [point.X(), point.Y()] as Pt),
+        moved: false,
+      };
+      hostEl.dataset.panCursor = 'grabbing';
+    };
+    const onPolygonMove = (event: PointerEvent) => {
+      if (!polygonMove) return;
+      event.preventDefault();
+      const coords = board.getUsrCoordsOfMouse(event);
+      const dx = coords[0] - polygonMove.start[0];
+      const dy = coords[1] - polygonMove.start[1];
+      if (!polygonMove.moved && Math.hypot(dx, dy) > 0.01) {
+        pushHistory();
+        polygonMove.moved = true;
+      }
+      if (!polygonMove.moved) return;
+      const movingItem = runtime.current[polygonMove.index];
+      movingItem.points.forEach((point, index) => {
+        const origin = polygonMove?.origins[index];
+        if (origin) point.setPositionDirectly(JXG.COORDS_BY_USER, [origin[0] + dx, origin[1] + dy]);
+      });
+      board.update();
+    };
+    const onPolygonMoveUp = () => {
+      if (!polygonMove) return;
+      const moved = polygonMove.moved;
+      polygonMove = null;
+      if (moved) publish();
+    };
+    /**
+     * 选中的闭合多边形，每个顶点外侧有一圈 12–28px 的旋转命中区。
+     * 命中区不画出来：控制点保持小巧，但指针靠近外圈时会明确变成旋转状态。
+     */
+    const rotationHit = (event: PointerEvent): { index: number; center: Pt; origins: Pt[] } | null => {
+      const index = selectedRef.current;
+      if (index === null) return null;
+      const item = runtime.current[index];
+      if (item?.entry.kind !== 'polyline' || !item.entry.closed || item.points.length < 3) return null;
+      const local = toLocal(event);
+      const origins = item.points.map((point) => [point.X(), point.Y()] as Pt);
+      const closeToOuterRing = origins.some(([x, y]) => {
+        const coords = new JXG.Coords(JXG.COORDS_BY_USER, [x, y], board);
+        const distance = Math.hypot(local[0] - coords.scrCoords[1], local[1] - coords.scrCoords[2]);
+        return distance >= 12 && distance <= 28;
+      });
+      if (!closeToOuterRing) return null;
+      const center = origins.reduce(([sumX, sumY], [x, y]) => [
+        sumX + x / origins.length,
+        sumY + y / origins.length,
+      ] as Pt, [0, 0] as Pt);
+      return { index, center, origins };
+    };
+    const onRotationDown = (event: PointerEvent) => {
+      if (disabled || event.button !== 0 || toolRef.current !== 'select') return;
+      const hit = rotationHit(event);
+      if (!hit) return;
+      event.stopImmediatePropagation();
+      event.preventDefault();
+      hostEl.focus({ preventScroll: true });
+      const coords = board.getUsrCoordsOfMouse(event);
+      polygonRotation = {
+        ...hit,
+        startPointer: [coords[0], coords[1]],
+        moved: false,
+      };
+      hostEl.dataset.panCursor = 'rotating';
+    };
+    const onRotationMove = (event: PointerEvent) => {
+      if (!polygonRotation) return;
+      event.preventDefault();
+      const coords = board.getUsrCoordsOfMouse(event);
+      const currentPointer: Pt = [coords[0], coords[1]];
+      const rotated = rotatePolygonPoints(
+        polygonRotation.origins,
+        polygonRotation.center,
+        polygonRotation.startPointer,
+        currentPointer,
+      );
+      const travel = Math.hypot(
+        currentPointer[0] - polygonRotation.startPointer[0],
+        currentPointer[1] - polygonRotation.startPointer[1],
+      );
+      if (!polygonRotation.moved && travel > 0.01) {
+        pushHistory();
+        polygonRotation.moved = true;
+      }
+      if (!polygonRotation.moved) return;
+      const movingItem = runtime.current[polygonRotation.index];
+      movingItem.points.forEach((point, pointIndex) => {
+        const position = rotated[pointIndex];
+        if (position) point.setPositionDirectly(JXG.COORDS_BY_USER, position);
+      });
+      board.update();
+    };
+    const onRotationUp = () => {
+      if (!polygonRotation) return;
+      const moved = polygonRotation.moved;
+      polygonRotation = null;
+      hostEl.dataset.panCursor = 'grab';
+      if (moved) publish();
+    };
+    const syncPanCursor = (event: PointerEvent, pressed = event.buttons !== 0) => {
+      if (disabled || toolRef.current !== 'select') {
+        delete hostEl.dataset.panCursor;
+        return;
+      }
+      if (rotationHit(event)) {
+        hostEl.dataset.panCursor = polygonRotation ? 'rotating' : 'rotate';
+        return;
+      }
+      const hit = studentHitAt(event);
+      if (hit) {
+        const item = runtime.current[hit.index];
+        hostEl.dataset.panCursor = item?.points.some((point) => point.id === hit.target.id) ? 'vertex' : 'move';
+        return;
+      }
+      hostEl.dataset.panCursor = pressed ? 'grabbing' : 'grab';
+    };
+    const onCursorDown = (event: PointerEvent) => {
+      hostEl.focus({ preventScroll: true });
+      syncPanCursor(event, true);
+    };
+    const onCursorMove = (event: PointerEvent) => {
+      if (!drag) syncPanCursor(event);
+    };
+    const onCursorUp = () => {
+      if (toolRef.current === 'select' && !disabled) hostEl.dataset.panCursor = 'grab';
+      else delete hostEl.dataset.panCursor;
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (disabled || (event.key !== 'Delete' && event.key !== 'Backspace')) return;
+      if (labelEditorRef.current || selectedRef.current === null) return;
+      event.preventDefault();
+      deleteSelectedRef.current?.();
     };
     const onDragMove = (event: PointerEvent) => {
       if (!drag) return;
@@ -693,18 +992,31 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
         publish();
         return;
       }
-      // 拖得太短 ⇒ 不成形（避免一个零长度的线段/半径 0 的圆）。
+      // 拖得太短 ⇒ 不成形（避免两个定义点重合或半径为 0）。
       if (Math.hypot(end[0] - start[0], end[1] - start[1]) < 0.3) return;
-      const formed = buildEntry(currentTool, [start, end]);
+      const formed = buildEntry(currentTool, start, end);
       if (!formed) return;
       pushHistory();
-      formed.forEach(addEntry);
+      addEntry(formed);
       publish();
     };
     hostEl.addEventListener('pointerdown', onDragDown, { capture: true });
     hostEl.addEventListener('pointermove', onDragMove, { capture: true });
+    hostEl.addEventListener('pointerdown', onRotationDown, { capture: true });
+    hostEl.addEventListener('pointerdown', onPolygonMoveDown, { capture: true });
+    hostEl.addEventListener('pointerdown', onCursorDown, { capture: true });
+    hostEl.addEventListener('pointermove', onCursorMove, { capture: true });
+    hostEl.addEventListener('keydown', onKeyDown);
     window.addEventListener('pointerup', onDragUp);
     window.addEventListener('pointercancel', onDragUp);
+    window.addEventListener('pointermove', onPolygonMove);
+    window.addEventListener('pointerup', onPolygonMoveUp);
+    window.addEventListener('pointercancel', onPolygonMoveUp);
+    window.addEventListener('pointermove', onRotationMove);
+    window.addEventListener('pointerup', onRotationUp);
+    window.addEventListener('pointercancel', onRotationUp);
+    window.addEventListener('pointerup', onCursorUp);
+    window.addEventListener('pointercancel', onCursorUp);
 
     /*
      * ★ 2026-10-07（教师）：教师上传的几何题原图当**底图**。
@@ -742,9 +1054,18 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
      *   这条过滤照样成立（与「思维导图那条工具条用库自己的 id 并对拍库产物」同一个纪律）。
      */
     const studentHitsUnderMouse = (event: PointerEvent) => board.getAllObjectsUnderMouse(event)
-      .filter((object) => object !== backgroundObject);
+      .filter((object) => object !== backgroundObject && !starterObjects.has(object as JXG.GeometryElement));
+    const studentHitAt = (event: PointerEvent): { index: number; target: JXG.GeometryElement } | null => {
+      for (const object of studentHitsUnderMouse(event)) {
+        const target = object as JXG.GeometryElement;
+        const index = runtime.current.findIndex((item) => (item.hitObjects ?? item.objects).includes(target));
+        if (index >= 0) return { index, target };
+      }
+      return null;
+    };
 
-    if (backgroundUrlProp) {
+    // 默认点阵由画布容器重复铺设，始终覆盖可见区域；只有教师上传的图片才创建有限画板对象。
+    if (backgroundUrlProp && !usesInfiniteDotGrid) {
       void (async () => {
         try {
           const response = await fetch(backgroundUrlProp);
@@ -771,17 +1092,52 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
       })();
     }
 
-    renderAll(readEntries(data));
+    /*
+     * 数学底图与学生作答是两层：教师画出的结构图只负责显示，永远不进 runtime、快照、
+     * 选中命中或撤销栈。教师端制作底图时没有 starter prop，仍以普通 data 方式完整可编辑。
+     */
+    readEntries(starterData).map(renderEntry).forEach((item) => {
+      [...new Set([...(item.hitObjects ?? []), ...item.objects])].forEach((object) => {
+        starterObjects.add(object);
+        const shape = object as unknown as { setAttribute?: (attrs: Record<string, unknown>) => void };
+        shape.setAttribute?.({ fixed: true, highlight: false });
+      });
+      item.points.forEach((point) => point.setAttribute({
+        fixed: true,
+        strokeOpacity: 0,
+        fillOpacity: 0,
+        highlightStrokeOpacity: 0,
+        highlightFillOpacity: 0,
+      }));
+    });
+    // `{elements: []}` 是学生明确清空后的有效作答；数学底图始终留在独立锁定层。
+    renderAll(hasSavedMathData ? readEntries(data) : []);
     board.on('down', handleDown);
-    board.on('up', () => { if (!drag) publish(); });
+    board.on('up', () => { if (!drag && !polygonMove && !polygonRotation) publish(); });
 
     // 撤销/清空要给外面的按钮用（工具条在 effect 之外）。
     viewRef.current = (action) => {
       if (action === 'in') board.zoomIn();
       else if (action === 'out') board.zoomOut();
-      // 「复位」= 回到**初始那框视野**（也把学生平移过的偏移一起收回来）。
-      // ⚠️ 用 `setBoundingBox` 而不是 `zoom100()`：后者只复位缩放，不管平移。
-      else board.setBoundingBox([-10, 8, 10, -8], true);
+      else {
+        const entries = [...readEntries(starterData), ...snapshot()];
+        const points: Pt[] = [];
+        entries.forEach((entry) => {
+          if (entry.kind === 'point') points.push(entry.p);
+          else if (entry.kind === 'circle') {
+            const radius = Math.hypot(entry.edge[0] - entry.center[0], entry.edge[1] - entry.center[1]);
+            points.push(
+              [entry.center[0] - radius, entry.center[1] - radius],
+              [entry.center[0] + radius, entry.center[1] + radius],
+            );
+          } else if (entry.kind === 'polyline') points.push(...entry.points);
+          else if (entry.kind === 'angle' || entry.kind === 'angleArc') points.push(entry.a, entry.vertex, entry.b);
+          else if (entry.kind === 'label') points.push(entry.at);
+          else points.push(entry.a, entry.b);
+        });
+        const rect = hostEl.getBoundingClientRect();
+        board.setBoundingBox(fitMathBoundingBox(points, rect.width, rect.height), true);
+      }
     };
     deleteSelectedRef.current = () => {
       const index = selectedRef.current;
@@ -811,8 +1167,21 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
     return () => {
       hostEl.removeEventListener('pointerdown', onDragDown, { capture: true });
       hostEl.removeEventListener('pointermove', onDragMove, { capture: true });
+      hostEl.removeEventListener('pointerdown', onRotationDown, { capture: true });
+      hostEl.removeEventListener('pointerdown', onPolygonMoveDown, { capture: true });
+      hostEl.removeEventListener('pointerdown', onCursorDown, { capture: true });
+      hostEl.removeEventListener('pointermove', onCursorMove, { capture: true });
+      hostEl.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('pointerup', onDragUp);
       window.removeEventListener('pointercancel', onDragUp);
+      window.removeEventListener('pointermove', onPolygonMove);
+      window.removeEventListener('pointerup', onPolygonMoveUp);
+      window.removeEventListener('pointercancel', onPolygonMoveUp);
+      window.removeEventListener('pointermove', onRotationMove);
+      window.removeEventListener('pointerup', onRotationUp);
+      window.removeEventListener('pointercancel', onRotationUp);
+      window.removeEventListener('pointerup', onCursorUp);
+      window.removeEventListener('pointercancel', onCursorUp);
       /*
        * ★ 2026-10-07：底图那条 blob URL 必须回收 —— 不回收就是"每开一次题漏一张图"，
        *   而它漏的是**内存**（学生在同一节课里翻几十道题就会显出来）。
@@ -824,12 +1193,11 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
       undoRef.current = null;
       clearRef.current = null;
       deleteSelectedRef.current = null;
+      commitLabelRef.current = null;
       selectRef.current = null;
       viewRef.current = null;
       JXG.JSXGraph.freeBoard(board);
-      boardRef.current = null;
       runtime.current = [];
-      pending.current = null;
       history.current = [];
     };
   // 第三方画板只挂载一次，工具通过 ref 读取，避免切工具时销毁学生已画内容。
@@ -837,12 +1205,15 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
   }, []);
 
   const chooseTool = (next: MathTool) => {
-    const board = boardRef.current;
-    // 换工具时把「点了一半」的那些标记清掉（否则画板上会留一串没用的点）。
-    if (board && pending.current) pending.current.marks.forEach((mark) => board.removeObject(mark));
-    pending.current = null;
+    labelEditorRef.current = null;
+    setLabelEditor(null);
+    setLabelDraft('');
+    // 手型只属于选择档的空白区域；切到绘图工具后不能残留上一帧的 grab 指针。
+    if (next !== 'select') host.current?.removeAttribute('data-pan-cursor');
+    if (host.current) host.current.dataset.toolCursor = next;
     // 换工具时取消选中（否则「删除选中」会对着一个已经看不见高亮的图形动手）。
-    selectRef.current?.(null);
+    // 没有选中对象时不做无意义的全量重建；图形越多，这一点越重要。
+    if (selectedRef.current !== null) selectRef.current?.(null);
     setTool(next);
   };
 
@@ -852,7 +1223,7 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
         {/*
           ★ 2026-10-06（教师）：「其它工具要在文字前加图标，整个工具栏 UI 重新设计一下，归类要科学。」
           ⇒ 按 `MATH_TOOL_GROUPS` 分成 基础 / 多边形 / 角与线 / 其他 四组，组间一条细分割线，
-            每个按钮 = **图标 + 文字**（图标取自 `MATH_TOOL_ICONS`，14 个工具一个不少，有用例点名）。
+            每个按钮只显示图标（名称通过延迟悬停提示与 aria-label 提供）。
           ⚠️ 分组是**数据**（`group` 字段），不是写死在这里的几段 JSX —— 加一个工具时只需要在
             工具表里给它一个 `group`，工具栏自己会归位。
         */}
@@ -863,73 +1234,74 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
             <span className={styles.drawingToolbarGroup} key={group.value}>
               <span className={styles.drawingToolbarGroupLabel}>{group.label}</span>
               {items.map((item) => (
-                <button className={styles.drawingToolbarButton} key={item.value} type="button" aria-pressed={tool === item.value} disabled={disabled} onClick={() => chooseTool(item.value)}>
-                  <svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={MATH_TOOL_ICONS[item.value]} /></svg>
-                  {item.label}
+                <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} key={item.value} type="button" aria-label={item.label} data-tooltip={item.label} aria-pressed={tool === item.value} disabled={disabled} onClick={() => chooseTool(item.value)}>
+                  <MathToolbarIcon tool={item.value} className={styles.drawingToolbarIcon} />
                 </button>
               ))}
             </span>
           );
         })}
-        {tool === 'label' && (
-          <input
-            className={styles.drawingToolbarEdgeLabel}
-            type="text"
-            maxLength={12}
-            disabled={disabled}
-            aria-label="要写上去的文字"
-            placeholder="写文字"
-            value={labelText}
-            onChange={(event) => setLabelText(event.target.value)}
-          />
-        )}
-        {tool === 'angleArc' && (
-          <input
-            className={styles.drawingToolbarEdgeLabel}
-            type="text"
-            maxLength={8}
-            disabled={disabled}
-            aria-label="要标的角度"
-            placeholder="如 30°"
-            value={arcText}
-            onChange={(event) => setArcText(event.target.value)}
-          />
-        )}
-        <span className={styles.drawingToolbarHint}>{toolHintOf(tool)}</span>
         <span className={styles.drawingToolbarSpacer} />
         <span className={styles.drawingToolbarGroup}>
           <span className={styles.drawingToolbarGroupLabel}>视图</span>
-          {([['in', '放大'], ['out', '缩小'], ['reset', '复位']] as const).map(([action, label]) => (
-            <button className={styles.drawingToolbarButton} key={action} type="button" disabled={disabled} onClick={() => viewRef.current?.(action)}>
-              <svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true">
-                <path d={action === 'reset'
-                  ? 'M5 5h14v14H5Z M5 12h14 M12 5v14'
-                  : `M11 4.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 1 0 0-13 M20 20l-4.2-4.2${action === 'in' ? ' M11 8.2v5.6 M8.2 11h5.6' : ' M8.2 11h5.6'}`} />
-              </svg>
-              {label}
+          {([['in', '放大'], ['out', '缩小'], ['fit', '适应画布']] as const).map(([action, label]) => (
+            <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} key={action} type="button" aria-label={label} data-tooltip={label} disabled={disabled} onClick={() => viewRef.current?.(action)}>
+              <DrawingToolbarIcon name={action === 'in' ? 'zoomIn' : action === 'out' ? 'zoomOut' : 'fit'} className={styles.drawingToolbarIcon} />
             </button>
           ))}
         </span>
-        {tool === 'select' && (
-          <button className={styles.drawingToolbarButton} type="button" disabled={disabled || selected === null} onClick={() => deleteSelectedRef.current?.()}>删除选中</button>
-        )}
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled || !canUndo} onClick={() => undoRef.current?.()}>撤销</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => clearRef.current?.()}>清空</button>
+        <span className={`${styles.drawingToolbarGroup} ${styles.drawingToolbarActions}`}>
+          <span className={styles.drawingToolbarGroupLabel}>编辑记录</span>
+          {tool === 'select' && (
+            <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton} ${styles.drawingToolbarDanger}`} type="button" aria-label="删除选中" data-tooltip="删除选中" disabled={disabled || selected === null} onClick={() => deleteSelectedRef.current?.()}><DrawingToolbarIcon name="delete" className={styles.drawingToolbarIcon} /></button>
+          )}
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="撤销" data-tooltip="撤销" disabled={disabled || !canUndo} onClick={() => undoRef.current?.()}><DrawingToolbarIcon name="undo" className={styles.drawingToolbarIcon} /></button>
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton} ${styles.drawingToolbarDanger}`} type="button" aria-label="清空" data-tooltip="清空" disabled={disabled} onClick={() => clearRef.current?.()}><DrawingToolbarIcon name="clear" className={styles.drawingToolbarIcon} /></button>
+        </span>
+        <span className={styles.drawingToolbarHint}>
+          <strong className={styles.drawingToolbarHintLabel}>操作提示</strong>
+          {toolHintOf(tool)}
+        </span>
       </div>
       <div className={styles.mathStage}>
         {/*
-          ★ 2026-10-07：这上面原来挂着一句 `style={{ backgroundImage: … }}` —— 底图已经改成
-            画板里的一个 image 对象（见 effect 里那一段）。**别加回来**：
-            CSS 背景进不了快照、也不跟缩放平移。
+          ★ 教师上传的题图仍是画板里的 image 对象（能进快照并跟随缩放平移）；默认点阵是例外，
+            它由 `.mathCanvas[data-infinite-dot-grid]` 无限重复铺设，不能再退回有限 image 对象。
           ⚠️ `.thirdPartyCanvas` 的 CSS（含 `background-size: 100% 100%`）**一个字都不许动** ——
             流程图与思维导图两档**还在用**它。
         */}
         <div
           ref={host}
           className={`${styles.thirdPartyCanvas} ${styles.mathCanvas}`}
+          tabIndex={disabled ? -1 : 0}
+          aria-label="数学作图画布"
         />
         {/* 拖动预览层：`pointer-events: none`（在 CSS 里），绝不抢指针事件。 */}
         <canvas ref={overlay} className={styles.mathOverlay} aria-hidden="true" />
+        {tool === 'label' && labelEditor && (
+          <input
+            className={styles.mathLabelEditor}
+            type="text"
+            maxLength={12}
+            autoFocus
+            aria-label="画布文字"
+            placeholder="输入文字"
+            value={labelDraft}
+            style={{ left: labelEditor.x, top: labelEditor.y }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onChange={(event) => setLabelDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
+              if (event.key === 'Enter') commitLabelRef.current?.(event.currentTarget.value);
+              if (event.key === 'Escape') {
+                labelEditorRef.current = null;
+                setLabelEditor(null);
+                setLabelDraft('');
+              }
+            }}
+            onBlur={(event) => commitLabelRef.current?.(event.currentTarget.value)}
+          />
+        )}
         {/*
           ★ 2026-10-06（教师选的是 A）：「选中后就地浮出『删除』小按钮（iPad 也能用，省一趟）」。
           ⚠️ 只有「选择」档 + 选中了图形 + 算得出位置时才出现；其余情况走工具条上的「删除选中」。
@@ -942,8 +1314,13 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
             disabled={disabled}
             style={{ left: anchor.x, top: anchor.y }}
             aria-label="删除选中的图形"
+            title="删除选中的图形"
             onClick={() => deleteSelectedRef.current?.()}
-          >删除</button>
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+            </svg>
+          </button>
         )}
       </div>
     </div>

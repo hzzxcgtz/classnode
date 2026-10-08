@@ -40,13 +40,10 @@ test('★ renderEntry 画得出四种新形状（逐个点名，**只在 renderE
   }
 });
 
-test('★ buildEntry 认四个新工具，且**顶点都在第二下**（两个三击记号同一种顺序）', () => {
+test('★ 四个标注入口已移除（历史数据仍由 renderEntry 兼容）', () => {
   for (const tool of ["case 'equalMark'", "case 'parallelMark'", "case 'rightAngle'", "case 'angleArc'"]) {
-    assert.ok(SOURCE.includes(tool), `buildEntry 不认 ${tool}`);
+    assert.ok(!SOURCE.includes(tool), `buildEntry 仍保留已删除的工具入口：${tool}`);
   }
-  // 三次点击的顺序统一是 [a, vertex, b]：`ats[1]` 才是顶点。
-  assert.match(SOURCE, /rightAngleOf\(ats\[1\], ats\[0\], ats\[2\]\)/, '直角的顶点取的不是第二下');
-  assert.match(SOURCE, /arcPathOf\(ats\[1\], ats\[0\], ats\[2\]\)/, '角弧的顶点取的不是第二下');
 });
 
 test('★ 画板里**不许**自己再推一遍几何（两个渲染端必须同源）', () => {
@@ -57,7 +54,7 @@ test('★ 画板里**不许**自己再推一遍几何（两个渲染端必须同
   assert.ok(!/Math\.atan2\(/.test(SOURCE), '画板里在算角度 —— 应当在 worksheet-math-shapes.ts 里算');
 });
 
-test('★ 读得回来 + 存得回去 + 度数输入框', () => {
+test('★ 历史标注读得回来、存得回去，但不再显示创建入口', () => {
   for (const kind of ["row.kind === 'equalMark'", "row.kind === 'parallelMark'",
     "row.kind === 'rightAngle'", "row.kind === 'angleArc'"]) {
     assert.ok(SOURCE.includes(kind), `readEntries 不认 ${kind}`);
@@ -65,7 +62,7 @@ test('★ 读得回来 + 存得回去 + 度数输入框', () => {
   // 角弧有可拖的三个点 ⇒ snapshot 必须按**拖动后的位置**存回去，
   // 少这一支的表现是"拖了一下，松手又弹回去"，而且不报错。
   assert.match(SOURCE, /kind: 'angleArc',[\s\S]{0,200}item\.points\[1\]/, 'snapshot 没有按拖动后的位置存角弧');
-  assert.match(SOURCE, /aria-label="要标的角度"/, '角弧没有度数输入框');
+  assert.doesNotMatch(SOURCE, /aria-label="要标的角度"/, '已删除的角弧输入框仍在工具栏');
 });
 
 /**

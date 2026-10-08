@@ -27,6 +27,24 @@ test('★ 底图是画板对象（不是 CSS 背景），且压在最下面', ()
   assert.ok(!/backgroundImage/.test(SOURCE), '底图还挂在 CSS 上 ⇒ 快照里没有它、也不跟缩放');
 });
 
+test('★ 默认点阵不是有限图片，而是由画布容器无限重复铺设', () => {
+  assert.match(SOURCE, /usesInfiniteDotGrid/, '没有识别默认点阵背景');
+  assert.match(SOURCE, /backgroundUrlProp && !usesInfiniteDotGrid/, '默认点阵仍会创建成有限的画板图片');
+  const css = fs.readFileSync(path.resolve(HERE, '..', '..', 'worksheet.module.css'), 'utf8');
+  assert.match(css, /data-infinite-dot-grid='true'[\s\S]{0,320}?background-repeat:\s*repeat/, '默认点阵没有无限重复铺设');
+  assert.match(css, /rgba\(126, 132, 140, \.42\) \.65px/, '数学画布的点阵不是细小的中性灰点');
+  const dotGrid = fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', '..', '..', 'public', 'worksheet', 'drawing-backgrounds', 'dot-grid.svg'), 'utf8');
+  assert.match(dotGrid, /r="0\.72" fill="#aeb4bc"/, '其他绘图画板仍在使用偏大或偏蓝的点阵');
+});
+
+test('★ 旋转光标保持弯曲双向箭头，但尺寸收小到 24px', () => {
+  const css = fs.readFileSync(path.resolve(HERE, '..', '..', 'worksheet.module.css'), 'utf8');
+  assert.match(css, /math-rotate\.svg'\) 12 12/, '旋转光标的热点没有随缩小后的图形居中');
+  const cursor = fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', '..', '..', 'public', 'cursors', 'math-rotate.svg'), 'utf8');
+  assert.match(cursor, /width="24" height="24"/, '旋转光标仍然过大');
+  assert.equal((cursor.match(/<path /g) ?? []).length, 4, '旋转光标不再是双向弯曲箭头');
+});
+
 test('★ 底图走**同源 blob**（直接喂 URL 会让 canvas 被污染，快照静默全废）', () => {
   assert.match(SOURCE, /URL\.createObjectURL\(/, '没有把图取成 blob URL');
   assert.match(SOURCE, /URL\.revokeObjectURL\(/, 'blob URL 没有回收（每开一次题都漏一张图）');
@@ -36,14 +54,14 @@ test('★ 三处命中判断都滤掉底图（三处分别钉，合并成一条�
   // ① 「选择」那一支
   const selectAt = SOURCE.indexOf("toolRef.current === 'select'");
   assert.notEqual(selectAt, -1, '找不到「选择」那一支');
-  assert.match(SOURCE.slice(selectAt, selectAt + 300), /studentHitsUnderMouse\(event\)/,
-    '「选择」还在用原始的命中列表 ⇒ hits[0] 是底图，永远选不中自己画的线');
+  assert.match(SOURCE.slice(selectAt, selectAt + 300), /studentHitAt\(event\)/,
+    '「选择」没有走过滤后的学生图形命中 ⇒ 底图会挡住自己画的线');
   // ② 单击工具的早退守卫
   assert.match(SOURCE, /if \(studentHitsUnderMouse\(event\)\.length > 0\) return;/,
     '单击工具的守卫没滤底图 ⇒ 底图在场时每一次点击都不新建（所有绘图工具失效）');
   // ③ 拖动工具的早退守卫
   const dragAt = SOURCE.indexOf('const onDragDown = (event: PointerEvent) =>');
-  assert.match(SOURCE.slice(dragAt, dragAt + 500), /studentHitsUnderMouse\(event\)/,
+  assert.match(SOURCE.slice(dragAt, dragAt + 1200), /studentHitsUnderMouse\(event\)/,
     '拖动工具的守卫没滤底图 ⇒ 线段/圆/长方形/铅笔都拖不出来');
   // 反面：原始调用只剩**过滤器内部**那一处。
   assert.equal((SOURCE.match(/getAllObjectsUnderMouse\(/g) ?? []).length, 1,
@@ -80,8 +98,8 @@ test('★ 过滤器**真的把底图滤掉了**（不是只留了一个调用点
    * 照样全绿 —— 而实际效果是学生**每一次点击**都被守卫挡掉、**所有点类工具失效**。
    * ⇒ 判据必须落在**过滤器体**上，不能只落在调用点上。
    */
-  assert.match(SOURCE, /filter\(\(object\) => object !== backgroundObject\)/,
-    '过滤器没有按身份滤掉底图');
+  assert.match(SOURCE, /object !== backgroundObject && !starterObjects\.has\(/,
+    '过滤器没有按身份滤掉图片底图和教师绘制底图');
   // 底图必须**锁住**：不锁的话学生能拖走老师给的图，而那个位移不进快照、也不进撤销栈。
   assert.match(SOURCE, /layer: -1,[\s\S]{0,300}?fixed: true/,
     '底图没有 fixed: true —— 学生会把老师给的图拖走');
@@ -91,8 +109,8 @@ test('★ `renderAll` 仍在挂载时**同步**执行（不许为了等底图挪
   // Spec §六-1 的附加判据。挪到 await 后面的话，"重新打开一道题"会先看到一块空白画板。
   const asyncAt = SOURCE.indexOf('void (async () => {');
   const blockEnd = SOURCE.indexOf('})();', asyncAt);
-  const syncAt = SOURCE.indexOf('renderAll(readEntries(data));');
+  const syncAt = SOURCE.indexOf('renderAll(hasSavedMathData ? readEntries(data) : []);');
   assert.notEqual(asyncAt, -1, '找不到取图那条 async 分支');
-  assert.notEqual(syncAt, -1, '找不到 renderAll(readEntries(data))');
+  assert.notEqual(syncAt, -1, '找不到同步恢复学生作答的 renderAll');
   assert.ok(syncAt > blockEnd, 'renderAll 排在那段取图**里面** —— 它会等底图回来才画学生的作答');
 });

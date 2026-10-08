@@ -1,10 +1,10 @@
 'use client';
 
-export function AgentHelpButton({ platform }: { platform: string }) {
+export function AgentHelpButton({ platform, purpose }: { platform: string; purpose: string }) {
   return (
     <button
       type="button"
-      onClick={() => window.open(`/help/agents?platform=${platform}`, '_blank', 'noopener,noreferrer')}
+      onClick={() => window.open(`/help/agents?platform=${platform}&purpose=${purpose}`, '_blank', 'noopener,noreferrer')}
       title="查看配置截图，了解如何获取以上信息"
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 8,

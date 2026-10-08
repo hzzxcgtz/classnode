@@ -12,6 +12,7 @@ import { defaultInkBox } from '@/lib/worksheet-ink';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import styles from '../worksheet.module.css';
+import DrawingToolbarIcon from './drawing-surfaces/drawing-toolbar-icon';
 
 const BasicDrawing = dynamic(() => import('./drawing-surfaces/basic-drawing'), { ssr: false });
 const MathDrawing = dynamic(() => import('./drawing-surfaces/math-drawing'), { ssr: false });
@@ -100,8 +101,8 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
     >
       <div className={styles.drawingWorkspaceHeader}>
         <div><strong>{TOOL_LABELS[tool]}</strong><span>本题使用此工具作答</span></div>
-        <button className={styles.drawingToolbarButton} type="button" onClick={() => setMaximized(value => !value)} aria-label={maximized ? '退出全屏画板' : '全屏画板'}>
-          {maximized ? '退出全屏' : '全屏画板'}
+        <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" onClick={() => setMaximized(value => !value)} aria-label={maximized ? '退出全屏画板' : '全屏画板'} data-tooltip={maximized ? '退出全屏画板' : '全屏画板'}>
+          <DrawingToolbarIcon name={maximized ? 'fullscreenExit' : 'fullscreen'} className={styles.drawingToolbarIcon} />
         </button>
       </div>
       <Surface

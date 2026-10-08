@@ -70,6 +70,8 @@ import {
 import { flowPayloadSignature, shouldPublishFlow } from '@/lib/worksheet-flowchart-publish.ts';
 
 import type { DrawingSurfaceProps } from './types';
+import DrawingToolbarIcon from './drawing-toolbar-icon';
+import FlowToolbarIcon from './flow-toolbar-icon';
 import styles from '../../worksheet.module.css';
 
 /**
@@ -102,27 +104,6 @@ type FlowEdgeData = {
   labelDY?: number;
 };
 
-/**
- * 工具按钮上的**形状图标**（★ 2026-10-06 教师：「分别加上一个形象的图形表示」）。
- * 画的正是这个按钮会放下的那个节点形状 —— 学生看一眼就知道按下去会得到什么，
- * 不必先读「平行四边形」这四个字。
- * ⚠️ 与 `worksheet-flowchart-svg.ts`（快照）里那几种形状**同源**：胶囊 / 矩形 / 菱形 / 平行四边形。
- * ⚠️ `junction` 那一项是**凑键用的**：连接点是「连」出来的、工具栏上没有它的按钮
- *    （`FlowKind` 里加了它，这张表就少一个键 —— 少一个键 TS 会当场报错）。
- */
-const FLOW_ICONS: Record<FlowKind | 'restore' | 'tidy' | 'close', string> = {
-  terminator: 'M7 5.5h10a4.5 4.5 0 0 1 0 9H7a4.5 4.5 0 0 1 0-9Z',
-  process: 'M4 6.5h16v11H4Z',
-  decision: 'M12 3.6 20.4 12 12 20.4 3.6 12Z',
-  io: 'M8 6.5h12l-4 11H4Z',
-  junction: 'M12 6.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z',
-  restore: 'M19 12a7 7 0 1 1-2.1-5M19 4.5V9h-4.5',
-  tidy: 'M4 6h5M15 6h5M9 3v6M4 18h5M15 18h5M15 15v6M7 12h10',
-  /* ★ 2026-10-06（教师）：「可以换成一个小叉叉图标」—— 原来这里是垃圾桶（`trash`）。
-     ⚠️ 键名与 path 一起改的：名字留 `trash` 会骗下一个人以为还是垃圾桶。 */
-  close: 'M7 7l10 10M17 7L7 17',
-};
-export type FlowIconKey = keyof typeof FLOW_ICONS;
 type FlowNode = Node<FlowData>;
 
 /**
@@ -1777,42 +1758,51 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
     <div className={styles.thirdPartySurface} ref={rootRef}>
       <div className={styles.drawingSurfaceToolbar} role="toolbar" aria-label="流程图工具">
         {/*
-          ★ 2026-10-06（教师拍板，截图圈了这四颗按钮 + 「这些文字都没有改」）：按钮上的文字用
-            **信息科技课教材的名称**：起止框 / 处理框 / 判断框 / 输入输出框。
+          四种图形的悬停名称使用信息科技课教材术语：起止框 / 处理框 / 判断框 / 输入输出框。
           🔴 **千万不要**把「按钮文字」与「新节点里默认写什么」统一起来 —— 这是**两件事**：
             · 按钮文字 = **形状的名字**（教材术语，学生按课本找得到）；
             · `addNode(kind, …)` 的**第二个参数** = 放到画布上以后**框里默认写的内容**
               （「开始/结束」「处理过程」「判断条件」「输入/输出」—— 那是**内容**，不是形状名）。
             ⇒ 把默认标签也改成「起止框」等于在流程图的框里写形状名，学生会把框里的字当成流程内容。
-            ⚠️ 本轮**只改按钮的可见文字**：`addNode(...)` 的默认标签一个字都没动
-              （`surface-lifecycle.test.ts` 两边都会钉住）。
+            ⚠️ 图标按钮的名称与节点默认内容仍是两套数据，不能合并。
         */}
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('terminator', '开始/结束')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.terminator} /></svg>起止框</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('process', '处理过程')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.process} /></svg>处理框</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('decision', '判断条件')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.decision} /></svg>判断框</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => addNode('io', '输入/输出')}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.io} /></svg>输入输出框</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled || nodes.length === 0} onClick={tidyLayout}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.tidy} /></svg>一键整理</button>
+        <span className={styles.drawingToolbarGroup}>
+          <span className={styles.drawingToolbarGroupLabel}>添加图形</span>
+          {([
+            ['terminator', '开始/结束', '起止框'],
+            ['process', '处理过程', '处理框'],
+            ['decision', '判断条件', '判断框'],
+            ['io', '输入/输出', '输入输出框'],
+          ] as const).map(([kind, defaultLabel, label]) => (
+            <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} key={kind} type="button" aria-label={label} data-tooltip={label} disabled={disabled} onClick={() => addNode(kind, defaultLabel)}>
+              <FlowToolbarIcon name={kind} className={styles.drawingToolbarIcon} />
+            </button>
+          ))}
+        </span>
+        <span className={styles.drawingToolbarGroup}>
+          <span className={styles.drawingToolbarGroupLabel}>排版</span>
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="一键对齐" data-tooltip="一键对齐" disabled={disabled || nodes.length === 0} onClick={tidyLayout}><DrawingToolbarIcon name="tidy" className={styles.drawingToolbarIcon} /></button>
+        </span>
+        <span className={styles.drawingToolbarSpacer} />
         {/* ★ 2026-10-06（教师最终拍板）：「恢复初始图」**无条件出现**（只要这一题有初始图）——
             它是**唯一**的回退路径（「锁定初始图」那一档撤掉之后，学生把底稿改乱了只能靠它回去）。
             🔴 出现条件里**不许**再出现任何锁标记（`starter && !starterLocked` 那种写法已经删掉）。 */}
-        {starter && (
-          <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={restoreStarter}><svg className={styles.drawingToolbarIcon} viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.restore} /></svg>恢复初始图</button>
-        )}
+        <span className={`${styles.drawingToolbarGroup} ${styles.drawingToolbarActions}`}>
+          <span className={styles.drawingToolbarGroupLabel}>编辑记录</span>
+          {starter && (
+            <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="恢复初始图" data-tooltip="恢复初始图" disabled={disabled} onClick={restoreStarter}><DrawingToolbarIcon name="restore" className={styles.drawingToolbarIcon} /></button>
+          )}
         {/*
-          ★ 2026-10-06（教师：「流程图要提供撤销/重做功能」）：两颗按钮**不带图标、只有文字** ——
-          与思维导图那两颗（`mindmap-drawing.tsx:351-352`）逐字同形，四个画板里两个已经这样了。
+          撤销 / 重做与其它工具一致使用纯图标，名称由悬停提示和 aria-label 提供。
           ⚠️ 禁用态读的是 `historyRef.current`（ref 不触发渲染）⇒ 靠 `historyVersion` 那个
           自增计数器把这次渲染带出来。`disabled`（回顾态）时无条件禁用。
         */}
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled || !canUndo(historyRef.current)} onClick={undo}>撤销</button>
-        <button className={styles.drawingToolbarButton} type="button" disabled={disabled || !canRedo(historyRef.current)} onClick={redo}>重做</button>
-        <span className={styles.drawingToolbarHint}>
-          {selectedEdgeId
-            ? '拖动线中圆点调整走向；拖动两端可重新连接'
-            : '拖动图形；从任意连接点连线；双击文字修改'}
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="撤销" data-tooltip="撤销" disabled={disabled || !canUndo(historyRef.current)} onClick={undo}><DrawingToolbarIcon name="undo" className={styles.drawingToolbarIcon} /></button>
+          <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarIconButton}`} type="button" aria-label="重做" data-tooltip="重做" disabled={disabled || !canRedo(historyRef.current)} onClick={redo}><DrawingToolbarIcon name="redo" className={styles.drawingToolbarIcon} /></button>
         </span>
         {labelableEdgeId && (
-          <>
+          <span className={`${styles.drawingToolbarGroup} ${styles.drawingToolbarContext}`}>
+            <span className={styles.drawingToolbarGroupLabel}>连线文字</span>
             {['Y', 'N', '是', '否'].map((value) => (
               <button className={styles.drawingToolbarButton} key={value} type="button" disabled={disabled} onClick={() => setEdgeLabel(labelableEdgeId, value)}>{value}</button>
             ))}
@@ -1834,9 +1824,15 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
               value={editingLabel}
               onChange={(event) => setEdgeLabel(labelableEdgeId, event.target.value)}
             />
-            <button className={styles.drawingToolbarButton} type="button" disabled={disabled} onClick={() => { setEdgeLabel(labelableEdgeId, ''); setSelected(null); }}>清空</button>
-          </>
+            <button className={`${styles.drawingToolbarButton} ${styles.drawingToolbarDanger}`} type="button" disabled={disabled} onClick={() => { setEdgeLabel(labelableEdgeId, ''); setSelected(null); }}>清空</button>
+          </span>
         )}
+        <span className={styles.drawingToolbarHint}>
+          <strong className={styles.drawingToolbarHintLabel}>操作提示</strong>
+          {selectedEdgeId
+            ? '拖动线中圆点调整走向；拖动两端可重新连接'
+            : '拖动图形；从任意连接点连线；双击文字修改'}
+        </span>
       </div>
       <div className={`${styles.thirdPartyCanvas} ${styles.flowStage}`} style={backgroundUrl ? { backgroundImage: `url(${backgroundUrl})` } : undefined}>
         <ReactFlow
@@ -2001,7 +1997,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           >
             {/* ★ 2026-10-06（教师）：「改成一个小叉叉」—— 原来是垃圾桶。小圆的样式由
                 `.flowEdgeFloat > svg` 那条规则给（命中区仍是 44px，见那里的注释）。 */}
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d={FLOW_ICONS.close} fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
+            <DrawingToolbarIcon name="close" />
           </button>
         ))}
       </div>

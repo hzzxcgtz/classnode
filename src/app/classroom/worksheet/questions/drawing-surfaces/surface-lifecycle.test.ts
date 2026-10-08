@@ -307,6 +307,9 @@ test('★ 2026-10-06（教师）：鼠标拖空白 = 平移画布（与流程图
   assert.match(live, /\['operation', 'changeDirection', 'expandNode'\] as const/, '「会改数据的事件」名单不完整 —— 方向/展开状态会丢');
   assert.match(live, /publishEvents\.forEach\(\(event\) => instance\.bus\.addListener\(event, publish\)\)/, '没有把名单接上');
   assert.match(live, /publishEvents\.forEach\(\(event\) => instance\.bus\.removeListener\(event, publish\)\)/, '清理里没有摘掉（重复挂载会累积监听）');
+  // 双击改名时，库会先 fire beginEdit；它不改数据，若此时同步写回 React，会让库继续碰到
+  // 已被父层重渲染替换的节点 DOM，最终报 null.style。必须等 finishEdit 再发布。
+  assert.match(live, /\.name === 'beginEdit'/, '双击节点刚进入编辑态就发布了数据，会打断库的 DOM 编辑流程');
   // ⚠️ 反面：**不许**把视图事件（scale/move）也接上 —— 它们按指针频率触发，等于每像素存一次。
   assert.ok(!/'scale'|'move'/.test(live), '把视图事件也接上了 —— 会变成每移动一像素存一次');
   // ★ 2026-10-06（教师）：「鼠标滚轮默认也应该是缩放功能」——库的默认是**平移**
@@ -325,29 +328,43 @@ test('★ 2026-10-06（教师）：鼠标拖空白 = 平移画布（与流程图
   assert.ok(!/cursor: grab;/.test('.nope { cursor: default; }'));
 });
 
+test('★ 三种绘图画布按功能切换鼠标指针', () => {
+  const css = stripComments(CSS);
+  for (const cursor of ["data-pan-cursor='grab'", "data-pan-cursor='grabbing'", "data-pan-cursor='move'", "data-pan-cursor='vertex'", "data-pan-cursor='rotate'"]) {
+    assert.ok(css.includes(cursor), `数学画布缺少 ${cursor} 的指针状态`);
+  }
+  assert.match(css, /math-rotate\.svg/, '数学画布的旋转区没有使用弯曲双向箭头光标');
+  assert.match(css, /\.flowStage :global\(\.react-flow__pane\) \{ cursor: grab; \}/,
+    '流程图空白区域不是抓取手型');
+  assert.match(css, /\.flowNode[\s\S]{0,420}?cursor: move;/, '流程图节点没有移动指针');
+  assert.match(css, /\.mindmapCanvas :global\(me-parent\) \{ cursor: move; \}/,
+    '思维导图节点没有移动指针');
+  assert.match(css, /\.mindmapCanvas :global\(me-tpc\)[\s\S]{0,120}?cursor: text;/,
+    '思维导图文字区域没有文本指针');
+});
+
 test('★ 2026-10-06（教师）：数学作图补齐工具（撤销 / 自由线条 / 多边形族 / 角 / 平行线垂线 / 中点 / 平分线 / 文字）', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'math-drawing.tsx'), 'utf8'));
   const shapes = stripComments(fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', '..', 'lib', 'worksheet-math-shapes.ts'), 'utf8'));
   const preview = stripComments(fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', 'teacher', 'classroom', 'drawing-document-preview.tsx'), 'utf8'));
   // ① 工具条由**工具表**生成（写死几个按钮就与几何表分叉了）；表里必须有教师点名的那些。
   //    ★ 2026-10-07：平行线 / 垂线 / 角 砍掉了（换成四个几何记号的活由后面的任务接）。
-  for (const tool of ['select', 'point', 'segment', 'arrow', 'circle', 'free', 'triangle', 'rectangle',
+  for (const tool of ['select', 'segment', 'arrow', 'circle', 'free', 'triangle', 'rectangle',
     'parallelogram', 'trapezoid', 'label']) {
     assert.ok(shapes.includes(`value: '${tool}'`), `工具表里少了 ${tool}`);
   }
-  // ⊘ 教师 2026-10-06 划掉的五个：直线 / 正方形 / 中点 / 垂直平分线 / 角平分线
+  // ⊘ 教师 2026-10-06 划掉的四个：正方形 / 中点 / 垂直平分线 / 角平分线
   //   ★ 2026-10-07 划掉的三个：平行线 / 垂线 / 角
   //   —— 工具表与几何实现都要清干净（不留没有入口的死代码）。
-  for (const gone of ['line', 'square', 'midpoint', 'perp-bisector', 'bisector',
-    'parallel', 'perpendicular', 'angle']) {
+  for (const gone of ['point', 'line', 'angleArc', 'rightAngle', 'equalMark', 'parallelMark',
+    'square', 'midpoint', 'perp-bisector', 'bisector', 'parallel', 'perpendicular', 'angle']) {
     assert.ok(!shapes.includes(`value: '${gone}'`), `划掉的工具还在工具表里：${gone}`);
   }
   for (const dead of ['squareOf', 'midpointOf', 'perpendicularBisectorOf', 'bisectorEndOf', 'lineThrough']) {
     assert.ok(!shapes.includes(dead), `划掉的工具的几何实现还留着：${dead}`);
   }
-  // ★ 图标 + 分组：按钮是「图标 + 文字」，工具条按 基础/多边形/其他 分组渲染。
-  assert.match(shapes, /MATH_TOOL_ICONS: Record<MathTool, string>/, '没有图标表');
-  assert.match(live, /MATH_TOOL_ICONS\[item\.value\]/, '工具条按钮没有用图标');
+  // ★ 图标 + 分组：按钮使用统一图标组件，工具条按 基础/多边形/其他 分组渲染。
+  assert.match(live, /<MathToolbarIcon tool=\{item\.value\}/, '工具条按钮没有使用统一图标组件');
   assert.match(live, /MATH_TOOL_GROUPS\.map\(/, '工具条没有分组渲染（归类应当来自数据）');
   assert.match(live, /toolsInGroup\(group\.value\)/, '分组没有走 toolsInGroup（会与工具表分叉）');
   // ② 撤销：历史栈 + 一个按钮（原来画错只能清空重来）。
@@ -357,15 +374,17 @@ test('★ 2026-10-06（教师）：数学作图补齐工具（撤销 / 自由线
   // 拖动只发生在「自由线条」或工具表里标了 drag 的档位（别的工具一点也不能拦）。
   assert.match(live, /currentTool === 'free'/, '自由线条没有走拖动那条路');
   assert.match(live, /addEventListener\('pointerdown', onDragDown, \{ capture: true \}\)/, '拖动没有在捕获阶段接管');
-  // ④ 文字：受控输入 + 空文字不落标签。
-  assert.match(live, /aria-label="要写上去的文字"/, '没有写文字的输入框');
-  assert.match(live, /if \(!text\) return;/, '空文字也会落一个看不见的标签');
+  // ④ 文字：点击画布后就地输入；空文字不落标签。
+  assert.match(live, /aria-label="画布文字"/, '没有画布上的就地文字输入框');
+  assert.match(live, /if \(!editor \|\| !text\) return;/, '空文字也会落一个看不见的标签');
   // ⑤ 三种新形状在**教师端预览**里也要画得出来（否则学生画了、教师看不见）。
   // ⚠️ 这里指的是**历史形状**（老「角」画的带臂角）：2026-10-07 砍掉了「角」这个**工具**，
   //    但形状要一直读得回来 —— 老作答里还有。
   for (const kind of ["item.kind === 'polyline'", "item.kind === 'angle'", "item.kind === 'label'"]) {
     assert.ok(preview.includes(kind), `教师端预览没有渲染 ${kind}`);
   }
+  assert.match(preview, /item\.kind === 'line'[\s\S]{0,400}?width \+ height/,
+    '直线在教师预览里没有延伸到画框两端（会退化成线段）');
   // ⑥ 读回作答时要认这六种形状（认不出就丢，但不抛）。
   for (const kind of ["row.kind === 'polyline'", "row.kind === 'angle'", "row.kind === 'label'"]) {
     assert.ok(live.includes(kind), `readEntries 不认 ${kind}`);
@@ -378,13 +397,17 @@ test('★ 2026-10-06（教师）：数学作图补齐工具（撤销 / 自由线
 
 test('★ 2026-10-06（教师）数学作图三问：不要坐标系、拖动绘制、拖动过程要看得见', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'math-drawing.tsx'), 'utf8'));
+  const shapes = stripComments(fs.readFileSync(path.resolve(HERE, '..', '..', '..', '..', '..', 'lib', 'worksheet-math-shapes.ts'), 'utf8'));
   const css = stripComments(CSS);
   // ① 「为什么背景里还有直角坐标系？」——画板自带的那套关掉，参考线交给**这一题的背景预设**。
   assert.match(live, /axis: false,/, '画板还在画 x/y 轴');
   assert.match(live, /grid: false,/, '画板还在画自己的网格');
-  // ② 「用拖拽的方式，不要不同位置点鼠标」——两点图形按住拖动；三点以上仍多点（几何决定）。
+  // ② 所有可创建图形（含三角形/平行四边形/梯形）都统一按住拖动。
   assert.match(live, /isDragTool/, '没有区分「拖动类」工具');
   assert.match(live, /MATH_TOOLS\.find\(\(item\) => item\.value === currentTool\)\?\.drag/, '拖动类没有从工具表里取（写死名单会与表分叉）');
+  for (const tool of ['triangle', 'parallelogram', 'trapezoid']) {
+    assert.match(shapes, new RegExp(`value: '${tool}'[^\\n]+drag: true`), `${tool} 没有改成拖动绘制`);
+  }
   // ③ 「自由线条拖拽过程中线条要可见」——预览画在覆盖层上，不依赖 jsxgraph 的增量更新。
   assert.match(live, /mathOverlay/, '没有那块拖动预览层');
   assert.match(live, /overlayCtx\.stroke\(\)/, '预览层上什么都没画');
@@ -412,7 +435,8 @@ test('★ 2026-10-06（教师）：「画上去的东西怎么删除？是不是
   assert.match(live, /const deleteSelectedRef|deleteSelectedRef\.current = \(\) => \{/, '没有实现删除选中');
   assert.match(live, /pushHistory\(\);\n      renderAll\(remaining\)/, '删除没有进撤销栈 / 没有重画');
   // ④ 换工具要取消选中（否则「删除选中」会对着一个看不见高亮的图形动手）。
-  assert.match(live, /selectRef\.current\?\.\(null\);\n    setTool\(next\)/, '换工具没有取消选中');
+  assert.match(live, /if \(selectedRef\.current !== null\) selectRef\.current\?\.\(null\);\n    setTool\(next\)/,
+    '换工具没有取消已有选中，或在没有选中时仍然无意义地重建整张图');
 });
 
 test('★ 2026-10-06（教师选 A）：选中图形后就地浮出「删除」小按钮', () => {
@@ -431,23 +455,46 @@ test('★ 2026-10-06（教师选 A）：选中图形后就地浮出「删除」�
   // ④ 样式：命中区 44px（那条用例逐个 <button> 量）+ 自己是 auto（父层是 none）。
   assert.match(css, /\.mathFloatingDelete \{[\s\S]{0,220}?width: 44px;/, '浮动按钮的命中区小于 44px');
   assert.match(css, /\.mathFloatingDelete \{[\s\S]{0,300}?pointer-events: auto;/, '浮动按钮点不动（父层是 pointer-events: none）');
+  assert.match(live, /M7 7l10 10M17 7L7 17/, '删除按钮没有改成叉号图标');
+  assert.doesNotMatch(live, />删除<\/button>/, '画布浮动删除仍显示大号文字按钮');
+  assert.match(css, /\.mathFloatingDelete > svg \{[\s\S]{0,100}?width: 24px;[\s\S]{0,100}?height: 24px;/,
+    '叉号可见体没有缩到 24px（44px 命中区必须保留）');
 });
 
-test('★ 2026-10-06（教师截图）：库自带那条导航条换掉，改成我们自己的「放大/缩小/复位」', () => {
+test('★ 数学文字工具：点画布后就地输入，Enter/失焦提交，Escape 取消', () => {
+  const live = stripComments(fs.readFileSync(path.join(HERE, 'math-drawing.tsx'), 'utf8'));
+  const capture = blockAfter(live, 'const onDragDown = (event:', 'const syncPanCursor = ');
+  assert.match(capture, /currentTool === 'label'/, '文字落点没有在 DOM 捕获阶段接管');
+  assert.match(capture, /event\.stopImmediatePropagation\(\)/,
+    '文字落点仍会同时触发 JSXGraph 的拖图形/平移手势，图形可能被拖出视区');
+  assert.match(live, /setLabelEditor\(\{ at, x: event\.clientX - rect\.left, y: event\.clientY - rect\.top \}\)/,
+    '点击画布后没有把输入框放在点击位置');
+  assert.match(live, /aria-label="画布文字"/, '没有就地文字输入框');
+  assert.match(live, /autoFocus/, '就地输入框出现后没有自动获得焦点');
+  assert.match(live, /event\.key === 'Enter'\) commitLabelRef\.current/,
+    'Enter 没有提交文字');
+  assert.match(live, /onBlur=\{\(event\) => commitLabelRef\.current/,
+    '失焦没有提交文字');
+  assert.match(live, /event\.key === 'Escape'/, 'Escape 没有取消输入');
+});
+
+test('★ 数学画板用自己的「放大/缩小/适应画布」，并把全部内容纳入可见区域', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'math-drawing.tsx'), 'utf8'));
   // ① 库那条导航条关掉（它只有一种长相，而且四个平移箭头在触摸屏上没用）。
   assert.match(live, /showNavigation: false,/, '库自带的导航条还开着');
-  // ② 换成我们工具条里的三颗（放大 / 缩小 / 复位）。
-  for (const label of ['放大', '缩小', '复位']) {
+  // ② 换成我们工具条里的三颗（放大 / 缩小 / 适应画布）。
+  for (const label of ['放大', '缩小', '适应画布']) {
     assert.ok(live.includes(`'${label}'`), `视图按钮少了「${label}」`);
   }
   assert.match(live, /board\.zoomIn\(\)/, '「放大」没接上库的 zoomIn');
   assert.match(live, /board\.zoomOut\(\)/, '「缩小」没接上库的 zoomOut');
-  // ⚠️「复位」必须把**平移**也收回来 —— `zoom100()` 只管缩放，学生挪过的画布会留在原地。
-  assert.match(live, /board\.setBoundingBox\(\[-10, 8, 10, -8\], true\)/, '「复位」没有回到初始视野（用 zoom100 只复位缩放）');
-  assert.ok(!/zoom100\(/.test(live), '「复位」用的是 zoom100 —— 它不管平移');
-  // ③ 单指不再平移画布（单指要留给作图与拖控制点），双指仍然可以。
-  assert.match(live, /pan: \{ enabled: !disabled, needTwoFingers: true \}/, '单指还在平移画布 —— 会把「点一下」和「挪一下」混在一起');
+  assert.match(live, /fitMathBoundingBox\(points, rect\.width, rect\.height\)/,
+    '适应画布没有按实际画布比例与内容范围计算');
+  // ③ 教师后续明确要求：空白处单指/鼠标直接抓住画布平移；绘图档由捕获监听接管。
+  assert.match(live, /pan: \{ enabled: !disabled, needShift: false, needTwoFingers: false \}/,
+    '空白处仍不能直接抓住画布平移');
+  assert.match(live, /zoom: \{ wheel: !disabled, needShift: false, factorX: 1\.02, factorY: 1\.02 \}/,
+    '数学画布滚轮缩放仍要求 Shift，或仍沿用过快的默认倍率');
 });
 
 test('★ 2026-10-06：库自带的**悬停信息框**必须关掉（`showInfobox: false`）', () => {
@@ -614,15 +661,13 @@ test('★ 初始流程图可编辑：移动/改字/删除在重新进入后仍�
 
 test('★ 2026-10-06（教师）：流程图工具加图形图标；点线浮出图标删除；双击线改文字', () => {
   const live = stripComments(fs.readFileSync(path.join(HERE, 'flowchart-drawing.tsx'), 'utf8'));
+  const flowIcons = stripComments(fs.readFileSync(path.join(HERE, 'flow-toolbar-icon.tsx'), 'utf8'));
+  const actionIcons = stripComments(fs.readFileSync(path.join(HERE, 'drawing-toolbar-icon.tsx'), 'utf8'));
   const css = stripComments(CSS);
   // ① 四个加节点按钮 + 恢复初始图都要有**形状图标**（画的正是它会放下的那个节点）。
-  assert.match(live, /FLOW_ICONS: Record<FlowKind/, '没有图标表');
-  // ⚠️ 最后那个键 2026-10-06 从 `trash` 改成了 `close`（教师：「可以换成一个小叉叉图标」）
-  //    —— 删除按钮的图标不再是垃圾桶。判据跟着改，键名对不上会当场红。
-  for (const key of ['terminator', 'process', 'decision', 'io', 'restore', 'close']) {
-    assert.ok(live.includes(`${key}:`), `图标表里少了 ${key}`);
-    assert.ok(live.includes(`FLOW_ICONS.${key}`), `${key} 的图标没有挂到按钮上`);
-  }
+  for (const key of ['terminator', 'process', 'decision', 'io']) assert.ok(flowIcons.includes(`${key}:`), `图标表里少了 ${key}`);
+  assert.match(live, /<FlowToolbarIcon name=\{kind\}/, '四种节点按钮没有使用统一形状图标');
+  for (const key of ['restore', 'close']) assert.ok(actionIcons.includes(`${key}:`), `通用图标表里少了 ${key}`);
   // ② 单击选中（框或线）⇒ 浮出**图标型**删除按钮（不是文字按钮）。
   //    ★ 第 1 步整理：三套浮层合并成**一处渲染** ⇒ 删除按钮与就地输入框是同一个 `overlay`
   //      描述式的两个形态，按钮的名字按选中种类取（框 ⇒ 删除这个图形 / 线 ⇒ 删除这条连线）。
@@ -1041,35 +1086,35 @@ test('★ 2026-10-06（教师拍板）：四个工具按钮用**教材名称**�
       · 按钮文字 = **形状的名字**（教材术语，学生按课本找得到）；
       · `addNode(kind, '…')` 的第二个参数 = 放到画布上以后**框里默认写的内容**
         （「开始/结束」「处理过程」「判断条件」「输入/输出」）。
-    ⇒ 这条用例**两边一起钉**：可见文字必须是教材名称，默认标签必须仍是内容。
-    ⚠️ 判据从 JSX 里**按结构抠**（`addNode('kind', '默认文字')…</svg>可见文字</button>`），
-      不逐字钉整行 —— 改 className / 图标不会红，改文字才会。
+    ⇒ 这条用例**两边一起钉**：悬停名称必须是教材名称，默认标签必须仍是内容。
   */
   const toolbar = blockAfter(live, 'role="toolbar" aria-label="流程图工具"', '</div>');
   assert.ok(toolbar.length > 500, '工具条没抠出来 —— 先修这条判据，别让它在空串上全绿');
-  /** 四颗加节点按钮：`addNode('kind', '默认文字')` 后面紧跟的可见文字。 */
-  const buttonsOf = (source: string) => [...source.matchAll(/addNode\('(\w+)',\s*'([^']*)'\)[\s\S]{0,260}?<\/svg>([^<]*)<\/button>/g)]
+  /** 四颗加节点按钮的数据：形状、默认内容、悬停名称。 */
+  const buttonsOf = (source: string) => [...source.matchAll(/\['(terminator|process|decision|io)',\s*'([^']*)',\s*'([^']*)'\]/g)]
     .map((match) => ({ kind: match[1], defaultLabel: match[2], text: match[3] }));
   const kinds = ['terminator', 'process', 'decision', 'io'];
   const buttons = buttonsOf(toolbar);
   assert.equal(buttons.length, 4, `四颗加节点按钮没抠出来（抠到 ${buttons.length} 颗）—— 先修这条判据，别让它在空串上全绿`);
   const byKind = new Map(buttons.map((button) => [button.kind, button]));
   for (const kind of kinds) assert.ok(byKind.has(kind), `工具条里少了 ${kind} 那一颗按钮`);
-  // ① 可见文字 = 教材名称。
+  // ① 悬停名称 = 教材名称；按钮本体只显示图标。
   assert.deepEqual(kinds.map((kind) => byKind.get(kind)?.text),
     ['起止框', '处理框', '判断框', '输入输出框'],
-    '四颗按钮的可见文字不是教材名称（起止框 / 处理框 / 判断框 / 输入输出框）');
+    '四颗按钮的提示名称不是教材名称（起止框 / 处理框 / 判断框 / 输入输出框）');
+  assert.match(toolbar, /aria-label=\{label\} data-tooltip=\{label\}/, '图标按钮没有无障碍名称或延迟悬停提示');
+  assert.doesNotMatch(toolbar, /<\/svg>\{label\}<\/button>/, '名称仍直接显示在图标按钮里');
   // ② 而 `addNode` 的**默认标签**（放到画布上以后框里写什么）必须仍是「内容」。
   assert.deepEqual(kinds.map((kind) => byKind.get(kind)?.defaultLabel),
     ['开始/结束', '处理过程', '判断条件', '输入/输出'],
     '节点默认文字被一起改了 —— 按钮文字是**形状名**，节点默认文字是**框里的内容**，两件事不许统一');
   // ⚠️ 反面对照 1：把按钮文字改回旧写法（内容）⇒ 必须判违规。
-  const oldButtonText = toolbar.replace('</svg>起止框</button>', '</svg>开始/结束</button>');
+  const oldButtonText = toolbar.replace("['terminator', '开始/结束', '起止框']", "['terminator', '开始/结束', '开始/结束']");
   assert.notEqual(oldButtonText, toolbar, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.notDeepEqual(kinds.map((kind) => buttonsOf(oldButtonText).find((b) => b.kind === kind)?.text),
     ['起止框', '处理框', '判断框', '输入输出框'], '反面对照没被抓住 —— 这条判据是恒真的');
   // ⚠️ 反面对照 2：把**默认标签**也改成教材名称 ⇒ 必须判违规（证明两件事是分开钉的）。
-  const wrongDefault = toolbar.replace("addNode('terminator', '开始/结束')", "addNode('terminator', '起止框')");
+  const wrongDefault = toolbar.replace("['terminator', '开始/结束', '起止框']", "['terminator', '起止框', '起止框']");
   assert.notEqual(wrongDefault, toolbar, '反面对照没造出来 —— 这条判据会变成恒真');
   assert.notDeepEqual(kinds.map((kind) => buttonsOf(wrongDefault).find((b) => b.kind === kind)?.defaultLabel),
     ['开始/结束', '处理过程', '判断条件', '输入/输出'], '反面对照没被抓住 —— 默认标签那条判据是恒真的');

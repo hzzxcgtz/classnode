@@ -1,13 +1,12 @@
 /**
- * 数学作图的**图形构造**（★ 2026-10-06，教师：「1-5 先补，还要有自由线条」）。
+ * 数学作图的**图形构造**与精简工具表。
  *
  * 🔴 这个文件是**纯函数**（不 import React / jsxgraph）：画板只负责手势与渲染，
  *    「两个点怎么变成一个长方形」「三个点怎么变成角平分线」这类几何全在这里，
  *    因此能被 `node --test` 直接验（本仓没有前端测试框架）。
  *
- * 数据形状（存进 `drawing.data.elements`）**只有六种**，全部是普通坐标数组：
- *   point / segment·line·arrow / circle / polyline（闭合与否） / angle / label
- * ⇒ 教师预览、快照、AI 那三处各写一个 switch 就够，不需要理解图形语义。
+ * 数据形状（存进 `drawing.data.elements`）全部由普通坐标数组组成；除基础形状与历史标注外，
+ * 坐标系和数轴也作为单个成组对象保存，便于选择、删除、撤销和教师端预览保持一致。
  */
 
 export type Pt = [number, number];
@@ -28,45 +27,32 @@ export type MathEntry =
   | { kind: 'angleArc'; vertex: Pt; a: Pt; b: Pt; text?: string }
   | { kind: 'rightAngle'; vertex: Pt; a: Pt; b: Pt }
   | { kind: 'equalMark'; a: Pt; b: Pt }
-  | { kind: 'parallelMark'; a: Pt; b: Pt };
+  | { kind: 'parallelMark'; a: Pt; b: Pt }
+  /** 教师和学生都可添加的成组坐标工具；作为一个对象参与选择、删除与撤销。 */
+  | { kind: 'coordinateSystem'; a: Pt; b: Pt }
+  | { kind: 'numberLine'; a: Pt; b: Pt };
 
-/** 工具名（先声明成联合类型，表里才能给每个成员一个可选的 `drag`）。 */
+/** 工具名（历史数据类型比这里多；这里仅列当前工具栏允许新建的内容）。 */
 export type MathTool =
-  | 'point' | 'segment' | 'arrow' | 'circle' | 'free'
+  | 'segment' | 'arrow' | 'circle' | 'free'
   | 'triangle' | 'rectangle' | 'parallelogram' | 'trapezoid'
-  | 'angleArc' | 'rightAngle' | 'equalMark' | 'parallelMark'
+  | 'coordinateSystem' | 'numberLine'
   | 'label' | 'select';
 
 /** 工具条上的**分组**（★ 2026-10-06 教师：「整个工具栏 UI 重新设计一下，归类要科学」）。 */
 export const MATH_TOOL_GROUPS = [
   { value: 'basic', label: '基础' },
   { value: 'polygon', label: '多边形' },
-  { value: 'mark', label: '标注' },
+  { value: 'coordinate', label: '坐标' },
   { value: 'other', label: '其他' },
 ] as const;
 
 export type MathToolGroup = (typeof MATH_TOOL_GROUPS)[number]['value'];
 
 /**
- * 工具表。`clicks` = 完成一个图形要点击的次数；`drag: true` = **按住拖动**就能画
- * （两点即可确定的图形，见 `toolHintOf` 里那段 2026-10-06 的教师批注）。
- *
- * ⊘ 2026-10-06 第二版（教师划掉了五个）：「直线 / 正方形 / 中点 / 垂直平分线 / 角平分线」
- *   **不要了** —— 小学初中作图题基本用不上，留着只会让学生在工具条上多做一次选择。
- *   ⚠️ 连带删掉的还有它们的几何实现（`squareOf` / `midpointOf` /
- *   `perpendicularBisectorOf` / `bisectorEndOf`）—— **不许留没有入口的死代码**
- *   （本仓的规矩：死代码会被人当成「还有人用」而不敢动）。
- *
- * ⊘ ★ 2026-10-07（教师）又划掉了三个：「平行线 / 垂线 / 角」。理由与上一版不同，
- *   是**底图**这条主线带来的：
- *   · 平行线/垂线的参照线只在自己画的线里找（`math-drawing.tsx` 的 `runtime.current`），
- *     而**底图上的边不是画板对象** ⇒ 学生站在老师给的几何图前面点它，**什么都不发生**，
- *     屏幕上也不解释（本仓最怕的静默 no-op）；
- *   · 「角」画的是**两条臂 + 一段弧**，而底图上那两条边已经在图里，再描一遍是多余的。
- *   ⚠️ `lineThrough` 跟着删了（连同它那两个只服务它的帮手）。
- *   ⚠️ 连带的一个结论值得记下来：删完之后这一档**只剩「选择」一个工具依赖"画板里已有什么"**，
- *     其余工具全是"点 N 个位置"⇒ 底图上与空白画布上行为完全一致，
- *     不需要任何"按有没有底图"的分叉。
+ * 工具表。`drag: true` 表示按住拖动即可成形。
+ * 当前工具栏不再提供独立点和四种几何标注；基础线条使用有限线段，射线改成箭头；
+ * 三种多边形也统一拖出包围框生成。历史作答仍由 `MathEntry` 与两个渲染端完整兼容。
  */
 export const MATH_TOOLS: ReadonlyArray<{
   value: MathTool;
@@ -78,92 +64,33 @@ export const MATH_TOOLS: ReadonlyArray<{
   // ★ 2026-10-07：「选择」挪到**第一个** —— 它是每一个工具的出口（画错了要能选、能删），
   //   排在最后一行要翻整个工具条才找得到。
   { value: 'select', label: '选择', clicks: 1, group: 'basic' },
-  { value: 'point', label: '点', clicks: 1, group: 'basic' },
   { value: 'segment', label: '线段', clicks: 2, drag: true, group: 'basic' },
-  { value: 'arrow', label: '射线', clicks: 2, drag: true, group: 'basic' },
+  { value: 'arrow', label: '箭头', clicks: 2, drag: true, group: 'basic' },
   { value: 'circle', label: '圆', clicks: 2, drag: true, group: 'basic' },
-  { value: 'triangle', label: '三角形', clicks: 3, group: 'polygon' },
+  { value: 'triangle', label: '三角形', clicks: 2, drag: true, group: 'polygon' },
   { value: 'rectangle', label: '长方形', clicks: 2, drag: true, group: 'polygon' },
-  { value: 'parallelogram', label: '平行四边形', clicks: 3, group: 'polygon' },
-  { value: 'trapezoid', label: '梯形', clicks: 4, group: 'polygon' },
-  /*
-   * ★ 2026-10-07（教师）：「这是几何题的行话」—— 直角□ / 等号 / 平行∥ / 角弧。
-   *
-   * 🔴 四个都是「**点 N 个位置**」，一个都不依赖"画板里已有的对象"。
-   *   理由：底图上的边**不是画板对象** —— 把「等号」做成"点一下那条线段"会犯跟
-   *   平行线/垂线一模一样的毛病（点了静默无反应），而这两个记号正是教师明确要的。
-   *
-   * 🔴 两个三击记号的点击顺序**必须一样**：`[一条边上, 顶点, 另一条边上]`（顶点在第二下），
-   *   与现有「角」同形（`buildEntry` 的 `case 'angle'` 就是 `[ats[0], ats[1], ats[2]]`）。
-   *   两种顺序共存的话，学生点错的表现是"记号长到了错的地方"，不报错。
-   *   ⚠️ 数据形状里字段的**书写顺序**与点击顺序是两件事，别混。
-   */
-  { value: 'angleArc', label: '角弧', clicks: 3, group: 'mark' },
-  { value: 'rightAngle', label: '直角', clicks: 3, group: 'mark' },
-  { value: 'equalMark', label: '等号', clicks: 2, group: 'mark' },
-  { value: 'parallelMark', label: '平行', clicks: 2, group: 'mark' },
-  { value: 'free', label: '自由线条', clicks: 0, group: 'other' },
+  { value: 'parallelogram', label: '平行四边形', clicks: 2, drag: true, group: 'polygon' },
+  { value: 'trapezoid', label: '梯形', clicks: 2, drag: true, group: 'polygon' },
+  { value: 'coordinateSystem', label: '添加直角坐标系', clicks: 2, drag: true, group: 'coordinate' },
+  { value: 'numberLine', label: '添加数轴', clicks: 2, drag: true, group: 'coordinate' },
+  { value: 'free', label: '铅笔', clicks: 0, group: 'other' },
   { value: 'label', label: '文字', clicks: 1, group: 'other' },
 ];
-
-/**
- * 每个工具的**图标**（24×24 的 `d` 串，线性描边、`currentColor`）。
- *
- * 🔴 一个都不能少：有用例逐个点名（`MATH_TOOL_ICONS[tool]` 必须是非空字符串）——
- * 缺图标的按钮在屏幕上只是「少了一小块」，没人会报 bug。
- * ⚠️ 图标是**几何示意**，不是写实画：线段两端带点、射线带箭头、平行线两条斜线、
- *    垂线画成 T —— 目标是在一排 14 个按钮里一眼分得出来，而不是好看。
- */
-export const MATH_TOOL_ICONS: Record<MathTool, string> = {
-  point: 'M12 9.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 1 0 0-5.6',
-  segment: 'M5 18 L19 6 M5 18 m-1.8 0 a1.8 1.8 0 1 0 3.6 0 a1.8 1.8 0 1 0 -3.6 0 M19 6 m-1.8 0 a1.8 1.8 0 1 0 3.6 0 a1.8 1.8 0 1 0 -3.6 0',
-  arrow: 'M4 19 L18 6 M18 6 l-4.5 1 M18 6 l-1 4.5',
-  circle: 'M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 1 0 0-17 M12 11.4a0.6 0.6 0 1 0 0 1.2 0.6 0.6 0 1 0 0-1.2',
-  triangle: 'M12 4 L20 19 L4 19 Z',
-  rectangle: 'M4 6.5 h16 v11 H4 Z',
-  parallelogram: 'M8 6.5 h12 l-4 11 H4 Z',
-  trapezoid: 'M7 6.5 h10 l3 11 H4 Z',
-  // ⚠️ 这两撇是原来 `parallel`（已被砍掉）的图标，字形 `M6 4.5 L10 19.5 M14 4.5 L18 19.5` ——
-  //    它就是 `∥` 的字形，2026-10-07 原样挪给**新**的「平行记号」用。
-  parallelMark: 'M6 4.5 L10 19.5 M14 4.5 L18 19.5',
-  // 角弧：两条边只画一小截，重点是中间那段弧。
-  angleArc: 'M5 19 L14.5 5 M5 19 L20 15.5 M9 17.4 A5 5 0 0 0 12.2 13.4',
-  // 直角：一个角加里头的那个小方块。
-  rightAngle: 'M6 5.5 V18 H19 M6 13.5 H10.5 V18',
-  // 等号：一条边 + 横穿它的一道短斜线。
-  equalMark: 'M4 15.5 L20 8.5 M10.2 7.9 L13.8 16.1',
-  free: 'M3 16.5c2.5-7 4.5 3.5 7-2s4 3.5 7-2.5',
-  label: 'M6 6 h12 M12 6 V19',
-  select: 'M5.5 3.5 l13 7.5 -5.5 1 3.5 6.5 -2.8 1.3 -3.4-6.5 -4.8 3.4 Z',
-};
 
 /** 工具条上要显示的分组（只保留真有工具的那些组，顺序跟着 `MATH_TOOL_GROUPS`）。 */
 export function toolsInGroup(group: MathToolGroup): typeof MATH_TOOLS {
   return MATH_TOOLS.filter((tool) => tool.group === group);
 }
 
-/** 每个工具在工具条上要说的那句话（含要点几下 / 要不要拖动）。 */
+/** 每个工具在工具条上要说的简短操作提示。 */
 export function toolHintOf(tool: MathTool): string {
-  if (tool === 'free') return '按住拖动即可自由画线';
-  // ★ 2026-10-06（教师）：「能不能在画图时使用拖拽的方式，不要用不同位置点鼠标的方式」
-  // ⇒ 两点就能定的图形（线段/直线/射线/圆/长方形/正方形）改成**按住拖动**，
-  //    三点以上才能定的（三角形、梯形、角、平分线……）只能继续多点，这是几何本身决定的。
+  if (tool === 'free') return '按住拖动，像铅笔一样画线';
+  if (tool === 'coordinateSystem') return '按住拖动，确定直角坐标系的大小';
+  if (tool === 'numberLine') return '按住横向拖动，确定数轴的位置和长度';
   if (MATH_TOOLS.find((item) => item.value === tool)?.drag) return '按住拖动即可画出这个图形';
-  const clicks = MATH_TOOLS.find((item) => item.value === tool)?.clicks ?? 1;
-  if (tool === 'point') return '点击画板添加点';
-  if (tool === 'label') return '先在右边写好文字，再点画板放置';
+  if (tool === 'label') return '点击画布，然后直接输入文字';
   if (tool === 'select') return '点一下图形选中它，再点右边的「删除选中」；点空白处取消';
-  if (tool === 'trapezoid') return '依次点击四个顶点（上底、下底各自平行）';
-  /*
-   * ★ 2026-10-07 四个记号。两个三击记号说的是**同一件事的顺序**（顶点在第二下）——
-   * 照抄那半句，别各写各的：两种顺序共存的话学生一定会点错，
-   * 而表现是"记号长到了错的地方"，不报错。
-   */
-  if (tool === 'angleArc') return '依次点：一条边上、顶点、另一条边上';
-  if (tool === 'rightAngle') return '依次点：一条边上、顶点、另一条边上（标直角）';
-  if (tool === 'equalMark') return '沿着那条边点两下，标上相等记号';
-  if (tool === 'parallelMark') return '沿着那条边点两下，标上平行记号';
-  return `依次点击 ${clicks} 个位置完成图形`;
+  return '';
 }
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
@@ -177,18 +104,119 @@ export function rectangleOf(a: Pt, b: Pt): Pt[] {
   ];
 }
 
-export function parallelogramOf(a: Pt, b: Pt, c: Pt): Pt[] {
+/** 拖出的包围框内生成平行四边形；方向反拖也保持相同形状。 */
+export function parallelogramOf(a: Pt, b: Pt): Pt[] {
+  const left = Math.min(a[0], b[0]);
+  const right = Math.max(a[0], b[0]);
+  const top = Math.max(a[1], b[1]);
+  const bottom = Math.min(a[1], b[1]);
+  const skew = (right - left) * 0.22;
   return [
-    [round(a[0]), round(a[1])],
-    [round(b[0]), round(b[1])],
-    [round(c[0]), round(c[1])],
-    [round(a[0] + c[0] - b[0]), round(a[1] + c[1] - b[1])],
+    [round(left + skew), round(top)],
+    [round(right), round(top)],
+    [round(right - skew), round(bottom)],
+    [round(left), round(bottom)],
   ];
 }
 
-/** 梯形：四个顶点原样（学生自己点上底/下底，我们**不**替他"摆正" —— 那不叫梯形题了）。 */
-export function trapezoidOf(points: Pt[]): Pt[] {
-  return points.slice(0, 4).map(([x, y]) => [round(x), round(y)] as Pt);
+/** 拖出的包围框内生成上窄下宽的等腰梯形。 */
+export function trapezoidOf(a: Pt, b: Pt): Pt[] {
+  const left = Math.min(a[0], b[0]);
+  const right = Math.max(a[0], b[0]);
+  const top = Math.max(a[1], b[1]);
+  const bottom = Math.min(a[1], b[1]);
+  const inset = (right - left) * 0.2;
+  return [
+    [round(left + inset), round(top)],
+    [round(right - inset), round(top)],
+    [round(right), round(bottom)],
+    [round(left), round(bottom)],
+  ];
+}
+
+/** 拖出的包围框内生成等腰三角形。 */
+export function triangleOf(a: Pt, b: Pt): Pt[] {
+  const left = Math.min(a[0], b[0]);
+  const right = Math.max(a[0], b[0]);
+  const top = Math.max(a[1], b[1]);
+  const bottom = Math.min(a[1], b[1]);
+  return [
+    [round((left + right) / 2), round(top)],
+    [round(right), round(bottom)],
+    [round(left), round(bottom)],
+  ];
+}
+
+/**
+ * 拖动闭合多边形顶点时的几何吸附。
+ *
+ * - 任意多边形：移动点两侧的相邻边接近垂直时，吸到以两个相邻顶点为直径的圆上
+ *   （圆周角定理保证夹角严格为 90°）；
+ * - 四边形：移动点的一条邻边接近与对边平行时，投影到那条平行约束线上；
+ * - 多个约束同时接近时，只采用离当前指针最近的候选，避免顶点突然跳远。
+ *
+ * `tolerance` 使用用户坐标；调用端按当前缩放把固定像素换算过来，因此放大、缩小后手感一致。
+ */
+export function snapPolygonVertex(points: Pt[], movedIndex: number, candidate: Pt, tolerance: number): Pt {
+  if (points.length < 3 || movedIndex < 0 || movedIndex >= points.length || !(tolerance > 0)) return candidate;
+  const prev = points[(movedIndex - 1 + points.length) % points.length];
+  const next = points[(movedIndex + 1) % points.length];
+  const candidates: Pt[] = [];
+
+  const addProjectionToLine = (origin: Pt, direction: Pt) => {
+    const length2 = direction[0] ** 2 + direction[1] ** 2;
+    if (length2 < 1e-9) return;
+    const scale = ((candidate[0] - origin[0]) * direction[0]
+      + (candidate[1] - origin[1]) * direction[1]) / length2;
+    candidates.push([origin[0] + direction[0] * scale, origin[1] + direction[1] * scale]);
+  };
+
+  // 相邻两边垂直 ⇔ 移动点落在「prev-next 为直径」的圆上。
+  const center: Pt = [(prev[0] + next[0]) / 2, (prev[1] + next[1]) / 2];
+  const radius = Math.hypot(next[0] - prev[0], next[1] - prev[1]) / 2;
+  const fromCenter: Pt = [candidate[0] - center[0], candidate[1] - center[1]];
+  const centerDistance = Math.hypot(fromCenter[0], fromCenter[1]);
+  if (radius > 1e-6 && centerDistance > 1e-6) {
+    candidates.push([
+      center[0] + (fromCenter[0] / centerDistance) * radius,
+      center[1] + (fromCenter[1] / centerDistance) * radius,
+    ]);
+  }
+
+  if (points.length === 4) {
+    const opposite = points[(movedIndex + 2) % 4];
+    // prev→移动点 ∥ next→opposite
+    addProjectionToLine(prev, [opposite[0] - next[0], opposite[1] - next[1]]);
+    // 移动点→next ∥ opposite→prev
+    addProjectionToLine(next, [prev[0] - opposite[0], prev[1] - opposite[1]]);
+    // 两组对边同时平行时的唯一交点（完整平行四边形）。
+    candidates.push([prev[0] + opposite[0] - next[0], prev[1] + opposite[1] - next[1]]);
+  }
+
+  let closest = candidate;
+  let closestDistance = tolerance;
+  for (const point of candidates) {
+    const distance = Math.hypot(point[0] - candidate[0], point[1] - candidate[1]);
+    if (distance <= closestDistance) {
+      closest = point;
+      closestDistance = distance;
+    }
+  }
+  return closest === candidate ? candidate : [round(closest[0]), round(closest[1])];
+}
+
+/** 绕中心旋转一组顶点；画板与以后可能加入的预览端共用同一份纯几何。 */
+export function rotatePolygonPoints(origins: Pt[], center: Pt, startPointer: Pt, currentPointer: Pt): Pt[] {
+  const start = Math.atan2(startPointer[1] - center[1], startPointer[0] - center[0]);
+  const current = Math.atan2(currentPointer[1] - center[1], currentPointer[0] - center[0]);
+  const delta = current - start;
+  const cosine = Math.cos(delta);
+  const sine = Math.sin(delta);
+  return origins.map(([x, y]) => {
+    const dx = x - center[0];
+    const dy = y - center[1];
+    return [center[0] + dx * cosine - dy * sine, center[1] + dx * sine + dy * cosine];
+  });
 }
 
 /*
@@ -226,6 +254,8 @@ export const MARK_TICK_LEN = 0.9;
 export const MARK_ARROW_LEN = 1.4;
 /** 直角小方块的边长（沿两条边各量这么长）。 */
 export const MARK_SQUARE_SIDE = 0.8;
+/** 多边形自动吸成直角后显示的提示方框，比手动画的历史直角标注更小。 */
+export const AUTO_RIGHT_ANGLE_SIDE = 0.45;
 /** 角弧的半径。 */
 export const MARK_ARC_RADIUS = 0.9;
 /** 角弧默认采样多少段（8 段足够看出是弧，又不至于让作答数据变大）。 */
@@ -276,6 +306,19 @@ export function rightAngleOf(vertex: Pt, a: Pt, b: Pt): Pt[] | null {
   const u2 = unitOf(vertex, b);
   if (!u1 || !u2) return null;
   const s = MARK_SQUARE_SIDE;
+  return [
+    [round(vertex[0] + u1[0] * s), round(vertex[1] + u1[1] * s)],
+    [round(vertex[0] + (u1[0] + u2[0]) * s), round(vertex[1] + (u1[1] + u2[1]) * s)],
+    [round(vertex[0] + u2[0] * s), round(vertex[1] + u2[1] * s)],
+  ];
+}
+
+/** 相邻边确实垂直时才返回一个小直角方框；否则不显示任何提示。 */
+export function rightAngleCornerOf(vertex: Pt, a: Pt, b: Pt): Pt[] | null {
+  const u1 = unitOf(vertex, a);
+  const u2 = unitOf(vertex, b);
+  if (!u1 || !u2 || Math.abs(u1[0] * u2[0] + u1[1] * u2[1]) > 0.02) return null;
+  const s = AUTO_RIGHT_ANGLE_SIDE;
   return [
     [round(vertex[0] + u1[0] * s), round(vertex[1] + u1[1] * s)],
     [round(vertex[0] + (u1[0] + u2[0]) * s), round(vertex[1] + (u1[1] + u2[1]) * s)],
@@ -341,6 +384,44 @@ export function arcLabelAt(vertex: Pt, a: Pt, b: Pt): Pt | null {
  *   而存档里所有坐标都是按这个框存的 ⇒ 改框等于把所有历史作答挪个位置。
  */
 export const MATH_BOX: readonly [number, number, number, number] = [-10, 8, 10, -8];
+
+/**
+ * 把内容包围框扩展成与真实画布完全相同的宽高比，并保留固定像素安全边距。
+ * 先做这一步再交给 JSXGraph，避免它依据“上一次缩放”的 unitX/unitY 二次推导而裁掉边缘。
+ */
+export function fitMathBoundingBox(
+  points: Pt[],
+  viewportWidth: number,
+  viewportHeight: number,
+  paddingPx = 48,
+): [number, number, number, number] {
+  if (points.length === 0) return [...MATH_BOX];
+  const width = Math.max(80, viewportWidth);
+  const height = Math.max(80, viewportHeight);
+  const inset = Math.min(paddingPx, width * 0.2, height * 0.2);
+  const xs = points.map(([x]) => x);
+  const ys = points.map(([, y]) => y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const contentWidth = Math.max(0.5, maxX - minX);
+  const contentHeight = Math.max(0.5, maxY - minY);
+  const unitsPerPixel = Math.max(
+    contentWidth / Math.max(1, width - inset * 2),
+    contentHeight / Math.max(1, height - inset * 2),
+  );
+  const viewWidth = unitsPerPixel * width;
+  const viewHeight = unitsPerPixel * height;
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  return [
+    centerX - viewWidth / 2,
+    centerY + viewHeight / 2,
+    centerX + viewWidth / 2,
+    centerY - viewHeight / 2,
+  ];
+}
 
 /**
  * 底图放进画板时的 **[锚点, 尺寸]** —— jsxgraph 的 `create('image', …)` 要的就是这个形状。

@@ -294,7 +294,7 @@ test('★ 开关打开时按**当前画板**写空底稿（不是恒写流程图
   );
 });
 
-test('★ 数学作图 / 自由画这一版**没有**初始图 ⇒ 明说没有（返回 null，别编一个空壳）', () => {
-  assert.equal(blankStarterFor('math'), null);
+test('★ 数学作图使用 elements 底稿；自由画仍不创建结构化底稿', () => {
+  assert.deepEqual(blankStarterFor('math'), { tool: 'math', data: { elements: [] } });
   assert.equal(blankStarterFor('free'), null);
 });

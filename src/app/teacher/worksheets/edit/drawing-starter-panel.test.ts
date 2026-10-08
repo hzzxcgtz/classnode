@@ -38,10 +38,12 @@ test('★ 底稿面板：用学生的画板、写回带 tool 的 drawingStarter�
   assert.match(source, /window\.confirm/, '已经有底稿时取消没有确认 —— 一次误点就丢一张图');
   // ④ 画板要有明确高度：它靠量出容器尺寸才初始化（这条路径我们修过两次：scale(0) / overflowHidden）。
   assert.match(source, /height: 380/, '底稿画板没有给固定高度 —— 量不出尺寸它不会初始化');
-  // ⑤ 还没接好的档位要说清楚，而不是给一个画不了东西的空框。
-  // ★ 2026-10-07：这一档的说明跟着「初始图推广到两档」改了 ——
-  //   原来写的是「目前只支持流程图」，现在是「支持流程图与思维导图」。
-  assert.match(source, /初始图目前支持/, '这两档之外的画板（数学作图 / 自由画）没有说明');
+  // ⑤ 数学作图也复用学生画板来制作不可修改的题目底图。
+  assert.match(source, /import MathDrawing from '@\/app\/classroom\/worksheet\/questions\/drawing-surfaces\/math-drawing'/,
+    '数学初始图没有复用学生端画板');
+  assert.match(source, /drawingStarter: \{ tool: 'math', data: next \}/, '数学初始图没有按 math 数据写回');
+  assert.match(source, /基础绘图暂不支持结构化初始图/, '基础绘图没有说明当前能力');
+  assert.match(source, /不能选中、移动、旋转或删除/, '没有向教师说明数学底图在学生端不可修改');
 });
 
 test('★ 2026-10-06（教师最终拍板）：「锁定初始图」开关**不许存在**（连同它的副说明）', () => {
@@ -85,12 +87,13 @@ test('★ 2026-10-06（教师）：照片上传时整块隐藏；两个区域改
   for (const gone of ['DRAWING_TOOL_OPTIONS.map', 'DRAWING_BACKGROUND_PRESETS.map', 'FlowchartDrawing']) {
     assert.ok(!photoBlock.includes(gone), `照片上传时还渲染了 ${gone}`);
   }
-  assert.match(photoBlock, /不使用作图工具、画布底图和初始图/, '照片上传时没有告诉教师为什么是空的');
-  // ② 两个区域改成：选项只留名字 + 选中项在下面一行说明 + 缩略图行。
+  assert.match(photoBlock, /不使用作图工具和初始图/, '照片上传时没有告诉教师为什么是空的');
+  // ② 作图工具保持紧凑；通用底图预设选择器已取消，图片上传只在数学作图出现。
   assert.match(source, /className="worksheet-editor-drawing-tools"/, '作图工具没有换成紧凑的按钮行');
   assert.match(source, /className="worksheet-editor-drawing-swatches"/, '画布底图没有换成缩略图行');
   assert.match(source, /const selectedTool = DRAWING_TOOL_OPTIONS.find/, '没有「选中的那一项」的说明行');
-  assert.match(source, /const selectedBackground = background\.preset === 'custom'/, '底图那一项没有说明行');
+  assert.ok(!/DRAWING_BACKGROUND_PRESETS\.map/.test(source), '通用画布底图预设选择器还在');
+  assert.match(source, /tool === 'math'[\s\S]{0,700}?图片底图/, '数学图片底图入口没有单独保留');
   // ⚠️ 反面：**不许**再回到「每张卡两行说明」的老样子（那正是不占空间要解决的问题）。
   const toolsBlock = source.slice(source.indexOf('drawing-tools'), source.indexOf('drawing-swatches'));
   assert.ok(!/<small>/.test(toolsBlock), '作图工具又给每张卡加了说明文字');

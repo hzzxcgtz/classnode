@@ -484,7 +484,7 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
           )}
 
           <div className="agent-form-footer" style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
-            <AgentHelpButton platform={platform} />
+            <AgentHelpButton platform={platform} purpose={purpose} />
             <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving} style={{ fontSize: "0.813rem", padding: '7px 18px' }}>取消</button>
             <button type="submit" className="btn btn-primary" disabled={saving} style={{ fontSize: "0.813rem", padding: '7px 20px' }}>

@@ -443,7 +443,7 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
     // 上面那个默认值不回溯）。
     ...(isGradedQuestionType(type) ? { autoGrade: false as const } : {}),
     data: type === 'drawing'
-      ? { drawingTool: 'free', drawingBackgroundPreset: 'blank' }
+      ? { drawingTool: 'free' }
       : {},
     children: [],
   };

@@ -20,6 +20,7 @@ import {
   classifyFailure,
   shouldFlushOnLockChange,
   dropQueueItem,
+  dropQuestionFromQueue,
   hydrateAnswers,
   isPermanentFailure,
   permanentFailureMessage,
@@ -230,10 +231,66 @@ test('不同题各留一条；出队只摘掉点名的那一道', () => {
   items = upsertQueueItem(items, item('q3', 300));
   assert.deepEqual(items.map((row) => row.questionId), ['q1', 'q2', 'q3']);
 
-  const after = dropQueueItem(items, 'q2');
+  const after = dropQuestionFromQueue(items, 'q2');
   assert.deepEqual(after.map((row) => row.questionId), ['q1', 'q3']);
   // 不改原数组（React 的 state 更新依赖这一点）。
   assert.equal(items.length, 3);
+});
+
+// ── 2b. 🔴 在途出队：删的必须是「刚发出去的那一条」，不是「这一题」 ────────
+//      （2026-10-09 审计 §B4；补这组用例时发现原改动**只换了签名、行为没变**，见下）
+//
+// 形态：`use-worksheet-answers.ts` 的 flush 是「取队首**快照** → `await putAnswer` → 出队」，
+// 而在这段在途时间里学生完全可以继续改**同一题** —— `upsertQueueItem` 会把队里那条
+// **换成新值**（新 `at`）。只按 `questionId` 删，就会把学生更新的那一条也删掉：
+// 屏幕上是他刚写的字、库里永远是旧值，**两端都不报错**。这正是本模块存在的意义
+// （「看得见的那份 ≠ 交上去的那份」）被自己破坏掉的那条路。
+
+test('🔴 在途出队：快照发出后学生又改了同一题 ⇒ 更新的那一条必须留在队列里', () => {
+  // ① 学生答了 q1，flush 取走队首快照（`replayOrder(pendingRef.current)[0]`）。
+  const sent = item('q1', 100, { format: 'fill/v1', text: '光合' });
+  let items = upsertQueueItem([], sent);
+  // ② 在途这段时间里学生继续改同一题 —— 队里那条被覆盖成新值（新 `at`）。
+  items = upsertQueueItem(items, item('q1', 200, { format: 'fill/v1', text: '光合作用' }));
+  // ③ 服务端 200 回来，出队的是那一份**快照**（不是「q1 现在的那一条」）。
+  const after = dropQueueItem(items, sent);
+  assert.deepEqual(after.map((row) => row.at), [200],
+    '更新的那一条被一起删了 ⇒ 服务端永远只有「光合」，而屏幕上写着「光合作用」');
+  assert.deepEqual(after[0].value, { format: 'fill/v1', text: '光合作用' });
+});
+
+test('🔴 在途出队：队列里还是那一条 ⇒ 正常出队，且不牵连别的题', () => {
+  // 阳性对照：没有这一条，「永不删」也能让上面那条变绿 —— 而永不删 = flush 死循环重发同一题。
+  const sent = item('q1', 100, { format: 'fill/v1', text: '光合' });
+  let items = upsertQueueItem([], item('q2', 50));
+  items = upsertQueueItem(items, sent);
+  const after = dropQueueItem(items, sent);
+  assert.deepEqual(after.map((row) => row.questionId), ['q2'], '发成功的那一条必须摘掉');
+});
+
+test('🔴 `dropQueueItem` 与 `dropQuestionFromQueue` 是两件事（不许再合成一个）', () => {
+  // 同一个夹具下两者必须**分岔** —— 否则这条断言什么都没证（规格里那两个语义不同的动作
+  // 又会并回一个函数）。`dropQuestionFromQueue` 的正当用途只有一处：`setDraft` 里
+  // 「这一题现在没有值可交、而且从没发出去过」，那里「按题目删」正是它的意思。
+  const sent = item('q1', 100, { format: 'fill/v1', text: '光合' });
+  let items = upsertQueueItem([], sent);
+  items = upsertQueueItem(items, item('q1', 200, { format: 'fill/v1', text: '光合作用' }));
+  assert.deepEqual(dropQuestionFromQueue(items, 'q1'), [], '按题目删：这一题一条都不留');
+  assert.deepEqual(dropQueueItem(items, sent).map((row) => row.at), [200], '按那一条删：只摘掉发出去的那一份');
+});
+
+test('🔴 反向断言：只比 questionId（修好之前的形状）⇒ 上面第 1 条必红', () => {
+  const legacyDrop = (items: WorksheetQueueItem[], questionId: string): WorksheetQueueItem[] =>
+    items.filter((existing) => existing.questionId !== questionId);
+  const sent = item('q1', 100, { format: 'fill/v1', text: '光合' });
+  let items = upsertQueueItem([], sent);
+  items = upsertQueueItem(items, item('q1', 200, { format: 'fill/v1', text: '光合作用' }));
+  assert.deepEqual(legacyDrop(items, 'q1'), [], '这就是回退后的样子：更新的那一条一起没了');
+  assert.notDeepEqual(legacyDrop(items, 'q1'), dropQueueItem(items, sent), '回退 ⇒ 这一条必须红');
+  // ⚠️ 阴性对照：队里还是那一条时，两种写法**恰好相同** ——
+  // 别把「挡住回退」写成「凡出队都特殊」。
+  const only = [sent];
+  assert.deepEqual(legacyDrop(only, 'q1'), dropQueueItem(only, sent));
 });
 
 test('🔴 replayOrder：按 at 升序，而不是数组顺序', () => {

@@ -118,8 +118,48 @@ export function upsertQueueItem(items: WorksheetQueueItem[], item: WorksheetQueu
   return [...items.filter((existing) => existing.questionId !== item.questionId), item];
 }
 
-/** 出队（服务端**返回 200 之后**才允许调用，见文件头）。 */
-export function dropQueueItem(items: WorksheetQueueItem[], questionId: string): WorksheetQueueItem[] {
+/**
+ * 出队：**只删「还是那一条」的那一项**。
+ *
+ * 🔴 判据必须连**这一条编辑的身份**一起比（`questionId` + `at`），不能只比题目：
+ *    `flush` 是先取队首**快照**、再 `await putAnswer(...)`，而在这段在途时间里学生
+ *    完全可以继续改同一题 —— `upsertQueueItem` 会把队里那条换成**新值**（新 `at`）。
+ *    只按 `questionId` 删，就会把**学生更新的那一条也删掉**：屏幕显示最新内容、
+ *    服务端永远只有旧值，且无任何报错。这正是本模块存在的意义（「看得见的那份
+ *    ≠ 交上去的那份」）被自己破坏掉的那条路。
+ * ⚠️ 用 `at` 而不是对象引用比：`replayOrder` 会 `[...items].sort()` —— 元素引用虽然保留，
+ *    但「队列一旦从 localStorage 重读就换了引用」这条路会让引用比**永远为假**、
+ *    于是那一项永远删不掉（`flush` 死循环重发同一题）。`at` 是数字，克隆后仍然相等
+ *    （`JSON.stringify` 往返也保得住）。
+ *
+ * ⚠️ **它假定「同一道题的两次入队不会落在同一毫秒」**：撞上时这一份会被当成刚发出去的那条删掉。
+ *    这条假定今天成立（人与键盘敲不出同毫秒的两次输入，而 flush 的出队隔着一次网络往返），
+ *    但它是一条**假定**——真需要更硬的判据时要给队列条目加一个单调序号，而不是在这里加字段比对。
+ *
+ * 🔴 与 `dropQuestionFromQueue` 是**两件事，别合回去**：本函数答的是「刚发出去的那一条还在吗」，
+ *    它答的是「这一题不该有任何待发内容」。`worksheet-queue.test.ts` 第 2b 节那条用例
+ *    在同一个夹具上要求两者给出**不同**结果 —— 合回一个函数，它必红。
+ */
+export function dropQueueItem(items: WorksheetQueueItem[], item: WorksheetQueueItem): WorksheetQueueItem[] {
+  return items.filter((existing) => !(existing.questionId === item.questionId && existing.at === item.at));
+}
+
+/**
+ * **无条件**删掉某道题在队列里的条目。
+ *
+ * ⚠️ 只有一处正当用途：`use-worksheet-answers.ts` 里「这一题现在没有值可交、
+ * 而且从来没交出去过」那一支 —— 那里**已经**判定「这道题不该有任何待发内容」，
+ * 所以按题目删正是它的意思。其余地方（服务端返回 200 / 永久失败）都必须用
+ * `dropQueueItem`，否则会连学生更新的那一条一起删掉。
+ *
+ * 🔴 **但那一支的判据今天并不等于「从来没交出去过」** —— 它读的是
+ *    `lastSentRef.current[id] === undefined`，那是「**没有确认过**的保存」：
+ *    PUT 还在路上时它同样是 `undefined`。⇒ 学生在这段时间把这道题删干净，
+ *    这一支会把**在途的那一条**也摘掉，而那个 PUT 照样落库 ——
+ *    屏幕空、库里有、队列里没有任何一条会去纠正它（审计 2026-10-09 §B **4b**，未修）。
+ *    修它要给在途状态留痕，不是改本函数。
+ */
+export function dropQuestionFromQueue(items: WorksheetQueueItem[], questionId: string): WorksheetQueueItem[] {
   return items.filter((existing) => existing.questionId !== questionId);
 }
 

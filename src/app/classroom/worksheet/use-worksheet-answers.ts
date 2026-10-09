@@ -18,6 +18,7 @@ import {
   classifyFailure,
   shouldFlushOnLockChange,
   dropQueueItem,
+  dropQuestionFromQueue,
   hydrateAnswers,
   permanentFailureMessage,
   readCorrectBlanks,
@@ -462,7 +463,7 @@ export function useWorksheetAnswers({
           // ★ 只有服务端 200 才出队（规格 §8.3）。
           sessionExpiredRef.current = false;
           lastSentRef.current[next.questionId] = next.value;
-          commitQueue(dropQueueItem(pendingRef.current, next.questionId));
+          commitQueue(dropQueueItem(pendingRef.current, next));
           if (next.value !== null) {
             // 服务端在 `PUT` 里把这一行拨回 `draft`（`allowResubmit` 为假且已提交时
             // 它根本不会走到这里 —— 那种情况是 409，走下面那条分支）。
@@ -492,7 +493,7 @@ export function useWorksheetAnswers({
         }
         if (kind === 'permanent') {
           // 永久失败：出队**并说话**。留着重试只会让队列永远清不空（服务端每次都拒）。
-          commitQueue(dropQueueItem(pendingRef.current, next.questionId));
+          commitQueue(dropQueueItem(pendingRef.current, next));
           setToastRef.current({
             msg: permanentFailureMessage(outcome.status as number, outcome.error),
             type: 'error',
@@ -618,7 +619,7 @@ export function useWorksheetAnswers({
       return;
     }
     if (pendingRef.current.some((item) => item.questionId === node.id)) {
-      commitQueue(dropQueueItem(pendingRef.current, node.id));
+      commitQueue(dropQuestionFromQueue(pendingRef.current, node.id));
     }
   }, [commitQueue, enqueue, emitPreview]);
 

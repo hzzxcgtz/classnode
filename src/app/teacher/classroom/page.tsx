@@ -823,6 +823,11 @@ function ClassroomBoardContent() {
   /** 学习单查看只使用这一层全屏工作区；矩阵、学生、题目与 AI 分析都在内部切换。 */
   const [worksheetWorkspace, setWorksheetWorkspace] = useState<WorksheetWorkspaceEntry | null>(null);
   /**
+   * 打开工作区时压入的浏览器历史标记。它只对应**整个工作区这一层**：内部切换三个视图
+   * 不再 pushState，所以教师按一次浏览器返回就回到看板，不会逐层倒退。
+   */
+  const worksheetWorkspaceHistoryTokenRef = useRef<number | null>(null);
+  /**
    * 看板模式（P2.3 把 `board` / `webapp` 两个视图合成了一个）。
    *
    * ⚠️ 这里**曾经**是 `teacherView: 'board' | 'webapp'` + `TeacherPageTabs` 的视图切换。
@@ -1080,13 +1085,54 @@ function ClassroomBoardContent() {
     return () => window.clearInterval(timer);
   }, []);
 
+  /** 浏览器返回：消费掉工作区那一层历史，只关闭工作区，课堂看板继续留在原位。 */
+  useEffect(() => {
+    const handlePopState = () => {
+      if (worksheetWorkspaceHistoryTokenRef.current === null) return;
+      worksheetWorkspaceHistoryTokenRef.current = null;
+      setWorksheetWorkspace(null);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const closeWorksheetWorkspace = useCallback(() => {
+    const token = worksheetWorkspaceHistoryTokenRef.current;
+    const state = window.history.state as Record<string, unknown> | null;
+    if (token !== null && state?.classnodeWorksheetWorkspace === token) {
+      window.history.back();
+      return;
+    }
+    worksheetWorkspaceHistoryTokenRef.current = null;
+    setWorksheetWorkspace(null);
+  }, []);
+
+  /** Escape 与浏览器返回遵循同一语义：直接退出整个学习单工作区，回到课堂看板。 */
+  useEffect(() => {
+    if (!worksheetWorkspace) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeWorksheetWorkspace();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [worksheetWorkspace, closeWorksheetWorkspace]);
+
   /** 打开唯一的学习单工作区；不同入口只决定初始视图，不再制造互相叠加的抽屉。 */
   const openWorksheetWorkspace = useCallback((entry: Omit<WorksheetWorkspaceEntry, 'token'>) => {
     setSelectedStudent(null);
     setSelectedGroup(null);
     selectedStudentIdRef.current = null;
     setExploreDetailId(null);
-    setWorksheetWorkspace({ token: Date.now(), ...entry });
+    const token = Date.now();
+    if (worksheetWorkspaceHistoryTokenRef.current === null) {
+      const previous = window.history.state;
+      const base = previous && typeof previous === 'object' ? previous as Record<string, unknown> : {};
+      window.history.pushState({ ...base, classnodeWorksheetWorkspace: token }, '', window.location.href);
+      worksheetWorkspaceHistoryTokenRef.current = token;
+    }
+    setWorksheetWorkspace({ token, ...entry });
     // ★ 2026-09-28：打开抽屉时**仍然重拉一次**（而不是只吃 30 秒轮询的那一份）。
     // 理由没变、而且更成立了：教师几乎总是为了「此刻他做到哪了」才点开抽屉，而轮询那份
     // 最多可能旧 30 秒。这一次重拉由 `wb` 拥有，所以「数据只有一个来源」这条没有被破坏。
@@ -1403,7 +1449,7 @@ function ClassroomBoardContent() {
   const openStudentDrawer = async (student: StudentSummary) => {
     if (selectedStudentIdRef.current === student.id) return; // 已选中，无需重复拉取
     // 对话抽屉与学习单抽屉是**同一块位置**（右上角、宽 420）的浮层，同时开着会叠在一起。
-    setWorksheetWorkspace(null);
+    closeWorksheetWorkspace();
     selectedStudentIdRef.current = student.id;
     setSelectedStudent(student);
     setLoadingMessages(true);
@@ -2243,7 +2289,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
     setSelectedGroup(null);
     selectedStudentIdRef.current = null;
     // 与另外两个浮层互斥（同一块 420px 位置，见 `openStudentDrawer` 的同款一行）。
-    setWorksheetWorkspace(null);
+    closeWorksheetWorkspace();
     setExploreDetailId(studentId);
   };
 
@@ -3863,7 +3909,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           advancedMode={classroom?.mode === 'advanced'}
           mode={classroom?.mode ?? 'standard'}
           reviewBusy={worksheetReviewBusy}
-          onClose={() => setWorksheetWorkspace(null)}
+          onClose={closeWorksheetWorkspace}
           onReview={(worksheetId, participantId, questionId) => void reviewWorksheetAnswer(worksheetId, participantId, questionId)}
           onClearQuestion={(_worksheetId, participantId, questionId) => { void clearWorksheetDataFor(participantId, worksheetParticipantName(participantId), questionId); }}
         />

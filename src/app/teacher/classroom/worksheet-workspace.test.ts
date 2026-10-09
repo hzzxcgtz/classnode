@@ -29,3 +29,14 @@ test('题目统计和 AI 分析以内嵌模式呈现，不再产生第二层业�
   assert.match(workspace, /<QuestionStatsOverlay[\s\S]*?embedded/);
   assert.match(workspace, /<AnalysisOverlay[\s\S]*?embedded/);
 });
+
+test('打开工作区只压入一层浏览器历史，返回按钮只关闭工作区', () => {
+  assert.match(page, /window\.history\.pushState\(\{ \.\.\.base, classnodeWorksheetWorkspace: token \}/);
+  assert.match(page, /window\.addEventListener\('popstate', handlePopState\)/);
+  assert.match(page, /if \(worksheetWorkspaceHistoryTokenRef\.current === null\) return;[\s\S]*?setWorksheetWorkspace\(null\)/);
+});
+
+test('Escape 与关闭按钮共用同一个返回课堂动作', () => {
+  assert.match(page, /if \(event\.key !== 'Escape'\) return;[\s\S]*?closeWorksheetWorkspace\(\)/);
+  assert.match(page, /onClose=\{closeWorksheetWorkspace\}/);
+});

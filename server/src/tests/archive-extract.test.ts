@@ -222,14 +222,23 @@ test('加密包（头部加密）：清单根本读不出来 ⇒ 拒，且不冒
   // 这条路实测是 `callMain` **抛一个裸数字**（262704）—— 不 catch 就是个 500。
   const source = await makeEncryptedArchive('header');
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
-  await assert.rejects(
-    () => safeExtractArchive({ sourcePath: source, originalName: 'enc.7z', destination: dest, limits: LIMITS }),
-    (error: unknown) => {
-      assert.ok(error instanceof ArchiveError, `要 ArchiveError（回 400），实际是 ${String(error)}`);
-      assert.match(error.message, /加密|损坏/, '头部加密的包要说得出「读不了」的可能原因');
-      return true;
-    },
-  );
+  const originalReadSync = fs.readSync;
+  let stdinReads = 0;
+  fs.readSync = ((...args: unknown[]) => {
+    if (args[0] === process.stdin.fd) { stdinReads++; return 0; }
+    return Reflect.apply(originalReadSync, fs, args);
+  }) as typeof fs.readSync;
+  try {
+    await assert.rejects(
+      () => safeExtractArchive({ sourcePath: source, originalName: 'enc.7z', destination: dest, limits: LIMITS }),
+      (error: unknown) => {
+        assert.ok(error instanceof ArchiveError, `要 ArchiveError（回 400），实际是 ${String(error)}`);
+        assert.match(error.message, /加密|损坏/, '头部加密的包要说得出「读不了」的可能原因');
+        return true;
+      },
+    );
+    assert.equal(stdinReads, 0, '上传解压不能读取后端标准输入等待密码');
+  } finally { fs.readSync = originalReadSync; }
 });
 
 test('★ 超总量的包：**在解压之前**就拒，而且目标目录一个字节都没落', async () => {

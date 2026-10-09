@@ -174,7 +174,9 @@ async function openSevenZip(sourcePath: string): Promise<{ sz: SevenZipModule; r
   // ⚠️ emscripten 的 stdout 钩子给的是**字符码数字**，不是字符串（我第一版探针就栽在这，
   //    把输出拼成了一串数字）。两种都要接。
   const capture = (c: number | string) => { output += typeof c === 'number' ? String.fromCharCode(c) : c; };
-  const sz: SevenZipModule = await SevenZip({ stdout: capture, stderr: capture });
+  // Uploads are non-interactive. Password prompts must see EOF immediately;
+  // reading the server's stdin can block synchronously on Windows.
+  const sz: SevenZipModule = await SevenZip({ stdin: () => null, stdout: capture, stderr: capture });
 
   const bytes = new Uint8Array(fs.readFileSync(sourcePath));
   sz.FS.mkdir('/in');

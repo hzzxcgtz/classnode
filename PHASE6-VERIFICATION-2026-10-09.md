@@ -35,7 +35,7 @@
 
 已检查远端主分支是当前分支的祖先，没有将验收修改直接合入主分支。已准备 workflow：每个 Windows 架构在安装依赖、生成 Prisma 后运行完整测试和 lint；候选手动构建默认只上传产物，`publish_release=false` 时不创建 Release。标签发布路径保留。
 
-Windows x64 / ARM64 Action 的实际运行、安装包产物和失败修复结果将在运行后补记，不能提前标成已通过。
+首次 Action：https://github.com/hzzxcgtz/classnode/actions/runs/37934358798（提交 `cfb39aa`）。两种架构均在测试入口失败：package.json 使用 Unix shell 的 `code=$?; cat ...; exit $code`，Windows 无法正确执行，日志也没有展示。已将前后端入口改为 Node.js 子进程执行测试，同时输出控制台、保留日志、传递测试退出码；CI 在失败时也上传测试日志。修复后的远端重跑结果待补记，不能提前标成已通过。
 
 ## 仍待人工或目标环境验收
 

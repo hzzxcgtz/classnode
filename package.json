@@ -13,7 +13,7 @@
     "build": "next build && node scripts/check-classroom-browser-compat.mjs",
     "build:server": "pnpm --filter classnode-server build",
     "test": "pnpm test:client && pnpm test:server",
-    "test:client": "node --test \"src/**/*.test.ts\" > .test-client.log 2>&1; code=$?; cat .test-client.log; exit $code",
+    "test:client": "node scripts/run-tests.mjs client",
     "test:server": "pnpm --filter classnode-server test",
     "build:all": "pnpm build && pnpm build:server && node scripts/package-web.mjs",
     "start": "next start",

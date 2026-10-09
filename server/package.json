@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "NODE_ENV=development tsx watch src/index.ts",
     "build": "tsc",
-    "test": "pnpm build || exit 1; node --test dist/tests/*.test.js > ../.test-server.log 2>&1; code=$?; cat ../.test-server.log; exit $code",
+    "test": "pnpm build && node ../scripts/run-tests.mjs server",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

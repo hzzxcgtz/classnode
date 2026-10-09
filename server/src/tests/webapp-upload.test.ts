@@ -1,3 +1,4 @@
+import { withFileModeCapture } from './helpers/file-mode-capture.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -714,10 +715,15 @@ test('★ 单 HTML 的落盘权限必须是 0o600（与压缩包那条路一致�
   // 而压缩包那条路一律 0600。规范 §二 的表格给单 HTML 写的就是 `{ mode: 0o600 }`，
   // 而它现在是**默认路径** —— 不该是唯一一条权限不同的路。
   await withTempDataDir(async (dataDir) => {
-    const res = await uploadSingle(t, dataDir, 'page', new Blob(['<h1>x</h1>']), 'index.html');
-    assert.equal(res.status, 200, JSON.stringify(res.body));
-    const mode = fs.statSync(path.join(dataDir, 'webapps', String(res.body.id), 'index.html')).mode & 0o777;
-    assert.equal(mode, 0o600, `单 HTML 落盘是 ${mode.toString(8)} —— 要与压缩包那条路同权限`);
+    await withFileModeCapture(async writes => {
+      const res = await uploadSingle(t, dataDir, 'page', new Blob(['<h1>x</h1>']), 'index.html');
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      const target = path.join(dataDir, 'webapps', String(res.body.id), 'index.html');
+      assert.equal(writes.get(path.resolve(target)), 0o600);
+      const stat = fs.statSync(target);
+      assert.ok(stat.isFile());
+      if (process.platform !== 'win32') assert.equal(stat.mode & 0o777, 0o600);
+    });
   });
 });
 

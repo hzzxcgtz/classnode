@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { ArchiveError, archiveKindOf, parseSevenZipListing, safeExtractArchive } from '../services/archive-extract.js';
+import { withFileModeCapture } from './helpers/file-mode-capture.js';
 
 /**
  * 真实抓取：`7z-wasm` 对 `server/src/tests/fixtures/small-rar3.rar` 跑
@@ -350,9 +351,14 @@ test('7z：自己压一个包，解出来的树逐条对上', async () => {
 
 test('落盘权限必须是 0o600（与 safeExtractZip 逐字一致）', async () => {
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
-  await safeExtractArchive({ sourcePath: RAR_FIXTURE, originalName: 'small.rar', destination: dest, limits: LIMITS });
-  const mode = fs.statSync(path.join(dest, 'test.txt')).mode & 0o777;
-  assert.equal(mode, 0o600, `解出来的文件是 ${mode.toString(8)} —— 与 zip 那条路的落盘权限不一致`);
+  await withFileModeCapture(async writes => {
+    await safeExtractArchive({ sourcePath: RAR_FIXTURE, originalName: 'small.rar', destination: dest, limits: LIMITS });
+    const target = path.join(dest, 'test.txt');
+    assert.equal(writes.get(path.resolve(target)), 0o600);
+    const stat = fs.statSync(target);
+    assert.ok(stat.isFile());
+    if (process.platform !== 'win32') assert.equal(stat.mode & 0o777, 0o600);
+  });
 });
 
 test('只有空目录的包 ⇒ ArchiveError（不是「成功地」建出一个打不开的网页）', async () => {

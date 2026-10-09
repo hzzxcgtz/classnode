@@ -435,7 +435,9 @@ function walk(target, out = []) {
   const stat = fs.statSync(abs);
   if (stat.isFile()) { out.push(target); return out; }
   for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
-    const child = path.join(target, entry.name);
+    // Scanner identifiers match the slash-separated exemption keys on every OS.
+    // Native paths are only needed when accessing the filesystem.
+    const child = path.posix.join(target, entry.name);
     if (entry.isDirectory()) walk(child, out);
     else if (EXTS.some((ext) => entry.name.endsWith(ext))) out.push(child);
   }

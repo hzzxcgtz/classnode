@@ -17,8 +17,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 70px;
-  padding: 0 28px;
+  min-height: 56px;
+  padding: 0 24px;
   border-bottom: 1px solid #dbe4ed;
   background: #fff;
 }
@@ -30,7 +30,7 @@
 }
 
 .titleBlock p {
-  margin: 5px 0 0;
+  margin: 2px 0 0;
   color: #7a8ba0;
   font-size: .7rem;
 }
@@ -41,7 +41,7 @@
   gap: 4px;
   margin-left: auto;
   margin-right: 14px;
-  padding: 4px;
+  padding: 3px;
   border: 1px solid #d8e2ec;
   border-radius: 11px;
   background: #f4f7fa;
@@ -56,7 +56,7 @@
   cursor: pointer;
   font-size: .72rem;
   font-weight: 600;
-  padding: 7px 12px;
+  padding: 6px 11px;
 }
 
 .viewTabs button[data-active='true'],
@@ -73,13 +73,13 @@
   color: #52667e;
   cursor: pointer;
   font-size: .75rem;
-  padding: 8px 15px;
+  padding: 7px 13px;
 }
 
 .content {
   flex: 1;
   overflow: auto;
-  padding: 22px 28px 32px;
+  padding: 12px 24px 24px;
   /* 浮窗里滚到底，不要把外面的页面一起滚（说明见 globals.css 的 `.modal-overlay`）。 */
   overscroll-behavior: contain;
 }
@@ -101,10 +101,17 @@
 
 .sheetHeader {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 12px;
+  margin-bottom: 7px;
+}
+
+.sheetHeader > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
 }
 
 .sheetHeader h3 {
@@ -114,9 +121,12 @@
 }
 
 .sheetHeader p {
-  margin: 5px 0 0;
+  overflow: hidden;
+  margin: 0;
   color: #72849a;
   font-size: .7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sheetHeader p[data-tone='warning'] {
@@ -126,8 +136,8 @@
 .overviewStrip {
   display: flex;
   align-items: center;
-  min-height: 42px;
-  margin-bottom: 12px;
+  min-height: 34px;
+  margin-bottom: 7px;
   border: 1px solid #d7e2ec;
   border-left: 4px solid #6f89a7;
   border-radius: 4px 11px 11px 4px;
@@ -139,11 +149,11 @@
   display: flex;
   align-items: center;
   flex: 0 0 auto;
-  padding: 0 12px;
+  padding: 0 10px;
 }
 
 .metric {
-  padding: 0 11px;
+  padding: 0 9px;
   border-right: 1px solid #d7e1eb;
   color: #718297;
   font-size: .62rem;
@@ -166,10 +176,10 @@
   display: flex;
   flex: 1;
   align-items: center;
-  gap: 12px;
+  gap: 9px;
   min-width: 0;
   min-height: 26px;
-  padding: 6px 12px;
+  padding: 3px 10px;
   border-left: 1px solid #d6e0e9;
 }
 
@@ -191,7 +201,7 @@
   color: #4b6685;
   cursor: pointer;
   font-size: .65rem;
-  padding: 6px 9px;
+  padding: 4px 8px;
   white-space: nowrap;
 }
 
@@ -199,7 +209,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 7px;
 }
 
 .search {
@@ -210,7 +220,7 @@
   background: #fff;
   color: #33475f;
   font-size: .7rem;
-  padding: 8px 11px;
+  padding: 6px 10px;
 }
 
 .search:focus { border-color: #728dad; box-shadow: 0 0 0 3px rgb(114 141 173 / 12%); }
@@ -222,7 +232,7 @@
   color: #62758c;
   cursor: pointer;
   font-size: .65rem;
-  padding: 7px 9px;
+  padding: 5px 8px;
   white-space: nowrap;
 }
 
@@ -253,7 +263,7 @@
 
 .tableShell {
   overflow: auto;
-  max-height: calc(100vh - 320px);
+  max-height: calc(100vh - 238px);
   min-height: 230px;
   border: 1px solid #d7e2ec;
   border-radius: 13px;
@@ -270,13 +280,13 @@
   border-spacing: 0;
 }
 
-.taskHeaderRow th { height: 30px; }
+.taskHeaderRow th { height: 24px; }
 
 .columnGroupHead {
   position: sticky;
   top: 0;
   z-index: 4;
-  height: 30px;
+  height: 24px;
   border-right: 1px solid #dce5ee;
   border-bottom: 1px solid #dce5ee;
   background: #edf2f7;
@@ -288,12 +298,12 @@
 
 .questionHead {
   position: sticky;
-  top: 30px;
+  top: 24px;
   z-index: 4;
   width: 86px;
   min-width: 86px;
-  height: 70px;
-  padding: 5px 4px;
+  height: 58px;
+  padding: 3px 3px;
   border-right: 1px solid #e4eaf0;
   border-bottom: 1px solid #dce5ee;
   background: #f8fafc;
@@ -309,7 +319,7 @@
   background: transparent;
   color: #31475f;
   cursor: pointer;
-  padding: 0 2px 4px;
+  padding: 0 2px 2px;
 }
 
 .questionHeadButton strong,
@@ -317,7 +327,7 @@
 .questionHeadButton strong { font-size: .72rem; }
 .questionHeadButton span {
   overflow: hidden;
-  margin-top: 3px;
+  margin-top: 1px;
   color: #7a8a9d;
   font-size: .56rem;
   text-overflow: ellipsis;
@@ -639,7 +649,7 @@
   color: #526b88;
   cursor: pointer;
   font-size: .58rem;
-  padding: 3px 7px;
+  padding: 2px 6px;
 }
 
 .analysisButton[data-state='running'] {

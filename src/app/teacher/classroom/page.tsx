@@ -17,6 +17,7 @@ import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-t
 import { WorksheetTileContent } from './worksheet-tiles';
 import { SvgAvatar } from '@/components/svg-avatar';
 import { MatrixOverlay, type WorksheetWorkspaceEntry } from './matrix-overlay';
+import { WorksheetDrawer, type WorksheetDrawerEntry } from './worksheet-drawer';
 import { clearConfirmText, participantOverview } from './worksheet-drawer-state';
 import { resolveRewardScale, rewardAmountLabel } from '@/lib/worksheet-reward';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
@@ -822,9 +823,11 @@ function ClassroomBoardContent() {
   // 也不共用 `gridFullscreen` 的列数与筛选（规格 §3.1 / GC 28）。
   /** 学习单查看只使用这一层全屏工作区；矩阵、学生、题目与 AI 分析都在内部切换。 */
   const [worksheetWorkspace, setWorksheetWorkspace] = useState<WorksheetWorkspaceEntry | null>(null);
+  /** 学生卡片的快捷入口仍使用原来的单人学习单抽屉，不提供其他学生切换。 */
+  const [worksheetDrawer, setWorksheetDrawer] = useState<WorksheetDrawerEntry | null>(null);
   /**
-   * 打开工作区时压入的浏览器历史标记。它只对应**整个工作区这一层**：内部切换三个视图
-   * 不再 pushState，所以教师按一次浏览器返回就回到看板，不会逐层倒退。
+   * 打开学习单工作区或单人抽屉时压入的浏览器历史标记。它只对应当前这一层：工作区内部
+   * 切换三个视图不再 pushState，所以教师按一次浏览器返回就回到看板，不会逐层倒退。
    */
   const worksheetWorkspaceHistoryTokenRef = useRef<number | null>(null);
   /**
@@ -1085,18 +1088,19 @@ function ClassroomBoardContent() {
     return () => window.clearInterval(timer);
   }, []);
 
-  /** 浏览器返回：消费掉工作区那一层历史，只关闭工作区，课堂看板继续留在原位。 */
+  /** 浏览器返回：消费掉学习单界面这一层历史，只关闭工作区或抽屉，看板继续留在原位。 */
   useEffect(() => {
     const handlePopState = () => {
       if (worksheetWorkspaceHistoryTokenRef.current === null) return;
       worksheetWorkspaceHistoryTokenRef.current = null;
       setWorksheetWorkspace(null);
+      setWorksheetDrawer(null);
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const closeWorksheetWorkspace = useCallback(() => {
+  const closeWorksheetLayer = useCallback(() => {
     const token = worksheetWorkspaceHistoryTokenRef.current;
     const state = window.history.state as Record<string, unknown> | null;
     if (token !== null && state?.classnodeWorksheetWorkspace === token) {
@@ -1105,26 +1109,22 @@ function ClassroomBoardContent() {
     }
     worksheetWorkspaceHistoryTokenRef.current = null;
     setWorksheetWorkspace(null);
+    setWorksheetDrawer(null);
   }, []);
 
-  /** Escape 与浏览器返回遵循同一语义：直接退出整个学习单工作区，回到课堂看板。 */
+  /** Escape 与浏览器返回遵循同一语义：退出当前学习单工作区或单人抽屉，回到课堂看板。 */
   useEffect(() => {
-    if (!worksheetWorkspace) return;
+    if (!worksheetWorkspace && !worksheetDrawer) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
-      closeWorksheetWorkspace();
+      closeWorksheetLayer();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [worksheetWorkspace, closeWorksheetWorkspace]);
+  }, [worksheetWorkspace, worksheetDrawer, closeWorksheetLayer]);
 
-  /** 打开唯一的学习单工作区；不同入口只决定初始视图，不再制造互相叠加的抽屉。 */
-  const openWorksheetWorkspace = useCallback((entry: Omit<WorksheetWorkspaceEntry, 'token'>) => {
-    setSelectedStudent(null);
-    setSelectedGroup(null);
-    selectedStudentIdRef.current = null;
-    setExploreDetailId(null);
+  const beginWorksheetLayer = useCallback(() => {
     const token = Date.now();
     if (worksheetWorkspaceHistoryTokenRef.current === null) {
       const previous = window.history.state;
@@ -1132,18 +1132,39 @@ function ClassroomBoardContent() {
       window.history.pushState({ ...base, classnodeWorksheetWorkspace: token }, '', window.location.href);
       worksheetWorkspaceHistoryTokenRef.current = token;
     }
+    return token;
+  }, []);
+
+  /** 顶部学习单菜单打开完整工作区；三个查看维度只在这一层内切换。 */
+  const openWorksheetWorkspace = useCallback((entry: Omit<WorksheetWorkspaceEntry, 'token'>) => {
+    setSelectedStudent(null);
+    setSelectedGroup(null);
+    selectedStudentIdRef.current = null;
+    setExploreDetailId(null);
+    setWorksheetDrawer(null);
+    const token = beginWorksheetLayer();
     setWorksheetWorkspace({ token, ...entry });
     // ★ 2026-09-28：打开抽屉时**仍然重拉一次**（而不是只吃 30 秒轮询的那一份）。
     // 理由没变、而且更成立了：教师几乎总是为了「此刻他做到哪了」才点开抽屉，而轮询那份
     // 最多可能旧 30 秒。这一次重拉由 `wb` 拥有，所以「数据只有一个来源」这条没有被破坏。
     refreshWorksheetBoard();
-  }, [refreshWorksheetBoard]);
+  }, [beginWorksheetLayer, refreshWorksheetBoard]);
 
-  /**
-   * ★ M5b：矩阵的下钻。两条都**复用现成的抽屉入口**（规格 §3.7），零抽屉改动。
-   * ⚠️ 抽屉的层级是 290/291，本覆盖层是 250 ⇒ 抽屉画在上面，**不关矩阵**。
-   *    只重开抽屉（让下钻栈从入口那层重新开始），教师关掉抽屉就回到矩阵原来的位置。
-   */
+  /** 学生卡片：恢复原来的单人抽屉。抽屉里只呈现这个参与者，不提供同学列表。 */
+  const openWorksheetParticipantDrawer = useCallback((participantId: string) => {
+    setSelectedStudent(null);
+    setSelectedGroup(null);
+    selectedStudentIdRef.current = null;
+    setExploreDetailId(null);
+    setWorksheetWorkspace(null);
+    setWorksheetDrawer({
+      token: beginWorksheetLayer(),
+      view: { kind: 'participant', participantId },
+    });
+    refreshWorksheetBoard();
+  }, [beginWorksheetLayer, refreshWorksheetBoard]);
+
+  /** 矩阵下钻现在留在完整工作区内切换；只有课堂卡片快捷入口使用单人抽屉。 */
   // ★ 2026-09-28：矩阵那条「开着才轮询」的 effect 搬进了 `useWorksheetBoard`（常开）。
   // 它当时成立的前提是「只有矩阵在用这份数据」—— 格子接上来之后那个前提就没有了，
   // 而格子恰恰是最需要历史的那一个（第 1 条 bug）。节拍没变，仍是 30 秒。
@@ -1449,7 +1470,7 @@ function ClassroomBoardContent() {
   const openStudentDrawer = async (student: StudentSummary) => {
     if (selectedStudentIdRef.current === student.id) return; // 已选中，无需重复拉取
     // 对话抽屉与学习单抽屉是**同一块位置**（右上角、宽 420）的浮层，同时开着会叠在一起。
-    closeWorksheetWorkspace();
+    closeWorksheetLayer();
     selectedStudentIdRef.current = student.id;
     setSelectedStudent(student);
     setLoadingMessages(true);
@@ -2289,7 +2310,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
     setSelectedGroup(null);
     selectedStudentIdRef.current = null;
     // 与另外两个浮层互斥（同一块 420px 位置，见 `openStudentDrawer` 的同款一行）。
-    closeWorksheetWorkspace();
+    closeWorksheetLayer();
     setExploreDetailId(studentId);
   };
 
@@ -2934,7 +2955,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       // 小组 / 高级模式下它是「组」那一个参与者，而抽屉与 `review` 端点要的
                       // 正是这个 id。用 `student.id` 会指向一个不在课堂里的人（且不报错）。
                       if (tileModule === 'worksheet') {
-                        openWorksheetWorkspace({ view: 'student', participantId: cs.id });
+                        openWorksheetParticipantDrawer(cs.id);
                         return;
                       }
                       setExploreDetailId(null);
@@ -3154,6 +3175,24 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             )}
           </div>
         </div>
+
+        {/* 学生卡片的学习单快捷入口：只显示当前参与者的逐题详情，不提供其他学生切换。 */}
+        {worksheetDrawer && (
+          <WorksheetDrawer
+            entry={worksheetDrawer}
+            onClose={closeWorksheetLayer}
+            board={wb.board}
+            nodesByWorksheet={wb.nodesByWorksheet}
+            settingsByWorksheet={wb.settingsByWorksheet}
+            liveDrafts={wb.liveDrafts}
+            loading={wb.loading}
+            reviewBusy={worksheetReviewBusy}
+            onReview={(worksheetId, participantId, questionId) => void reviewWorksheetAnswer(worksheetId, participantId, questionId)}
+            onClearQuestion={(_worksheetId, participantId, questionId) => { void clearWorksheetDataFor(participantId, worksheetParticipantName(participantId), questionId); }}
+            // 本入口固定在 participant 形态，不会渲染按题列表；保留空实现满足共用组件契约。
+            onOpenQuestionStats={() => {}}
+          />
+        )}
 
         {/* 右侧对话详情 - 浮层模式 */}
         {selectedStudent && (
@@ -3699,7 +3738,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       if (!isGroup && tileModule === 'explore') { openExploreDetail(sid); return; }
                       // 与主看板那一条同款（全屏与主看板共用同一套「点开的内容跟着格子走」规则）。
                       if (tileModule === 'worksheet') {
-                        openWorksheetWorkspace({ view: 'student', participantId: cs.id });
+                        openWorksheetParticipantDrawer(cs.id);
                         return;
                       }
                       setExploreDetailId(null);
@@ -3909,7 +3948,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           advancedMode={classroom?.mode === 'advanced'}
           mode={classroom?.mode ?? 'standard'}
           reviewBusy={worksheetReviewBusy}
-          onClose={closeWorksheetWorkspace}
+          onClose={closeWorksheetLayer}
           onReview={(worksheetId, participantId, questionId) => void reviewWorksheetAnswer(worksheetId, participantId, questionId)}
           onClearQuestion={(_worksheetId, participantId, questionId) => { void clearWorksheetDataFor(participantId, worksheetParticipantName(participantId), questionId); }}
         />

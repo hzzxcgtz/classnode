@@ -151,6 +151,15 @@ interface UsageResponse {
   classroomCount: number;
   groupCount?: number;
   classrooms: RelatedClassroom[];
+  /** ★ 2026-10-08：只对**分析型**智能体非空（来源是 `settings.analysisAgentId`）。 */
+  worksheets?: RelatedWorksheet[];
+}
+
+/** ★ 2026-10-08：`Worksheet.settings.analysisAgentId` 反查出来的清单。 */
+interface RelatedWorksheet {
+  id: string;
+  title: string;
+  updatedAt: string;
 }
 
 async function readUsage(get: (pathname: string) => Promise<Response>, pathname: string): Promise<UsageResponse> {
@@ -595,4 +604,58 @@ test('🔴 只被组级材料引用的智能体：/usage 的 used 为真，DELET
   // 文案说的是「小组」而不是「分组」：现在数的是组级材料行，一条行 = 一个小组用了它。
   assert.match(blockedBody.error, /小组/);
   assert.ok(await db.prisma.agent.findUnique({ where: { id: agent.id } }), '被拦下的删除不得真的删掉智能体');
+});
+
+/*
+ * ★ 2026-10-08（教师）：「（分析型智能体那张卡上）这里应该是**查看关联的学习单**。」
+ *
+ * 🔴 这条关系**没有关联表**（全仓无 `WorksheetAgent`）：唯一的来源是
+ *   `Worksheet.settings.analysisAgentId` —— 一个 **JSON 列**里的字段。
+ *   所以 `/:id/usage` 只能把学习单取回、在 JS 里筛（照 `DELETE /:id` 那个删除守卫的写法）。
+ *   本用例钉的就是那个筛：**JSON 里的字段读得出来、且比的是同一个 id**。
+ *   筛错的表现是**静默的** —— 教师点开看到空清单，以为"没有学习单用它"，
+ *   而删除守卫（用同一条判据）却会拦住他 ⇒ 界面与守卫自相矛盾，两边都不报错。
+ * ⚠️ 与 `agent-webapp-usage` 那个文件头同一条理由：这里用**真 Prisma + 真 SQLite**，
+ *   因为要验的恰好是「Prisma 有没有按 schema 把 JSON 列读出来」——替身证明不了这件事。
+ */
+test('★ 2026-10-08：usage 带上「指定它做分析」的学习单，且 used 跟着为真', async (t) => {
+  const db = await openTempDb();
+  const prisma = db.prisma;
+  const { get } = await startServer(t, prisma);
+  cleanup(t, db);
+
+  const { agent } = await seed(prisma, 0);
+  const other = await prisma.agent.create({ data: { name: '别的分析 bot', platform: 'coze', apiKey: 'y' } });
+  const lonely = await prisma.agent.create({ data: { name: '没人用', platform: 'coze', apiKey: 'z' } });
+
+  const mine = await prisma.worksheet.create({
+    data: { title: '我关联的', content: { nodes: [] }, settings: { analysisAgentId: agent.id } },
+  });
+  await prisma.worksheet.create({
+    data: { title: '别人的', content: { nodes: [] }, settings: { analysisAgentId: other.id } },
+  });
+  await prisma.worksheet.create({
+    data: { title: '没指定的', content: { nodes: [] }, settings: {} },
+  });
+
+  const body = await readUsage(get, `/api/agents/${agent.id}/usage`);
+  assert.deepEqual(
+    (body.worksheets ?? []).map((w) => w.title),
+    ['我关联的'],
+    'JSON 里的 analysisAgentId 没有筛对（多列 / 少列 / 比错 id 都是静默的）',
+  );
+  assert.equal(body.worksheets?.[0]?.id, mine.id, '回来的是另一份学习单');
+  assert.ok(typeof body.worksheets?.[0]?.updatedAt === 'string', '清单里缺 updatedAt');
+  assert.equal(body.used, true,
+    '有学习单引用它、used 却仍是 false ⇒ 界面与删除守卫会自相矛盾');
+
+  // 阳性对照：另一个智能体的清单里**只有**它自己那一份（证明筛的是 id，不是"全都要"）。
+  const body2 = await readUsage(get, `/api/agents/${other.id}/usage`);
+  assert.deepEqual(body2.worksheets?.map((w) => w.title), ['别人的'], '阳性对照本身没造对');
+
+  // 阴性对照：没有任何学习单指定它 ⇒ **空数组**（不是缺字段 —— 缺字段会让界面无法区分
+  //「读到了、确实没有」与「没读到」，而那正是本仓弹窗文案依赖的两件事）。
+  const body3 = await readUsage(get, `/api/agents/${lonely.id}/usage`);
+  assert.deepEqual(body3.worksheets, [], '没有学习单指定它时，worksheets 应是空数组');
+  assert.equal(body3.used, false, '什么都没有关联时 used 应为 false');
 });

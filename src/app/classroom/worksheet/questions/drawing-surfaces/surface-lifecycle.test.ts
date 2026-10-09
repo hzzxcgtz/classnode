@@ -368,7 +368,18 @@ test('★ 2026-10-06（教师）：数学作图补齐工具（撤销 / 自由线
   assert.match(live, /MATH_TOOL_GROUPS\.map\(/, '工具条没有分组渲染（归类应当来自数据）');
   assert.match(live, /toolsInGroup\(group\.value\)/, '分组没有走 toolsInGroup（会与工具表分叉）');
   // ② 撤销：历史栈 + 一个按钮（原来画错只能清空重来）。
-  assert.match(live, /history\.current\.push\(snapshot\(\)\)/, '没有把每一步压进撤销栈');
+  /*
+   * 🔴 2026-10-08 更正一条**过期断言**：这里原写 `history.current.push(snapshot())`，
+   *   但去重改造（`pushHistory` 里先拿局部 `current` 与 `previous` 比、相同就不压）之后，
+   *   真正压栈的是局部变量 `current` —— 语义没变（压的仍是**变更前**那一份），字面量变了。
+   *   实测：该字符串在 HEAD 与工作区**都不存在**（`grep -c` 均为 0）⇒ 这条网从改造那天起
+   *   就一直红着，而客户端 1424 条用例里它是**唯一**的红，没人发现（"红好几天没人发现"又犯一次）。
+   *   ⇒ 改成钉**真实行为**，并且不放松强度：连着把"只点不拖不压栈"那条去重一并钉住。
+   */
+  assert.match(live, /const pushHistory = \(\) => \{[\s\S]{0,260}?history\.current\.push\(current\)/,
+    '没有把每一步压进撤销栈');
+  assert.match(live, /JSON\.stringify\(previous\) === JSON\.stringify\(current\)\) return/,
+    '只点未拖时会不断制造空撤销步骤');
   assert.match(live, /onClick=\{\(\) => undoRef\.current\?\.\(\)\}/, '工具条上没有撤销按钮');
   // ③ 自由线条：捕获阶段接管指针，且**只在 free 这一档**（别的工具一点也不能拦）。
   // 拖动只发生在「自由线条」或工具表里标了 drag 的档位（别的工具一点也不能拦）。

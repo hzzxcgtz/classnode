@@ -292,7 +292,9 @@ export default function AgentsPage() {
       {relatedClassrooms && (
         <AgentRelatedClassroomsDialog
           agentName={relatedClassrooms.agent.name}
+          purpose={relatedClassrooms.agent.purpose}
           classrooms={relatedClassrooms.classrooms}
+          worksheets={relatedClassrooms.worksheets}
           loading={relatedLoading}
           onClose={closeRelatedClassrooms}
         />

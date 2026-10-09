@@ -1,5 +1,6 @@
 import { RelatedClassroomList } from '@/lib/components';
-import type { RelatedClassroom } from '@/lib/types';
+import { agentPurposeOf } from '@/lib/agent-purpose';
+import type { RelatedClassroom, RelatedWorksheet } from '@/lib/types';
 
 export interface AgentErrorTipData { text: string; top: number; left: number }
 
@@ -23,22 +24,52 @@ export function AgentDeleteBlockedDialog({ agentName, classrooms, onClose }: {
 }
 
 /**
- * 卡片上「关联课堂」入口打开的清单。
+ * 卡片上那个 chip 打开的清单。
  *
- * 与「无法删除」弹窗共用同一个 `RelatedClassroomList` —— 两处的清单必须长得一样，
- * 否则教师会以为它们说的不是同一件事。
+ * ★ 2026-10-08（教师）：「（分析型那张卡上）这里应该是**查看关联的学习单**。」
+ * ⇒ 同一处入口按 `purpose` 分流：
+ *   · **分析型** → 列学习单（来源是 `Worksheet.settings.analysisAgentId`，不是关联表，
+ *     见 `RelatedWorksheet` 的注释）；
+ *   · **学伴型** → 列课堂（与原来一致，走 `ClassroomAgent` / 组级材料）。
+ * ⚠️ 两张清单在**同一次** usage 请求里一起回来，所以这里不做二次请求。
+ * ⚠️ 「无法删除」那个弹窗共用 `RelatedClassroomList` —— 那个仍然只讲课堂（删除守卫拦的
+ *   也确实是课堂与小组），**不要**把它也改成按 purpose 分流。
  */
-export function AgentRelatedClassroomsDialog({ agentName, classrooms, loading, onClose }: {
+export function AgentRelatedClassroomsDialog({ agentName, purpose, classrooms, worksheets, loading, onClose }: {
   agentName: string;
+  purpose?: string | null;
   classrooms: RelatedClassroom[];
+  worksheets: RelatedWorksheet[];
   loading: boolean;
   onClose: () => void;
 }) {
+  const showsWorksheets = agentPurposeOf(purpose) === 'analysis';
+  const pending = <div className="related-classroom-list is-pending"><span className="related-classroom-hint">正在读取…</span></div>;
+  const emptyWorksheets = (
+    <div className="related-classroom-list is-empty">
+      <span className="related-classroom-hint">还没有学习单指定它做分析</span>
+    </div>
+  );
   return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content teacher-dialog" role="dialog" aria-modal="true" aria-labelledby="agent-related-classrooms-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-    <h3 id="agent-related-classrooms-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px', wordBreak: 'break-all' }}>「{agentName}」关联的课堂</h3>
-    <p style={{ fontSize: '0.813rem', color: '#64748b', margin: '0 0 16px' }}>教师可以在「新建课堂」里为课堂勾选智能体。</p>
+    <h3 id="agent-related-classrooms-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px', wordBreak: 'break-all' }}>
+      「{agentName}」关联的{showsWorksheets ? '学习单' : '课堂'}
+    </h3>
+    <p style={{ fontSize: '0.813rem', color: '#64748b', margin: '0 0 16px' }}>
+      {showsWorksheets ? '学习单可以在编辑页里指定由它做分析。' : '教师可以在「新建课堂」里为课堂勾选智能体。'}
+    </p>
     <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '4px 14px', marginBottom: 20 }}>
-      <RelatedClassroomList classrooms={classrooms} loading={loading} emptyText="还没有课堂关联这个智能体" />
+      {showsWorksheets
+        ? (loading ? pending : worksheets.length === 0 ? emptyWorksheets : (
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {worksheets.map((worksheet) => (
+              <li key={worksheet.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <span style={{ fontSize: '0.813rem', color: '#334155', wordBreak: 'break-all' }}>{worksheet.title || '未命名学习单'}</span>
+                <a href={`/teacher/worksheets/edit/?id=${worksheet.id}`} style={{ fontSize: '0.688rem', color: '#3f6fa8', flex: '0 0 auto', textDecoration: 'none' }}>打开学习单</a>
+              </li>
+            ))}
+          </ul>
+        ))
+        : <RelatedClassroomList classrooms={classrooms} loading={loading} emptyText="还没有课堂关联这个智能体" />}
     </div>
     <button type="button" className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={onClose}>知道了</button>
   </div></>;

@@ -333,19 +333,31 @@
   opacity: .82;
 }
 
-/* 新答对才播放一次：从题目内容区弹出，短暂停留后收进右上角。只动 transform / opacity。 */
+/*
+  ★ 2026-10-08（教师）：「庆祝动画能不能**改一种效果，目前的感觉有点卡**」。
+  教师选定：**就地轻弹一下**（不再从题目内容区飞过来）。
+
+  🔴 「卡」的两个来源（这是最可能的原因，**我没有在真机上 profile 过**）：
+    ① 图标本身是 `background-image` 雪碧图 —— 对它做 `scale(.28 → 1.42)`，浏览器
+       **不能**只让合成器缩放现成的位图，而要**逐步重新栅格化**那张图；
+    ② 横向 210px 的长位移 + 旋转，全程大面积重绘。
+  ⇒ 现在位移为 **0**、缩放只在 0.8–1.1 之间 ⇒ 位图只栅格化一次，之后全是合成器的活。
+  ⚠️ 时长 900ms → 420ms：短动作本来就难看出掉帧。
+  ⚠️ `will-change` 把这一层单独提升（不提升的话 scale 会带着邻居一起重绘）。
+  ⚠️ 结尾**淡出到 0**（而不是停在可见）：这样它与父组件"什么时候卸载"无关 ——
+     静止的那一排奖励就在旁边，留着一枚不走的会看起来像重复了。
+*/
 @keyframes rewardCollect {
-  0% { transform: translate(-210px, 82px) scale(.28) rotate(-24deg); opacity: 0; }
-  18% { opacity: 1; }
-  42% { transform: translate(-135px, 48px) scale(1.42) rotate(14deg); opacity: 1; }
-  72% { transform: translate(-24px, 8px) scale(1) rotate(-5deg); opacity: 1; }
-  100% { transform: translate(0, 0) scale(.68) rotate(0); opacity: 0; }
+  0% { transform: scale(.8); opacity: 0; }
+  45% { transform: scale(1.1); opacity: 1; }
+  72% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
 }
 
 @keyframes rewardHalo {
-  0%, 20% { transform: scale(.2); opacity: 0; }
+  0% { transform: scale(.6); opacity: 0; }
   45% { transform: scale(1); opacity: .34; }
-  75%, 100% { transform: scale(1.45); opacity: 0; }
+  100% { transform: scale(1.15); opacity: 0; }
 }
 
 .rewardBurst {
@@ -360,7 +372,9 @@
   font-size: 1rem;
   pointer-events: none;
   transform-origin: 50% 50%;
-  animation: rewardCollect 900ms cubic-bezier(.22, .8, .26, 1) both;
+  /* 单独提升一层：缩放才走合成器，不带着邻居重绘（★ 2026-10-08，见 `rewardCollect` 那条注释）。 */
+  will-change: transform, opacity;
+  animation: rewardCollect 420ms cubic-bezier(.22, .8, .26, 1) both;
 }
 
 .rewardBurstHalo {
@@ -369,7 +383,7 @@
   z-index: -1;
   border-radius: 50%;
   background: rgba(255, 210, 69, .48);
-  animation: rewardHalo 650ms ease-out both;
+  animation: rewardHalo 420ms ease-out both;
 }
 
 .prompt {
@@ -1162,7 +1176,18 @@
 
 .orderList {
   list-style: none;
-  margin: 12px 0 0;
+  /*
+   * ★ 2026-10-08（教师）：「这部分内容居中」。
+   *
+   * 🔴 根因是**两条同名规则打架**（不是"没写居中"）：
+   *   上面 `:952` 那条写着 `margin: 12px auto 0` 并注明「排序作答区整体居中」，
+   *   但本文件后面这条把它覆盖成 `margin: 12px 0 0` —— 左右 auto 变成 0，
+   *   而 `:952` 给的 `width: min(100%, 600px)` 仍在生效 ⇒ 最终是一个
+   *   **600px 宽、却贴着题卡左边缘**的列。改回 `auto` 即居中。
+   * ⚠️ 宽度的来源仍在 `:952`（本条不写 width）——别以为居中只靠这一行。
+   * ⚠️ 与拖动让位不冲突：`slotIndexAt` 只吃 **y**（各行的垂直中心），居中是 x 的事。
+   */
+  margin: 12px auto 0;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -2167,28 +2192,37 @@
       而那是个更大的改动，要单独评估。 */
 
 
-/* 奖励：**在圆角框外面**（★ 2026-09-28 教师图 56：「火箭和 ×1 不需要框在圆角矩形里，
-   这样可以保证左边的两个框的高度和其他框的高度保持一致」）。
-   ⚠️ 它不再是一格 `.resultCell`（那一档自带边框与底色），只是框右边的一个符号组；
-      也没有「获得奖励」那行小字（教师：「这里的文字不要」）。 */
+/*
+  ★ 2026-10-08（教师 第 7 项，原话）：「这个奖励图标改一种显示方式，**移动到这行绿色文字
+  信息框的前面**，例如这题满分是 2 个图标，在完成评分前先显示两个非常浅的灰度化处理的图标，
+  评分后，根据评分结果将指定个数的图标改为正常颜色显示。」
+
+  ⊘ **前两版的口径都已作废**（原文不再保留 —— 留着就会被下一个人当成依据）：
+    · 2026-09-28 图 56：「火箭和 ×1 不需要框在圆角矩形里，这样可以保证左边的两个框的高度
+      和其他框的高度保持一致」⇒ 它当时是框**外面**的一个兄弟；
+    · 2026-09-29（教师 ⑤-①）：「叠加在『全部答对』这个框的右上角」⇒ 改成**绝对定位的角标**，
+      并配了一对"算过的"偏移量（`top: -14px` / `right: -6px`）。
+  ⇒ 现在它**占行内空间**（排在两格绿色信息框之前），所以那对偏移量**一个字都不要照抄**。
+    原话与这条设计线上的三次反转，完整记在 `reward-badge.tsx` 的 `QuestionReward` 上。
+
+  🔴 但 2026-09-28 那条「**保证左边两个框的高度一致**」**仍然要保**：
+    图标压到 18px、`gap: 1px`，且这一组**自己不设高度** —— 由图标撑，而 18px 比
+    `.resultCell` 的内衬（`padding: 6px 12px` ⇒ 内容区约 28px）矮，所以两格高度一个像素不变。
+  ⚠️ 一行里最多 5 枚图标 + 可能一个 `×N`。`flex: 0 0 auto` 保证它不被压扁；
+    真的挤不下时由外层 `.questionResult` 处置（它没有 `flex-wrap`）。
+  ⚠️ 不再是装饰性的浮层，所以**不加** `pointer-events: none`（那是角标压在字上时才需要的）。
+  ★ 2026-10-08 第二批（教师）：「**图标在框外**，图标可以大一些」
+    ⇒ 它现在是 `.resultRewardAnchor` 下的**兄弟**、排在 `.questionResult`（白底圆角条）
+      **之前**，所以 `margin-right` 是它与那条之间的间距；
+      图标本身从 18px 提到 22px（在 `reward-badge.tsx` 的 `REWARD_SLOT_ICON_SIZE`）。
+*/
 .resultReward {
-  /* ★ 2026-09-29（教师 ⑤-①）：「将它**叠加在「全部答对」这个框的右上角**」。
-     ⚠️ 绝对定位是**必须**的（不是口味）：它不占行内空间，`.questionResult` 两格的高度
-        一个像素都不变 —— 那正是 2026-09-28 图 56 那次要求「搬到框外面」时要保的东西。
-     ⚠️ `pointer-events: none`：它是装饰，压在那一格的角上，不该抢走点按。 */
-  /* ⚠️ 这两个偏移量是**算过的**，不是随手填的：
-     · `top: -14px` —— 判定那一格的文字在格子里**垂直居中**（`align-items: center`），
-       而角标高 22px。取 −14 时它的下沿落在格子顶边下 8px 处，**正好在字的cap高度之上**
-       ⇒ 角标压在框的右上角上，却一个笔画都不盖。取 −8 会把「答对」两个字的上半盖住。
-     · `right: -6px` —— 探出框右 6px。再往右（>10px）就会顶到**卡片**的右内边距
-       （20px）上，而卡片自己有 `overflow: hidden`。
-     ⇒ 想调观感就调这两个数，但先想清楚上面两条约束。 */
-  position: absolute;
-  right: -6px;
-  top: -14px;
   display: inline-flex;
   align-items: center;
-  pointer-events: none;
+  gap: 1px;
+  padding-right: 2px;
+  margin-right: 6px;
+  flex: 0 0 auto;
 }
 
 /* 角标里那一小串（一枚图标 + 可能的 `×N`）。字号比正文小一档 —— 教师 ⑤-③
@@ -2374,9 +2408,25 @@
 .drawingSurfaceToolbar button:active { transform: translateY(1px); }
 .drawingWorkspaceHeader button:disabled,
 .drawingSurfaceToolbar button:disabled { cursor: default; opacity: .55; }
+/*
+  ★ 2026-10-08（教师）：「全屏按钮的图标与文字错位」。
+  🔴 根因：这颗按钮**从来没有被设成 flex 容器**。上面那条 `.drawingWorkspaceHeader button`
+     只给了 `min-height` / 边框 / 圆角，没有 `display` ⇒ 20px 的图标与 CJK 的 `<span>`
+     退化成普通行内内容、**按基线（vertical-align: baseline）排列**：图标以底边贴基线向上
+     撑出，`.8rem` 的中文矮一截 ⇒ 看上去就是「图标在左上、文字在右下」。
+     旁证：`.drawingToolbarIcon` 上写着 `flex: 0 0 20px`，那是 flex 子项专用属性，
+     父级不是 flex 容器时**完全不生效** —— 正好是这处漏配的证据。
+  ⚠️ 只加在这一颗上（本仓「图标 + 文字」的按钮仅此一处；同文件其它按钮是纯图标）。
+  🔴 不要动 `.thirdPartyWorkspaceMaximized` / portal —— 全屏那两段**各干一半的活、
+     并存必需**（spec 2026-10-06-流程图撤销重做 §十一，真机踩过）。
+*/
 .drawingFullscreenButton {
   min-width: 96px;
   padding: 0 14px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 .drawingFullscreenButton span {
   color: currentColor;
@@ -3040,3 +3090,101 @@
   .drawingWorkspaceHeader span { display: none; }
   .drawingWorkspaceHeader .drawingFullscreenButton span { display: inline; }
 }
+
+/*
+  ★ 2026-10-08（教师）：「这些文字块可以设计得好看一些，比如**不带边框、带底纹色**的文字，
+  放到不同容器后会有相应的变化。」（教师选定：**跟着容器染不同的色**。）
+
+  🔴 必须写在**文件最末尾**：`.poolItem` 在本文件里一共有**四处**同名定义
+     （`:1533` 基础那条，加上 `:766` 与 `:2054` 两处"末尾覆盖段"），写在别处会被后一条盖回去。
+  🔴 底色由内联 CSS 变量 `--categorize-tint` 下来（色值与取法见
+     `@/lib/worksheet-categorize-tint`）—— 框的**数量由题目数据决定**，写不出固定类名。
+     这里的兜底值与池子同色，保证"变量没下来"时也不会变成透明。
+  ⚠️ 刻意**不**把 `--categorize-tint` 设在容器上让它继承：那样条目块的色就有了
+     两个来源（容器继承 + 调用方显式传入），而两者不一致时不报错。
+     现在色只有一处来源 —— `chip(itemId, tint)` 的第二个参数（**必填**）。
+  ⚠️ 去边框之后，选中态不能只靠 `border-color`（那条规则会变得完全看不见）。
+     照本文件 `.dragActive` 的先例改成 inset 环：`box-shadow` 不是边框，老 Safari 也吃。
+*/
+.poolItem {
+  border: 0;
+  background: var(--categorize-tint, #eceff3);
+}
+
+.poolItemSelected {
+  background: var(--categorize-tint, #eceff3);
+  box-shadow: inset 0 0 0 2px var(--ws-accent);
+}
+
+/*
+  ★ 2026-10-08（教师 第二批）：「**每个词块的高度要一样**」。
+
+  🔴 根因**不是**条目自身的样式（六枚条目的 `min-height` / `padding` 完全一样），
+    而是两层 flex/grid 的默认值叠出来的形状。我在无头 Chrome 里**量过**（不是读代码猜的）：
+
+      修前：zone[透明] H=145 → items 70,70 ｜ zone[半透明] H=145 → items 70
+            zone[不透明] H=145 → items 44,44,44
+      修后：六枚一律 44。
+
+    · `.zoneGrid` 是 **grid**（默认 `align-items: stretch`）⇒ **三个框被拉成等高**（145px）；
+    · `.zone` 是 **`flex-wrap` 多行容器**，而 `align-content` 默认是 `normal`
+      （多行 flex 容器上等同 `stretch`）⇒ **只有一行**的那些框，那一行被拉满整个框高，
+      条目跟着撑到 70px；`.不透明` 有两行、各分一半 ⇒ 条目恰好保持自然的 44px。
+    ⇒ 所以"同一个样式、框里有几行"就决定了条目多高 —— 教师看到的正是这个。
+
+  ⇒ 修法：`align-content: flex-start` —— **行不再被拉伸**（条目回到自然高度），
+    而 `align-items` 保持默认的 stretch（**同一行内**的条目仍然互相等高，那是对的）。
+    ⚠️ 不要改成 `align-items: flex-start`：那会让同一行里长短不一的条目也各高各的。
+  ⚠️ `.pool` 同样要给：它也是 `flex-wrap` + `min-height`，一行时会被同样的方式拉伸。
+*/
+.pool { align-content: flex-start; }
+.zone { align-content: flex-start; }
+
+/*
+  ★ 2026-10-08（教师）：「这部分区域**左右也不要顶格**，留出一定的空白区域，
+  左侧框的右端和右侧框的左端可以增加一个**连接句柄**（例如小圆），
+  增加连线题的操作识别度。」
+
+  ① 不顶格：中间留白加宽（84 ⇒ 96），两侧再留出内边距。
+  ⚠️ 加 padding 不影响连线：`match-body.tsx` 的测量以 `.matchGrid` 的
+     `getBoundingClientRect()` 为原点（`base.left`），SVG 浮层也是 `inset: 0` 铺满它。
+*/
+.matchGrid {
+  gap: 96px;
+  padding: 0 12px;
+}
+
+/*
+  ② 连接句柄（小圆点）。
+  🔴 它**只是视觉锚点，刻意不改拖动机制**：
+     · 拖动源仍是**整条** `.matchItem`（`bothProps`），不是只给圆点 —— 整条的命中区在
+       老 iPad 上宽容得多，把拖动收窄成一个小圆只会更难点。
+       「改成拖拽把手」那条出路（见本文件 `.dragSource` 附近那段注释）是**真机上发现
+       拖拽被判成滚动时**才走的路，今天没有那个症状，不走。
+     · 圆点**有**指针事件（不写 `pointer-events: none`）：它是条目的**子元素**，
+       按在它上面的事件冒泡给条目自己的处理函数 ⇒ 从圆点上起拖也好使。
+     · 圆的**中心正好落在条目的连接那条边上**（左列右缘 / 右列左缘），而
+       `match-body.tsx` 的 `measure()` 与跟手线取的正是那条边（`a.right` / `a.left`）
+       ⇒ **线的端点与圆心天然重合，两端都不用改测量**。
+       ⚠️ 所以 `right` / `left` 取 −3px 是有前提的：直径 **6px**（`box-sizing: border-box`）。
+       ★ 2026-10-08 第二批（教师）：「**这个圈太大了，要小一点**」⇒ 12px 缩到 8px；
+        随后又：「**圈还要再小，变成实心的**」⇒ 8px 缩到 6px，且由"白底 + 2px 描边"
+        改成**实心**（`background: var(--ws-accent)`、`border: 0`）。
+        偏移同步 −6px ⇒ −4px ⇒ **−3px**（**直径与偏移是一对，改一个必须改另一个**）。
+     🔴 **常显**，不做 hover 才出现 —— 学生端主设备是老 iPad，没有 hover。
+  ⚠️ 定位只用 `top` + `transform: translateY(-50%)`（动效只碰 transform，本仓对学生端的纪律）。
+*/
+.matchItem { position: relative; }
+.matchHandle {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ws-accent);
+  transform: translateY(-50%);
+}
+.matchColumnLeft .matchHandle { right: -3px; }
+.matchColumnRight .matchHandle { left: -3px; }

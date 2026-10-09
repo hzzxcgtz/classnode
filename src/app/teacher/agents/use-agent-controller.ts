@@ -2,14 +2,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useTeacherConfirm } from '@/lib/components';
 import { getApiBaseUrl } from '@/lib/api-base';
-import type { AgentSummary, RelatedClassroom } from '@/lib/types';
+import type { AgentSummary, RelatedClassroom, RelatedWorksheet } from '@/lib/types';
 
 type Notice = { message: string; type: 'success' | 'error' };
 
-/** 卡片上「关联课堂」弹窗的状态。`classrooms` 为空数组时是「读到了、确实没有」。 */
+/**
+ * 卡片上那个 chip 打开的弹窗的状态。
+ * `classrooms` / `worksheets` 为空数组时是「读到了、确实没有」。
+ * ★ 2026-10-08（教师）：加了 `worksheets` —— 分析型智能体的 chip 改成「关联学习单」，
+ *   而两者在**同一次** usage 请求里一起回来（`openRelated` 只请求一次，见那里的注释）。
+ */
 export interface RelatedClassroomsState {
   agent: AgentSummary;
   classrooms: RelatedClassroom[];
+  worksheets: RelatedWorksheet[];
 }
 
 export function useAgentController({ onNotice, onDeleteBlocked }: {
@@ -129,17 +135,17 @@ export function useAgentController({ onNotice, onDeleteBlocked }: {
    * 明确的载体，而不是点下去什么都不发生。
    */
   const openRelatedClassrooms = useCallback(async (agent: AgentSummary) => {
-    setRelatedClassrooms({ agent, classrooms: [] });
+    setRelatedClassrooms({ agent, classrooms: [], worksheets: [] });
     setRelatedLoading(true);
     try {
       const usage = await api.checkAgentUsage(agent.id);
-      if (mountedRef.current) setRelatedClassrooms({ agent, classrooms: usage.classrooms });
+      if (mountedRef.current) setRelatedClassrooms({ agent, classrooms: usage.classrooms, worksheets: usage.worksheets });
     } catch (error) {
       // 读不到就关掉弹窗并明说 —— 留一个空清单会让教师以为「确实没有关联」，
       // 而那是与「没读到」完全不同的结论。
       if (mountedRef.current) {
         setRelatedClassrooms(null);
-        callbacksRef.current.onNotice({ message: `无法读取“${agent.name}”的关联课堂：${error instanceof Error ? error.message : '请求失败'}`, type: 'error' });
+        callbacksRef.current.onNotice({ message: `无法读取“${agent.name}”的关联：${error instanceof Error ? error.message : '请求失败'}`, type: 'error' });
       }
     } finally {
       if (mountedRef.current) setRelatedLoading(false);

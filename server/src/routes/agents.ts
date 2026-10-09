@@ -210,9 +210,32 @@ router.get('/', async (req, res) => {
       }
     }
 
+    /*
+     * ★ 2026-10-08（教师）：「（分析型那张卡上）**这个数据取不到吗？**」——要的是**条数**，
+     *   与旁边那枚「关联课堂 12」对齐。
+     *
+     * 🔴 智能体 ↔ 学习单**没有关联表**（全仓无 `WorksheetAgent`）：唯一来源是
+     *   `Worksheet.settings.analysisAgentId`。而它是 **JSON 列** ⇒ SQLite 上没法用 Prisma 的
+     *   `where` 查内部字段 ⇒ 只能取回在 JS 里数（学习单是几十行的量级）。
+     * ⚠️ 这一处的判据与**删除守卫**（`DELETE /:id`）以及 `/:id/usage` 必须**逐字相同** ——
+     *   三处分家会出现「卡片说没关联、删除却被拦住」这种自相矛盾，而没有任何一处报错。
+     * ⚠️ **一次查询解决全部智能体**（同上面课堂数那条注释：不要在 map 里逐个查，那是 N+1）。
+     */
+    const worksheetCountByAgent = new Map<string, number>();
+    if (agentIds.length > 0) {
+      const worksheetRows = await prisma.worksheet.findMany({ select: { settings: true } });
+      for (const row of worksheetRows) {
+        const owner = (row.settings as Record<string, unknown> | null)?.analysisAgentId;
+        if (typeof owner !== 'string' || !owner) continue;
+        worksheetCountByAgent.set(owner, (worksheetCountByAgent.get(owner) ?? 0) + 1);
+      }
+    }
+
     res.json(agents.map(agent => ({
       ...toPublicAgent(agent),
       classroomCount: classroomIdsByAgent.get(agent.id)?.size ?? 0,
+      /** 有多少份学习单指定它做分析（只对分析型非 0）。 */
+      worksheetCount: worksheetCountByAgent.get(agent.id) ?? 0,
     })));
   } catch (error) {
     res.status(500).json({ error: '获取智能体列表失败' });
@@ -488,11 +511,32 @@ router.get('/:id/usage', async (req, res) => {
     collect(classroomAgents);
     collect(groupMaterials.map(material => ({ classroom: material.group.classroom })));
 
+    /*
+     * ★ 2026-10-08（教师）：「（分析型智能体那张卡上的『未关联课堂』）这里应该是
+     *   **查看关联的学习单**。」
+     *
+     * 🔴 智能体 ↔ 学习单**没有关联表**（全仓无 `WorksheetAgent`）。唯一的路是
+     *   `Worksheet.settings.analysisAgentId` —— 学习单里指定「用哪个分析型智能体做分析」。
+     *   而它是**JSON 列**，SQLite 上没法用 Prisma 的 `where` 查内部字段
+     *   ⇒ 取回在 JS 里筛。学习单是几十行的量级，`select` 也只取必要列。
+     * ⚠️ 这与**删除守卫**（本文件下面 `DELETE /:id` 那一支）用的是**同一条判据** ——
+     *   两处若分家，"能删却说有引用"或"说没有却能删"都会出现，而两边都不报错。
+     *   所以两处的比较都必须逐字是 `settings.analysisAgentId === id`。
+     */
+    const worksheetRows = await prisma.worksheet.findMany({
+      select: { id: true, title: true, updatedAt: true, settings: true },
+    });
+    const relatedWorksheets = worksheetRows
+      .filter((row) => (row.settings as Record<string, unknown> | null)?.analysisAgentId === req.params.id)
+      .map((row) => ({ id: row.id, title: row.title, updatedAt: row.updatedAt }));
+
     res.json({
-      used: caCount > 0 || cgCount > 0,
+      used: caCount > 0 || cgCount > 0 || relatedWorksheets.length > 0,
       classroomCount: caCount,
       groupCount: cgCount,
       classrooms: [...byClassroomId.values()],
+      /** 只对**分析型**智能体非空（别的类型不会有学习单指定它做分析）。 */
+      worksheets: relatedWorksheets,
     });
   } catch (error) {
     res.status(500).json({ error: '查询失败' });

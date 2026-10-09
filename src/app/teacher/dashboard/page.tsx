@@ -20,9 +20,28 @@ type ChartPayloadItem = {
   payload?: { name?: string; label?: string };
 };
 
+/*
+ * ★ 2026-10-08（教师）：「仪表盘中的所有图表颜色要重新设计，过于暗淡，过于不协调」。
+ *
+ * 🔴 旧的一套（`#4f759d` / `#91abc3` / `#4e8063` / `#a7773e` / `#a85d5d` / `#c6d0d9` / `#6f8295`）
+ *   被绘图规范的校验器判了**四条硬门禁全红**——这是算出来的，不是审美：
+ *     · 彩度下限：七档**全部**低于下限，工具判它们「读起来是灰的」⇒ 这正是「暗淡」；
+ *     · 常视力下限：红 `#a85d5d` ↔ 琥珀 `#a7773e` 只有 ΔE 8.9（需 ≥15），
+ *       **连正常视力都难分辨** ⇒ 这正是「不协调」（它们在同一张环形图里根本分不开）；
+ *     · 色盲区分度：琥珀↔绿相邻 ΔE 5.2；明度带：灰 `#c6d0d9` 0.853 越界。
+ * ✅ 新的这一套按绘图规范逐条算过：明度带 / 彩度下限 / 色盲区分度 / 常视力下限 / 对比度
+ *    **五项全过**（相邻门禁）。调子仍是沉静的（彩度只贴着下限走），只是不再「读起来是灰的」。
+ *    ⚠️ 两条 6–8 允许带内的 WARN（绿↔赭 7.3、绯↔绿 6.3）**依赖次级编码**——每个环形图
+ *    都带图例文字与 Tooltip，正是规范要求的那一种。
+ *
+ * 🔴 三处拷贝必须一起改（只改一处，「不协调」原样留着）：
+ *    ① 这里；② `src/lib/constants.ts` 的 `platformColors`；③ `src/app/globals.css` 的 `--dashboard-*`。
+ * ⚠️ `platformColors` 那四档是**按「全对」校验**的（`platformData` 按数量降序排，
+ *    相邻关系由数据决定，不能靠排序规避），所以只能取互相最远的四档。
+ */
 const COLORS = {
-  primary: '#4f759d', primarySoft: '#91abc3', green: '#4e8063',
-  amber: '#a7773e', red: '#a85d5d', grey: '#c6d0d9', slate: '#6f8295',
+  primary: '#3f6fa8', primarySoft: '#2f8fc4', green: '#2f9e63',
+  amber: '#b3821f', red: '#b34a5e', grey: '#66707c', slate: '#5b6672',
 };
 
 function greeting() {
@@ -329,7 +348,7 @@ export default function DashboardPage() {
           </>}
         </SectionCard>
 
-        <SectionCard title="课堂运行" description="当前课堂状态与最近创建的课堂" action={<a href="/teacher/">查看课堂</a>} icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>}>
+        <SectionCard title="课堂运行" description="当前课堂状态与最近创建的课堂" action={<a href="/teacher/">管理课堂</a>} icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>}>
           {allClassrooms.length === 0 ? <EmptyBlock>还没有课堂，创建课堂后会在这里显示运行状态。</EmptyBlock> : <>
             <MiniStats items={[{ label: '进行中', value: classroomActive, tone: 'green' }, { label: '已暂停', value: classroomPaused, tone: classroomPaused > 0 ? 'amber' : 'default' }, { label: '已结束', value: classroomEnded }, { label: '当前参与者', value: classroomParticipants }]} />
             <div className="dashboard-chart-pair">
@@ -364,7 +383,7 @@ export default function DashboardPage() {
           </>}
         </SectionCard>
 
-        <SectionCard title="数据与系统管理" description="存储、备份、课堂安全与需要关注的运行信息" wide action={<a href="/teacher/history/">查看数据管理</a>} icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7" /></svg>}>
+        <SectionCard title="数据与系统管理" description="存储、备份、课堂安全与需要关注的运行信息" wide icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7" /></svg>}>
           <MiniStats items={[{ label: '近期历史课堂', value: history.length }, { label: '存储占用', value: formatBytes(totalStorage) }, { label: '最近备份', value: backupLatest ? formatDate(backupLatest.createdAt) : '暂无' }, { label: '安全提醒', value: warningCount, tone: warningCount > 0 ? 'red' : 'green' }]} />
           <div className="dashboard-system-grid">
             <div className="dashboard-chart-block dashboard-storage-chart"><h3>资源存储占用</h3>{storageStats ? <ResponsiveContainer width="100%" height={210}><BarChart data={storageData} layout="vertical" margin={{ top: 4, right: 24, left: 12, bottom: 0 }}><XAxis type="number" hide /><YAxis type="category" dataKey="name" width={68} tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} /><Tooltip formatter={(value) => formatBytes(Number(value || 0))} cursor={{ fill: '#f3f6f8' }} /><Bar dataKey="value" fill={COLORS.primarySoft} radius={[0, 5, 5, 0]} barSize={15} /></BarChart></ResponsiveContainer> : <EmptyBlock>暂时没有读取到存储信息。</EmptyBlock>}</div>

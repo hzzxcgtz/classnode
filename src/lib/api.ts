@@ -1,6 +1,6 @@
 import { getApiBaseUrl } from './api-base';
 import { HttpError } from './http-error';
-import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult, RelatedClassroom, WorksheetBoard, WorksheetContent, WorksheetDetail, WorksheetListResponse, WorksheetSettings, WorksheetUsage, WorksheetAnalysisPayload, PlatformTokenSummary } from './types';
+import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult, RelatedClassroom, RelatedWorksheet, WorksheetBoard, WorksheetContent, WorksheetDetail, WorksheetListResponse, WorksheetSettings, WorksheetUsage, WorksheetAnalysisPayload, PlatformTokenSummary } from './types';
 
 let studentSessionToken = '';
 
@@ -134,7 +134,7 @@ export const api = {
   //    的结果，所以它的长度可能小于 `classroomCount + groupCount` —— 高级模式建的课堂
   //    在两张表里都有行，那是常态。
   checkAgentUsage: (id: string) =>
-    request<{ used: boolean; classroomCount: number; groupCount: number; classrooms: RelatedClassroom[] }>(`/api/agents/${id}/usage`),
+    request<{ used: boolean; classroomCount: number; groupCount: number; classrooms: RelatedClassroom[]; worksheets: RelatedWorksheet[] }>(`/api/agents/${id}/usage`),
   getAgentGreeting: (id: string, force?: boolean) =>
     request<{ greeting: string | null }>(`/api/agents/${id}/greeting${force ? '?force=true' : ''}`),
   getAgentInfo: (id: string) =>

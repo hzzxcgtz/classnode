@@ -901,11 +901,30 @@ html, body {
 }
 
 /* 仪表盘：保留图表表达，同时让资源状态、具体对象和维护信息各归其位。 */
+/*
+  ★ 2026-10-08（教师）：「仪表盘中的所有图表颜色要重新设计，过于暗淡，过于不协调」。
+
+  🔴 旧的一套被 `dataviz` 的校验器判了**四条硬门禁全红**（这不是主观评价，是算出来的）：
+     · 彩度下限 —— 七档**全部**低于下限，工具直接判它们「读起来是灰的」⇒ 这就是「暗淡」；
+     · 常视力下限 —— 红 `#a85d5d` 与琥珀 `#a7773e` 相距只有 ΔE 8.9（低于 15），
+       **连正常视力都难分辨** ⇒ 这就是「不协调」的出处；
+     · 色盲区分度 —— 琥珀↔绿 相邻 ΔE 5.2；
+     · 明度带 —— 灰 `#c6d0d9` 0.853 超出上界。
+  ✅ 新的一套逐条算过，五项全过（相邻门禁；平台那四档另按全对算也过）。
+     ⚠️ 两条落在 6–8 允许带内的 WARN（绿↔赭 7.3、绯↔绿 6.3）**依赖次级编码** ——
+     而每个环形图都带图例文字与 Tooltip，正是规范要求的那一种。
+
+  🔴 这三处**必须一起改**，只改一处「不协调」会原样留着：
+     ① 本文件的 --dashboard-* 变量；② `src/app/teacher/dashboard/page.tsx` 的 `COLORS`；
+     ③ `src/lib/constants.ts` 的 `platformColors`。
+  ⚠️ 边界：`--cn-primary*`（全局品牌色，KPI 卡默认那一档在用）**不在本次范围** ——
+     它是全站色，动它等于动所有页面。
+*/
 .dashboard-page {
-  --dashboard-blue: #4f759d;
-  --dashboard-green: #4e8063;
-  --dashboard-amber: #a7773e;
-  --dashboard-red: #a85d5d;
+  --dashboard-blue: #3f6fa8;
+  --dashboard-green: #2f9e63;
+  --dashboard-amber: #b3821f;
+  --dashboard-red: #b34a5e;
 }
 
 .dashboard-load-warning {
@@ -969,9 +988,9 @@ html, body {
   color: var(--cn-primary);
 }
 
-.dashboard-kpi-card.tone-green .dashboard-kpi-icon { background: #edf6f0; color: var(--dashboard-green); }
-.dashboard-kpi-card.tone-amber .dashboard-kpi-icon { background: #fbf4e9; color: var(--dashboard-amber); }
-.dashboard-kpi-card.tone-red .dashboard-kpi-icon { background: #f9eeee; color: var(--dashboard-red); }
+.dashboard-kpi-card.tone-green .dashboard-kpi-icon { background: #e9f6ee; color: var(--dashboard-green); }
+.dashboard-kpi-card.tone-amber .dashboard-kpi-icon { background: #faf3e4; color: var(--dashboard-amber); }
+.dashboard-kpi-card.tone-red .dashboard-kpi-icon { background: #fbecef; color: var(--dashboard-red); }
 
 .dashboard-kpi-note {
   margin-top: 10px;
@@ -1094,11 +1113,11 @@ html, body {
   font-size: .625rem;
 }
 
-.dashboard-mini-stat.tone-green { border-color: #d7e8dc; background: #f3f8f5; }
+.dashboard-mini-stat.tone-green { border-color: #cfe8d9; background: #f1f9f4; }
 .dashboard-mini-stat.tone-green strong { color: var(--dashboard-green); }
-.dashboard-mini-stat.tone-amber { border-color: #eadcc8; background: #fbf7f0; }
+.dashboard-mini-stat.tone-amber { border-color: #ebdcbe; background: #fbf6ec; }
 .dashboard-mini-stat.tone-amber strong { color: var(--dashboard-amber); }
-.dashboard-mini-stat.tone-red { border-color: #ead4d4; background: #faf3f3; }
+.dashboard-mini-stat.tone-red { border-color: #ecd2d8; background: #fbf1f4; }
 .dashboard-mini-stat.tone-red strong { color: var(--dashboard-red); }
 
 .dashboard-chart-pair {
@@ -1223,10 +1242,10 @@ html, body {
   font-weight: 650;
 }
 
-.dashboard-status.status-ok { background: #edf6f0; color: #3f7356; }
-.dashboard-status.status-warning { background: #fbf3e7; color: #90642f; }
-.dashboard-status.status-error { background: #f9eded; color: #985252; }
-.dashboard-status.status-muted { background: #f0f3f5; color: #758492; }
+.dashboard-status.status-ok { background: #e9f6ee; color: #1f7346; }
+.dashboard-status.status-warning { background: #faf3e4; color: #8a6212; }
+.dashboard-status.status-error { background: #fbecef; color: #8d3346; }
+.dashboard-status.status-muted { background: #eef1f4; color: #5a6470; }
 
 .dashboard-section-note {
   margin: 10px 1px 0;
@@ -9666,6 +9685,27 @@ tr:hover td {
 .worksheet-editor-drawing-swatch[data-checked='1'] {
   border-color: #7e9fbe;
   background: #f1f6fb;
+}
+/*
+  ★ 2026-10-08（教师）：「这四个选择按钮可以设计成胶囊按钮，小一点，放左侧。」
+  ⇒ 只改**作图工具四选一**那一排：由等分网格改成靠左的胶囊行。
+  🔴 刻意**不改**它上面那条共用的 `…-tools, …-swatches` 网格规则 —— 颜色色块（swatches）
+     跟工具按钮**共用同一条规则**，直接改会把色块也一起改成胶囊。
+     所以这里只覆盖 tools 自己（沿用本文件既有的「写在后面覆盖、不重写」惯例）。
+*/
+.worksheet-editor-drawing-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px;
+}
+.worksheet-editor-drawing-tool {
+  display: inline-flex;
+  align-items: center;
+  min-height: 0;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: .74rem;
 }
 .worksheet-editor-drawing-swatch-preview {
   width: 100%;

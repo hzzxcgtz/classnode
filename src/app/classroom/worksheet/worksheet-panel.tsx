@@ -11,7 +11,7 @@ import type { WorksheetAnswerMode, WorksheetGradeState, WorksheetQuestionNode } 
 // 静默降级成 `open`（学生看到全部题目，而老师以为卷子是锁着的）。
 import { answerModeView, normalizeAnswerMode, normalizeOpenQuestions } from '@/lib/worksheet-answer-mode';
 // 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
-import { resolveRewardScale, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
+import { resolveFullPoints, resolveRewardScale, resolveWorksheetFullStep, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
 import { correctKeysFromPayload, isMultipleChoice, questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { readBlankCount } from '@/lib/worksheet-answer-value';
@@ -204,6 +204,16 @@ interface LoadedWorksheet {
    * 画出来的个数是**得分**（绝对值模型，规格 §12），学习单级那两个数由服务端折算进得分。
    */
   reward: RewardScale;
+  /**
+   * ★ 2026-10-08（教师 第 7 项）：画奖励**槽位**要的"满分几个"里**学习单级那一半**。
+   *
+   * 🔴 它**不在 `RewardScale` 上**（M4a 把 `step`/`halfStep` 从那个类型里删了，理由见其注释）。
+   * 学生端现在要画"满分 N 枚、已得 M 枚"，而**服务端只下发得分、不下发满分**
+   * ⇒ 满分只能在客户端自算：逐题填了用题上的 `points.full`，留空则用这一格回退。
+   * ⚠️ 这条规则与服务端 `resolvePoints` 是**同一句话的两个实现**，详情与代价写在
+   * `@/lib/worksheet-reward` 的 `resolveFullPoints` 上（改一处必须三处一起改）。
+   */
+  rewardFullFallback: number;
   backgroundTheme: WorksheetBackgroundTheme;
   backgroundImageUrl: string | null;
   backgroundPortraitImageUrl: string | null;
@@ -312,6 +322,8 @@ export interface WorksheetQuestionListProps {
    * 不是重复：这一道管「没有配置就没有奖励」，那一道管「只读的预览永远没有奖励」。
    */
   reward?: RewardScale | null;
+  /** ★ 2026-10-08（教师 第 7 项）：学习单级的满分回退值（题上没填 `points.full` 时用它）。 */
+  rewardFullFallback?: number;
   /** 每道题的得分（`useWorksheetAnswers` 的 `scores`）。不传 = 一道题都没判分。 */
   scores?: Record<string, WorksheetScore>;
   gradeStates?: Record<string, WorksheetGradeState | null>;
@@ -353,6 +365,7 @@ export function WorksheetQuestionList({
   interactive,
   allowResubmit,
   reward,
+  rewardFullFallback,
   scores,
   gradeStates,
   aiReferenceScores,
@@ -466,6 +479,13 @@ export function WorksheetQuestionList({
          * ⚠️ `role="status"` + `aria-live` 从原来那个反馈框搬到这里：判分结果是
          * 提交后才出现的一段反馈，读屏要念出来。
          */
+        /*
+         * ★ 2026-10-08（教师 第 7 项）：画奖励槽位要的**满分**（= 全对能得几分 = 画几枚图标）。
+         * 逐题填了 `points.full` 就用它，留空则继承学习单级（`rewardFullFallback`）。
+         * 🔴 与服务端的 `resolvePoints` 是**同一句话的两个实现** —— 代价与三处同步的约束
+         *    写在 `@/lib/worksheet-reward` 的 `resolveFullPoints` 上，改那里就要一起改。
+         */
+        const fullPoints = resolveFullPoints(node.points, rewardFullFallback ?? 1);
         const verdictLabel = mixedFillScoring
           ? (gradeState === 'correct' ? '自动评分部分全对' : gradeState === 'partial' ? '自动评分部分答对' : '自动评分部分再想想')
           : gradeState === 'correct' ? '全部答对' : gradeState === 'partial' ? '部分答对' : '再想一想';
@@ -475,6 +495,23 @@ export function WorksheetQuestionList({
           // ⇒ 角标必须是它的**兄弟**才不会被裁掉。`margin-left: auto`（原来在
           // `.questionResult` 上，负责把整条顶到最右）跟着搬到这一层。
           <span className={styles.resultRewardAnchor}>
+            {/*
+              ★ 2026-10-08（教师 第 7 项，含第二批的补充）：
+                第 7 项原话：「改一种显示方式，**移动到这行绿色文字信息框的前面**……
+                评分前先显示非常浅的灰度化图标，评分后把指定个数改为正常颜色」；
+                第二批又补：「**图标在框外**，图标可以大一些」。
+              ⇒ 所以它是 `.resultRewardAnchor` 下的**兄弟**、排在 `.questionResult`
+                （那条白底圆角边框）**之前** —— 在**框外**，不是条子里的一格。
+              ⚠️ 门是 `state !== 'empty' || gradeState`：题目**完全没作答过**时不画 ——
+                一排灰图标挂在没碰过的题上只是噪音。
+              ⚠️ 这条设计线上的三次反转、以及 09-28 那条「框高一致」的顾虑，
+                完整记在 `reward-badge.tsx` 的 `QuestionReward` 上。
+            */}
+            {reward && (state !== 'empty' || gradeState) && (
+              <span className={styles.resultReward}>
+                <QuestionReward scale={reward} full={fullPoints} score={scores?.[node.id] ?? null} />
+              </span>
+            )}
             <div className={styles.questionResult} role="status" aria-live="polite">
               {state !== 'empty' && (
                 <span
@@ -496,19 +533,10 @@ export function WorksheetQuestionList({
                         统计符号（一屏几十行，要极窄），这边是给中小学生看的反馈。 */}
                   <ResultGlyph state={gradeState} />
                   {verdictLabel}
-                  {/* ★ 2026-09-29（教师 ⑤）：奖励从「整条框右边的兄弟」改成**这一格的右上角角标**。
-                      ⛔ 这反转了 2026-09-28 图 56 的「不需要框在圆角矩形里」（那次要保的是
-                      「左边两个框的高度一致」）—— 角标是绝对定位、不占行内空间，那条照旧成立。
-                      ⚠️ 挂在这一格（不是整条 `.questionResult`）：挂在整条上会跑到
-                      「✓ 已完成」那一格的右上角去。
-                      ★ 教师 ③：「部分答对也要显示获得的奖励图标个数」⇒ 条件从
-                      `correct` 放宽到 `correct | partial`。⚠️ `incorrect` 仍然不画
-                      （那一档的分恒 0，没有任何东西可显示 —— 由 `QuestionReward` 挡掉）。 */}
-                  {(gradeState === 'correct' || gradeState === 'partial') && reward && (
-                    <span className={styles.resultReward}>
-                      <QuestionReward scale={reward} score={scores?.[node.id] ?? null} />
-                    </span>
-                  )}
+                  {/* ★ 2026-10-08（教师 第 7 项）：奖励**不再挂在这一格里** —— 它搬到了整条
+                      `.questionResult` 的最前面（见上面那一段）。这里原先是 2026-09-29 的
+                      绝对定位角标；那次「不占行内空间 ⇒ 两格高度不变」的顾虑**仍然有效**，
+                      所以在上面那段里用 18px 图标 + `gap: 1px` 自己保住。 */}
                 </span>
               )}
               {aiReferenceScore && (
@@ -861,6 +889,12 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             openQuestions: normalizeOpenQuestions(data.openQuestions),
             // 奖励同理：缺字段落到默认档（星星 ⭐），不抛也不画一个错的档。
             reward: resolveRewardScale(data.settings),
+            // ★ 2026-10-08：学生端**画奖励槽位**要"满分几个"，而服务端只下发得分
+            // ⇒ 学习单级那一半在这里算（逐题填了 `points.full` 就轮不到它）。
+            // 🔴 走 `resolveWorksheetFullStep` 而**不是** `normalizeRewardStep` ——
+            //    后者的域是 `{1,2,3,5}`（教师端下拉框的可选项），而服务端判分对
+            //    `rewardStep` 只要求 `1..99`；两者用错会在手改过库的情况下静默错位。
+            rewardFullFallback: resolveWorksheetFullStep(data.settings),
             backgroundTheme: normalizeWorksheetBackgroundTheme(data.settings?.backgroundTheme),
             // ★ 2026-09-27：与上面几格同一条纪律 —— 认不出 / 缺字段就回默认档，不抛。
             surfaceOpacity: normalizeWorksheetSurfaceOpacity(data.settings?.surfaceOpacity),
@@ -1055,6 +1089,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
               interactive
               allowResubmit={load.worksheet.allowResubmit}
               reward={load.worksheet.reward}
+              rewardFullFallback={load.worksheet.rewardFullFallback}
               scores={answers.scores}
               gradeStates={answers.gradeStates}
               aiReferenceScores={load.worksheet.aiReferenceScores}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   clearSelection,
   setPlacement,
@@ -17,6 +17,8 @@ import type { WorksheetQuestionNode } from '@/lib/types';
 import { usePointerDrag, type DragPoint } from '../use-pointer-drag';
 // ★ 2026-09-30：条目与框名里的数学公式。走题干那**同一个**渲染器。
 import { PromptText } from '@/lib/worksheet-prompt-text';
+// ★ 2026-10-08（教师）：条目块去边框、改底纹，且**跟着所在容器染不同的色**。
+import { CATEGORIZE_POOL_TINT, zoneTint } from '@/lib/worksheet-categorize-tint';
 import styles from '../worksheet.module.css';
 
 /**
@@ -127,8 +129,16 @@ export function CategorizeBody({ node, draft, onChange, disabled }: CategorizeBo
     return <p className={styles.cardNote}>（这道题还没有条目或还没有框）</p>;
   }
 
-  /** 一个条目长什么样。池子里与框里画的是同一个东西 —— 否则「拖走它」的目标就对不上。 */
-  const chip = (itemId: string) => {
+  /**
+   * 一个条目长什么样。池子里与框里画的是同一个东西 —— 否则「拖走它」的目标就对不上。
+   *
+   * ★ 2026-10-08（教师）：「不带边框、带底纹色的文字，放到不同容器后会有相应的变化。」
+   *   ⇒ 底色由**调用方**给的 `tint` 决定（池里是中性灰，每个框是它自己那一档）。
+   *   ⚠️ 走内联 CSS 变量而不是类名：框的**数量与顺序由题目数据决定**，写不出固定类名。
+   *   ⚠️ `tint` 是**必填**的，不给默认值 —— 有默认值的话，将来新加一处调用点忘了传，
+   *     就会静默地画成池子那个灰，而"忘了传"这件事没有任何提示。
+   */
+  const chip = (itemId: string, tint: string) => {
     const picked = selection.kind === 'item' && selection.id === itemId;
     const className = [
       styles.poolItem,
@@ -141,6 +151,7 @@ export function CategorizeBody({ node, draft, onChange, disabled }: CategorizeBo
         className={className}
         key={itemId}
         ref={(el) => { chipEls.current[itemId] = el; }}
+        style={{ '--categorize-tint': tint } as CSSProperties}
         {...drag.sourceProps(itemId)}
       >
         {/* ★ 2026-09-30：条目原文走 `PromptText`。⚠️ 池里与框里**共用这一个函数**，
@@ -162,10 +173,10 @@ export function CategorizeBody({ node, draft, onChange, disabled }: CategorizeBo
         {...drag.targetProps(POOL_TARGET)}
       >
         <div className={styles.poolHead}>待归类</div>
-        {pool.length === 0 ? <p className={styles.cardNote}>（都放好了）</p> : pool.map((entry) => chip(entry.id))}
+        {pool.length === 0 ? <p className={styles.cardNote}>（都放好了）</p> : pool.map((entry) => chip(entry.id, CATEGORIZE_POOL_TINT))}
       </div>
       <div className={styles.zoneGrid}>
-        {zones.map((zone) => {
+        {zones.map((zone, zoneIndex) => {
           const inside = items.filter((entry) => assignment[entry.id] === zone.id);
           const className = `${styles.zone}${drag.hoverTargetId === zone.id ? ` ${styles.dropActive}` : ''}`;
           return (
@@ -176,7 +187,7 @@ export function CategorizeBody({ node, draft, onChange, disabled }: CategorizeBo
                   ? <PromptText text={zone.text} placeholder="" />
                   : <span className={styles.placeholder}>（这个框还没写名字）</span>}
               </div>
-              {inside.length === 0 ? <p className={styles.cardNote}>（空的）</p> : inside.map((entry) => chip(entry.id))}
+              {inside.length === 0 ? <p className={styles.cardNote}>（空的）</p> : inside.map((entry) => chip(entry.id, zoneTint(zoneIndex)))}
             </div>
           );
         })}

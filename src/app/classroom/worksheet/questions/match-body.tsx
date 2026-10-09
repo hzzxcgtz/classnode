@@ -267,7 +267,7 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
     <div className={styles.matchWrap}>
       <p className={styles.dragHint}>点任一条目，再点对面那一列的对应项即可连线；也可以直接拖。连错的点一下就能删。</p>
       <div className={styles.matchGrid} ref={containerRef}>
-        <div className={styles.matchColumn}>
+        <div className={`${styles.matchColumn} ${styles.matchColumnLeft}`}>
           {left.map((entry) => {
             const picked = selection.kind === 'item' && selection.id === entry.id;
             const linked = links.some(item => item.leftId === entry.id);
@@ -291,11 +291,23 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
                     ? <PromptText text={entry.text} placeholder="" />
                     : <span className={styles.placeholder}>（这一条还没写）</span>}
                 </span>
+                {/*
+                  ★ 2026-10-08（教师）：「左侧框的右端和右侧框的左端可以增加一个连接句柄
+                  （例如小圆），增加连线题的操作识别度。」
+
+                  ⚠️ 它**只是视觉锚点，不改拖动**（详见 `worksheet.module.css` 那条注释）：
+                     CSS 把它摆在条目**连接那一端**的边上，而 `measure()` 与跟手线取的
+                     正是那条边（左列 `a.right` / 右列 `a.left`）⇒ 句柄中心与线的端点
+                     **天然重合**，两端都不用改测量逻辑。
+                  ⚠️ 它有指针事件（不设 `pointer-events: none`）：它是条目的**子元素**，
+                     按在它上面的事件会冒泡给条目自己的 `bothProps` ⇒ 从圆点上起拖也好使。
+                */}
+                <span className={styles.matchHandle} aria-hidden="true" />
               </div>
             );
           })}
         </div>
-        <div className={styles.matchColumn}>
+        <div className={`${styles.matchColumn} ${styles.matchColumnRight}`}>
           {right.map((entry) => {
             const pickedRight = selection.kind === 'item' && selection.id === entry.id;
             const linked = links.some(item => item.rightId === entry.id);
@@ -315,6 +327,8 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
             ].filter(Boolean).join(' ');
             return (
               <div className={className} key={entry.id} ref={setRef(`r:${entry.id}`)} {...drag.bothProps(entry.id)}>
+                {/* ★ 2026-10-08（教师）：右列的句柄在**左端**（朝着对面那一列）。 */}
+                <span className={styles.matchHandle} aria-hidden="true" />
                 <span className={styles.matchText}>
                   {/* ★ 2026-09-30：条目原文走 `PromptText`（不传 `runs` —— 纯文本）。 */}
                   {entry.text

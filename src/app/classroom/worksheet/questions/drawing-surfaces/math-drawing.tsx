@@ -28,6 +28,7 @@ import {
   type Pt,
 } from '@/lib/worksheet-math-shapes.ts';
 
+import { isTypingTarget, isUndoShortcut } from '@/lib/keyboard-target.ts';
 import type { DrawingSurfaceProps } from './types';
 import DrawingToolbarIcon from './drawing-toolbar-icon';
 import MathToolbarIcon from './math-toolbar-icon';
@@ -818,16 +819,28 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
       drawPreview(currentTool, local, local);
     };
     /**
-     * 选择档拖闭合图形的内部/边线 ⇒ 整体平移；拖顶点仍交给 JSXGraph，只改那一个顶点。
-     * 首次按住尚未选中的多边形也能直接开始拖，不必先点一下、再拖第二次。
+     * 选择档拖图形的内部/边线 ⇒ 整体平移；拖顶点仍交给 JSXGraph，只改那一个顶点。
+     * 首次按住尚未选中的图形也能直接开始拖，不必先点一下、再拖第二次。
+     *
+     * ★ 2026-10-08（教师）：「坐标系和数轴在画好后无法移动」——想在**选中后能移动**整块。
+     * 🔴 根因：这条路的守卫原先只放行**闭合折线**（`kind === 'polyline' && closed`），
+     *   而坐标系/数轴是 `coordinateSystem` / `numberLine` 两种 entry ⇒ 走不进来，
+     *   于是它们唯一的"动"就是拖那两个透明端点控制柄（那是**改大小**，不是移动）。
+     * ✅ 之所以放宽守卫就够：这一组对象的轴线/刻度/文字**全部由闭包读 `a.X()/a.Y()/b.X()/b.Y()`
+     *   的动态坐标算出**（见上面 `minX()` / `centerY()` / `supportPoint(x, y)` 那几行），
+     *   而 `item.points` 恰好就是 `[a, b]` ⇒ 平移这两个点，整组跟着走，不必销毁重建。
+     * ✅ 数轴也不会被平移弄歪：两个端点本来就同 y，给它们加同一个 dy ⇒ 仍水平。
      */
     const onPolygonMoveDown = (event: PointerEvent) => {
       if (disabled || event.button !== 0 || toolRef.current !== 'select') return;
       const hit = studentHitAt(event);
       if (!hit) return;
       const item = runtime.current[hit.index];
-      if (item.entry.kind !== 'polyline' || !item.entry.closed
-        || item.points.some((point) => point.id === hit.target.id)) return;
+      const entry = item.entry;
+      const movableOutline = entry.kind === 'polyline'
+        ? entry.closed
+        : entry.kind === 'coordinateSystem' || entry.kind === 'numberLine';
+      if (!movableOutline || item.points.some((point) => point.id === hit.target.id)) return;
       event.stopImmediatePropagation();
       event.preventDefault();
       hostEl.focus({ preventScroll: true });
@@ -980,8 +993,28 @@ export default function MathDrawing({ data, backgroundUrl, disabled, onChange, o
       else delete hostEl.dataset.panCursor;
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (disabled || (event.key !== 'Delete' && event.key !== 'Backspace')) return;
-      if (labelEditorRef.current || selectedRef.current === null) return;
+      if (disabled) return;
+      /*
+       * ★ 2026-10-08（教师）：「数学作图中的撤销要可以使用快捷键」。
+       * 🔴 两条判据都抽在 `@/lib/keyboard-target.ts` 里（纯函数 + 真单元测试），这里只接线：
+       *   · `isTypingTarget` —— 焦点在输入框/多行文本/富文本里时一律让位给浏览器原生撤销。
+       *     抢过来的后果是：学生在题干输入框里打了字按 Cmd+Z，退掉的是画布上的图形，
+       *     而他刚打的字一个字没少（流程图那条踩过）。
+       *   · `isUndoShortcut` —— `Cmd+Z` / `Ctrl+Z`。
+       * ⚠️ 原先这两条是**内联正则**，只能断言"字符串在不在"；实测把它短路掉断言照样绿（假绿）。
+       * ⇒ 抽成纯函数之后，四类目标与组合键的判定由 `keyboard-target.test.ts` 真喂形状来钉。
+       * ⚠️ 监听挂在 hostEl（画布 div，`tabIndex`）上而非 window —— 每次 pointerdown 都会
+       *    `hostEl.focus()`，所以"只有最后碰的是我这块画布才响应"是天然成立的。
+       */
+      if (labelEditorRef.current !== null || isTypingTarget(event.target)) return;
+      if (isUndoShortcut(event)) {
+        // 🔴 撤销**不要求先选中**（与下面的删除不同）：栈里有东西就该能撤。
+        event.preventDefault();
+        undoRef.current?.();
+        return;
+      }
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      if (selectedRef.current === null) return;
       event.preventDefault();
       deleteSelectedRef.current?.();
     };

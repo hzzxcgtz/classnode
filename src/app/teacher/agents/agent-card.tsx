@@ -16,7 +16,7 @@ interface AgentCardProps {
   onDelete: () => void;
   onShowError: (text: string, top: number, left: number) => void;
   onHideError: () => void;
-  /** 打开「关联课堂」清单。 */
+  /** 打开关联清单弹窗（分析型列学习单、学伴型列课堂，见卡片上那个 chip）。 */
   onShowRelatedClassrooms: () => void;
 }
 
@@ -113,13 +113,41 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
 
       <div className="agent-management-card-body">
         <div className="agent-management-card-meta">
-          <span className="agent-management-purpose-copy">{purpose === 'analysis' ? '教师分析型智能体' : '课堂学生学伴'}</span>
+          {/*
+            ⊘ 2026-10-08（教师）：「这两个都不要显示了」——**去掉那句话、留小汉字**。
+              原话是「「教师分析型智能体」改为「智能分析类」、「课堂学生学伴」改为「智能学伴类」」，
+              但「智能学伴」在本仓**已经是一个课堂模块名**（`module-meta.tsx` 的 `companion`，
+              学生端 Tab 上直接显示）⇒ 改了会撞名、学生会同时看到两个「智能学伴」。
+              教师权衡后选了「都不要显示」。
+            ⚠️ 留下的那枚小汉字是 `PurposeChip`（卡片标题旁，`学` / `析`）—— **没有**一起删。
+            ⚠️ 这一句是**唯一**的字面拷贝（`purpose === 'analysis' ? … : …` 是运行时拼的），
+              删掉它之后，"这一档叫什么"只由 `PurposeChip` 与筛选项（`学习类` / `分析类`）承担。
+          */}
           <button type="button" className="related-classrooms-chip agent-management-classrooms-chip" onClick={onShowRelatedClassrooms}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
               <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" />
             </svg>
-            {typeof agent.classroomCount === 'number' ? (agent.classroomCount > 0 ? '关联课堂' : '未关联课堂') : '关联课堂'}
-            {typeof agent.classroomCount === 'number' && agent.classroomCount > 0 && (
+            {/*
+              ★ 2026-10-08（教师）：「这里应该是查看关联的学习单」。
+              ⇒ 分析型说**学习单**、学伴型仍说**课堂** —— 两条关系本来就不是一回事：
+                分析型靠 `Worksheet.settings.analysisAgentId`，学伴型靠 `ClassroomAgent`。
+              ⚠️ 数字（`classroomCount`）只有学伴型那一条有：学习单的**条数**要点了才知道
+                （清单在弹窗里跟同一次 usage 请求一起回来）。所以分析型这一档**不显示数字**,
+                而不是显示一个可能失真的 `0`。
+            */}
+            {purpose === 'analysis'
+              ? '关联学习单'
+              : typeof agent.classroomCount === 'number' ? (agent.classroomCount > 0 ? '关联课堂' : '未关联课堂') : '关联课堂'}
+            {/*
+              ★ 2026-10-08 第二批（教师）：「这个数据取不到吗？」⇒ 取得到，而且要显示出来。
+              分析型那颗 chip 现在也带条数（`worksheetCount` 由列表接口算出）。
+              ⚠️ 分析型**不显示** `classroomCount`（那是另一条关系），学伴型**不显示**
+                `worksheetCount` —— 两条关系的数字混在一起才是真的说不清。
+            */}
+            {purpose === 'analysis' && typeof agent.worksheetCount === 'number' && agent.worksheetCount > 0 && (
+              <span className="related-classrooms-chip-count">{agent.worksheetCount}</span>
+            )}
+            {purpose !== 'analysis' && typeof agent.classroomCount === 'number' && agent.classroomCount > 0 && (
               <span className="related-classrooms-chip-count">{agent.classroomCount}</span>
             )}
           </button>

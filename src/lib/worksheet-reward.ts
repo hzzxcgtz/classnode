@@ -409,3 +409,115 @@ export function rewardTotalText(scale: RewardScale, amount: number): string | nu
   const symbol = rewardSymbol(scale.style);
   return symbol ? `${symbol}×${amount}` : null;
 }
+
+/**
+ * 题目那一行最多画几个奖励图标。
+ *
+ * ★ 2026-10-08（教师）：「满分是 2 个图标……评分后，根据评分结果将指定个数的图标改为正常颜色显示」
+ *   并选定：**超过 5 个封顶，改用 `×N`**。
+ * ⚠️ 这一档是**为版面**定的，不是为语义：教师逐题手填的分值没有上界（`isValidPointNumber`），
+ *   真填 20 就会把整行撑破 —— 而那一行里还有「已完成」「全部答对」两格。
+ */
+export const MAX_REWARD_SLOTS = 5;
+
+export interface RewardSlotPlan {
+  /** 一共画几枚图标（含灰的那几枚）。 */
+  slots: number;
+  /** 其中几枚是**正常颜色**（已获得）。 */
+  lit: number;
+  /** 画不下时补的那个数（`×N` 里的 N）；不需要补就是 `null`。 */
+  overflow: number | null;
+}
+
+/** 只认非负整数（坏值一律当 0）——`repeat`/循环次数拿到小数或负数会抛。 */
+function slotCount(raw: number): number {
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  return Math.round(raw);
+}
+
+/**
+ * **满分与得分 → 那一行画什么**（几枚灰、几枚亮、要不要补 `×N`）。
+ *
+ * ```
+ * slots = min(max(满分, 得分), 5)      ← 至少盖得住"已得"，最多 5
+ * lit   = min(得分, slots)
+ * ×N    = 得分 > slots 时补得分
+ * ```
+ *
+ * 🔴 **`slots` 取 `max(满分, 得分)` 的理由**：这两件事正常一致（得分 ≤ 满分），
+ *   但「混合填空按空计分」那一档**不保证** —— 服务端在那里给的是 `命中空数 × full`
+ *   （`worksheet-questions.ts` 的 `per-blank` 分支），于是得分可以**大于**逐题分值。
+ *   只按满分画的话，学生答对 3 空、满格只画 1 枚，看起来像丢了两个奖励。
+ *   ⇒ 槽位数自己往上撑，宁可多画一枚，不做"少画"。
+ *   ⚠️ 这**不是**完美解：真正的满分在那一档是「空数 × full」，而客户端拿不到空数。
+ *     所以 `×N` 兜住"多出来的那部分"，而不是假装满分就是 `full`。
+ */
+export function rewardSlotPlan(full: number, amount: number): RewardSlotPlan {
+  const max = slotCount(full);
+  const got = slotCount(amount);
+  const slots = Math.min(Math.max(max, got), MAX_REWARD_SLOTS);
+  const lit = Math.min(got, slots);
+  const overflow = got > slots ? got : null;
+  return { slots, lit, overflow };
+}
+
+/**
+ * 一道题的**满分**（= 全对时能得几分 = 画几枚图标）。
+ *
+ * 🔴🔴 **这是与服务端逐字对齐的镜像**，改一处就要三处一起改：
+ *   ① 服务端判分：`server/src/services/worksheet-questions.ts` 的
+ *      `resolvePoints(node, pointsFromSettings(settings))`（**判分用的是这一份**）；
+ *   ② 教师端编辑页：`worksheet-editor-core.ts` 里那一份（受控输入框用）；
+ *   ③ 本函数与 `resolveWorksheetFullStep`（学生端**画槽位**用）。
+ *
+ * ⚠️ **别拿 `normalizeRewardStep` 当这个镜子的回落**（我第一版就是那么写的，是错的）：
+ *   它的域是 `{1,2,3,5}`（那是**教师端下拉框**的可选项），而服务端 `pointsFromSettings`
+ *   对 `rewardStep` 只要求 `1..POINTS_MAX`。库里若有个手改出来的 `7`，
+ *   服务端按 `7` 判分、按 `{1,2,3,5}` 归一化的客户端会画 `1` 枚 ⇒ 静默错位。
+ *
+ * ⚠️ 还有一处**形状**上的坑，同样照服务端抄（`normalizePoints` 用的是 `??`）：
+ *   整份 `points` 只要**有一格**可用就会被采用，而 `full` 不可用时填的是
+ *   `DEFAULT_POINTS.full`（= 1）—— **不是**学习单级。所以 `{ half: 2 }` 这种
+ *   "只填了部分分"的形状上，满分是 **1**，而不是 `rewardStep`。
+ *
+ * ⚠️ 为什么学生端要自己算、而不等服务端下发：服务端只下发**得分**（绝对值模型），
+ *   不下发"满分"。要让它下发就得改接口 —— 那是另一件事。这里刻意只镜像**一条**规则。
+ */
+export function resolveFullPoints(
+  nodePoints: { full?: unknown; half?: unknown } | null | undefined,
+  fallbackFull: number,
+): number {
+  const own = usableFullPointValue(nodePoints?.full);
+  if (own !== null) return own;
+  if (usablePointValue(nodePoints?.half) !== null) return DEFAULT_REWARD_STEP;
+  return fallbackFull;
+}
+
+/** 「全对」分值的下界与上界 —— 与服务端 `POINTS_FULL_MIN` / `POINTS_MAX` 同口径。 */
+const POINTS_FULL_MIN = 1;
+const POINTS_MAX = 99;
+
+/** 服务端 `isUsableFullPointValue`：**全对**档的判据（下界是 1，`0` 算"没填"）。 */
+function usableFullPointValue(raw: unknown): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  const rounded = Math.round(raw);
+  return rounded >= POINTS_FULL_MIN && rounded <= POINTS_MAX ? rounded : null;
+}
+
+/** 服务端 `isUsablePointValue`：**部分给分**档的判据（下界是 0 —— `0` 在那一档合法）。 */
+function usablePointValue(raw: unknown): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  const rounded = Math.round(raw);
+  return rounded >= 0 && rounded <= POINTS_MAX ? rounded : null;
+}
+
+/**
+ * 学习单级的**全对分值**（= `settings.rewardStep` 里那个数）。
+ * 与服务端 `pointsFromSettings(settings).full` 同口径：认得出就用，否则默认 1。
+ */
+export function resolveWorksheetFullStep(settings: unknown): number {
+  const source = settings && typeof settings === 'object' && !Array.isArray(settings)
+    ? settings as Record<string, unknown>
+    : {};
+  return usableFullPointValue(source.rewardStep) ?? DEFAULT_REWARD_STEP;
+}

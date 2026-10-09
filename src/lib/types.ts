@@ -57,6 +57,15 @@ export interface AgentSummary {
    */
   classroomCount?: number;
   /**
+   * ★ 2026-10-08（教师）：「这个数据取不到吗？」——分析型那张卡上的条数。
+   *
+   * 有多少份学习单把它指定为分析型智能体（`Worksheet.settings.analysisAgentId`）。
+   * 🔴 与 `classroomCount` **是两条不同的关系**，不要混：一个走 `ClassroomAgent` /
+   *   组级材料，一个走学习单里的 JSON 字段。卡片上按 `purpose` 各显示各的。
+   * ⚠️ 同 `classroomCount?`：**只有 `GET /api/agents` 会填** ⇒ 可选；学伴型恒为 0。
+   */
+  worksheetCount?: number;
+  /**
    * ★ M7b：用途。`'tutoring'`（学伴，学生可见）| `'analysis'`（分析型，**学生绝不可见**）。
    *
    * ⚠️ **可选** —— 这个类型是**复用类型**：学生端下发的 `agents[]` 也走它，
@@ -86,6 +95,21 @@ export interface RelatedClassroom {
   /** `'active' | 'paused' | 'ended'`。 */
   status: string;
   mode?: string;
+}
+
+/**
+ * ★ 2026-10-08（教师）：「（分析型智能体那张卡上）这里应该是**查看关联的学习单**。」
+ *
+ * 🔴 智能体 ↔ 学习单**没有关联表**（全仓无 `WorksheetAgent`）—— 这一份来自
+ * `Worksheet.settings.analysisAgentId`：学习单里指定"用哪个分析型智能体做分析"。
+ * 所以它只会对**分析型**智能体非空；学伴型恒为空数组。
+ * ⚠️ 服务端那边用的是与**删除守卫**逐字相同的比较（`settings.analysisAgentId === id`），
+ * 两处分家会出现「能删却说有引用」这种自相矛盾，而两边都不报错。
+ */
+export interface RelatedWorksheet {
+  id: string;
+  title: string;
+  updatedAt: string;
 }
 
 export interface ClassroomSummary {

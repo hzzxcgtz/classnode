@@ -10,15 +10,15 @@
  *
  * ⚠️ 内容对不对**不靠这里**：纸上写什么由 `worksheet-paper.test.ts` 的 15 条判据盯着。
  *    这里只核**渲染层有没有把它画丢**（少一段、少一个答案、转义坏掉）。
- * ⚠️ 解 zip 用系统的 `unzip`。没装 `unzip` 的机器上**跳过**内容那一半并**打印一行**
- *    （不静默跳过：静默的跳过正是本仓最防的「假绿」）。
+ * 解 zip 使用项目的 adm-zip，所有平台均执行内容验证。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+const AdmZip = createRequire(import.meta.url)('adm-zip');
 import { buildWorksheetPaperDocx, paperFilename } from '../services/worksheet-paper-docx.js';
 import type { WorksheetPaper } from '../services/worksheet-paper.js';
 import { splitMath } from '../services/worksheet-math.js';
@@ -61,11 +61,6 @@ const SAMPLE: WorksheetPaper = {
   ],
 };
 
-/** 有没有 `unzip`（没有就只跑「打得开」那一半，并打印一行说明）。 */
-function hasUnzip(): boolean {
-  try { execFileSync('unzip', ['-v'], { stdio: 'pipe' }); return true; } catch { return false; }
-}
-
 async function writeTemp(paper: WorksheetPaper): Promise<string> {
   const buffer = await buildWorksheetPaperDocx(paper);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-paper-'));
@@ -76,23 +71,19 @@ async function writeTemp(paper: WorksheetPaper): Promise<string> {
 
 /** 解开 docx 读 `word/document.xml`。 */
 function readDocumentXml(file: string): string {
-  return execFileSync('unzip', ['-p', file, 'word/document.xml'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  const entry = new AdmZip(file).getEntry('word/document.xml');
+  assert.ok(entry, 'docx 必须包含 word/document.xml');
+  return entry.getData().toString('utf8');
 }
 
 test('🔴 生成的是一份**合法的 docx**（zip 里有 word/document.xml）', async () => {
   const file = await writeTemp(SAMPLE);
   const head = fs.readFileSync(file).subarray(0, 2).toString('latin1');
   assert.equal(head, 'PK', 'docx 就是 zip ⇒ 头两个字节必须是 PK');
-  if (!hasUnzip()) {
-    console.log('⚠️ 本机没有 unzip ⇒ 跳过「解开核字」那一半（内容正确性由 worksheet-paper.test.ts 盯着）');
-    return;
-  }
-  const list = execFileSync('unzip', ['-l', file], { encoding: 'utf8' });
-  assert.match(list, /word\/document\.xml/);
+  assert.ok(new AdmZip(file).getEntry('word/document.xml'));
 });
 
 test('🔴 渲染层把判据层的内容**画上去了**（题号 / 选项 / 答案 / 任务标题都在 XML 里）', async () => {
-  if (!hasUnzip()) { console.log('⚠️ 本机没有 unzip ⇒ 跳过本条'); return; }
   const xml = readDocumentXml(await writeTemp(SAMPLE));
   for (const expected of [
     '第三课练习',            // 标题
@@ -131,7 +122,6 @@ test('🔴 渲染层把判据层的内容**画上去了**（题号 / 选项 / �
 test('🔴 表格必须画成 **Word 里的真表格**（`<w:tbl>`），不是 `|` 分隔的文字', async () => {
   // 教师原话：「下方的表格要用 Word 里的真表格」——原来那份是把表格折成
   // `时间 | 上午 | 下午` 那样的纯文本行，教师一眼就说难看。
-  if (!hasUnzip()) { console.log('⚠️ 本机没有 unzip ⇒ 跳过本条'); return; }
   const file = await writeTemp({
     ...SAMPLE,
     questionCount: 1,
@@ -164,7 +154,6 @@ test('🔴 表格必须画成 **Word 里的真表格**（`<w:tbl>`），不是 `
 });
 
 test('🔴 文本里的 `&` / `<` 必须被转义（不转义 ⇒ Word 直接报文件损坏）', async () => {
-  if (!hasUnzip()) { console.log('⚠️ 本机没有 unzip ⇒ 跳过本条'); return; }
   const file = await writeTemp({
     ...SAMPLE,
     title: 'A & B <测试>',
@@ -192,7 +181,6 @@ test('文件名：去掉各系统不认的字符，并带上「教师用卷」�
 // ---------------------------------------------------------------------------
 
 test('🔴 公式画成真 Word 公式（`<m:oMath>`），上标 / 分数 / 根号的结构都在', async () => {
-  if (!hasUnzip()) { console.log('⚠️ 本机没有 unzip ⇒ 跳过本条'); return; }
   const file = await writeTemp({
     ...SAMPLE,
     questionCount: 1,
@@ -216,7 +204,6 @@ test('🔴 公式画成真 Word 公式（`<m:oMath>`），上标 / 分数 / 根�
 });
 
 test('🔴 认不出的 LaTeX 如实降级成源码，**不许**印一个空白', async () => {
-  if (!hasUnzip()) { console.log('⚠️ 本机没有 unzip ⇒ 跳过本条'); return; }
   const file = await writeTemp({
     ...SAMPLE,
     questionCount: 1,
@@ -233,7 +220,6 @@ test('🔴 认不出的 LaTeX 如实降级成源码，**不许**印一个空白'
 });
 
 test('🔴 公式里的 `<` `>` `&` 必须被转义（不转义 ⇒ Word 报文件损坏）', async () => {
-  if (!hasUnzip()) { console.log('⚠️ 本机没有 unzip ⇒ 跳过本条'); return; }
   // 🔴 这一条**必须自己拉网**：公式走的是 `ImportedXmlComponent.fromXmlString(omml)`，
   //    那是**原始 XML** —— 转义由 `mathml2omml` 负责，不像 `TextRun` 由 docx 库自己转义。
   //    不转义 ⇒ XML 非法 ⇒ Word 直接说「文件已损坏」，而屏幕上什么都不报。
@@ -262,7 +248,6 @@ test('🔴 公式里的 `<` `>` `&` 必须被转义（不转义 ⇒ Word 报文�
 });
 
 test('🔴 n 元算符之后的**裸文本**也要转义（`escapeMathText` 不能只看 `<m:t>`）', async () => {
-  if (!hasUnzip()) { console.log('⚠️ 本机没有 unzip ⇒ 跳过本条'); return; }
   // 🔴 `mathml2omml@0.5` 在 n 元算符（`\int` / `\sum`）之后会把 `<m:e>` 里的**后续兄弟节点
   //    原样拼在标签外**：`\int_0^1 f(a<b)dx` ⇒ `<m:e><m:r><m:t>f</m:t></m:r>(a<b)dx</m:e>`
   //    —— 那段 `(a<b)dx` 的 `<` **不经过 `<m:t>`**。

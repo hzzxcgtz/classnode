@@ -84,7 +84,7 @@ test('🔴 「解密 agent.apiKey」只许出现在上表那两个文件里', ()
   // 🔴 扫到东西的阳性对照 —— 就是它抓出过「扫了 0 个文件却全绿」那个假绿。
   assert.ok(files.length > 20, `只扫到 ${files.length} 个源文件 —— 定位错了，这条用例是空的`);
   for (const file of files) {
-    const relative = path.relative(SERVER_SRC, file);
+    const relative = path.relative(SERVER_SRC, file).split(path.sep).join('/');
     if (ALLOWED.has(relative)) continue;
     const source = stripComments(fs.readFileSync(file, 'utf8'));
     // 只看「把某个 apiKey 拿去解密」这一种写法 —— 别的解密（比如开场白缓存、密钥自检）不在此列。

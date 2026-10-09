@@ -224,6 +224,8 @@ test('加密包（头部加密）：清单根本读不出来 ⇒ 拒，且不冒
   const source = await makeEncryptedArchive('header');
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-archive-out-'));
   const originalReadSync = fs.readSync;
+  const originalExitCode = process.exitCode;
+  process.exitCode = 17;
   let stdinReads = 0;
   fs.readSync = ((...args: unknown[]) => {
     if (args[0] === process.stdin.fd) { stdinReads++; return 0; }
@@ -239,7 +241,8 @@ test('加密包（头部加密）：清单根本读不出来 ⇒ 拒，且不冒
       },
     );
     assert.equal(stdinReads, 0, '上传解压不能读取后端标准输入等待密码');
-  } finally { fs.readSync = originalReadSync; }
+    assert.equal(process.exitCode, 17, '拒绝压缩包不能更改后端进程退出码');
+  } finally { fs.readSync = originalReadSync; process.exitCode = originalExitCode; }
 });
 
 test('★ 超总量的包：**在解压之前**就拒，而且目标目录一个字节都没落', async () => {

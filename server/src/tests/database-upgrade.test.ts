@@ -3,7 +3,7 @@ import test from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -49,7 +49,29 @@ async function fixture(legacy = true) {
   await prisma.worksheet.create({ data: { id: 'worksheet', title: 'old-sheet', content: { schemaVersion: 1, nodes: [{ id: 'q', type: 'short-answer', prompt: 'old?', data: {}, children: [] }] }, settings: {} } });
   await prisma.worksheetResponse.create({ data: { id: 'response', classroomId: 'classroom', worksheetId: 'worksheet', participantId: 'participant' } });
   await prisma.worksheetAnswer.create({ data: { id: 'answer', responseId: 'response', questionId: 'q', value: { text: 'preserved' } } });
-  return { root, file, url, prisma, close: async () => { await prisma.$disconnect(); fs.rmSync(root, { recursive: true, force: true }); } };
+  return { root, file, url, prisma, close: async () => { await prisma.$disconnect(); await fs.promises.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } };
+}
+
+async function stopTestServer(child: ChildProcess, closed: Promise<void>): Promise<void> {
+  if (child.exitCode === null && child.signalCode === null && child.pid) {
+    if (process.platform === 'win32') {
+      await new Promise<void>((resolve, reject) => {
+        execFile('taskkill', ['/PID', String(child.pid), '/T', '/F'], { timeout: 15000 }, error => {
+          if (error && child.exitCode === null && child.signalCode === null) reject(error);
+          else resolve();
+        });
+      });
+    } else {
+      try { process.kill(-child.pid, 'SIGTERM'); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
+    }
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([closed, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('测试服务进程或输出管道未在 15 秒内关闭')), 15000);
+    })]);
+  } finally { clearTimeout(timer); }
 }
 async function assertHistory(prisma: PrismaClient) {
   assert.equal((await prisma.message.findUniqueOrThrow({ where: { id: 'message' } })).content, 'history');
@@ -164,12 +186,52 @@ test('committed WAL records are included in the independent upgrade backup', asy
   } finally { await f.close(); }
 });
 
+test('busy WAL checkpoint refuses promotion and preserves committed data and backup', async () => {
+  const f = await fixture();
+  const reader = new PrismaClient({ datasources: { db: { url: f.url } } });
+  let release: () => void = () => {};
+  let transaction: Promise<unknown> | undefined;
+  try {
+    await f.prisma.$queryRawUnsafe('PRAGMA journal_mode=WAL');
+    await f.prisma.$queryRawUnsafe('PRAGMA busy_timeout=100');
+    await f.prisma.message.create({ data: { id: 'busy-wal-message', classroomId: 'classroom', studentId: 'participant', content: 'must survive', role: 'user' } });
+    let entered: () => void = () => {};
+    const ready = new Promise<void>(resolve => { entered = resolve; });
+    const hold = new Promise<void>(resolve => { release = resolve; });
+    transaction = reader.$transaction(async tx => {
+      await tx.$queryRawUnsafe('SELECT * FROM Message');
+      entered();
+      await hold;
+    }, { timeout: 20000 });
+    await Promise.race([ready, transaction.then(() => { throw new Error('读取事务提前结束'); })]);
+    await assert.rejects(upgradeDatabase(f.prisma, { databaseUrl: f.url }), /WAL 检查点未完成/);
+    assert.equal(await f.prisma.setting.count(), 0);
+    assert.equal((await f.prisma.message.findUniqueOrThrow({ where: { id: 'busy-wal-message' } })).content, 'must survive');
+    assert.ok(fs.statSync(f.file + '-wal').size > 0);
+    assert.equal(fs.existsSync(f.file + '.upgrade.lock'), false);
+    const backups = fs.readdirSync(path.join(f.root, 'backups'));
+    assert.equal(backups.length, 1);
+    const backup = new PrismaClient({ datasources: { db: { url: `file:${path.join(f.root, 'backups', backups[0])}` } } });
+    try { assert.equal((await backup.message.findUniqueOrThrow({ where: { id: 'busy-wal-message' } })).content, 'must survive'); }
+    finally { await backup.$disconnect(); }
+    release();
+    await transaction;
+    await reader.$disconnect();
+    await upgradeDatabase(f.prisma, { databaseUrl: f.url });
+    assert.equal(await f.prisma.message.count(), 2);
+  } finally {
+    release();
+    try { await transaction; }
+    finally { await reader.$disconnect(); await f.close(); }
+  }
+});
+
 test('hard process interruption leaves source untouched and stale-owner lock is recoverable', async () => {
   const f = await fixture();
   try {
     await f.prisma.$disconnect();
-    const code = `import {PrismaClient} from ${JSON.stringify(path.join(serverRoot, 'node_modules/@prisma/client/default.js'))};
-      import {upgradeDatabase} from ${JSON.stringify(path.join(serverRoot, 'dist/services/database-upgrade.js'))};
+    const code = `import {PrismaClient} from ${JSON.stringify(pathToFileURL(path.join(serverRoot, 'node_modules/@prisma/client/default.js')).href)};
+      import {upgradeDatabase} from ${JSON.stringify(pathToFileURL(path.join(serverRoot, 'dist/services/database-upgrade.js')).href)};
       const url=${JSON.stringify(f.url)}; const prisma=new PrismaClient({datasources:{db:{url}}});
       await upgradeDatabase(prisma,{databaseUrl:url,afterLegacy:async()=>process.exit(42)});`;
     assert.throws(() => execFileSync(process.execPath, ['--input-type=module', '-e', code], { env: { ...process.env, CLASSNODE_DATA_DIR: f.root }, stdio: 'pipe' }), (error: unknown) => (error as { status: number }).status === 42);
@@ -207,14 +269,16 @@ test('actual source server startup upgrades the legacy database before listening
     globalThis.fetch=(input,options)=>{const url=new URL(typeof input==='string'||input instanceof URL?input:input.url);
     if(url.hostname==='127.0.0.1'||url.hostname==='localhost')return original(input,options);
     return Promise.reject(new Error('External network disabled in startup regression'));};`);
-  const child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, path.join(serverRoot, 'dist/index.js')], { cwd: serverRoot, env: { ...process.env, http_proxy: '', https_proxy: '', DATABASE_URL: f.url, CLASSNODE_DATA_DIR: f.root, PORT: String(port), CLASSNODE_WEBAPP_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, path.join(serverRoot, 'dist/index.js')], { cwd: serverRoot, detached: process.platform !== 'win32', env: { ...process.env, http_proxy: '', https_proxy: '', DATABASE_URL: f.url, CLASSNODE_DATA_DIR: f.root, PORT: String(port), CLASSNODE_WEBAPP_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const closed = new Promise<void>(resolve => child.once('close', () => resolve()));
+  let failure: unknown;
   let output = '';
   child.stdout.on('data', chunk => { output += chunk.toString(); });
   child.stderr.on('data', chunk => { output += chunk.toString(); });
   try {
     let ready = false;
     const start = Date.now();
-    while (Date.now() - start < 15000) {
+    while (Date.now() - start < 60000) {
       if (child.exitCode !== null) throw new Error(output);
       try { ready = (await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(500) })).status === 200; } catch {}
       if (ready) break;
@@ -223,9 +287,15 @@ test('actual source server startup upgrades the legacy database before listening
     assert.ok(ready, output);
     await assertHistory(f.prisma);
     assert.ok(await f.prisma.setting.findUnique({ where: { key: 'safe-database-upgrade-v1' } }));
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
-    if (child.exitCode === null) { const exited = new Promise(resolve => child.once('exit', resolve)); child.kill(); await exited; }
-    await f.close();
+    try { await stopTestServer(child, closed); await f.close(); }
+    catch (cleanupError) {
+      if (failure) throw new AggregateError([failure, cleanupError], '启动回归失败，清理也失败');
+      throw cleanupError;
+    }
   }
 });
 

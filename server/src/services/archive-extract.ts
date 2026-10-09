@@ -176,7 +176,7 @@ async function openSevenZip(sourcePath: string): Promise<{ sz: SevenZipModule; r
   const capture = (c: number | string) => { output += typeof c === 'number' ? String.fromCharCode(c) : c; };
   // Uploads are non-interactive. Password prompts must see EOF immediately;
   // reading the server's stdin can block synchronously on Windows.
-  const sz: SevenZipModule = await SevenZip({ stdin: () => null, stdout: capture, stderr: capture });
+  const sz: SevenZipModule = await SevenZip({ noInitialRun: true, stdin: () => null, stdout: capture, stderr: capture });
 
   const bytes = new Uint8Array(fs.readFileSync(sourcePath));
   sz.FS.mkdir('/in');
@@ -198,11 +198,15 @@ async function openSevenZip(sourcePath: string): Promise<{ sz: SevenZipModule; r
  * 冒泡成 500。**两条缺一不可。**
  */
 function callMainChecked(sz: SevenZipModule, args: string[]): number {
+  const exitCode = process.exitCode;
   try {
     return sz.callMain(args);
   } catch (error) {
     console.warn('[archive] 7z 内部错误:', error);
     return -1;
+  } finally {
+    // Emscripten's CLI exit must not change the hosting server's exit status.
+    process.exitCode = exitCode;
   }
 }
 

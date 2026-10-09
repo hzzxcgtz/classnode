@@ -12,6 +12,14 @@ const execute = promisify(execFile);
 const quote = (value: string) => `"${value.replace(/"/g, '""')}"`;
 const MARKER = 'safe-database-upgrade-v1';
 
+async function checkpointWal(prisma: PrismaClient): Promise<void> {
+  const rows = await prisma.$queryRawUnsafe<{ busy: number | bigint; log: number | bigint; checkpointed: number | bigint }[]>('PRAGMA wal_checkpoint(TRUNCATE)');
+  const result = rows[0];
+  if (!result || Number(result.busy) !== 0 || Number(result.checkpointed) < Number(result.log)) {
+    throw new Error('WAL 检查点未完成；请停止其他数据库连接后重试');
+  }
+}
+
 function upgradeVersion(): string {
   const hash = crypto.createHash('sha256');
   hash.update(fs.readFileSync(path.join(serverRoot, 'prisma/schema.prisma')));
@@ -138,6 +146,9 @@ export async function upgradeDatabase(source: PrismaClient, options: UpgradeOpti
     fs.mkdirSync(backupDir, { recursive: true });
     // SQLite itself takes a consistent snapshot, including committed WAL data.
     await source.$executeRawUnsafe('VACUUM INTO ?', backupPath);
+    // Do not depend on disconnect removing a WAL file on every platform.
+    // A busy checkpoint must abort, never discard committed WAL records.
+    await checkpointWal(source);
     await source.$disconnect();
     const initial = fingerprint(databasePath);
     fs.copyFileSync(backupPath, candidatePath);
@@ -157,7 +168,7 @@ export async function upgradeDatabase(source: PrismaClient, options: UpgradeOpti
     if (integrity.some(row => row.integrity_check !== 'ok') || foreignKeys.length) throw new Error('候选数据库完整性或外键校验失败');
     await verifyIdentities(candidate, identities);
     await candidate.setting.upsert({ where: { key: MARKER }, create: { key: MARKER, value: version }, update: { value: version } });
-    await candidate.$queryRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE)');
+    await checkpointWal(candidate);
     await candidate.$disconnect();
     if (fingerprint(databasePath) !== initial) throw new Error('升级期间原数据库被其他进程修改；已取消替换，请停止其他服务后重试');
     if (fs.existsSync(databasePath + '-wal') && fs.statSync(databasePath + '-wal').size > 0) throw new Error('原数据库仍有活动 WAL；请停止其他服务后重试');

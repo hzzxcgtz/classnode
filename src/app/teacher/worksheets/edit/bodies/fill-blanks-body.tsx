@@ -7,7 +7,7 @@ import { readBlankCount } from '@/lib/worksheet-questions';
 import { BLANK_MARK_TEXT } from '@/lib/worksheet-prompt-marks';
 // ★ 2026-10-06：粘贴去格式那一个纯函数（唯一一份，题目卡里「评分标准」那个 textarea 用的也是它）。
 import { normalizePastedText } from '@/lib/worksheet-text-normalize';
-import { CHOICE_JOINER, allowsAiGrading, blankSlots, fillGradingModesFor, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode, type FillBlankSetting, type FillGradingMode } from '@/lib/worksheet-fill-modes';
+import { CHOICE_JOINER, FILL_GRADING_MODE, blankSlots, fillSettingsFor, hasExplicitFillGrading, isLegacyFillGrading, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode, type FillBlankSetting } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
   readBlankAnswers,
@@ -152,23 +152,6 @@ export function SymbolListInput({ values, split, placeholder, onChange }: {
  *   · 关闭总开关只隐藏设置，不删除 `fillBlankSettings` 与答案；重新开启后原值恢复。
  *   · 原来那两句说明（「每个空可以填多个可接受答案…」与「逐空给分」的算术）跟着搬到列表下方。
  */
-/**
- * 评分方式的中文名 —— **一份**（那一排按钮与汇总那两句都从这儿取）。
- *
- * ★ 2026-10-05（教师）：「填空题的空的评分方式的三项，其中『自动评分』这个名字不好，
- * 自动评分我一般是指**整体的称呼**，包括根据答案的自动批和 AI 的分析评分。」
- * ⇒ 逐空那一档改叫「**本地评分**」（我提过几个备选，教师选了这个）：它同时点出两件事 ——
- *    **怎么判**（拿学生填的与学生答案逐一比对）、**在哪儿判**（不联网，就在本机）。
- *    与「AI 评分」正好成对。整题那张卡仍叫「自动评分」—— 那才是教师嘴里的**整体称呼**。
- * ⚠️ 数据值仍是 `'auto'`（`FillGradingMode`）—— 改的只是屏幕上那一行字，
- *    动数据值会让库里的 `fillBlankSettings` 全部读不出来。
- */
-const FILL_GRADING_LABELS: Record<FillGradingMode, string> = {
-  auto: '本地评分',
-  ai: 'AI 评分',
-  none: '不评分',
-};
-
 export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUnit = '分' }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
@@ -191,26 +174,24 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
   const gradingEnabled = node.autoGrade !== false;
   const poolChoices = sharedPoolChoices(node);
   const updateSettings = (next: typeof settings) => {
-    const totals = fillGradingTotals(next);
+    // ★ 2026-10-09：**不再碰 `aiScoringEnabled`** —— 填空题不涉及 AI 评分（教师裁定），
+    //   原先这里按「有没有 AI 空」写那个开关，而它今天恒为 false。老题库里那个键原样留着
+    //   （`aiScoredFor` 会按题型把它挡掉，看板不会再挂「AI 评分」）。
     onDataChange({
       fillBlankSettings: writeFillSettings(node, runs, next),
-      ...(node.type === 'fill-blank' && hasExplicitFillGrading(next) ? {
-        aiScoringEnabled: totals.ai > 0,
-      } : {}),
     });
   };
   /**
-   * 这一空**实际生效**的评分方式。
+   * 这一空是不是**历史**的评分方式（`'ai'` / `'none'`）。
    *
-   * 老题没有 `gradingMode` ⇒ `aiScoringEnabled` 为真时保留旧的 AI 选择，否则回落本地评分。
-   * 🔴 回退也必须看**作答方式**：选词那两种方式下 `'ai'` 根本不合法
-   *    （`fillGradingModesFor` 只给 `auto` / `none`）—— 否则界面会渲染成「一个都没选中」，
-   *    而那个组合服务端**存不下**（会回一句「只有手工填写时才能使用 AI 评分」）。
+   * ★ 2026-10-09（教师裁定）：这两档已经从界面上删掉了，而库里写着它们的空**不再计分** ——
+   *   所以它们必须在屏幕上**看得出来**（下面那句提示），否则教师只会看到「这一空填了也白填」。
+   * ⚠️ `undefined`（老题压根没有逐空设置）**不走这里**：那是题目级规则，不是历史值
+   *   （`isLegacyFillGrading` 的注释）。
    */
-  const gradingModeOf = (setting: FillBlankSetting): FillGradingMode => setting.gradingMode ?? (
-    allowsAiGrading(setting.mode) && node.data.aiScoringEnabled === true
-      ? 'ai' : 'auto'
-  );
+  const legacyGradingOf = (setting: FillBlankSetting): boolean => isLegacyFillGrading(setting.gradingMode);
+  /** 这道题里**还有几个空不算分**（老数据）。> 0 时卡片底部那句提示才出现。 */
+  const legacyBlankCount = settings.filter(legacyGradingOf).length;
   /**
    * 逐空那一份设置是不是**本题真正的判分口径**（与题目卡的 `explicitFillScoring` 同源）。
    * ⚠️ 只有它为真时，下面那些「分值」才是判分读的东西。
@@ -247,24 +228,21 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
     && (explicitGrading || node.data.fillScoring === 'per-blank');
   const explicitSettings = () => settings.map(setting => ({
     ...setting,
-    gradingMode: gradingModeOf(setting),
+    // 🔴 历史值**原样保留**（不许顺手把它们翻成 'auto'）：翻掉之后那些空会立刻要求答案键
+    //    （服务端校验会拒绝保存），于是「教师改一下别的空 ⇒ 存不下」——
+    //    那是**硬拦**，而教师的裁定要的是「提示教师改」。改哪一空由教师自己决定。
+    gradingMode: setting.gradingMode ?? FILL_GRADING_MODE,
     // ⚠️ 缺省跟着上面那个 `inheritScore`：**接管逐空评分这一步不许把分值静默改成 1**
     //    （一道「每空 3 座奖杯」的题，教师点一下「本地评分」就变成每空 1 座）。
     maxScore: setting.maxScore ?? inheritScore,
   }));
   const setMode = (index: number, mode: FillAnswerMode) => {
-    const next = settings.map((setting, settingIndex) => settingIndex === index
-      ? { ...setting, mode, ...(mode !== 'text' && setting.gradingMode === 'ai' ? { gradingMode: 'auto' as const } : {}) }
-      : setting);
-    updateSettings(next);
-  };
-  const setGradingMode = (index: number, gradingMode: FillGradingMode) => {
-    // ⚠️ 不再在这里补 `maxScore ?? 1`：`explicitSettings()` 已经把缺省值补成
-    //    `inheritScore`，两处各写一个缺省就是两处会漂移的地方。
-    const next = explicitSettings().map((setting, settingIndex) => settingIndex === index
-      ? { ...setting, gradingMode, ...(gradingMode === 'ai' ? { mode: 'text' as const } : {}) }
-      : setting);
-    updateSettings(next);
+    // ★ 2026-10-09：原先这里还带一手「选词那两种方式 ⇒ 顺手把这一空的 AI 评分关掉」，
+    //    它服务的是那条**会拒绝保存**的服务端校验（「只有手工填写时才能使用 AI 评分」）。
+    //    两档一起删之后没有这个组合了，历史值也原样留着 —— 那一条接线整个删掉。
+    updateSettings(settings.map((setting, settingIndex) => (
+      settingIndex === index ? { ...setting, mode } : setting
+    )));
   };
   const setMaxScore = (index: number, raw: string) => {
     const maxScore = Number(raw);
@@ -329,48 +307,18 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                   />
                 </label>
               )}
-              {node.type === 'fill-blank' && gradingEnabled && (
-                <div className="worksheet-editor-fill-grading-row">
-                  <span>评分方式</span>
-                  {/*
-                    ★ 2026-10-05（教师）：评分方式仍使用胶囊，但必须与上方作答方式区分。
-                    ⇒ 上方是「共用浅灰底槽 + 白色选中块」的分段控件；这里是彼此分开的
-                      「细描边胶囊」，选中时只铺浅蓝底、加深边框，不再使用下划线页签。
-                  */}
-                  <div className="worksheet-editor-mode-tabs is-scoring-pills" role="radiogroup" aria-label={`${slot.label}的评分方式`}>
-                    {/*
-                      ★ 2026-10-05（教师）：「手工填写含三项评分方式，……右侧或下方选词则只有
-                      自动评分或不评分。」⇒ 这一排由 `fillGradingModesFor(本空的作答方式)` 给，
-                      与那条会**拒绝保存**的服务端校验同源（见 `worksheet-fill-modes.ts` 的注释）。
-                    */}
-                    {fillGradingModesFor(settings[index].mode).map((mode) => {
-                      const selected = gradingModeOf(settings[index]) === mode;
-                      return (
-                        <label className={selected ? 'is-selected' : ''} key={mode}>
-                          <input type="radio" name={`fill-grading-${node.id}-${index}`} checked={selected} onChange={() => setGradingMode(index, mode)} />
-                          <span>{FILL_GRADING_LABELS[mode]}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {/* 答案/评分标准独占第三行；本空的分值紧跟在这一行末尾，评分方式行只负责选方式。 */}
-              {gradingEnabled && <div
-                className="worksheet-editor-fill-answer-field"
-                // ★ 2026-10-06：非 AI 那一档原来还挂着「每个空可以填多个可接受答案；
-                // 学生答出其中一个就算对」—— 与下面那句 `.worksheet-editor-compact-note`
-                // 逐字重复 ⇒ 这里只留 AI 那一档的说明（那句别处没有）。
-                title={gradingModeOf(settings[index]) === 'ai'
-                  ? `${slot.label}：这一空交给 AI 评分，这里写的是它评分（以及「发给 AI 分析」）依据的标准。`
-                  : undefined}
-              >
-                <span>{gradingModeOf(settings[index]) === 'ai' ? '评分标准' : '答案'}</span>
+              {/* ★ 2026-10-09（教师裁定）：**「评分方式」那一排整个删了** —— 填空题只剩
+                  「每空有答案键、都算分」一条路（想让学生自由写就用问答题）。
+                  只剩一档的选择器不是简化，是装饰：它会让人以为还有别的档。
+                  ⚠️ 老库里写着 `'ai'` / `'none'` 的空下面那句提示会点出来（见 `legacyGradingOf`）。 */}
+              {/* 答案独占第三行；本空的分值紧跟在这一行末尾。 */}
+              {gradingEnabled && <div className="worksheet-editor-fill-answer-field">
+                <span>答案</span>
                 <div className="worksheet-editor-fill-answer-editor">
                   <SymbolListInput
                     values={answerSets[index] ?? []}
                     split={splitChoiceText}
-                    placeholder={gradingModeOf(settings[index]) === 'ai' ? '这一空的评分标准' : '本空的答案'}
+                    placeholder="本空的答案"
                     onChange={items => onDataChange({
                       blanks: undefined,
                       answers: Array.from(
@@ -382,7 +330,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                     })}
                   />
                 </div>
-                {perBlankScoreShown && gradingModeOf(settings[index]) !== 'none' && (
+                {perBlankScoreShown && (
                   <label className="worksheet-editor-fill-score-input worksheet-editor-fill-answer-score">
                     <span>{pointsUnit === '分' ? '分值' : '奖励数量'}</span>
                     {/*
@@ -402,17 +350,26 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                     <b>{pointsUnit}</b>
                   </label>
                 )}
+                {legacyGradingOf(settings[index]) && (
+                  <p className="worksheet-editor-legacy-grading-note">
+                    {slot.label}用的是旧版的「AI 评分 / 不评分」，<strong>现在不计分</strong>；
+                    给它填上答案之后，它就按答案计分。
+                  </p>
+                )}
               </div>}
             </section>
           ))}
           {gradingEnabled && (<>
-            {node.type === 'fill-blank' && explicitGrading && (() => {
-              const totals = fillGradingTotals(settings);
-              // ★ 2026-10-06：「本题合计 N 分」与题目卡右上角那个「本题满分 N 分」
-              // 徽章复述的是同一个总数（同一张卡里说两遍）⇒ 这里只说徽章给不出的那一半
-              // （本地评分与 AI 评分各占多少），总数由徽章说。
-              return <p className="worksheet-editor-fill-score-summary">本题：本地评分 {totals.auto} {pointsUnit}，AI 评分 {totals.ai} {pointsUnit}。</p>;
-            })()}
+            {node.type === 'fill-blank' && explicitGrading && legacyBlankCount > 0 && (
+              // ★ 2026-10-09（教师裁定）：AI / 不算分两档删掉之后，逐空账只剩**一笔**
+              //（本地评分），所以上面那行「本地 X 分 + AI Y 分」的合计删了 —— 总数由题目卡
+              //右上角那个「本题满分」徽章说。这里只留一件徽章说不出的事：
+              //**还有几个空压根不算分**（老数据），以及教师该怎么办。
+              <p className="worksheet-editor-legacy-grading-note">
+                有 {legacyBlankCount} 个空还是旧版的「AI 评分 / 不评分」，它们<strong>不计分</strong>、
+                也算不进「本题满分」—— 请给这些空填上答案（想让学生自由写，请改用<strong>问答题</strong>）。
+              </p>
+            )}
             <p className="worksheet-editor-compact-note">
               每个空可以填多个可接受答案；学生答出其中一个就算对。
             </p>

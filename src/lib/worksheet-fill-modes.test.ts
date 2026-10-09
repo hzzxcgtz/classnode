@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { CHOICE_JOINER, CHOICE_SEPARATORS, allowsAiGrading, blankSlots, fillGradingModesFor, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, placedValue, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
+import { CHOICE_JOINER, CHOICE_SEPARATORS, blankSlots, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, isLegacyFillGrading, placedValue, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 import { DEFAULT_PROMPT_STYLE, type PromptRun } from './worksheet-prompt-marks.ts';
 
@@ -36,37 +36,40 @@ test('设置写回仍以 blank id 为键，题干中插空不会让后面的设�
   assert.equal(written['blank-c'].mode, 'inline');
 });
 
-test('逐空评分方式与满额按 blank id 往返，并分别汇总自动与 AI 部分', () => {
+test('逐空评分方式与满额按 blank id 往返，总分只算**算分**的那些空', () => {
   const written = writeFillSettings(node({}), runs, [
     { mode: 'inline', choices: ['甲', '乙'], gradingMode: 'auto', maxScore: 2 },
     { mode: 'pool', choices: [], gradingMode: 'auto', maxScore: 1 },
-    { mode: 'text', choices: [], gradingMode: 'ai', maxScore: 5 },
+    { mode: 'text', choices: [], gradingMode: 'auto', maxScore: 5 },
   ]);
   const settings = fillSettingsFor(node({ fillBlankSettings: written }), runs);
   assert.equal(hasExplicitFillGrading(settings), true);
-  assert.deepEqual(settings.map(item => [item.gradingMode, item.maxScore]), [['auto', 2], ['auto', 1], ['ai', 5]]);
-  assert.deepEqual(fillGradingTotals(settings), { auto: 3, ai: 5, total: 8 });
+  assert.deepEqual(settings.map(item => [item.gradingMode, item.maxScore]),
+    [['auto', 2], ['auto', 1], ['auto', 5]]);
+  assert.deepEqual(fillGradingTotals(settings), { auto: 8, total: 8 });
 });
 
-test('🔴 AI 评分只对「手工填写」开放；选词那两种方式连历史数据里的 ai 都不算分', () => {
-  // ★ 2026-10-05（教师）：「手工填写含三项评分方式，……右侧或下方选词则只有自动评分或不评分。」
-  // 🔴 这条与**服务端会拒绝保存**的校验同源（`worksheet-questions.ts`：
-  //    「填空题第 N 空只有手工填写时才能使用 AI 评分」）。界面侧若多给一个选项，
-  //    教师就会点得动、存不下 —— 所以这里既钉选项表，也钉汇总口径。
-  assert.deepEqual([...fillGradingModesFor('text')], ['auto', 'ai', 'none']);
-  assert.deepEqual([...fillGradingModesFor('inline')], ['auto', 'none']);
-  assert.deepEqual([...fillGradingModesFor('pool')], ['auto', 'none']);
-  assert.equal(allowsAiGrading('text'), true);
-  assert.equal(allowsAiGrading('inline'), false);
-  assert.equal(allowsAiGrading('pool'), false);
+test('🔴 逐空评分方式只剩一档：AI 评分 / 不算分都删了，历史值一律**不算分**', () => {
+  // ★ 2026-10-09（教师裁定）：「填空题简化：所有空都不涉及 AI 评分；想让学生自由写就用
+  //    **问答题**。删 `'ai'` 与 `'none'` 两档 ⇒ 一律『每空有答案键、都算分』。」
+  //
+  // ⚠️ 删的是「能选、能写」的那一档，**不是库里的历史值**：老学习单里那些空照旧读得出来
+  //    （编辑器才好逐空提示教师去补答案键），而它们一律按**不算分**处置 ——
+  //    `grade()` 那一侧本来就只把 `'auto'` 的空计入命中（`worksheet-questions.ts`）。
+  assert.equal(isLegacyFillGrading('ai'), true, '旧版的 AI 评分空：数据留着，但不再计分');
+  assert.equal(isLegacyFillGrading('none'), true, '旧版的「不算分」空：同上');
+  assert.equal(isLegacyFillGrading('auto'), false, '今天唯一那一档不是历史值');
+  assert.equal(isLegacyFillGrading(undefined), false,
+    '老题压根没有逐空设置 —— 那是另一条路（题目级规则），别把它当成「历史值」提示教师');
 
-  // 历史数据（或手工改过的库）里可能有「下方选词 + ai」这种组合：**不许算进 AI 那一档**，
-  // 否则界面上会出现一笔「AI 评分 5 分」的账，而那个组合压根存不下去。
-  const legacy = [
-    { mode: 'pool' as const, choices: [], gradingMode: 'ai' as const, maxScore: 5 },
-    { mode: 'text' as const, choices: [], gradingMode: 'ai' as const, maxScore: 3 },
-  ];
-  assert.deepEqual(fillGradingTotals(legacy), { auto: 0, ai: 3, total: 3 });
+  const legacy = fillSettingsFor(node({ fillBlankSettings: {
+    'blank-a': { mode: 'text', gradingMode: 'ai', maxScore: 5 },
+    'blank-b': { mode: 'text', gradingMode: 'none' },
+    'blank-c': { mode: 'text', gradingMode: 'auto', maxScore: 2 },
+  } }), runs);
+  assert.deepEqual(legacy.map(setting => setting.gradingMode), ['ai', 'none', 'auto'], '历史值读得出来');
+  assert.deepEqual(fillGradingTotals(legacy), { auto: 2, total: 2 },
+    '两个历史空一分都不算 —— 它们的分数不许留在「总分」里，否则屏幕上会出现一笔没人给的账');
 });
 
 test('旧选择填空继续读取原来的共用词池与右侧两词分组', () => {

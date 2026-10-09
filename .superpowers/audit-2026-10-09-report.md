@@ -82,10 +82,10 @@ tool 分流台账：`drawing-tool-body.tsx:89-95`、`worksheet-drawing-document.
 
 ## D. 教师拍板的四条（2026-10-09）
 
-1. **填空题简化**：所有空都不涉及 AI 评分；主观内容走**问答题**。删 `'ai'` 与 `'none'` 两档；老 AI 空按「不算分」+ 编辑器提示。改动面五处（见记忆 `audit-2026-10-09-teacher-decisions`）。⚠️ `aiScoringEnabled` 本身不能删。
-2. **删学生拆两个动作**：「移出班级」只动名册不动历史；「彻底删除」保留级联行为并写明。
-3. **`ping` 整个删掉**。
-4. **隐私例外照旧**：`proxyAnalysisRequest` 继续发「姓名+学号」，**代码不动**，改 `CLAUDE.md` 那句（它至今写着「no AI provider ever receives a student's name」）。
+1. **填空题简化** ✅ **已实施（§J）**：所有空都不涉及 AI 评分；主观内容走**问答题**。删 `'ai'` 与 `'none'` 两档；老 AI 空按「不算分」+ 编辑器提示。⚠️ `aiScoringEnabled` 本身不能删（问答题 / 绘图题正当需要）。
+2. **删学生拆两个动作**（仍未做）：「移出班级」只动名册不动历史；「彻底删除」保留级联行为并写明。
+3. **`ping` 整个删掉** ✅ **已实施（§I）**。
+4. **隐私例外照旧** ✅ **已实施（§I）**：`proxyAnalysisRequest` 继续发「姓名+学号」，**代码不动**，改 `CLAUDE.md` 那句。
 
 ---
 
@@ -94,7 +94,7 @@ tool 分流台账：`drawing-tool-body.tsx:89-95`、`worksheet-drawing-document.
 1. ~~给「在途出队」补竞态回归网（先写会红的），跑红→绿~~ ✅ 2026-10-09 完成，见 §F
 2. ~~批次 B ① 剩四条~~ ✅ **全部完成**（三条见 §G，清空画布 + 4b 见 §H）
 3. ~~`ping` 整个删 + 改 `CLAUDE.md`~~ ✅ 2026-10-09 完成，见 §I
-4. 填空题简化 · 删学生拆分
+4. ~~填空题简化~~ ✅ 2026-10-09 完成，见 §J · 删学生拆分（仍未做）
 5. 开**批次 4（教师端 `src/app/teacher/**`）**，再 `src/lib` 105 文件、测试与假绿
 
 ---
@@ -292,3 +292,55 @@ H1 的纯判据那一半是硬的（真值表 + 变异）。
 | `grep -rn ping server/src src/ src-tauri/ scripts/` | 只剩文心 SSE 的 `ping` 事件（协议无关）+ 新网自己注释里的引用 |
 
 **下一步按 §E 第 4 步**：填空题简化 · 删学生拆分（两条都改产品行为，改动面分别五处 / 两个动作）。
+
+---
+
+## J. 2026-10-09 续做（§E 第 4 步之一）：填空题简化
+
+**教师裁定原话**：「所有空都不涉及 AI 评分；想让学生自由写 ⇒ 用**问答题**。删 `'ai'`（AI 评分）
+与 `'none'`（逐空不算分）两档，一律『每空有答案键、都算分』。老的 `'ai'` 空按**不算分**处理，
+并在编辑器里**提示**教师改。⚠️ `aiScoringEnabled` 本身不能删。」
+
+### 改了什么（判据先落地，再逐处接）
+| 处 | 改动 |
+|---|---|
+| `lib/worksheet-fill-modes.ts` | 新增 `FILL_GRADING_MODE`（唯一会写出去的那一档）与 `isLegacyFillGrading`；**删** `fillGradingModesFor` / `allowsAiGrading`；`fillGradingTotals` 不再有 `ai` 那一桶（历史值**一分不算**，否则屏幕上会多出一笔没人给的账） |
+| `lib/worksheet-questions.ts` | **新增** `supportsAiScoring` / `aiScoredFor`（题卡与看板共用一份判据 —— 见下） |
+| `edit/bodies/fill-blanks-body.tsx` | 「评分方式」那一排**整排删掉**（只剩一档的选择器是装饰）；答案格恒叫「答案」、恒有占位；「分值」不再受 `!== 'none'` 收口；**逐空 + 卡片底部两级提示**教师去补答案键；不再写 `aiScoringEnabled` |
+| `edit/question-card.tsx` | 走共用判据；填空题**再没有** AI 评分入口；状态行不再叫「混合评分」 |
+| `classroom/worksheet-drawer.tsx` | 那一列从前自己判 `data.aiScoringEnabled`（**不看题型**）⇒ 老填空题挂着「AI 评分」而没人给它评分；改用 `aiScoredFor` |
+| `server/services/analysis-scoring.ts` | 逐空 AI 那一支（`fillParts`）整个删；`parts` 字段**留着只读**老结果 |
+| `server/services/worksheet-questions.ts` | 删两条**只服务 AI 档**的校验（「只有手工填写时才能使用 AI 评分」「AI 各空满额合计 ≤ 100」）；「请填写标准答案」那句不再点名任何一档；历史值仍然**合法**（老学习单要能存） |
+| `globals.css` | `.is-scoring-pills` 整段删（没有消费者了）；新增 `.worksheet-editor-legacy-grading-note`（提示要看得见） |
+
+### 两个判断，代价说清楚
+1. **历史值是「提示」不是「硬拦」。** `explicitSettings()` **原样保留** `'ai'` / `'none'`：
+   若顺手把它们翻成 `'auto'`，那些空会立刻要求答案键（服务端校验拒绝保存）⇒
+   **教师改一下别的空就存不下了**，那是硬拦；而裁定要的是「提示教师改」。改哪一空由教师决定。
+   ⇒ 代价：一道老题可以**一直**留着不算分的空（直到教师自己动手）。卡片底部那句
+   「有 N 个空还是旧版的…**不计分**」+ 逐空那句就是为此存在。
+2. **全题都是历史值时，状态行说「仅统计作答」**（不说「逐空评分 · 最高 0 分」）：
+   判分侧这时**根本不出分**（`grade()` 里 `auto.length === 0` 直接回 null），两句是同义。
+
+### 回归网与变异验证
+- 新增/改写 8 条用例（`worksheet-fill-modes` / `worksheet-questions` / `analysis-scoring` /
+  `fill-blanks-body` / `question-card-ai-scoring-fields` / `question-answer-blocks`）。
+  其中三条是**源码级**的（编辑器结构、看板不许自己判开关），文件头按本仓惯例写明了
+  「证的是接线，不是浏览器行为」。
+- 变异验证三条，逐条被**对应的那一条**抓住：`isLegacyFillGrading` 恒 false ⇒ 红；
+  `fillGradingTotals` 又把历史值算进去 ⇒ 红；`aiScoredFor` 退回「只看开关」⇒ 红。
+  服务端那条在补网时先红过一次（`enabled` 仍是 true），实现后才转绿。
+- 🔴 途中被自己的**文本扫描型判据**咬了两次（都是我新写的注释里引用了被删的名字：
+  CSS 的 `.is-scoring-pills`、服务端的 `fillParts`）—— 两处判据都改成**先剥注释再判声明**。
+  这正是本仓那条老规矩的现场版：判据读的必须是**声明**，不是「文本里出现过这个词」。
+
+### 实测（同一棵树上）
+`pnpm test:client` **1509 / 0** · `pnpm test:server` **984 / 0** · `tsc --noEmit` **0** · `eslint` 无输出。
+
+### 没做的（留给教师定）
+- **没有数据迁移**：库里 `gradingMode: 'ai'` 的空原样躺着（裁定就是这么定的：不算分 + 提示）。
+- `AiScoringConfig.parts` 字段留着**只读**老结果（新数据不再产出）；两个读函数里的对账分支
+  因此变成「只会命中历史数据」—— 注释已写明，别当成活代码读。
+- 学生端 `worksheet-panel.tsx` 的 `mixedFillScoring` 分支（「自动评分部分全对」那套措辞）
+  随着填空 AI 参考分消失而**不可能再为真**（它是 `aiReferenceScore` 驱动的）。这一版**没删**
+  —— 那是学生端的显示改动，与 §E 后面的学生端批次一起做更合适。

@@ -27,7 +27,12 @@ test('AI 评分对问答、绘图生效，填空题则受题目级自动评分�
   assert.equal(aiScoringConfigOf(node({ aiScoringEnabled: true, aiScoringMaxScore: 0 })).maxScore, 10);
 });
 
-test('混合填空只把标为 AI 的空计入 AI 满额，并保留空号', () => {
+test('🔴 填空题**不再**进入 AI 评分 —— 逐空 AI 那一档整个删了（教师 2026-10-09 裁定）', () => {
+  // ★ 决策原话：「填空题简化：所有空都不涉及 AI 评分；想让学生自由写就用**问答题**。
+  //   删 `'ai'` 与 `'none'` 两档 ⇒ 一律『每空有答案键、都算分』。」
+  // 🔴 老数据里那些 `gradingMode: 'ai'` 的空：**不再计分**（判分侧 `grade()` 本来就只认
+  //    `'auto'`），这里的 `enabled` 也就永远是 false ⇒ 面板 / 学生端不再显示它们的旧 AI 分数，
+  //    而教师要在编辑器里给这些空补答案键（编辑器逐空提示）。
   const config = aiScoringConfigOf(node({
     fillBlankSettings: {
       a: { mode: 'inline', gradingMode: 'auto', maxScore: 2 },
@@ -36,9 +41,13 @@ test('混合填空只把标为 AI 的空计入 AI 满额，并保留空号', () 
     },
     answers: [['甲'], ['乙'], []],
   }, 'fill-blank'));
-  assert.deepEqual(config, {
-    enabled: true, maxScore: 5, unit: '分', criteria: '', parts: [{ index: 2, maxScore: 5 }],
-  });
+  assert.equal(config.enabled, false, '填空题又回到 AI 评分那条路上了 —— 逐空 AI 档已经删掉');
+  assert.equal(config.parts, undefined, '不许再产出逐空分数（`parts` 只留给**读**旧结果）');
+  // 阳性对照：光看 `enabled: false` 不够 —— 一个恒返回 false 的实现也能让它绿。
+  // 问答题那条路必须**照旧**能用（那正是「主观内容走问答题」这句话的落点）。
+  const shortAnswer = aiScoringConfigOf(node({ aiScoringEnabled: true, aiScoringMaxScore: 8 }, 'short-answer'));
+  assert.equal(shortAnswer.enabled, true, '问答题的 AI 评分被误伤了');
+  assert.equal(shortAnswer.maxScore, 8);
 });
 
 test('🔴 评分依据取「评分标准」（`rubricText`），旧字段只作回退', () => {

@@ -1492,9 +1492,12 @@ function validateFillBlank(node: QuestionNode, errors: string[]): void {
       for (let index = 0; index < total; index += 1) {
         if (explicit[index]?.gradingMode === 'auto'
             && !acceptableAnswersFor(node.data, index).some(answer => answer.trim())) {
-          // ⚠️ 这里必须叫「本地评分」：界面上那一档 2026-10-05 已按教师裁定改名
-          //    （`FILL_GRADING_LABELS`）。报错指着一个屏幕上不存在的选项名，教师只能自己猜。
-          errors.push(`填空题第 ${index + 1} 空选择了本地评分，请填写标准答案`);
+          // ★ 2026-10-09（教师裁定）：逐空只剩「每空有答案键、都算分」一条路 ⇒
+          //    文案里不再点名任何一档（`FILL_GRADING_LABELS` 整张表已删，写「本地评分」
+          //    就是在指一个屏幕上不存在的东西）。
+          // ⚠️ 历史值（`'ai'` / `'none'`）的空**不受这条约束**：它们不计分，也就没有答案键
+          //    可言 —— 编辑器逐空提示教师去补（那是提示，不是拒绝保存）。
+          errors.push(`填空题第 ${index + 1} 空请填写标准答案`);
         }
       }
       return;
@@ -1517,7 +1520,6 @@ function validateFillModes(node: QuestionNode, errors: string[]): void {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
   const settings = Object.values(raw as Record<string, unknown>);
   let needsPool = false;
-  let aiMaximum = 0;
   settings.forEach((entry, index) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
       errors.push(`填空题第 ${index + 1} 空的作答方式不合法`);
@@ -1535,19 +1537,15 @@ function validateFillModes(node: QuestionNode, errors: string[]): void {
         && setting.gradingMode !== 'auto' && setting.gradingMode !== 'ai' && setting.gradingMode !== 'none') {
       errors.push(`填空题第 ${index + 1} 空的评分方式不合法`);
     }
-    if (setting.gradingMode === 'ai' && setting.mode !== 'text') {
-      errors.push(`填空题第 ${index + 1} 空只有手工填写时才能使用 AI 评分`);
-    }
-    if (setting.gradingMode !== undefined && setting.gradingMode !== 'none'
+    // ★ 2026-10-09（教师裁定）：逐空 AI 那一档删了，随之删掉的是**只服务它**的两条校验
+    //    （「只有手工填写时才能使用 AI 评分」与「交给 AI 评分的各空满额合计 ≤ 100」）。
+    //    历史值 `'ai'` / `'none'` 仍然**合法**（老学习单要能照常保存），只是不计分。
+    if (setting.gradingMode === 'auto'
         && (typeof setting.maxScore !== 'number' || !Number.isInteger(setting.maxScore)
           || setting.maxScore < 1 || setting.maxScore > POINTS_MAX)) {
       errors.push(`填空题第 ${index + 1} 空的满额必须是 1–${POINTS_MAX} 的整数`);
     }
-    if (setting.gradingMode === 'ai' && typeof setting.maxScore === 'number' && Number.isInteger(setting.maxScore)) {
-      aiMaximum += setting.maxScore;
-    }
   });
-  if (aiMaximum > 100) errors.push('一道题交给 AI 评分的各空满额合计不能超过 100');
   // ⚠️ 这句话必须与编辑页那个面板的标题**逐字同源**（★ 2026-10-05 教师把面板从
   //    「下方共用词池」改名成「共用选词」）——报错里指着一块屏幕上已经不存在的东西，
   //    教师只能自己去猜是哪一栏。改一处就要改这一处。

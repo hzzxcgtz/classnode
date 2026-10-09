@@ -1,4 +1,4 @@
-import { explicitFillGrading, type QuestionNode } from './worksheet-questions.js';
+import { type QuestionNode } from './worksheet-questions.js';
 import { rubricTextOf } from './analysis-question.js';
 
 export const AI_SCORE_MAX = 100;
@@ -12,6 +12,12 @@ export interface AiScoringConfig {
   maxScore: number;
   unit: string;
   criteria: string;
+  /**
+   * ⊘ ★ 2026-10-09（教师裁定）：**新数据不再产出它** —— 逐空 AI 那一档（填空题）整个删了，
+   * 今天能 AI 评分的题型（问答题 / 绘图题）都是整题一份分。
+   * ⚠️ 字段留着只为**读**老结果：`readStoredAiScoring` / `readStudentAiReferenceScore` 用它对账
+   * （库里那些含 `parts` 的历史 AI 结果仍在，只是 `enabled` 恒为 false ⇒ 读的时候先被挡掉）。
+   */
   parts?: Array<{ index: number; maxScore: number }>;
 }
 
@@ -107,24 +113,24 @@ export function answerGradeFromAiScore(
 }
 
 export function aiScoringConfigOf(node: QuestionNode, unit = '分'): AiScoringConfig {
-  const fillParts = node.type === 'fill-blank' && node.autoGrade !== false
-    ? explicitFillGrading(node.data).map((part, index) => ({ ...part, index })).filter(part => part.gradingMode === 'ai')
-    : [];
-  // 新版填空可以只把指定空交给 AI；题目级自动评分开关同时控制本地与 AI 评分。
-  const subjective = node.type === 'short-answer' || node.type === 'drawing'
-    || (node.type === 'fill-blank' && fillParts.length > 0);
-  const enabled = subjective && (node.data.aiScoringEnabled === true || fillParts.length > 0);
+  // ★ 2026-10-09（教师裁定）：「填空题简化 —— 所有空都不涉及 AI 评分；想让学生自由写就用
+  //    **问答题**。删 `'ai'` 与 `'none'` 两档。」⇒ 逐空 AI 那一支（`fillParts`）整个删掉。
+  // 🔴 老数据里写着 `gradingMode: 'ai'` 的空因此**不再计分**：判分侧 `grade()`
+  //    （`worksheet-questions.ts`）本来就只把 `'auto'` 的空计入命中，这里再把 AI 那条路
+  //    摘掉，两处就只剩同一条口径 —— 面板与学生端也不会再显示它们那份旧 AI 分数。
+  //    教师要去编辑器里给那些空补答案键（编辑器逐空提示）。
+  const subjective = node.type === 'short-answer' || node.type === 'drawing';
+  const enabled = subjective && node.data.aiScoringEnabled === true;
   const rawMax = node.data.aiScoringMaxScore;
   const configuredMax = typeof rawMax === 'number' && Number.isInteger(rawMax) && rawMax >= 1 && rawMax <= AI_SCORE_MAX
     ? rawMax : 10;
-  const maxScore = fillParts.length > 0 ? fillParts.reduce((sum, part) => sum + part.maxScore, 0) : configuredMax;
+  // ★ 2026-10-09：满额恒取题目级那个数（原先「逐空 AI 那几个空的合计」那一支随逐空 AI 档删了）。
+  const maxScore = configuredMax;
   // ★ 2026-10-05：「评分要求」与「评分标准」被教师合并成同一份东西了（见 `rubricTextOf`）
   // ⇒ 这里不再单独读 `aiScoringCriteria`。存下来的这一份是**给人看的**（结果面板那一行），
   // 超长截断；发给模型的那一份是载荷里的 `rubricText` 原文，不截断。
   const criteria = rubricTextOf(node).slice(0, AI_SCORE_CRITERIA_MAX);
-  return { enabled, maxScore, unit, criteria, ...(fillParts.length > 0 ? {
-    parts: fillParts.map(part => ({ index: part.index, maxScore: part.maxScore })),
-  } : {}) };
+  return { enabled, maxScore, unit, criteria };
 }
 
 /**

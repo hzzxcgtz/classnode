@@ -206,6 +206,36 @@ export const TRUE_FALSE_OPTIONS: ChoiceOption[] = [
 ];
 
 /**
+ * 这一**题型**支持 AI 评分吗 —— 只有主观那两型（问答题、绘图题）。
+ *
+ * ★ 2026-10-09（教师裁定）：「填空题简化 —— 所有空都不涉及 AI 评分；想让学生自由写就用
+ *    **问答题**。删 `'ai'` 与 `'none'` 两档。」⇒ 填空题**从这里出去**（原先逐空还能选 AI）。
+ *
+ * 🔴 这一个事实在客户端原来有**两份不一样的写法**：题卡里写题型（对），教师看板那一列写
+ *    `data.aiScoringEnabled === true`（**不看题型**，错）⇒ 一道老填空题只要库里还留着那个开关，
+ *    看板上就挂着「AI 评分」的标签，而**已经没有任何东西会给它评分**。
+ *    ⇒ 题卡与看板共用这一份。
+ * ⚠️ 服务端有一份**同款**判据（`server/src/services/analysis-scoring.ts` 的 `aiScoringConfigOf`
+ *    里那个 `subjective`）—— 两个包（前端 / 服务端）互相引不了，所以各留一份，
+ *    改这里就要去看那一份，别让两边分岔。
+ */
+export function supportsAiScoring(node: { type: string }): boolean {
+  return node.type === 'short-answer' || node.type === 'drawing';
+}
+
+/**
+ * 这一题此刻**真的**交给 AI 评分吗 —— 题型支持 **且** 教师把开关打开了。
+ *
+ * 🔴 判据必须是这两条的**合取**：只看开关，就会出现「看板挂着『AI 评分』、而服务端
+ *    `aiScoringConfigOf` 因为题型不支持而回 `enabled: false`」这种自相矛盾的屏（本仓老账）。
+ * ⚠️ `=== true` 是刻意的：`data` 来自库里的 JSON，`1` / `"true"` 这类真值都不算开
+ *   （与 `aiScoringConfigOf` 逐字同款）。
+ */
+export function aiScoredFor(node: { type: string; data?: Record<string, unknown> }): boolean {
+  return supportsAiScoring(node) && node.data?.aiScoringEnabled === true;
+}
+
+/**
  * 判断题那两个选项**画出来的记号** —— `✓` / `✗`。
  *
  * 与看板抽屉里的对错标记同一族（`✓ 答对` / `✗ 答错`，见 `worksheet-drawer-state.ts`），

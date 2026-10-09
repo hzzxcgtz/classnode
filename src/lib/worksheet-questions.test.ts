@@ -17,8 +17,12 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   TASK_TYPE,
+  aiScoredFor,
   correctAnswerLabel,
   correctKeysFromPayload,
   flattenAnswerable,
@@ -28,9 +32,12 @@ import {
   questionTypeLabel,
   questionTypeNickname,
   readOptions,
+  supportsAiScoring,
   wrongSelectedKeys,
 } from './worksheet-questions.ts';
 import type { WorksheetQuestionNode } from './types.ts';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /** 借题一个最小的合法节点。`children` 默认空（正常数据里非任务节点没有孩子）。 */
 function q(id: string, children: WorksheetQuestionNode[] = []): WorksheetQuestionNode {
@@ -361,4 +368,44 @@ test('🔴 questionTypeNickname：表里没有的（任务容器 / 手工改过�
   assert.equal(questionTypeNickname('task'), 'task');
   assert.equal(questionTypeNickname('没见过的题型'), '没见过的题型');
   assert.equal(questionTypeNickname(''), '');
+});
+
+// ── 「这一题交给谁评分」只有一条判据（★ 2026-10-09 教师裁定：填空题不再涉及 AI 评分）──
+//
+// 🔴 同一个事实在客户端原来有**两份不一样的写法**：题卡里写
+//    `node.type === 'short-answer' || node.type === 'drawing'`，而教师看板那一列写
+//    `node.data.aiScoringEnabled === true`（**不看题型**）⇒ 一道老填空题只要库里还留着
+//    `aiScoringEnabled: true`，看板上就挂着「AI 评分」的标签，而**已经没有任何东西会给它评分**。
+//    ⇒ 抽成 `supportsAiScoring` / `aiScoredFor` 两条，题卡与看板共用（`ai-proxy.ts` 那边
+//    服务端还有一份同款判据 `aiScoringConfigOf` —— 两个包，各留一份，注释互相指认）。
+
+test('🔴 填空题不在 AI 评分的题型里（它只剩「每空有答案键、都算分」一条路）', () => {
+  assert.equal(supportsAiScoring({ type: 'short-answer' }), true, '问答题：主观内容的正路');
+  assert.equal(supportsAiScoring({ type: 'drawing' }), true, '绘图题：同上');
+  assert.equal(supportsAiScoring({ type: 'fill-blank' }), false,
+    '填空题不再涉及 AI 评分 —— 想让学生自由写，用问答题（教师 2026-10-09 裁定）');
+  assert.equal(supportsAiScoring({ type: 'choice-blank' }), false);
+  assert.equal(supportsAiScoring({ type: 'single-choice' }), false);
+  assert.equal(supportsAiScoring({ type: 'true-false' }), false);
+});
+
+test('🔴 `aiScoredFor`：题型支持 **且** 开关开着 —— 老填空题的 `aiScoringEnabled` 不算数', () => {
+  assert.equal(aiScoredFor({ type: 'short-answer', data: { aiScoringEnabled: true } }), true);
+  assert.equal(aiScoredFor({ type: 'short-answer', data: {} }), false, '开关没开就不评');
+  assert.equal(aiScoredFor({ type: 'short-answer', data: { aiScoringEnabled: false } }), false);
+  assert.equal(
+    aiScoredFor({ type: 'fill-blank', data: { aiScoringEnabled: true } }), false,
+    '老填空题库里可能还留着这个开关 —— 但没有任何东西会给它评分，看板不许再挂「AI 评分」',
+  );
+  // ⚠️ `=== true` 是刻意的：`data` 来自库里的 JSON，任何真值（`1` / `"true"`）都不算开。
+  assert.equal(aiScoredFor({ type: 'drawing', data: { aiScoringEnabled: 1 } }), false);
+});
+
+test('🔴 题卡与看板都必须走这两条判据（判据被断言 ≠ 判据被使用）', () => {
+  const card = fs.readFileSync(path.resolve(HERE, '../app/teacher/worksheets/edit/question-card.tsx'), 'utf8');
+  const drawer = fs.readFileSync(path.resolve(HERE, '../app/teacher/classroom/worksheet-drawer.tsx'), 'utf8');
+  assert.match(card, /supportsAiScoring\(node\)/, '题卡没有用共用的判据');
+  assert.match(drawer, /aiScoredFor\(node\)/,
+    '看板那一列又自己判 `data.aiScoringEnabled` 了 —— 一道老填空题会挂着「AI 评分」，而没人给它评分');
+  assert.ok(!/aiScoringEnabled === true/.test(drawer), '看板里还留着第二份判据');
 });

@@ -12,6 +12,7 @@ import { PromptEditor } from './prompt-editor';
 // ★ 2026-09-27：「粘贴题目」的确认窗（题干 + 选项一起识别）—— 单独一个文件，
 // 因为它是**一次粘贴**的界面，与「画一道题的控件」不是同一件事。
 import { PasteQuestionDialog, type PasteQuestionResult } from './paste-question-dialog';
+import { aiScoredFor, supportsAiScoring } from '@/lib/worksheet-questions';
 import {
   canGivePartial,
   maximumPointsFor,
@@ -394,14 +395,24 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
    *（`analysis-question.ts`）—— **旧数据里已经写过的整题标准照旧会发出去**，
    * 只是编辑页不再提供入口。删那条路等于让老学习单的评分标准**静默失效**。
    */
-  const supportsAiScoring = node.type === 'short-answer' || node.type === 'drawing';
-  const aiScoringEnabled = explicitFillScoring ? fillTotals.ai > 0 : node.data.aiScoringEnabled === true;
+  // ★ 2026-10-09：判据搬进 `lib/worksheet-questions.ts`（题卡与教师看板共用一份 ——
+  //    看板那一列从前自己判 `data.aiScoringEnabled`，一道老填空题会挂着「AI 评分」而没人给它评分）。
+  const aiSupported = supportsAiScoring(node);
+  // 🔴 填空题**没有** AI 评分的路（教师 2026-10-09 裁定：逐空 AI 那一档已删）⇒
+  //    这里不再有「填空按逐空 AI 空数推导」那一支：老库里留着的 `aiScoringEnabled` 不算数。
+  const aiScoringEnabled = aiScoredFor(node);
   const aiScoringMaxScore = typeof node.data.aiScoringMaxScore === 'number'
     ? node.data.aiScoringMaxScore : 10;
   const aiScoringCriteria = typeof node.data.aiScoringCriteria === 'string'
     ? node.data.aiScoringCriteria : '';
   const gradingStatus = explicitFillScoring
-    ? (gradedOn ? `混合评分 · 最高 ${fillTotals.total} ${pointsUnit}` : '仅统计作答')
+    // ★ 2026-10-09（教师裁定）：逐空只剩「本地评分」一笔账（AI / 不算分两档已删），
+    //    所以不叫「混合评分」了 —— 那个词指的是「本地 + AI 混着」，今天不存在。
+    // 🔴 还有一个**老数据**的岔口：整道题的空如果**全是**历史值（`'ai'` / `'none'`），
+    //    总分就是 0 —— 那时说「逐空评分 · 最高 0 分」是一句让人以为界面坏了的话。
+    //    判分侧这时**根本不出分**（`grade()` 里 `auto.length === 0` 直接回 null），
+    //    与「仅统计作答」逐字对应，所以走它。
+    ? (gradedOn && fillTotals.total > 0 ? `逐空评分 · 最高 ${fillTotals.total} ${pointsUnit}` : '仅统计作答')
     : aiScoringEnabled
     ? `AI 评分 · 最高 ${aiScoringMaxScore} ${pointsUnit}`
     : isGradedQuestionType(node.type)
@@ -700,7 +711,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
               ⚠️ 旧的「评分标准 / 评分要求」合并（见上面那段）对这两型仍然有效：
                 `rubricText` 为准，`aiScoringCriteria` 只作回退。
             */}
-            {supportsAiScoring && (
+            {aiSupported && (
               <div className="worksheet-editor-block worksheet-editor-ai-scoring">
                 <div className="worksheet-editor-block-head">
                   <div>

@@ -125,10 +125,14 @@ test('🔴 「加一行 / 新建题」的输入框都必须有**灰色占位提�
   assert.match(body(CATEGORIZE), /placeholder=\{`框 \$\{index \+ 1\}`\}/, '归类题的框名那一格没有灰色提示');
   assert.match(body(CATEGORIZE), /placeholder=\{`条目 \$\{index \+ 1\}`\}/, '归类题的条目那一格没有灰色提示');
   assert.match(body(CHOICE), /placeholder=\{`选项 \$\{option\.key\}`\}/, '选项那一格没有灰色提示');
-  // 填空题的答案 / 评分标准 / 选词那几格（同一个 `SymbolListInput`）。
-  for (const hint of ['本空的答案', '这一空的评分标准', '例如：唐、宋、元', '例如：阳光、水分、空气']) {
+  // 填空题的答案 / 选词那几格（同一个 `SymbolListInput`）。
+  // ★ 2026-10-09（教师裁定）：逐空只剩「答案」一格 —— 从前那句「这一空的评分标准」
+  //   随 AI 评分那一档一起删了（不删的话它会指向一个屏幕上不存在的档）。
+  for (const hint of ['本空的答案', '例如：唐、宋、元', '例如：阳光、水分、空气']) {
     assert.ok(body(FILL).includes(hint), `填空题少了一处灰色提示：${hint}`);
   }
+  assert.ok(!body(FILL).includes('这一空的评分标准'),
+    '「评分标准」那一格又回来了 —— 填空题只剩答案键（教师 2026-10-09 裁定）');
 });
 
 test('★ 排序题用栏标题区分学生顺序与正确顺序', () => {

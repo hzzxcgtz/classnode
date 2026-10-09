@@ -42,48 +42,30 @@ const CANVAS_FLOWCHART = path.resolve(
   HERE, '../../../classroom/worksheet/questions/drawing-surfaces/flowchart-drawing.tsx',
 );
 
-test('🔴 填空题的 AI 评分改由**每一空**的评分方式开启（裁定 B 之后整题那块不服务填空题）', () => {
-  // ⚠️ 这一条原先是 ChatGPT 在 `1f107fa` 写的（「普通填空可开启 AI 评分，且与本地自动评分互斥」），
-  //    它钉的是**整题 AI 块**里那两条互斥接线。教师 2026-10-05 的裁定 B
-  //    （「评分标准已经细化到每一空（如果选了手工填写），不需要整体的评分标准」）之后，
-  //    填空题不再有整题那块 ⇒ 断言换了，但**它守的能力一条都没少**：
-  //    ① 空白的手工填空仍然能开 AI 评分；② 本地自动评分与 AI 评分仍然互斥（逐空结构上互斥）。
+test('🔴 填空题**没有**任何 AI 评分入口（整题的与逐空的都没有）', () => {
+  // 这一条的历史：① 最早是「普通填空可开启 AI 评分，且与本地自动评分互斥」（整题那块）；
+  // ② 教师 2026-10-05 裁定 B 之后整题那块删了，AI 评分改成**逐空**（那一排单选）；
+  // ③ ★ 2026-10-09 教师裁定：「填空题简化 —— 所有空都不涉及 AI 评分，主观内容走问答题」
+  //    ⇒ 逐空那一档也删了。**两条路都不许回来**，所以这条断言现在钉的是「一个入口都没有」。
   const source = fs.readFileSync(CARD, 'utf8');
 
-  // 🔴 反面：`supportsAiScoring` 不许再把填空算进来 —— 算进来整题那块（连图片上传）就回来了。
-  assert.match(
-    source,
-    /supportsAiScoring\s*=\s*node\.type === 'short-answer'\s*\|\|\s*node\.type === 'drawing';/,
-    '`supportsAiScoring` 又把填空算进去了 —— 填空题的整题 AI 块会跟着回来',
-  );
+  // 🔴 题卡不许再把填空算进「支持 AI 评分」的题型 —— 算进来整题那块（连图片上传）就回来了。
+  //    ★ 2026-10-09：判据本身搬进了 `lib/worksheet-questions.ts` 的 `supportsAiScoring`
+  //    （题卡与教师看板共用一份），所以这里改钉**调用点**，判据本体在 `worksheet-questions.test.ts`。
+  assert.match(source, /supportsAiScoring\(node\)/, '题卡没有走共用的题型判据');
+  assert.ok(!/node\.type === 'fill-blank'[\s\S]{0,40}aiScoring/i.test(source),
+    '题卡里又出现「填空题 + AI 评分」的接线了');
 
-  // ① 能力没丢：手工填写那一档必须能选「AI 评分」（判据层那一条，界面只是消费它）。
-  const modes = fs.readFileSync(FILL_MODES, 'utf8');
-  assert.match(
-    modes,
-    /mode === 'text' \? \['auto', 'ai', 'none'\] : \['auto', 'none'\]/,
-    '手工填写那一档不能选 AI 评分了 —— 填空题就没有开 AI 评分的路了',
-  );
-  // 并且逐空的选择必须真的驱动整题那个 AI 开关（否则选了也不生效）。
+  // 逐空那条路：评分方式那一排整个删了（只剩一档的选择器是装饰），
+  // 相关的写回接线（`aiScoringEnabled: totals.ai > 0`、把作答方式拉回手工）也一并删。
   const body = fs.readFileSync(FILL_BODY, 'utf8');
-  assert.match(body, /aiScoringEnabled: totals\.ai > 0/, '填空题的 AI 开关没有跟着逐空评分方式走');
+  assert.ok(!/totals\.ai/.test(body), '「AI 满额」那笔账还在 —— 逐空 AI 档已经删了');
+  assert.ok(!/aiScoringEnabled: totals/.test(body), '填空题的 AI 开关还跟着逐空评分方式走');
+  assert.ok(!/gradingMode === 'ai'/.test(body), '把作答方式拉回「手工填写」那条接线还在');
 
-  // ② 自动评分与 AI 评分仍然互斥 —— 只是**位置变了**。整题那块随裁定 B 删除之后，
-  //    这段接线（原来钉的 `enabled && node.type === 'fill-blank' && …aiScoringEnabled === true`）
-  //    在 `question-card.tsx` 里**已经不存在** ⇒ 从那次删除起这条断言就是**永久红**的
-  //    （2026-10-05 实测：`git stash` 到 HEAD 也红）。红网比没有网更坏：真回归时没人再看它。
-  //    ⇒ 互斥现在由**逐空结构**保证（`bodies/fill-blanks-body.tsx`），断言跟着搬过去，
-  //      能力一条都没少：① 选词那两档关掉这一空的 AI；② 选 AI 时把作答方式拉回手工填写。
-  assert.match(
-    body,
-    /mode !== 'text' && setting\.gradingMode === 'ai' \? \{ gradingMode: 'auto' as const \}/,
-    '选词那两档没有关掉这一空的 AI 评分 —— 那个组合服务端会拒绝保存',
-  );
-  assert.match(
-    body,
-    /gradingMode === 'ai' \? \{ mode: 'text' as const \}/,
-    '选「AI 评分」时没有把作答方式拉回「手工填写」',
-  );
+  // ⚠️ 判据层：那两个历史取值仍然**读得出来**（老学习单照常打开），只是不再算分。
+  const modes = fs.readFileSync(FILL_MODES, 'utf8');
+  assert.match(modes, /export function isLegacyFillGrading/, '历史值那条判据不见了 —— 编辑器没法提示教师改');
 });
 
 test('🔴 评分标准与评分要求已合并：只剩一个输入框，编辑时旧字段被清掉', () => {

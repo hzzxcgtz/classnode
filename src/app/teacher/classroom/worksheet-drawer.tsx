@@ -6,6 +6,7 @@ import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 // ★ 2026-09-30：题干里可能有数学公式（`$x^2$`）。
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { answerView } from '@/lib/worksheet-answer-view';
+import { aiScoredFor } from '@/lib/worksheet-questions';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { activeWorksheetAnalysisTask, hasCompletedWorksheetAnalysis } from '@/lib/worksheet-analysis-background';
@@ -396,7 +397,11 @@ export function QuestionList({
           </div>
           <div className={styles.analysisQuestionList}>
             {group.map(({ node, label, aggregate, manual, sampleSmall, attention }) => {
-              const aiScored = manual && node.data.aiScoringEnabled === true;
+              // ★ 2026-10-09：判据搬进 `lib/worksheet-questions.ts`（题卡与这里共用一份）。
+              // 🔴 原先这里自己判 `data.aiScoringEnabled`，**不看题型** ⇒ 一道老填空题只要库里
+              //    还留着那个开关，看板就挂着「AI 评分」的标签，而服务端 `aiScoringConfigOf`
+              //    因为题型不支持、恒回 `enabled: false` —— 一句话两边互相打脸。
+              const aiScored = manual && aiScoredFor(node);
               const analysisReady = worksheet.analyzedQuestionIds?.includes(node.id) === true;
               return (
               <button key={node.id} type="button" className={styles.analysisQuestionRow}

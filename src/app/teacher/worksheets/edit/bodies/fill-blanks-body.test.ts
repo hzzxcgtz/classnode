@@ -80,8 +80,9 @@ test('★ 填空题的答案住在每张空卡片里，并受题目级自动评�
 
   assert.match(bodySrc, /\bworksheet-editor-fill-answer-field\b/, '空卡片里没有答案格');
   assert.match(bodySrc, /writeFillAnswers\(/, '答案没有按原来那个 nested 形状写回（存储形状一个字都不该变）');
-  assert.match(bodySrc, /\{gradingEnabled && <div\s+className="worksheet-editor-fill-answer-field"/, '答案行没有受总开关控制');
-  assert.match(bodySrc, /node\.type === 'fill-blank' && gradingEnabled && \(/, '逐空评分方式没有受总开关控制');
+  assert.match(bodySrc, /\{gradingEnabled && <div className="worksheet-editor-fill-answer-field">/, '答案行没有受总开关控制');
+  // ★ 2026-10-09：「评分方式」那一排随两档一起删了，总开关现在管的是**作答方式 + 答案**两行。
+  assert.ok(!/worksheet-editor-fill-grading-row/.test(bodySrc), '「评分方式」那一排又回来了');
 
   // 🔴 反面：题目卡里那个「标准答案」网格**不许回来** —— 同一份答案两个编辑入口就是分叉，
   //    而且那一块住在 `{gradedOn && …}` 里（只有打开自动评分才看得见），
@@ -96,47 +97,52 @@ test('★ 填空题的答案住在每张空卡片里，并受题目级自动评�
   );
 });
 
-test('★ 逐空设置是三行：作答方式 → 评分方式 → 答案，分值带学习单奖励单位', () => {
+test('★ 逐空设置是**两行**：作答方式 → 答案，分值带学习单奖励单位', () => {
+  // ★ 2026-10-09（教师裁定）：中间那一行「评分方式」随 AI / 不算分两档一起删了
+  //（只剩一档的选择器是装饰）。顺序仍是「先选怎么答、再写答案」。
   const bodySrc = body(BODY);
   const modeAt = bodySrc.indexOf('worksheet-editor-fill-mode-head');
-  const gradingAt = bodySrc.indexOf('worksheet-editor-fill-grading-row');
   const answerAt = bodySrc.indexOf('worksheet-editor-fill-answer-field');
   const scoreAt = bodySrc.indexOf('worksheet-editor-fill-answer-score');
 
-  assert.ok(modeAt >= 0 && gradingAt > modeAt && answerAt > gradingAt, '三行的渲染顺序不对');
-  assert.ok(scoreAt > answerAt, '分值输入必须移到答案行末尾，不能继续挤在评分方式一行');
+  assert.ok(modeAt >= 0 && answerAt > modeAt, '两行的渲染顺序不对');
+  assert.ok(scoreAt > answerAt, '分值输入必须挨着答案行，不能另起一行');
   assert.match(bodySrc, /pointsUnit === '分' \? '分值' : '奖励数量'/, '分数档与图标奖励档没有使用合适的名称');
   assert.match(bodySrc, /<b>\{pointsUnit\}<\/b>/, '分值输入框后没有显示「分 / 座奖杯」等单位');
 });
 
-test('★ 两排互斥选择必须有区分度：作答方式 = 分段胶囊，评分方式 = 描边胶囊', () => {
+test('★ 只剩一排胶囊：作答方式（分段胶囊）；评分方式那一排连同它的样式一起删了', () => {
+  // ★ 2026-10-09（教师裁定）：填空题只剩「每空有答案键、都算分」一条路 ⇒ 那一排单选没有
+  //    存在的理由。★ 2026-10-05 那版是为了与作答方式**区分**才给它做了描边胶囊变体；
+  //    现在整排删掉，那段 CSS 也一并删 —— 留着就是一段没有任何消费者的样式
+  //   （`.worksheet-editor-mode-tabs.is-scoring-pills`，本类名的定义只服务过这一处）。
   const bodySrc = body(BODY);
 
-  assert.equal(
-    (bodySrc.match(/worksheet-editor-mode-tabs is-scoring-pills/g) ?? []).length, 1,
-    '评分方式那一排必须且只能使用一次描边胶囊变体',
-  );
   assert.equal(
     (bodySrc.match(/className="worksheet-editor-mode-tabs"/g) ?? []).length, 1,
     '作答方式那一排应当仍是**独占**药丸样式的那一个',
   );
+  assert.ok(!/is-scoring-pills/.test(bodySrc), '评分方式那一排回来了（它只剩一档，是装饰）');
 
-  const css = fs.readFileSync(GLOBALS, 'utf8');
-  assert.match(css, /\.worksheet-editor-mode-tabs\.is-scoring-pills \{/, '评分方式描边胶囊没有定义样式');
-  assert.match(
-    css,
-    /\.worksheet-editor-mode-tabs\.is-scoring-pills label\.is-selected > span/,
-    '描边胶囊缺少独立的选中态',
-  );
+  // ⚠️ 判据读**声明**、不读「文本里出现过这个词」：globals.css 里留了一句注释记着这段
+  //    样式为什么被删（本仓的规矩），不剥注释的话那句话会替死样式把这条断言喂红。
+  const css = stripComments(fs.readFileSync(GLOBALS, 'utf8'));
+  assert.ok(!/\.worksheet-editor-mode-tabs\.is-scoring-pills\s*\{/.test(css),
+    '那段描边胶囊的样式已经没有消费者了，删掉它');
 });
 
-test('★ 服务端那条校验文案点名的档，必须与界面上那一档**同一个词**', () => {
-  // 🔴 教师 2026-10-05 把逐空那一档从「自动评分」改名成「本地评分」，而服务端有一条
-  //    **会拒绝保存**的校验里也点着这一档的名字。两处不同名 = 报错指着一个屏幕上
-  //    不存在的选项，教师只能自己猜是哪一栏（本仓明令禁止的那类文案）。
-  const server = fs.readFileSync(SERVER_QUESTIONS, 'utf8');
-  assert.match(server, /选择了本地评分，请填写标准答案/, '服务端那条报错没跟上界面改名');
-  assert.ok(!server.includes('选择了自动评分'), '服务端仍在用旧名「自动评分」指那一档');
+test('★ 服务端那条「请填写标准答案」不再点名任何一档（逐空只剩一档，点名就是在指空气）', () => {
+  // 这一条的历史：★ 2026-10-05 教师把逐空那一档从「自动评分」改名成「本地评分」，
+  // 而服务端有一条**会拒绝保存**的校验里也点着那一档的名字 ⇒ 两处必须同一个词。
+  // ★ 2026-10-09（教师裁定）：那两档一起删了 ⇒ **屏幕上不再有任何一档的名字**，
+  // 报错里也就不该再点名（否则又是指着一个不存在的东西）。
+  // ⚠️ 剥注释：那边留了一句注释记着「从前点名的是『本地评分』」（本仓的规矩），
+  //    不剥的话那句话会替真正的文案把这条断言喂红。
+  const server = stripComments(fs.readFileSync(SERVER_QUESTIONS, 'utf8'));
+  assert.match(server, /填空题第 \$\{index \+ 1\} 空请填写标准答案/, '服务端那条报错不见了或改了形状');
+  assert.ok(!server.includes('本地评分'), '服务端还在点名「本地评分」那一档');
+  assert.ok(!server.includes('AI 评分'), '服务端还在点名「AI 评分」那一档');
+  assert.ok(!body(BODY).includes('本地评分'), '界面上还有「本地评分」这个名字');
 });
 
 test('★ 填空题**没有**整题 AI 块（裁定 B）：标准只在每一空，整块只服务问答 / 绘图', () => {
@@ -145,12 +151,11 @@ test('★ 填空题**没有**整题 AI 块（裁定 B）：标准只在每一空
   // ⇒ 上一版（裁定 A）把这块缩成「AI 评分标准」还留着；教师看到之后否掉了整块。
   const card = body(CARD);
 
-  // 🔴 定义处：`supportsAiScoring` 不许再含 fill-blank —— 含了就等于这块（连同图片上传）回来。
-  assert.match(
-    card,
-    /const supportsAiScoring = node\.type === 'short-answer' \|\| node\.type === 'drawing';/,
-    '`supportsAiScoring` 又把填空算进去了 —— 填空题的整题 AI 块（含图片上传）会跟着回来',
-  );
+  // 🔴 ★ 2026-10-09：判据搬进了 `lib/worksheet-questions.ts` 的 `supportsAiScoring`
+  //    （题卡与教师看板共用一份），所以这里钉**调用点**、判据本体在 `worksheet-questions.test.ts`
+  //    （那一条逐题型断言填空题不在里面）。两边任一被改回去，必有一条红。
+  assert.match(card, /supportsAiScoring\(node\)/, '题卡没有走共用的题型判据');
+  assert.match(card, /\{aiSupported && \(/, 'AI 那一块没有按题型判据收口');
   // 那一块里不许再出现「按题型分叉」的痕迹（它现在只服务问答 / 绘图，一个分叉都没有）。
   assert.ok(!card.includes("'AI 评分标准'"), '「AI 评分标准」那个分叉标题又回来了');
 
@@ -164,21 +169,18 @@ test('★ 评分方式那一排由**作答方式**决定（手工填写三项 / 
   // 手工填写……答案应该叫『评分标准』，右侧或下方选词则……答案就叫答案。」
   const bodySrc = body(BODY);
 
-  // 🔴 选项**不许**写死成三项：写死了就意味着「下方选词 + AI 评分」在界面上**点得动**，
-  //    而服务端那条校验（「只有手工填写时才能使用 AI 评分」）会**拒绝保存** ——
-  //    教师看到的是一个点得动却存不下的组合，报错还说不到点子上。
-  assert.match(bodySrc, /fillGradingModesFor\(settings\[index\]\.mode\)/, '评分方式那一排没有按作答方式取选项');
-  assert.ok(!/\['ai', 'AI 评分'\]/.test(bodySrc), '评分方式的选项又被写死回来了');
+  // ★ 2026-10-09（教师裁定）：「填空题简化 ⇒ 删 `'ai'` 与 `'none'` 两档，一律『每空有答案键、
+  //    都算分』。」⇒ **那一排单选整个没有了**（只剩一档的选择器是装饰），答案格恒叫「答案」。
+  // 🔴 判据落在**活代码**上（`bodySrc` 已经剥过注释）：把那一排加回来，这条立刻红。
+  assert.ok(!/fillGradingModesFor/.test(bodySrc), '评分方式那一排又回来了 —— 只剩一档的选择器是装饰');
+  assert.ok(!/setGradingMode/.test(bodySrc), '评分方式的 setter 还在');
+  assert.ok(!/FILL_GRADING_LABELS/.test(bodySrc), '「本地评分 / AI 评分 / 不算分」那三个标签还在');
+  assert.match(bodySrc, /<span>答案<\/span>/, '答案格的标签恒是「答案」（不再有「评分标准」那一档）');
+  assert.ok(!/评分标准/.test(bodySrc), '「评分标准」那一档已经删了 —— 填空题只剩答案键');
 
-  // 生效值（回退）也要看作答方式，否则选词那一空会渲染成「一个都没选中」。
-  assert.match(bodySrc, /allowsAiGrading\(setting\.mode\)/, '生效评分方式的回退没看作答方式');
-
-  // 标签跟**评分方式**走（教师第二条截图：「手工填写 + 自动评分：答案」「手工填写 + AI 评分：评分标准」）。
-  assert.match(
-    bodySrc,
-    /\{gradingModeOf\(settings\[index\]\) === 'ai' \? '评分标准' : '答案'\}/,
-    '答案格的标签没跟评分方式走（交给 AI 评的那一空才该叫「评分标准」）',
-  );
+  // 老数据里 `gradingMode: 'ai' / 'none'` 的空必须**逐空提示教师改**（教师裁定的原话），
+  // 而不是静默地把它们当一个普通空画出来 —— 否则教师看不出这一空为什么不计分。
+  assert.match(bodySrc, /isLegacyFillGrading\(/, '历史上那两个评分方式没有任何提示，教师看不出它为什么不计分');
 });
 
 test('★ 「分值」那一格只在**真的有人读它**的地方画（选择填空上那一格是死控件）', () => {
@@ -189,9 +191,11 @@ test('★ 「分值」那一格只在**真的有人读它**的地方画（选择
   //   它的成绩仍按题目级「得分方式 + 分值」发。
   const bodySrc = body(BODY);
   assert.match(bodySrc, /const perBlankScoreShown = node\.type === 'fill-blank'/, '那一格又没有按题型收口');
+  // ★ 2026-10-09：`&& gradingModeOf(...) !== 'none'` 那半随「不算分」那一档一起删了 ——
+  //    今天每个空都算分（有答案键才存得下），所以「分值」跟着 `perBlankScoreShown` 走就够。
   assert.match(
     bodySrc,
-    /\{perBlankScoreShown && gradingModeOf\(settings\[index\]\) !== 'none' && \(/,
+    /\{perBlankScoreShown && \(/,
     '「分值」那一格没有受 perBlankScoreShown 控制',
   );
   // 🔴 收口的依据是**服务端那一行**：它一改，界面的这条判据就失效（两处必须同一个口径）。
@@ -201,12 +205,12 @@ test('★ 「分值」那一格只在**真的有人读它**的地方画（选择
     /const mixedFill = node\.type === 'fill-blank' \? explicitFillGrading\(data\) : \[\];/,
     '服务端的逐空判分不再限定填空题 —— 界面的收口依据跟着失效',
   );
-  const serverScoring = fs.readFileSync(path.resolve(HERE, '../../../../../../server/src/services/analysis-scoring.ts'), 'utf8');
-  assert.match(
-    serverScoring,
-    /const fillParts = node\.type === 'fill-blank' && node\.autoGrade !== false/,
-    'AI 评分不再限定填空题 —— 界面的收口依据跟着失效',
-  );
+  // ★ 2026-10-09：AI 评分那条路**没有填空题分支了**（逐空 AI 档已删）——
+  //    所以「逐空那一套只服务填空题」这条收口，今天只剩服务端判分那一处依据。
+  // ⚠️ 剥注释再判（那边的注释里逐字写着 `fillParts` 这个被删掉的名字，不剥会自己把自己扫红）。
+  const serverScoring = stripComments(fs.readFileSync(path.resolve(HERE, '../../../../../../server/src/services/analysis-scoring.ts'), 'utf8'));
+  assert.ok(!/fillParts/.test(serverScoring),
+    'AI 评分里又出现了填空题的分支 —— 逐空 AI 那一档已经删了（教师 2026-10-09 裁定）');
 });
 
 test('★ 旧口径下「分值」显示的是**生效的那个数**，不是写死的 1', () => {
@@ -272,11 +276,11 @@ test('★ 「共用选词」在所有空设置的**下面**（单列），且逐
     '容器不是单列 —— 「共用选词」会回到右列（教师刚说不要那样）',
   );
 
-  // ★ 同日命名（教师）：「自动评分」是**整体称呼**（按答案自动批 + AI 分析评分都算），
-  //    所以逐空那一档不能也叫「自动评分」——它叫「本地评分」。
+  // ★ 2026-10-09（教师裁定）：逐空那一档只剩一档，**三个标签整张表都删了** ——
+  //    没有任何地方还需要「本地评分 / AI 评分 / 不评分」这三个词。
   const bodySrc = body(BODY);
-  assert.match(bodySrc, /auto: '本地评分'/, '逐空那一档又叫回「自动评分」了');
-  assert.ok(!/auto: '自动评分'/.test(bodySrc), '逐空那一档与整题那张卡重名了');
+  assert.ok(!/FILL_GRADING_LABELS/.test(bodySrc), '评分方式那三个标签又回来了');
+  assert.ok(!/'本地评分'/.test(bodySrc), '逐空那一档的标签还在（只剩一档，不再需要）');
 });
 
 test('③ 每空答案 / 参考答案共用的那个列表输入已接「粘贴去格式」（**只接 onPaste**）', () => {

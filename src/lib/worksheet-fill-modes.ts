@@ -5,7 +5,34 @@ import { blankLayout, cellAtSlot, cellLabel, tableBlankIds } from './worksheet-t
 import { mathText, splitMath } from './worksheet-math.ts';
 
 export type FillAnswerMode = 'text' | 'pool' | 'inline';
+
+/**
+ * 逐空评分方式。
+ *
+ * ★ 2026-10-09（教师裁定）：「**填空题简化** —— 所有空都不涉及 AI 评分；想让学生自由写就用
+ *    **问答题**。删 `'ai'`（AI 评分）与 `'none'`（逐空不算分）两档，一律『每空有答案键、都算分』。」
+ *
+ * 🔴 **今天只有 `'auto'` 会被写出去**（`FILL_GRADING_MODE`）。`'ai'` / `'none'` 留在类型里只因为
+ *    **库里有历史值**：老学习单照样读得出来（编辑器才能逐空提示教师去补答案键），
+ *    而它们一律按**不算分**处置 —— 判分侧 `grade()` 本来就只把 `'auto'` 的空计入命中。
+ * ⚠️ 所以下面每个消费点都要问一句：我读的是「今天能写的值」还是「历史值」？
+ *    前者只有一个取值；后者要按 `isLegacyFillGrading` 分流（提示 / 不计分），
+ *    千万别把历史值当成「另一种正常档位」顺手支持起来。
+ */
 export type FillGradingMode = 'auto' | 'ai' | 'none';
+
+/** 今天**唯一**会写出去的逐空评分方式（历史值的处置见 `FillGradingMode`）。 */
+export const FILL_GRADING_MODE: FillGradingMode = 'auto';
+
+/**
+ * 这是**历史**的评分方式吗（`'ai'` / `'none'`）—— 一律不算分，编辑器要逐空提示教师改。
+ *
+ * ⚠️ `undefined` **不是**历史值：那表示「这道题压根没有逐空设置」，
+ *    它走的是**题目级**规则（老题），别拿这个提示去打扰教师。
+ */
+export function isLegacyFillGrading(mode: FillGradingMode | undefined): mode is 'ai' | 'none' {
+  return mode === 'ai' || mode === 'none';
+}
 
 export interface FillBlankSetting {
   mode: FillAnswerMode;
@@ -21,36 +48,20 @@ export function hasExplicitFillGrading(settings: readonly FillBlankSetting[]): b
 }
 
 /**
- * 这一空的作答方式**开放哪几种评分方式**。
+ * 这道题的逐空总分。
  *
- * ★ 2026-10-05（教师）：「手工填写含三项评分方式，……右侧或下方选词则只有自动评分或不评分。」
- * ⚠️ 这是教师当时的原话；那一档屏幕上的名字后来定为「**本地评分**」（`FILL_GRADING_LABELS`）。
- *   道理是选词那两种方式下答案是一份**词表**，判分只能靠本地比对词表 —— 没有语义可交给 AI 评。
- *
- * 🔴 **与校验逐字同源**：`server/src/services/worksheet-questions.ts` 那边是
- *    「填空题第 N 空只有手工填写时才能使用 AI 评分」（一条会**拒绝保存**的校验）。
- *    界面照抄一份的话，教师会在「下方选词 + AI 评分」这个组合上**点得动、存不下**，
- *    而报错说的是另一块屏幕上的事。所以两处必须同一条口径 —— 这一份是界面侧的来源。
+ * ★ 2026-10-09：只剩下**一档**算分（`'auto'`），所以这里不再有「AI 那一档」这笔账。
+ *    历史值（`'ai'` / `'none'`）**一分都不算**：计进去会凭空多出一笔**没人给的账**
+ *    （它们在判分侧 `grade()` 里本来就不参与命中）。
+ * ⚠️ 缺省值仍是 1（没设 `maxScore` 的老数据）—— 与判分侧 `explicitFillGrading` 的口径同源。
  */
-export function fillGradingModesFor(mode: FillAnswerMode): readonly FillGradingMode[] {
-  return mode === 'text' ? ['auto', 'ai', 'none'] : ['auto', 'none'];
-}
-
-/** 这一空的作答方式**是否允许** AI 评分（`fillGradingModesFor` 的谓词形式）。 */
-export function allowsAiGrading(mode: FillAnswerMode): boolean {
-  return mode === 'text';
-}
-
-export function fillGradingTotals(settings: readonly FillBlankSetting[]): { auto: number; ai: number; total: number } {
+export function fillGradingTotals(settings: readonly FillBlankSetting[]): { auto: number; total: number } {
   let auto = 0;
-  let ai = 0;
   settings.forEach((setting) => {
     const score = Number.isInteger(setting.maxScore) && (setting.maxScore ?? 0) > 0 ? setting.maxScore! : 1;
     if (setting.gradingMode === 'auto') auto += score;
-    // ⚠️ 选词那两种方式**不计 AI 分**，哪怕数据里留着一条历史 `'ai'`（见 `fillGradingModesFor`）。
-    if (setting.gradingMode === 'ai' && allowsAiGrading(setting.mode)) ai += score;
   });
-  return { auto, ai, total: auto + ai };
+  return { auto, total: auto };
 }
 
 /**

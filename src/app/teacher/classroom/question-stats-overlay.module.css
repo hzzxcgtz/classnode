@@ -36,7 +36,7 @@
 }
 
 .panel[data-embedded='true'] .header {
-  padding: 17px 20px 14px;
+  padding: 18px 20px 16px;
 }
 
 .headingRow {
@@ -79,12 +79,12 @@
 .summary {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
   margin-top: 12px;
-  padding: 9px 12px;
-  border: 1px solid #e0e8f0;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid #dbe6ef;
   border-radius: 12px;
-  background: #f5f8fb;
+  background: #f2f6f9;
 }
 
 .metrics {
@@ -96,14 +96,14 @@
 
 .metric {
   min-width: 0;
-  padding: 2px 12px;
+  padding: 3px 14px;
   border-right: 1px solid #dce5ed;
 }
 
 .metric:first-child { padding-left: 0; }
 .metric:last-child { border-right: 0; }
-.metric small { display: block; margin-bottom: 4px; color: #8997a8; font-size: .64rem; }
-.metric div { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.2rem; font-weight: 720; line-height: 1; }
+.metric small { display: block; margin-bottom: 5px; color: #7d8ea1; font-size: .62rem; }
+.metric div { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.24rem; font-weight: 740; line-height: 1; }
 .metric span { margin-left: 2px; color: #94a3b8; font-family: inherit; font-size: .66rem; font-weight: 500; }
 .donut { margin-left: auto; }
 
@@ -111,7 +111,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   overflow: auto;
   padding: 18px 20px 24px;
 }
@@ -136,10 +136,97 @@
   font-weight: 400;
 }
 
+.statusBand {
+  padding: 11px 14px;
+  border: 1px solid #dde6ee;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.insightGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(260px, .8fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.insightGrid > .section {
+  min-width: 0;
+  padding: 14px 16px 16px;
+  border: 1px solid #dde6ee;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.insightList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.insightList li {
+  padding: 9px 10px 9px 12px;
+  border-left: 3px solid #d8e2eb;
+  border-radius: 0 8px 8px 0;
+  background: #f7f9fb;
+  color: #405268;
+  font-size: .76rem;
+  line-height: 1.55;
+}
+
+.insightList li[data-tone='good'] { border-left-color: #4b8b65; }
+.insightList li[data-tone='warn'] { border-left-color: #a87337; }
+.quietState { padding: 16px 0; color: #8a99aa; font-size: .72rem; }
+
+.processStrip {
+  display: grid;
+  overflow: hidden;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid #dde6ee;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.processMetric {
+  min-width: 0;
+  padding: 11px 14px;
+  border-right: 1px solid #e2e9f0;
+}
+
+.processMetric:last-child { border-right: 0; }
+.processMetric small { display: block; color: #8392a4; font-size: .62rem; }
+.processMetric strong { display: block; margin-top: 3px; color: #263a51; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88rem; }
+
+.analysisAction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  padding: 13px 15px;
+  border: 1px solid #cddceb;
+  border-radius: 11px;
+  background: #eef5fa;
+  color: #28445f;
+  cursor: pointer;
+  text-align: left;
+}
+
+.analysisAction:hover { border-color: #afc3d7; background: #e9f1f7; }
+.analysisAction:active { transform: translateY(1px); }
+.analysisAction > span { min-width: 0; }
+.analysisAction > span > strong { display: block; font-size: .8rem; }
+.analysisAction > span > span { display: block; margin-top: 3px; color: #71859a; font-size: .68rem; }
+.analysisAction > b { flex: 0 0 auto; padding: 6px 9px; border-radius: 7px; background: #526f8e; color: #f8fafc; font-size: .66rem; white-space: nowrap; }
+
 @media (max-width: 900px) {
   .metrics { grid-template-columns: repeat(3, minmax(70px, 1fr)); row-gap: 10px; }
   .metric:nth-child(3) { border-right: 0; }
   .donut { display: none; }
+  .insightGrid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {
@@ -150,4 +237,8 @@
   .metrics { grid-template-columns: repeat(2, minmax(70px, 1fr)); }
   .metric:nth-child(3) { border-right: 1px solid #dce5ed; }
   .metric:nth-child(2n) { border-right: 0; }
+  .processStrip { grid-template-columns: 1fr; }
+  .processMetric { border-right: 0; border-bottom: 1px solid #e2e9f0; }
+  .processMetric:last-child { border-bottom: 0; }
+  .analysisAction { align-items: flex-start; }
 }

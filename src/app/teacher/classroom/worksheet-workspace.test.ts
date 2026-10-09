@@ -41,6 +41,12 @@ test('按题目查看采用常驻题目导航与右侧详情，不再先开题�
   assert.doesNotMatch(workspace, /<QuestionList/);
 });
 
+test('按题详情不再提供看某人的作答下拉入口', () => {
+  const questionStats = readFileSync(new URL('./question-stats-overlay.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(questionStats, /看某人的作答/);
+  assert.doesNotMatch(questionStats, /pickedId/);
+});
+
 test('打开学习单界面只压入一层浏览器历史，返回按钮关闭工作区或单人抽屉', () => {
   assert.match(page, /window\.history\.pushState\(\{ \.\.\.base, classnodeWorksheetWorkspace: token \}/);
   assert.match(page, /window\.addEventListener\('popstate', handlePopState\)/);

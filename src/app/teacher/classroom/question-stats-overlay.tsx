@@ -1,12 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
-import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 // ★ 2026-09-30：矩阵表头是**连线右项 / 归类框名**（教师原文）⇒ 认公式。
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { indexQuestions } from './worksheet-drawer-state';
-import { AnswerViewBody } from './answer-view';
 import { CHART, CountBars, HeatLegend, VerdictDonut } from './question-stats-charts';
 import { StackedBar } from './question-stacked-bar';
 import { questionStats, showsAgentAnalysis, type MatrixCell, type StatsRow } from './worksheet-question-stats';
@@ -23,10 +21,9 @@ import styles from './question-stats-overlay.module.css';
  * 矩阵 250 · 分析 270 · 抽屉 290/**291** · **本浮层 292**。
  * 本浮层画在抽屉**之上**，因为它是从抽屉里点开的；关闭它回到题列表，教师不丢位置。
  *
- * ── 三块（规格 §6）──────────────────────────────────────────────────
- *   ① 本题统计（本批新增）
+ * ── 两块（规格 §6）──────────────────────────────────────────────────
+ *   ① 本题统计（答案分布、课堂观察和作答过程）
  *   ② AI 分析 ← **打开统一的分析结果浮层**（裁决：见下面 `onOpenAnalysis` 那段注释）
- *   ③ 逐个作答 ← **复用抽屉第三层那个组件**（不另写一份呈现）
  */
 
 const OK = '#15803d';
@@ -34,18 +31,6 @@ const BAD = '#934e4e';
 const WARN = '#b45309';
 const MUTED = '#64748b';
 const FAINT = '#94a3b8';
-
-function pickedStatusView(row: { status?: string; gradeState?: string | null } | undefined) {
-  if (row?.status === 'submitted') {
-    if (row.gradeState === 'correct') return { icon: 'correct', label: '答对' } as const;
-    if (row.gradeState === 'partial') return { icon: 'partial', label: '部分给分' } as const;
-    if (row.gradeState === 'incorrect') return { icon: 'retry', label: '答错' } as const;
-    return { icon: 'submitted', label: '已提交' } as const;
-  }
-  return row?.status === 'draft'
-    ? { icon: 'drafting', label: '作答中' } as const
-    : { icon: 'unanswered', label: '未作答' } as const;
-}
 
 /**
  * 矩阵热力（连线左×右、归类条目×框）。
@@ -202,16 +187,6 @@ export function QuestionStatsOverlay({
   }, [node, worksheet, questionId]);
 
   const unit = mode === 'group' || mode === 'advanced' ? '组' : '人';
-  /**
-   * ★ 2026-09-28（教师）：「在这一屏加一个『看某人的作答』的入口」。
-   * 🔴 **刻意是一个下拉 + 一块作答，而不是把全班列出来** —— 教师刚把「逐个作答」
-   * 整块删掉（那正是「列出全班」），所以这里要的是「按需看一个人」。
-   */
-  const [pickedId, setPickedId] = useState<string>('');
-  const participants = worksheet?.participants ?? [];
-  const picked = participants.filter((item) => item.participantId === pickedId)[0];
-  const pickedRow = picked?.answerRows.filter((item) => item.questionId === questionId)[0];
-
   const distribution = stats?.distribution ?? null;
 
   const panel = (
@@ -273,114 +248,104 @@ export function QuestionStatsOverlay({
 
           {stats && (
             <>
-              <StackedBar stats={stats} />
+              <div className={styles.statusBand}>
+                <StackedBar stats={stats} />
+              </div>
 
-              {/* ① 本题统计 —— 图 + 文字说明（判据全在纯层） */}
-              <Section title="本题统计">
-                {distribution === null && (
-                  <div style={{ fontSize: '0.75rem', color: FAINT }}>
-                    这一题没有可统计的分布（或者库里同时有几种作答形状 —— 教师改过题型）。
-                  </div>
-                )}
-                {distribution?.kind === 'options' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <CountBars bars={distribution.bars} unit={unit} />
-                    {distribution.combos.length > 0 && (
-                      <div>
-                        <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>选答组合（前 3）</div>
-                        <CountBars bars={distribution.combos} unit={unit} colorFor={() => CHART.muted} dense />
-                      </div>
-                    )}
-                  </div>
-                )}
-                {distribution?.kind === 'blanks' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {distribution.blanks.map((blank) => (
-                      <div key={blank.label}>
-                        <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>
-                          {blank.label}
-                          {blank.distinct > 0 && <span style={{ marginLeft: 6 }}>共 {blank.distinct} 种写法</span>}
+              <div className={styles.insightGrid}>
+                {/* ① 本题统计：图与事实并排，课堂上不需要来回滚动。 */}
+                <Section title="答案分布">
+                  {distribution === null && (
+                    <div style={{ fontSize: '0.75rem', color: FAINT }}>
+                      这一题没有可统计的分布，或者题型修改后存在多种作答形状。
+                    </div>
+                  )}
+                  {distribution?.kind === 'options' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <CountBars bars={distribution.bars} unit={unit} />
+                      {distribution.combos.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>选答组合（前 3）</div>
+                          <CountBars bars={distribution.combos} unit={unit} colorFor={() => CHART.muted} dense />
                         </div>
-                        <CountBars bars={blank.bars} unit={unit} dense />
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {distribution?.kind === 'order' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {/* 「有几位排对了」：**计数**，不是判分结论（判分那件事由页头那四格说）。 */}
-                    <CountBars
-                      bars={distribution.positions.map((position) => ({ label: `第 ${position.index + 1} 位`, count: position.hits }))}
-                      unit={unit}
-                    />
-                    {distribution.topOrders.length > 0 && (
-                      <div>
-                        <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>出现最多的顺序（前 3）</div>
-                        <CountBars bars={distribution.topOrders} unit={unit} colorFor={() => CHART.muted} dense />
-                      </div>
-                    )}
-                  </div>
-                )}
-                {(distribution?.kind === 'match' || distribution?.kind === 'categorize') && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <Matrix
-                      rowLabel={distribution.kind === 'match' ? '左栏' : '条目'}
-                      colLabel={distribution.kind === 'match' ? '右栏' : '框'}
-                      rows={distribution.kind === 'match' ? distribution.left : distribution.items}
-                      cols={distribution.kind === 'match' ? distribution.right : distribution.zones}
-                      cells={distribution.cells}
-                    />
-                    {/* 🔴 热力图**必须**有图例：没有它，深浅只是一片蓝。 */}
-                    <HeatLegend max={Math.max(0, ...distribution.cells.map((cell) => cell.count))} unit={unit} />
-                  </div>
-                )}
-                {distribution?.kind === 'text' && (() => {
-                  // 问答题的 5 个长度区间大多只有 1—2 个有值。零值也各占一行会留下大片空白，
-                  // 所以这里只画实际出现过的区间；没有有效文字时才保留一句空态。
-                  const present = distribution.lengths.filter((item) => item.count > 0);
-                  return present.length > 0
-                    ? <CountBars bars={present} unit={unit} dense height={Math.max(54, present.length * 30)} />
-                    : <div style={{ fontSize: '0.75rem', color: FAINT }}>尚无可统计的文字作答。</div>;
-                })()}
-                {distribution?.kind === 'ink' && (
-                  <div style={{ fontSize: '0.75rem', color: MUTED }}>
-                    {distribution.drawn} {unit}交了这一题（笔迹的图见下面「逐个作答」）。
-                  </div>
-                )}
-              </Section>
-
-              {/* 文字说明。🔴 只陈述算得出来的事实（判据层的硬线） */}
-              {stats.insights.length > 0 && (
-                <Section title="说明">
-                  <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {stats.insights.map((insight, index) => (
-                      // 🔴 **整句不染色**，改用左侧 3px 色条 —— 染色整句是最像「调试输出」的写法。
-                      <li key={index} style={{
-                        display: 'flex', gap: 10, alignItems: 'flex-start',
-                        borderLeft: `3px solid ${insight.level === 'warn' ? CHART.partial : insight.level === 'good' ? CHART.correct : '#e2e8f0'}`,
-                        paddingLeft: 10, fontSize: '0.875rem', color: '#334155', lineHeight: 1.6,
-                      }}>
-                        <span>{emphasizeNumbers(insight.text)}</span>
-                      </li>
-                    ))}
-                  </ul>
+                      )}
+                    </div>
+                  )}
+                  {distribution?.kind === 'blanks' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {distribution.blanks.map((blank) => (
+                        <div key={blank.label}>
+                          <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>
+                            {blank.label}
+                            {blank.distinct > 0 && <span style={{ marginLeft: 6 }}>共 {blank.distinct} 种写法</span>}
+                          </div>
+                          <CountBars bars={blank.bars} unit={unit} dense />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {distribution?.kind === 'order' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <CountBars
+                        bars={distribution.positions.map((position) => ({ label: `第 ${position.index + 1} 位`, count: position.hits }))}
+                        unit={unit}
+                      />
+                      {distribution.topOrders.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>出现最多的顺序（前 3）</div>
+                          <CountBars bars={distribution.topOrders} unit={unit} colorFor={() => CHART.muted} dense />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {(distribution?.kind === 'match' || distribution?.kind === 'categorize') && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <Matrix
+                        rowLabel={distribution.kind === 'match' ? '左栏' : '条目'}
+                        colLabel={distribution.kind === 'match' ? '右栏' : '框'}
+                        rows={distribution.kind === 'match' ? distribution.left : distribution.items}
+                        cols={distribution.kind === 'match' ? distribution.right : distribution.zones}
+                        cells={distribution.cells}
+                      />
+                      <HeatLegend max={Math.max(0, ...distribution.cells.map((cell) => cell.count))} unit={unit} />
+                    </div>
+                  )}
+                  {distribution?.kind === 'text' && (() => {
+                    const present = distribution.lengths.filter((item) => item.count > 0);
+                    return present.length > 0
+                      ? <CountBars bars={present} unit={unit} dense height={Math.max(54, present.length * 30)} />
+                      : <div style={{ fontSize: '0.75rem', color: FAINT }}>尚无可统计的文字作答。</div>;
+                  })()}
+                  {distribution?.kind === 'ink' && (
+                    <div style={{ fontSize: '0.75rem', color: MUTED }}>
+                      {distribution.drawn} {unit}提交了笔迹作答。
+                    </div>
+                  )}
                 </Section>
-              )}
 
-              {/* 过程统计（★ 教师批准保留）。⚠️ 三列都是 NULL 的旧行**不进样本** ⇒ 那时整段是「—」。 */}
-              <Section title="作答过程" note="旧数据没有这一项，显示「—」">
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+                <Section title="课堂观察">
+                  {stats.insights.length > 0 ? (
+                    <ul className={styles.insightList}>
+                      {stats.insights.map((insight, index) => (
+                        <li key={index} data-tone={insight.level}>
+                          <span>{emphasizeNumbers(insight.text)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <div className={styles.quietState}>当前没有需要补充的统计说明。</div>}
+                </Section>
+              </div>
+
+              <Section title="作答过程" note="旧数据缺少过程记录时显示「—」">
+                <div className={styles.processStrip}>
                   {[
-                    { mark: '◷', label: '典型用时', value: stats.process.medianMs === null ? '—' : `${Math.round(stats.process.medianMs / 1000)} 秒` },
-                    { mark: '↻', label: '典型修改', value: stats.process.medianSaves === null ? '—' : `${stats.process.medianSaves} 次` },
-                    { mark: '○', label: '尚未提交', value: `${stats.process.notSubmitted.length} ${unit}` },
+                    { label: '典型用时', value: stats.process.medianMs === null ? '—' : `${Math.round(stats.process.medianMs / 1000)} 秒` },
+                    { label: '典型修改', value: stats.process.medianSaves === null ? '—' : `${stats.process.medianSaves} 次` },
+                    { label: '尚未提交', value: `${stats.process.notSubmitted.length} ${unit}` },
                   ].map((item) => (
-                    <div key={item.label} style={{ display: 'grid', gridTemplateColumns: '28px 1fr', gap: 9, alignItems: 'center', padding: '9px 11px', border: '1px solid #e0e8f0', borderRadius: 10, background: '#fff' }}>
-                      <span aria-hidden="true" style={{ display: 'grid', placeItems: 'center', width: 28, height: 28, borderRadius: 8, background: '#eef4fa', color: '#56789b', fontSize: '0.9rem' }}>{item.mark}</span>
-                      <span style={{ minWidth: 0 }}>
-                        <small style={{ display: 'block', color: CHART.faint, fontSize: '0.65rem', lineHeight: 1.2 }}>{item.label}</small>
-                        <b style={{ display: 'block', marginTop: 2, color: CHART.ink, fontSize: '0.88rem' }}>{item.value}</b>
-                      </span>
+                    <div key={item.label} className={styles.processMetric}>
+                      <small>{item.label}</small>
+                      <strong>{item.value}</strong>
                     </div>
                   ))}
                 </div>
@@ -388,56 +353,19 @@ export function QuestionStatsOverlay({
             </>
           )}
 
-          {/* ★ 看某人的作答（教师指定）—— 复用逐题型的呈现组件，不另写一份。 */}
-          <Section title="看某人的作答" note="选一个人，看他这道题写了什么">
-            <select
-              value={pickedId}
-              onChange={(event) => setPickedId(event.target.value)}
-              style={{ alignSelf: 'flex-start', minWidth: 180, padding: '5px 8px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.813rem', background: 'white' }}>
-              <option value="">（选一个人）</option>
-              {participants.map((item) => {
-                const row = item.answerRows.filter((entry) => entry.questionId === questionId)[0];
-                const state = row?.status === 'submitted' ? '已交' : row?.status === 'draft' ? '作答中' : '未作答';
-                return <option key={item.participantId} value={item.participantId}>{item.name}（{state}）</option>;
-              })}
-            </select>
-            {picked && node && (
-              <div style={{ marginTop: 8, padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 10, background: 'white' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <b style={{ fontSize: '0.813rem' }}>{picked.name}</b>
-                  {/* 判分结论读的是行里的 `gradeState`（服务端判过的），本地不重算。 */}
-                  {(() => {
-                    const statusView = pickedStatusView(pickedRow);
-                    return (
-                      <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: MUTED, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <WorksheetStatusIcon name={statusView.icon} size={15} />
-                        {statusView.label}
-                      </span>
-                    );
-                  })()}
-                </div>
-                <AnswerViewBody node={node} value={pickedRow?.value} />
-              </div>
-            )}
-          </Section>
-
           {/* ② AI 分析。结果只保留一个统一查看窗口；这里不再内嵌第二套结果页。 */}
           {node && showsAgentAnalysis(node) && (
             <Section title="AI 分析" note="发现简单统计之外的理解方式与共同困难">
-              <button type="button" onClick={onOpenAnalysis} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18,
-                width: '100%', padding: '15px 17px', border: '1px solid #cddceb', borderRadius: 12,
-                background: '#f5f9fd', color: '#28445f', cursor: 'pointer', textAlign: 'left',
-              }}>
+              <button type="button" onClick={onOpenAnalysis} className={styles.analysisAction}>
                 <span>
-                  <strong style={{ display: 'block', fontSize: '0.86rem' }}>
+                  <strong>
                     {worksheet?.analyzedQuestionIds?.includes(questionId) ? '查看已保存的 AI 分析' : '生成 AI 分析'}
                   </strong>
-                  <span style={{ display: 'block', marginTop: 4, color: '#71859a', fontSize: '0.74rem' }}>
+                  <span>
                     分析结论、逐生 AI 评分和发送数据都在统一结果窗口中查看
                   </span>
                 </span>
-                <span aria-hidden style={{ color: '#6685a5', fontSize: '1.1rem' }}>›</span>
+                <b>进入分析</b>
               </button>
             </Section>
           )}

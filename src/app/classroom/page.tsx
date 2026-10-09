@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Socket } from 'socket.io-client';
 import { IdentityPicker } from './identity/identity-picker';
+import { ClassroomToast } from './layer-overlays';
 import { useClassroomSession } from './use-classroom-session';
 import { ClassroomShell } from './shell/classroom-shell';
 
@@ -93,20 +94,31 @@ function ClassroomOrchestrator() {
 
   if (session.step === 'identity') {
     return (
-      <IdentityPicker
-        classroom={session.classroom}
-        students={session.students}
-        selectedStudent={session.selectedStudent}
-        identitySearch={session.identitySearch}
-        onIdentitySearchChange={session.setIdentitySearch}
-        onlineStudentIds={session.onlineStudentIds}
-        avatarSvgs={session.avatarSvgs}
-        joiningClassroom={session.joiningClassroom}
-        loadError={session.loadError}
-        onSelectStudent={session.setSelectedStudent}
-        onConfirm={session.handleIdentityConfirm}
-        onExit={session.handleExit}
-      />
+      <>
+        <IdentityPicker
+          classroom={session.classroom}
+          students={session.students}
+          selectedStudent={session.selectedStudent}
+          identitySearch={session.identitySearch}
+          onIdentitySearchChange={session.setIdentitySearch}
+          onlineStudentIds={session.onlineStudentIds}
+          avatarSvgs={session.avatarSvgs}
+          joiningClassroom={session.joiningClassroom}
+          loadError={session.loadError}
+          onSelectStudent={session.setSelectedStudent}
+          onConfirm={session.handleIdentityConfirm}
+          onExit={session.handleExit}
+        />
+        {/* ★ 2026-10-09（审计 §B22）：**这一屏也要有提示的宿主**。
+            `handleIdentityConfirm` 失败时（课堂已结束 / 服务端刚重启 / 断网）会设一句
+            `error` 提示，而这一支从前只渲染 `<IdentityPicker>` ⇒ 学生点了「进入课堂」
+            之后**屏幕上不出现任何文字**（按钮从「进入中」转回原样），他只能靠猜。
+            ⚠️ 用共用的 `ClassroomToast`（关闭即清会话级 `toast`、自带的 3 秒计时器都在它里面）。
+            ⚠️ 这里**不用** `useOverlayPortal`：那一层是给切换动画里的层准备的（动画的
+            `transform` 会把 `position: fixed` 重新锚定到层盒子）。本页是页面级分支、
+            没有带动画的祖先 —— 若将来给它套上动画容器，这里要一并改成 portal。 */}
+        <ClassroomToast toast={session.toast} setToast={session.setToast} />
+      </>
     );
   }
 

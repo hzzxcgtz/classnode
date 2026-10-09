@@ -148,19 +148,49 @@ export function dropQueueItem(items: WorksheetQueueItem[], item: WorksheetQueueI
  * **无条件**删掉某道题在队列里的条目。
  *
  * ⚠️ 只有一处正当用途：`use-worksheet-answers.ts` 里「这一题现在没有值可交、
- * 而且从来没交出去过」那一支 —— 那里**已经**判定「这道题不该有任何待发内容」，
- * 所以按题目删正是它的意思。其余地方（服务端返回 200 / 永久失败）都必须用
- * `dropQueueItem`，否则会连学生更新的那一条一起删掉。
- *
- * 🔴 **但那一支的判据今天并不等于「从来没交出去过」** —— 它读的是
- *    `lastSentRef.current[id] === undefined`，那是「**没有确认过**的保存」：
- *    PUT 还在路上时它同样是 `undefined`。⇒ 学生在这段时间把这道题删干净，
- *    这一支会把**在途的那一条**也摘掉，而那个 PUT 照样落库 ——
- *    屏幕空、库里有、队列里没有任何一条会去纠正它（审计 2026-10-09 §B **4b**，未修）。
- *    修它要给在途状态留痕，不是改本函数。
+ * 而且**真的**从来没交出去过」那一支 —— 判据是 `emptyEditAction`（`'drop-pending'`），
+ * 它已经排除了「确认发过」与「**正在发**」两种情形（审计 2026-10-09 §B4b：少了后者时，
+ * 学生在这道题的在途期间把它删干净，这里会把在途那条一起摘掉，而那个 PUT 照样落库）。
+ * 其余地方（服务端返回 200 / 永久失败）都必须用 `dropQueueItem`，否则会连学生更新的
+ * 那一条一起删掉。
  */
 export function dropQuestionFromQueue(items: WorksheetQueueItem[], questionId: string): WorksheetQueueItem[] {
   return items.filter((existing) => existing.questionId !== questionId);
+}
+
+/** 「学生把这一题删干净了」之后的**三档**处置。 */
+export type EmptyEditAction = 'enqueue-clear' | 'drop-pending' | 'nothing';
+
+/**
+ * 学生把一题删干净时该怎么办。**三档，不是一个布尔值** —— 判据本体只有这一处
+ *（`use-worksheet-answers.ts` 的 `setDraft` 按它的返回值分派）。
+ *
+ * 问题的形状：屏幕上这一题空了，而**服务端那一行可能还在**。三档各自的代价：
+ *   · **`'enqueue-clear'`**：发一条「清空」出去（服务端把那一行写成 NULL）。
+ *     该发而不发的后果是**一句关于学生的谎话**：教师看板上留着他已经删掉的答案，
+ *     而他自己屏幕上什么都没有。
+ *   · **`'drop-pending'`**：把队列里那条还没发出去的摘掉（`dropQuestionFromQueue`）。
+ *     该摘而不摘的后果是**交上去一条他已经删掉的内容**（本地那条会被重放）。
+ *   · **`'nothing'`**：什么都不做。⚠️ 这一档不能靠「发一条清空也一样」省掉 ——
+ *     服务端会因此为一道**从没作答过的题**建出一行 `value` 为 NULL 的作答，
+ *     教师看板立刻把这名学生显示成「已开始作答」，之后这一题还能被「提交」成一个空答案。
+ *
+ * 🔴 **`inFlight` 那一项是 2026-10-09 审计 §B4b 补的**（原先判据只有 `confirmed`）：
+ *    `flush` 是「取队首快照 → `await putAnswer` → 出队」，**在途那一条仍然在队列里**，
+ *    而 `lastSentRef` 要等 200 回来才写 ⇒ 学生在这段时间把题删干净，旧判据会走
+ *    `'drop-pending'`：把在途那条摘掉，可那个 PUT **照样落库**
+ *    ⇒ 屏幕空、库里有、而队列里没有任何一条会去纠正它。
+ *    ⇒ 「服务端可能已经有这一行」= **确认发过** 或 **正在发**，两者取或。
+ *
+ * ⚠️ `confirmed` 与 `inFlight` 都不成立而 `pending` 成立时，才是「真的从没出去过」
+ *    （敲了又删、还没到 1.5 秒防抖）—— 那一档才是 `drop-pending` 的正身。
+ */
+export function emptyEditAction(state: { confirmed: boolean; inFlight: boolean; pending: boolean }): EmptyEditAction {
+  // 「服务端可能有这一行」⇒ 必须发一条清空去纠正它。
+  if (state.confirmed || state.inFlight) return 'enqueue-clear';
+  // 从没出去过 ⇒ 摘掉，别为它建一行空作答。
+  if (state.pending) return 'drop-pending';
+  return 'nothing';
 }
 
 /**

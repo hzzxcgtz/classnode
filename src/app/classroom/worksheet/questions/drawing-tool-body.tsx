@@ -1,13 +1,13 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import { readDrawingBackground, readDrawingTool } from '@/lib/worksheet-drawing';
 import { readDrawingStarter } from '@/lib/worksheet-drawing-starter.ts';
-import { keepsDrawingDocument, type DrawingDocument } from '@/lib/worksheet-drawing-document';
+import { keepsDrawingDocument, keepsPreviousImage, type DrawingDocument } from '@/lib/worksheet-drawing-document';
 import { defaultInkBox } from '@/lib/worksheet-ink';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import type { WorksheetQuestionNode } from '@/lib/types';
@@ -38,6 +38,15 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
   const [maximized, setMaximized] = useState(false);
   const box = draft.box.w > 0 && draft.box.h > 0 ? draft.box : defaultInkBox(node);
   const drawingDocument = draft.drawing?.tool === tool ? draft.drawing : undefined;
+  /**
+   * `update` 闭包里要读**当下**那一份文档（照 `worksheetIdRef` / `answersLockedRef` 的写法）。
+   *
+   * ⚠️ 走 ref 而不是把它列进 `update` 的依赖：这一份**每次作答变化都会换新对象**
+   *    ⇒ `update` 的引用跟着换、`onChange` 在每一次作答后都换一个身份。
+   *    四个第三方画板各自怎么用 `onChange` 不由这一层说了算，别去动它们的依赖。
+   */
+  const documentRef = useRef(drawingDocument);
+  documentRef.current = drawingDocument;
 
   useEffect(() => {
     if (!maximized) return;
@@ -52,12 +61,17 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
   }, [maximized]);
 
   const update = useCallback((data: unknown) => {
+    const previous = documentRef.current;
     const nextDocument: DrawingDocument = {
       tool,
       data,
       // ⚠️ **保留上一次的快照**：`data` 每改一下这份文档就重建一次，顺手把 `image` 丢掉
       //    等于「学生一动笔，教师/AI 手里那张图就没了」（而且不报错）。
-      ...(drawingDocument?.image ? { image: drawingDocument.image } : {}),
+      // 🔴 **但「他刚把画清空」那一档必须丢**（2026-10-09 审计 §B5）：那张快照画的正是
+      //    他删掉的东西，而 `keepsDrawingDocument` 认「有快照」也算作答 ⇒ 一份空作答照样交上去，
+      //    教师/AI/报告里全是那张**已经删掉的画**。判据见 `keepsPreviousImage`（四个画板的
+      //    「清空」都汇到这一个 `update`，所以判据只需要放在这里一处）。
+      ...(previous?.image && keepsPreviousImage(previous, tool, data) ? { image: previous.image } : {}),
     };
     onChange({
       kind: 'ink',
@@ -70,7 +84,7 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
        */
       drawing: keepsDrawingDocument(nextDocument) ? nextDocument : undefined,
     });
-  }, [box, drawingDocument?.image, onChange, tool]);
+  }, [box, onChange, tool]);
 
   /**
    * 抓图回来：只补 `image`，**不动 `data`**（快照晚到一步，不能覆盖学生刚改的内容）。

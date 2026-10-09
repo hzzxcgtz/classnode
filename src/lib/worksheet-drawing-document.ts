@@ -72,3 +72,34 @@ export function drawingDocumentIsEmpty(document: DrawingDocument): boolean {
 export function keepsDrawingDocument(document: DrawingDocument): boolean {
   return !drawingDocumentIsEmpty(document) || Boolean(document.image);
 }
+
+/**
+ * 这一次改动之后，**上一张快照还该不该留着**（★ 2026-10-09 审计 §B5）。
+ *
+ * 🔴 判据只有一条：**这次改动是不是把学生自己画的东西清空了**。
+ *    · **是** ⇒ 上一张快照画的正是他刚删掉的东西 ⇒ **作废**；
+ *    · 不是（正常增删 / 他本来就什么都没画）⇒ **留着**。留着这一半是老的、仍然成立的理由：
+ *      `data` 每改一下这份文档就重建一次，顺手丢掉 `image` 等于
+ *      「学生一动笔，教师/AI 手里那张图就没了」（而且不报错）。
+ *
+ * 🔴 为什么清空那一半必须作废：`keepsDrawingDocument` 认「有快照」也算一份作答 ⇒
+ *    一张过期的快照会让**一份已经被清空的作答照样交上去**：教师看板 / AI 联系表 /
+ *    Word 报告里全是学生**已经删掉**的那张画，而学生屏幕上什么都没有 —— 两端都不报错。
+ *
+ * ⚠️ 「他本来就什么都没画」与「画过又清空」在**新数据**上完全一样（都是空），
+ *    只有拿**上一份**比才分得开 ⇒ 所以本判据必须收 `previous`，不能只看新数据。
+ *    两者处置**相反**：
+ *      · 前者的快照**就是**教师设的底稿（2026-10-07 修的那条：学生还没动笔时，
+ *        那是教师唯一能看到底稿的地方，丢了监控面板就空白）；
+ *      · 后者是学生自己的东西被删掉之后的残留。
+ *
+ * ⚠️ `undefined`（没有上一份）与「换了工具」都回 `false`（没有可留的上一张）：
+ *    调用点那边 `drawingDocument?.image` 已经先挡了一层，这两支在那里到不了。
+ */
+export function keepsPreviousImage(previous: DrawingDocument | undefined, tool: DrawingMode, data: unknown): boolean {
+  if (!previous || previous.tool !== tool) return false;
+  // 上一份本来就是空的（底稿快照那一档）⇒ 这一张不是「他刚删掉的东西」，留着。
+  if (drawingDocumentIsEmpty(previous)) return true;
+  // 上一份有内容：新数据也还有内容 ⇒ 正常改动；新数据空了 ⇒ 他刚把东西清掉 ⇒ 作废。
+  return !drawingDocumentIsEmpty({ tool, data });
+}

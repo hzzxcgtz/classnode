@@ -319,6 +319,16 @@ export function useChatSocket(options: ChatSocketOptions) {
       });
 
       socket.on('shield-warned', (data: ShieldWarnEvent) => {
+        // 🔴 **收回「等待 AI」闸门**（2026-10-09 审计 §B2）。服务端在这条路上**直接 `return`**
+        //（`server/src/socket/index.ts` 的 `emit('shield-warned')` 之后），**根本不会调用 AI**
+        // ⇒ 这一轮到此为止，不会再有任何事件来收这个闸门。
+        // 不收的后果是一处**没有出口的死路**：输入框 `disabled`、发送键被 `waitingAI` 挡住、
+        // 屏幕上那条「正在思考」永不消失；唯一可点的「停止生成」只在 `allowStudentStop !== false`
+        // 时才渲染 ⇒ 关掉该开关的课堂上，学生连一条都再发不出去，只能刷新页面。
+        // ⚠️ 另外十一个「这一轮到此为止」的处理器全都收了（名单与理由见
+        //    `waiting-gate.test.ts`）—— 少这一条，正是它一直没被发现的原因。
+        optionsRef.current.sendingRef.current = false;
+        optionsRef.current.setWaitingAI(false);
         const name = data.studentName || '学生';
         optionsRef.current.setShieldWarning(`${name}同学你好，课堂交流请使用文明用语哦！请修改你的提问。`);
         // 将对话区域中上一条学生消息替换为过滤后的内容

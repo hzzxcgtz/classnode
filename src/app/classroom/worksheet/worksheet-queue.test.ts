@@ -21,6 +21,7 @@ import {
   shouldFlushOnLockChange,
   dropQueueItem,
   dropQuestionFromQueue,
+  emptyEditAction,
   hydrateAnswers,
   isPermanentFailure,
   permanentFailureMessage,
@@ -291,6 +292,46 @@ test('🔴 反向断言：只比 questionId（修好之前的形状）⇒ 上面
   // 别把「挡住回退」写成「凡出队都特殊」。
   const only = [sent];
   assert.deepEqual(legacyDrop(only, 'q1'), dropQueueItem(only, sent));
+});
+
+// ── 2c. 🔴 「学生把这一题删干净了」之后该做什么（三档，不是一个布尔值）──────
+//
+// 问题的形状：屏幕上这一题空了，而**服务端那一行可能还在**。三档各自的代价写在
+// `emptyEditAction` 的注释里。中间那一档（`inFlight`）是 2026-10-09 审计 §B4b 补的。
+
+test('🔴 空编辑的三档：发过 / **正在发** ⇒ 发清空；只是挂着没发出去 ⇒ 摘掉；其余不动', () => {
+  // ① 确认发过 ⇒ 必须发一条「清空」。不发 = 教师看板上留着他已经删掉的答案。
+  assert.equal(emptyEditAction({ confirmed: true, inFlight: false, pending: false }), 'enqueue-clear');
+  // ② 🔴 **正在发**：那条 PUT 可能已经落库，而它还在队列里挂着。
+  //    当成「从没发过」摘掉的话 —— 屏幕空了、库里有内容、队列里没有东西去纠正它。
+  assert.equal(emptyEditAction({ confirmed: false, inFlight: true, pending: true }), 'enqueue-clear',
+    '在途那一条被当成「从没发出去过」⇒ 学生删掉的东西会留在库里，而屏幕上什么都没有');
+  // ③ 真的从没出去过（敲了又删、还没到 1.5 秒防抖）⇒ 摘掉。这才是 `drop-pending` 的正身。
+  assert.equal(emptyEditAction({ confirmed: false, inFlight: false, pending: true }), 'drop-pending');
+  // ④ 什么都不做。⚠️ 这一档不能靠「顺手发一条清空也一样」省掉：那会为一道**从没作答过**的题
+  //    建出一行 NULL 作答，教师看板立刻把这名学生显示成「已开始作答」。
+  assert.equal(emptyEditAction({ confirmed: false, inFlight: false, pending: false }), 'nothing');
+  // 确认发过、队列里还挂着别的题 ⇒ 仍然是「发清空」（`pending` 不许把这一档拉回去）。
+  assert.equal(emptyEditAction({ confirmed: true, inFlight: false, pending: true }), 'enqueue-clear');
+});
+
+test('🔴 反向断言：旧判据（只看 `confirmed`）⇒ 第 ② 格必红', () => {
+  // 这就是修好之前那段代码的形状：`lastSentRef` 有值就发清空，否则队列里挂着就摘掉 ——
+  // 「正在发」那一格因此被归进「从没发出去过」。
+  const legacy = (state: { confirmed: boolean; inFlight: boolean; pending: boolean }): string => (
+    state.confirmed ? 'enqueue-clear' : state.pending ? 'drop-pending' : 'nothing'
+  );
+  const inFlight = { confirmed: false, inFlight: true, pending: true };
+  assert.equal(legacy(inFlight), 'drop-pending', '这就是回退后的样子');
+  assert.notEqual(legacy(inFlight), emptyEditAction(inFlight), '回退 ⇒ 这一条必须红');
+  // ⚠️ 阴性对照：其余三格在回退前后**恰好相同** —— 别把「挡住回退」写成「凡空编辑都特殊」。
+  const same = [
+    { confirmed: true, inFlight: false, pending: false },
+    { confirmed: true, inFlight: false, pending: true },
+    { confirmed: false, inFlight: false, pending: true },
+    { confirmed: false, inFlight: false, pending: false },
+  ];
+  for (const state of same) assert.equal(legacy(state), emptyEditAction(state));
 });
 
 test('🔴 replayOrder：按 at 升序，而不是数组顺序', () => {

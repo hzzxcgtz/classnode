@@ -27,6 +27,24 @@ test('交出作答走 `keepsDrawingDocument` —— 不许退回「只看学生�
   assert.ok(!/drawingDocumentIsEmpty\(/.test(body), '又在组件里直接判「空」了 —— 底稿会被连图一起丢掉');
 });
 
+test('🔴 学生按了「清空」⇒ 上一张快照不许跟着交上去', () => {
+  const at = body.indexOf('const update = useCallback');
+  assert.notEqual(at, -1, 'update 没找到 —— 先修这条判据');
+  const update = body.slice(at, body.indexOf('const updateImage', at));
+  assert.ok(update.length > 100, `update 那段没抠出来（${update.length}）—— 先修这条判据`);
+  /*
+   * 🔴 2026-10-09 审计 §B5：四个画板的「清空」**都**汇到这一个 `update`（各自 `onChange(空数据)`），
+   *    而它无条件把上一张快照带过去：
+   *      · 学生画完 → 抓了一张快照 → 按「清空」⇒ `data` 空了，`image` 还是那张**画着他刚删掉的东西**的图；
+   *      · `keepsDrawingDocument` 因为「有快照」照样判它值得交 ⇒ 那一份照样落库；
+   *      · 教师看板 / AI 联系表 / Word 报告看到的都是**学生已经删掉的那张画**，而学生屏幕上什么都没有。
+   *    ⇒ 判据必须落在「**这一次改动是不是把学生自己画的东西清空了**」（`keepsPreviousImage`）：
+   *      是 ⇒ 那张快照**作废**（它画的正是被删掉的东西）。
+   */
+  assert.match(update, /keepsPreviousImage\(/,
+    '清空之后照旧把上一张快照带上 ⇒ 教师/AI 看到的是学生已经删掉的那张画');
+});
+
 test('★ 快照可以**单独成立** —— 第一张图到达时数据可能还没有', () => {
   const at = body.indexOf('const updateImage = useCallback');
   assert.notEqual(at, -1, 'updateImage 没找到 —— 先修这条判据');

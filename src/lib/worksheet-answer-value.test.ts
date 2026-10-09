@@ -488,6 +488,95 @@ test('★ isDraftEmpty：ink 的判据是「一笔都没有」，不看那个占
   }), false, '第三方文档没有旧笔迹也仍是一份有效作答');
 });
 
+test('🔴 只写了字的笔迹**是一份作答**：能提交，`isDraftEmpty` 也不许说它空', () => {
+  // 🔴 2026-10-09 审计 §B3：`isDraftEmpty` 与 `valueFromDraft` 的 ink 支**都只看 `strokes`**，
+  //    不看 `texts` ⇒ 学生用画布上的「文字」工具写了一段话、一笔没画：
+  //    屏幕上有字、`提交本题` 按不动（`isDraftEmpty` 说这一题是空的），
+  //    而 `valueFromDraft` 里那段**专门为 `texts` 写的**重建代码（`:507-518`）永远够不到。
+  //    渲染层与报表层 2026-09-30 已经认了「只写了字」这份作答（服务端 `inkHasContent`），
+  //    只有**提交这条路**还按旧口径 —— 学生写了半天的字交不上去，两端都不报错。
+  const textOnly: AnswerDraft = { kind: 'ink', box: DRAWN_BOX, strokes: [], texts: [DRAWN_TEXT] };
+  assert.equal(isDraftEmpty(textOnly), false, '只写了字 —— 屏幕上明明有字，不许说这一题是空的');
+
+  const built = buildAnswerValue(drawingNode(), textOnly);
+  assert.notEqual(built, null, '只写了字必须能提交');
+  if (!built || (built.format !== 'ink/v1' && built.format !== 'drawing/v1')) {
+    assert.fail(`只写了字交出去的必须是笔迹格式，实际是 ${built?.format}`);
+  }
+  assert.deepEqual(built.texts, [DRAWN_TEXT], '文字要原样交出去');
+  // 手写问答同一份输入态也一样（裁定 6：一个实现、两个 `format` 名）。
+  const handwriting = buildAnswerValue(handwritingNode('short-answer'), textOnly);
+  assert.notEqual(handwriting, null, '手写问答上只写了字同样要能提交');
+  assert.equal(handwriting?.format, 'ink/v1');
+});
+
+test('🔴 空白文字条**不算**内容（否则会交上去一份「有内容」的空作答）', () => {
+  // 上一条的反面，也是那个最自然的过度修正：判据从「长度 > 0」改成「有 `texts`」，
+  // 于是一条 `{ text: '' }` 就让这一题变成「有内容可提交」——
+  // `valueFromDraft` 那一侧的过滤（`item.text !== ''`）会把它剔掉，
+  // 交出去的是 `{ format, canvas, strokes: [], }`：**服务端收到一份空作答**，
+  // 教师看板上这名学生从「未作答」变成「已开始作答」，而屏幕上什么都没写。
+  // ⇒ 两处必须用**同一条**判据，且那条判据要**照抄** `valueFromDraft` 的过滤条件。
+  const blank: AnswerDraft = { kind: 'ink', box: DRAWN_BOX, strokes: [], texts: [{ ...DRAWN_TEXT, text: '' }] };
+  assert.equal(isDraftEmpty(blank), true);
+  assert.equal(buildAnswerValue(drawingNode(), blank), null);
+});
+
+test('🔴 两处判据必须**同进同出**：`isDraftEmpty` ⟺ `buildAnswerValue === null`', () => {
+  // 同一件事（「这一题有没有东西可交」）今天有两份判据，而这个 bug 就是它们分岔的产物：
+  // 一份说「空」（按钮按死）、另一份说「能交」。所以这里不逐条断两边各自的值，
+  // 而是断**它们一致** —— 将来再有人只改其中一份，这条立刻红。
+  const cases: Array<[string, AnswerDraft]> = [
+    ['一笔一字都没有', { kind: 'ink', box: DRAWN_BOX, strokes: [] }],
+    ['只有笔画', { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE] }],
+    ['只有字', { kind: 'ink', box: DRAWN_BOX, strokes: [], texts: [DRAWN_TEXT] }],
+    ['笔画 + 字', { kind: 'ink', box: DRAWN_BOX, strokes: [STROKE], texts: [DRAWN_TEXT] }],
+    ['只有一个空白文字条', { kind: 'ink', box: DRAWN_BOX, strokes: [], texts: [{ ...DRAWN_TEXT, text: '' }] }],
+    // ⚠️ 空格这一条是**为未来的单边 `trim` 准备的**：判据与 `valueFromDraft` 的过滤今天
+    //    都**不看 trim**（空格算内容，交出去的就是那个空格）。谁只把其中一处改成 `trim`，
+    //    两份判据立刻分岔 —— 而上面「空白文字条」那一条（空串）**抓不到**这种改法，
+    //    因为空串在两种口径下都是空。
+    ['只有一个空格', { kind: 'ink', box: DRAWN_BOX, strokes: [], texts: [{ ...DRAWN_TEXT, text: ' ' }] }],
+    ['只有第三方文档', {
+      kind: 'ink', box: DRAWN_BOX, strokes: [],
+      drawing: { tool: 'flowchart', data: { nodes: [{ id: 'n1' }], edges: [] } },
+    }],
+  ];
+  for (const [label, draft] of cases) {
+    const built = buildAnswerValue(drawingNode(), draft);
+    assert.equal(
+      isDraftEmpty(draft),
+      built === null,
+      `${label}：两份判据说不到一起去（一份说空、另一份说能交）`,
+    );
+    // ★ 只比「是不是 `null`」**不够** —— 实测漏过一种改法：判据说「有内容」，
+    //   而 `valueFromDraft` 的过滤把它剔干净，交出去的是
+    //   `{ format, canvas, strokes: [], texts: [] }`：**非 `null`，但里面什么都没有**。
+    //   服务端会照收（`inkHasContent` 判它为空、报表印「这一题没有笔画」），
+    //   教师看板上这名学生却从「未作答」变成「已开始作答」。
+    //   ⇒ 所以还要断「交出去的那个值**确实有内容**」。
+    if (built !== null) {
+      assert.equal(wireInkHasContent(built), true,
+        `${label}：交出去的值里其实什么都没有 —— 服务端会收到一份空作答`);
+    }
+  }
+});
+
+/**
+ * 「这份**线上形状**的笔迹值有没有内容」—— 服务端 `inkHasContent`
+ * （`server/src/services/ink-path.ts`）的**同款判据**，在这里当**判据的判据**用。
+ *
+ * ⚠️ 它是刻意的一份拷贝，不引服务端那个模块：`src/` 与服务端是两个包（服务端那份用
+ * `.js` 后缀的 ESM import、前端这份要被 `next build` 打包），互引会把两边的构建都拖下水。
+ * 代价是服务端那条规则变了这里要跟着改 —— 但它证的是「前端交出去的东西满足服务端的要求」，
+ * 那正是这条断言存在的理由（本条两端口径不一致过一次：只写字的作答）。
+ */
+function wireInkHasContent(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const ink = value as { strokes?: unknown[]; texts?: unknown[]; drawing?: unknown };
+  return (ink.strokes?.length ?? 0) > 0 || (ink.texts?.length ?? 0) > 0 || Boolean(ink.drawing);
+}
+
 test('第三方绘图文档能提交并从 drawing/v1 无损恢复', () => {
   const draft: AnswerDraft = {
     kind: 'ink',

@@ -5,6 +5,7 @@ import {
   DRAWING_DOCUMENT_MAX_CHARS,
   drawingDocumentIsEmpty,
   keepsDrawingDocument,
+  keepsPreviousImage,
   readDrawingDocument,
 } from './worksheet-drawing-document.ts';
 
@@ -71,4 +72,35 @@ test('★ 有底稿、学生还没动笔 ⇒ 这一份**要交**（否则教师�
     true,
     '思维导图同理',
   );
+});
+
+/*
+  🔴 2026-10-09 审计 §B5：清空之后那张快照画的正是学生**刚删掉**的东西，而
+  `keepsDrawingDocument` 认「有快照」也算一份作答 ⇒ 一份**空作答照样交上去**：
+  教师看板 / AI 联系表 / Word 报告里全是那张已经删掉的画，学生屏幕上却什么都没有。
+  （四个画板的「清空」都汇到 `drawing-tool-body.tsx` 的 `update`，判据只放在那里一处。）
+*/
+test('🔴 画过再清空 ⇒ 上一张快照**作废**（否则教师看到的是学生已经删掉的那张画）', () => {
+  const image = '/uploads/chat/chat-5b1e8d3a-7c26-4f19-8d0e-1a2b3c4d5e6f.png';
+  const drawn = { tool: 'free' as const, data: { paths: [{ strokeWidth: 2 }] }, image };
+  const cleared = { paths: [] };   // 学生按了「清空」
+
+  // 前提：这两条一起才构成那句谎话 —— 清空之后它**仍然被判成值得交**。
+  assert.equal(drawingDocumentIsEmpty(drawn), false, '前提：清空前他确实画了东西');
+  assert.equal(keepsDrawingDocument({ tool: 'free', data: cleared, image }), true,
+    '（今天的行为）有快照 ⇒ 仍然「值得交」—— 这就是那张已经删掉的画能交上去的入口');
+
+  assert.equal(keepsPreviousImage(drawn, 'free', cleared), false,
+    '画过再清空 ⇒ 上一张快照画的正是他刚删掉的东西，绝不能跟着交上去');
+
+  // ⚠️ 下面四格一条都不能少：少了它们，「凡清空都丢快照」也能让上面那句变绿 ——
+  //    而那会砸掉 2026-10-07 修好的那一档（学生还没动笔时，底稿只存在于快照里）。
+  assert.equal(keepsPreviousImage({ tool: 'free', data: cleared, image }, 'free', cleared), true,
+    '本来就什么都没画（快照画的是教师设的底稿）⇒ 留着');
+  assert.equal(keepsPreviousImage(drawn, 'free', drawn.data), true,
+    '正常改动（非空 → 非空）⇒ 留着：丢了等于「学生一动笔，教师手里那张图就没了」');
+  assert.equal(keepsPreviousImage({ tool: 'free', data: cleared, image }, 'free', { paths: [{ strokeWidth: 2 }] }), true,
+    '从空开始画 ⇒ 留着（新数据有内容）');
+  assert.equal(keepsPreviousImage({ tool: 'math', data: { elements: [{ id: 'e1' }] }, image }, 'free', cleared), false,
+    '换了工具 ⇒ 没有「这个工具的上一张」可留（调用点那边其实先被 `tool` 挡住，这里只保证不误留）');
 });

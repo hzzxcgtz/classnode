@@ -447,13 +447,46 @@ export function emptyDraftFor(node: WorksheetQuestionNode): AnswerDraft {
  * 空白字符不算（填空 / 问答）。多空填空里**只要有**一个空填了就不算空 —— 只填一半
  * 是可以提交的，服务端会判部分给分。
  */
+/** `AnswerDraft` 里 `ink` 那一支（「有没有内容」这条判据只对它成立）。 */
+type InkAnswerDraft = Extract<AnswerDraft, { kind: 'ink' }>;
+
+/**
+ * 这份**画布输入态**里有没有内容（笔画 / 文字 / 第三方文档，至少一样）。
+ *
+ * 🔴 **只有这一条判据**，`isDraftEmpty` 与 `valueFromDraft` 共用它。
+ *    ★ 2026-10-09（审计 §B3）：这两处从前**各写一份**、而且两份都只看 `strokes` ——
+ *    学生用画布上的「文字」工具写了一段话、一笔没画：
+ *      · `isDraftEmpty` 说这一题是空的 ⇒ 面板把「提交本题」按死；
+ *      · `valueFromDraft` 回 `null` ⇒ 它里面那段**专为 `texts` 写的**重建代码
+ *        （`:507` 那个展开）**永远够不到**；
+ *      · 渲染层与报表层却已经认这份作答（服务端 `inkHasContent`，2026-09-30 修的）
+ *        ⇒ 学生写了半天的字交不上去，而屏幕上没有任何异常。
+ *    ⇒ 两处必须同进同出：`worksheet-answer-value.test.ts` 里那条
+ *      「`isDraftEmpty` ⟺ `buildAnswerValue === null`」就是钉它的。
+ *
+ * ⚠️ **`texts` 的过滤条件必须与 `valueFromDraft` 里那段重建逐字相同**（`typeof === 'string'
+ *    且不为空串）：放宽成「数组非空」，一条 `{ text: '' }` 就会让这一题变成「有内容可提交」，
+ *    而重建那一侧把它剔掉 ⇒ **交上去一份空作答**（服务端多一行「已开始作答」，教师看板上
+ *    这名学生从没作答变成答过了，屏幕上什么都没写）。收严（`trim`）则相反：屏幕上看得见
+ *    一个空格、按钮却按不动。判据的输出必须与**真正交出去的那个值**逐字对应。
+ *
+ * 🔴 `drawing` 也算内容，但**别在 `questions/ink-body.tsx` 的编辑器分派上用本函数**：
+ *    那里问的是「有没有笔画或文字（⇒ 用旧画板打开它）」，第三方文档在它那里**不算** ——
+ *    一个流程图作答要被送到流程图编辑器，而不是旧画板。
+ */
+export function inkDraftHasContent(draft: InkAnswerDraft): boolean {
+  return draft.strokes.length > 0
+    || Boolean(draft.drawing)
+    || (draft.texts ?? []).some((item) => typeof item.text === 'string' && item.text !== '');
+}
+
 export function isDraftEmpty(draft: AnswerDraft): boolean {
   if (draft.kind === 'choice') return draft.selected.length === 0;
   if (draft.kind === 'fill') return !draft.texts.some((text) => text.trim() !== '');
-  // ★ M4b：「一笔都没有」才算空 —— 与选择 / 连线 / 归类同一条口径（只有 `text` 那两支
-  // 才看 trim）。⚠️ 不看 `box`：起点那个默认框是占位，把它当内容会让一道**没画过**的
+  // ★ M4b：判据是「有没有内容」（笔画 / 文字 / 第三方文档），定义在 `inkDraftHasContent` 一处。
+  // ⚠️ 不看 `box`：起点那个默认框是占位，把它当内容会让一道**没画过**的
   // 画布题变成「有内容可提交」。
-  if (draft.kind === 'ink') return draft.strokes.length === 0 && !draft.drawing;
+  if (draft.kind === 'ink') return !inkDraftHasContent(draft);
   if (draft.kind === 'order') return draft.order.length === 0;
   if (draft.kind === 'match') return draft.links.length === 0;
   if (draft.kind === 'categorize') return Object.keys(draft.assignment).length === 0;
@@ -479,7 +512,9 @@ function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): Worksh
   // ⇒ 反证用例逐字钉着它（`worksheet-answer-value.test.ts` 那条
   //   「手写问答的 ink 输入态能提交」）；把这一支挪到下面去，它必红。
   if (isInkNode(node)) {
-    if (draft.kind !== 'ink' || (draft.strokes.length === 0 && !draft.drawing)) return null;
+    // 🔴 判据与 `isDraftEmpty` 共用 `inkDraftHasContent`（2026-10-09 审计 §B3：
+    //    这两处从前各写一份、都只看 `strokes` ⇒ 只写了字的作答交不出去）。
+    if (draft.kind !== 'ink' || !inkDraftHasContent(draft)) return null;
     if (draft.drawing && node.type !== 'drawing') return null;
     return {
       format: inkFormatOf(node),

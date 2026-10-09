@@ -19,6 +19,7 @@ import {
   shouldFlushOnLockChange,
   dropQueueItem,
   dropQuestionFromQueue,
+  emptyEditAction,
   hydrateAnswers,
   permanentFailureMessage,
   readCorrectBlanks,
@@ -201,6 +202,18 @@ export function useWorksheetAnswers({
 
   /** 队列的**内存权威**。`localStorage` 是它的镜像（每写必同步）。 */
   const pendingRef = useRef<WorksheetQueueItem[]>([]);
+  /**
+   * ★ 2026-10-09（审计 §B4b）：**此刻正在发的那一条**（`flush` 取走的快照），没有就是 `null`。
+   *
+   * 🔴 为什么非要有它：`flush` 是「取队首快照 → `await putAnswer` → 出队」，
+   * **在途这一段里那一条仍然留在队列里**，而 `lastSentRef` 要等 200 回来才写 ⇒
+   * 学生这时把这一题删干净，`setDraft` 会以为「这一题从没交出去过」而把它摘掉 ——
+   * 可那个 PUT 照样落库：屏幕空、库里有、队列里没有任何一条会去纠正它。
+   * 判据（`emptyEditAction`）要的就是这一个事实，所以这里给它留痕。
+   *
+   * ⚠️ 记号必须在 `await` **之前**落下、在它**之后**清掉（`answer-inflight-wiring.test.ts` 钉着顺序）。
+   */
+  const inFlightRef = useRef<WorksheetQueueItem | null>(null);
   /**
    * 每一题**上一次成功落库**的值。
    *
@@ -458,7 +471,16 @@ export function useWorksheetAnswers({
       for (;;) {
         const next = replayOrder(pendingRef.current)[0];
         if (!next) break;
-        const outcome = await putAnswer(target, next);
+        // ★ 在途留痕（见 `inFlightRef`）。⚠️ 清掉的那一句在 `finally` 里：这一条无论是
+        // 成功、失败还是抛出去，都必须清 —— 留着它会让**之后**每一次空编辑都按「在途」处置
+        // （为一道从未存过的题发一串「清空」）。
+        inFlightRef.current = next;
+        let outcome: SaveOutcome;
+        try {
+          outcome = await putAnswer(target, next);
+        } finally {
+          inFlightRef.current = null;
+        }
         if (outcome.ok) {
           // ★ 只有服务端 200 才出队（规格 §8.3）。
           sessionExpiredRef.current = false;
@@ -614,12 +636,21 @@ export function useWorksheetAnswers({
       enqueue({ questionId: node.id, value, at: Date.now() });
       return;
     }
-    if (lastSentRef.current[node.id] !== undefined) {
-      enqueue({ questionId: node.id, value: null, at: Date.now() });
+    // 🔴 空的之后有**三档**处置，判据本体在 `emptyEditAction`（`worksheet-queue.ts`）里，
+    //    这里只分派。⚠️ 中间的 `inFlight` 那一项是 2026-10-09 审计 §B4b 补的：
+    //    在途那一条仍然在队列里，而 `lastSentRef` 还没写上它 —— 少了它，「正在发」会被
+    //    当成「从没发过」而摘掉，可那个 PUT 照样落库。
+    const action = emptyEditAction({
+      confirmed: lastSentRef.current[node.id] !== undefined,
+      inFlight: inFlightRef.current?.questionId === node.id,
+      pending: pendingRef.current.some((item) => item.questionId === node.id),
+    });
+    if (action === 'drop-pending') {
+      commitQueue(dropQuestionFromQueue(pendingRef.current, node.id));
       return;
     }
-    if (pendingRef.current.some((item) => item.questionId === node.id)) {
-      commitQueue(dropQuestionFromQueue(pendingRef.current, node.id));
+    if (action === 'enqueue-clear') {
+      enqueue({ questionId: node.id, value: null, at: Date.now() });
     }
   }, [commitQueue, enqueue, emitPreview]);
 

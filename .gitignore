@@ -97,3 +97,6 @@ docs/
 # 源码打包产物
 classnode-v*.tar.gz
 /dist/
+
+# Local acceptance installers and build manifests
+/release-candidates/

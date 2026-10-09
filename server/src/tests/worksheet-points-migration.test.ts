@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 /**
  * ★ 2026-09-26（教师裁定）：「学习单设置里的默认给分就不要了，**已经在每小题中设置了**。」
  *
@@ -40,6 +41,7 @@ async function openTempDb(t: { after: (fn: () => Promise<void> | void) => void }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-points-migration-'));
   const url = `file:${path.join(dir, 'test.db')}`;
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), 'DATABASE_URL 必须指向临时目录');
+  prepareTemporarySqliteFile(url);
   execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe',
   });

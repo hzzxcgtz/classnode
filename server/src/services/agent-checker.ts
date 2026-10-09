@@ -7,6 +7,7 @@
 import { PrismaClient } from '@prisma/client';
 import { Server } from 'socket.io';
 import { testAgentAvailability } from './ai-proxy.js';
+import { trackDataTask } from './data-maintenance.js';
 import { toAgentConfig } from './agent-config.js';
 
 let prisma: PrismaClient | null = null;
@@ -54,6 +55,10 @@ async function checkAgent(agent: {
 
 /** 执行一次全量检测（被手工检测和启动检测共用） */
 export async function runCheckNow(): Promise<void> {
+  await trackDataTask(checkAll);
+}
+
+async function checkAll(): Promise<void> {
   if (!prisma) return;
   try {
     const agents = await prisma.agent.findMany({

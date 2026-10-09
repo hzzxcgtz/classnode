@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 /**
  * ★ API Token 共享（第 1 步）：把现有 `coze` 智能体的 Token 抽成 `PlatformToken` 记录。
  *
@@ -34,6 +35,7 @@ async function openTempDb(t: { after: (fn: () => Promise<void> | void) => void }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-token-migration-'));
   const url = `file:${path.join(dir, 'test.db')}`;
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), 'DATABASE_URL 必须指向临时目录');
+  prepareTemporarySqliteFile(url);
   execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe',
   });

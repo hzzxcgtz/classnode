@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -56,6 +57,7 @@ async function openTempDb(): Promise<TempDb> {
     `DATABASE_URL 必须指向临时目录，实际是 ${url}`,
   );
   assert.notEqual(path.resolve(file), path.resolve(HERE, '../../prisma/dev.db'));
+  prepareTemporarySqliteFile(url);
   execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url },
     stdio: 'pipe',
@@ -635,7 +637,7 @@ test('★ 清除：教师 200 且真的删掉；学生 403 且一行不少；广
   const rooms = pushes.map(item => item.room).sort();
   assert.deepEqual(
     rooms,
-    [`student:${student.id}`, `teacher:${classroom.id}`].sort(),
+    [`participant:${classroom.id}:${participant.id}`, `teacher:${classroom.id}`].sort(),
     '🔴 两处都要发：少了学生那一处，他会把刚被清掉的内容再写回去',
   );
   assert.equal(pushes[0].payload.participantId, participant.id);

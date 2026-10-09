@@ -81,6 +81,7 @@ export interface AgentConfig {
   botId?: string;
   extra?: string;
   conversationId?: string;
+  sessionId?: string;
 }
 
 type CozeMultimodalItem = { type: 'text'; text: string } | { type: 'image'; file_id: string };
@@ -507,7 +508,7 @@ async function proxyCozeAgent(
   const extra = agent.extra ? safeParseJSON<CozeAgentExtra>(agent.extra, {}) : {};
   const projectId = extra.projectId || '';
 
-  const sessionId = `student_${userName}`;
+  const sessionId = agent.sessionId || `student_${userName}`;
 
   const body: CozeAgentRequestBody = {
     content: {
@@ -755,7 +756,7 @@ async function proxyCozeAgentStream(
   const extra = agent.extra ? safeParseJSON<CozeAgentExtra>(agent.extra, {}) : {};
   const projectId = extra.projectId || '';
 
-  const sessionId = `student_${userName}`;
+  const sessionId = agent.sessionId || `student_${userName}`;
 
   const body: CozeAgentRequestBody = {
     content: {

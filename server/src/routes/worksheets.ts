@@ -1,3 +1,4 @@
+import { readAnswerGeneration, advanceAnswerGeneration, answerGenerationFor, type AnswerGeneration } from '../services/answer-generation.js';
 import crypto from 'crypto';
 import { readFile } from 'node:fs/promises';
 import { Router } from 'express';
@@ -135,6 +136,36 @@ export const worksheetAccessGate: RequestHandler = (req, res, next) => {
   }
   requireTeacher(req, res, next);
 };
+
+const mutationEvents = new WeakMap<Request, Array<() => void>>();
+const mutationQueues = new WeakMap<PrismaClient, Promise<void>>();
+/** Serialize worksheet writes and defer HTTP responses/events until DB commit. */
+function worksheetMutation(handler: (req: Request, res: Response, db: PrismaClient) => Promise<unknown>) {
+  return async (req: Request, res: Response) => {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const previous = mutationQueues.get(prisma) || Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>(resolve => { release = resolve; });
+    mutationQueues.set(prisma, current);
+    await previous;
+    let status = 200;
+    let payload: unknown;
+    const deferred = { status(code: number) { status = code; return deferred; }, json(value: unknown) { payload = value; return deferred; } };
+    mutationEvents.set(req, []);
+    try {
+      // Helpers only use model queries; the transaction handle shares that API.
+      await prisma.$transaction(tx => handler(req, deferred as unknown as Response, tx as PrismaClient), { timeout: 30000 });
+      const events = mutationEvents.get(req) || [];
+      mutationEvents.delete(req);
+      for (const event of events) event();
+      res.status(status).json(payload);
+    } catch (error) {
+      mutationEvents.delete(req);
+      console.error('[worksheets] 作答事务失败:', error);
+      res.status(500).json({ error: '作答操作失败，请重试' });
+    } finally { release(); if (mutationQueues.get(prisma) === current) mutationQueues.delete(prisma); }
+  };
+}
 
 const router: Router = Router();
 
@@ -921,16 +952,15 @@ router.post('/:id/review', async (req, res) => {
  * 少了后者，教师清了之后学生屏幕上还留着他刚写的内容，他再点一次保存（1.5 秒防抖）
  * 就**写回去了**，而教师看到的是「清了又回来了」。
  *
- * ⚠️ 学生房间的键是 `student:<Student.id>`（`socket/index.ts` 的 join-classroom 用的就是
- * 它），而手上拿到的是 `participantId`（`ClassroomStudent.id`）—— 两者**不是一回事**。
- * 小组 / 高级模式下 `studentId` 可能是 `null`（一块设备 = 一个组）⇒ 那一侧**发不出去**，
- * 只发教师这一侧。**不要为了凑一个 id 去猜**：学生端下一次水合会自然对齐。
+ * 学生和小组设备统一加入 participant:<classroomId>:<participantId> 房间。
+ * 广播在清除事务提交后送达，避免客户端读取未提交的数据。
  */
 function broadcastAnswersCleared(
   req: Request,
   ctx: { classroomId: string; participantId: string; studentId: string | null },
-  payload: { worksheetId: string; questionId: string | null },
+  payload: { worksheetId: string; questionId: string | null; generation?: AnswerGeneration },
 ): void {
+  if (mutationEvents.has(req)) { mutationEvents.get(req)!.push(() => broadcastAnswersCleared(req, ctx, payload)); return; }
   const io = req.app.get('io') as Server | undefined;
   if (!io) {
     // 与 `broadcastAnswerUpdate` 同一条：不缺声不响地吞掉（看板只会「不动」，最难查）。
@@ -942,39 +972,11 @@ function broadcastAnswersCleared(
     participantId: ctx.participantId,
     worksheetId: payload.worksheetId,
     questionId: payload.questionId,
+    generation: payload.generation,
   };
+  io.to(`participant:${ctx.classroomId}:${ctx.participantId}`).emit('worksheet-answers-cleared', event);
   io.to(worksheetBoardRoom(ctx.classroomId)).emit('worksheet-answers-cleared', event);
-  if (ctx.studentId) {
-    const room = `student:${ctx.studentId}`;
-    // 🔴 **发之前先看那个房间里有没有人。** 这一条是给「教师清了、学生屏幕上没动」
-    // 那类报告用的：它把两种完全不同的原因分开 ——
-    //   · 房间是空的 ⇒ 学生**不在线**（或不在学习单页面上，那个钩子还没挂）；
-    //   · 房间有人 ⇒ 广播送到了，是客户端那一侧没处置。
-    // 少了这一行，两种原因在日志里长得一模一样（都只有「教师点了清除」）。
-    // ⚠️ `io.sockets.adapter.rooms` 在读不到时**不许抛**（测试里的 io 是个只有
-    // `to().emit()` 的替身）—— 拿不到就当不知道，不影响广播本身。
-    let size: number | null = null;
-    try {
-      size = io.sockets?.adapter?.rooms?.get(room)?.size ?? null;
-    } catch {
-      size = null;
-    }
-    // ⚠️ 只在**发不出去**时说一句。原来还有一条「有 N 个连接」的成功日志 ——
-    // 那是查「学生端不清空」那次事故时加的诊断，查完就删了（它每次都打，没人会看）。
-    // 这一条留着：它说的是一个**可操作的事实**（教师清了、但那个学生不在线），
-    // 而这件事在屏幕上没有任何提示 —— 少了它，那条路是静默的。
-    if (size === 0) {
-      console.warn(
-        `[worksheets] 清除广播：${room} 里没有连接 —— 学生不在线，或他的学习单面板没挂上`
-        + `（participantId=${ctx.participantId}，questionId=${payload.questionId ?? '(整张)'}）`,
-      );
-    }
-    io.to(room).emit('worksheet-answers-cleared', event);
-  } else {
-    // 小组 / 高级模式下一块设备是一个组，`ClassroomStudent.studentId` 可能是 null。
-    // 这一侧**发不出去是已知的**，但要说出来 —— 否则它和「学生不在线」分不开。
-    console.warn(`[worksheets] 清除广播：这个参与者没有关联的学生（studentId 为空），学生那一侧不发`);
-  }
+
 }
 
 /**
@@ -994,9 +996,9 @@ function broadcastAnswersCleared(
  * 正则之外（两条要求恰好两段、一条末段必须是 `submit`）⇒ 天然是教师专用。
  * 这一点由用例正面钉着（学生 403 + 一行不少），不是靠这段注释。
  */
-router.delete('/classroom/:classroomId/answers', async (req, res) => {
+router.delete('/classroom/:classroomId/answers', worksheetMutation(async (req, res, database) => {
   try {
-    const prisma: PrismaClient = req.app.get('prisma');
+    const prisma = database;
     const classroomId = req.params.classroomId;
     const body = (req.body ?? {}) as Record<string, unknown>;
     const participantId = typeof body.participantId === 'string' ? body.participantId : '';
@@ -1006,13 +1008,20 @@ router.delete('/classroom/:classroomId/answers', async (req, res) => {
     // `questionId` 缺省 / 空串都当「整张清除」—— 界面上那一个入口就是这么调的。
     const questionId = typeof body.questionId === 'string' && body.questionId ? body.questionId : null;
 
+    const owner = await prisma.classroomStudent.findFirst({ where: { id: participantId, classroomId } });
+    const worksheet = await prisma.worksheet.findUnique({ where: { id: worksheetId } });
+    if (!owner || !worksheet) return res.status(404).json({ error: '参与者或学习单不存在' });
+    const generation = await advanceAnswerGeneration(prisma, classroomId, worksheetId, participantId, questionId);
     const response = await prisma.worksheetResponse.findUnique({
       where: { classroomId_worksheetId_participantId: { classroomId, worksheetId, participantId } },
       select: { id: true },
     });
     // 一行都没答过 ⇒ 没什么可清。**回 200 + removed: 0**，不是 404：
     // 教师的意图（「把这个人在这份单上的东西清掉」）已经达成了，报错只会让他以为出了故障。
-    if (!response) return res.json({ success: true, removed: 0 });
+    if (!response) {
+      broadcastAnswersCleared(req, { classroomId, participantId, studentId: owner.studentId }, { worksheetId, questionId, generation });
+      return res.json({ success: true, removed: 0 });
+    }
 
     const removed = (await prisma.worksheetAnswer.deleteMany({
       where: { responseId: response.id, ...(questionId ? { questionId } : {}) },
@@ -1031,14 +1040,14 @@ router.delete('/classroom/:classroomId/answers', async (req, res) => {
     });
     broadcastAnswersCleared(req, {
       classroomId, participantId, studentId: participant?.studentId ?? null,
-    }, { worksheetId, questionId });
+    }, { worksheetId, questionId, generation });
 
     res.json({ success: true, removed });
   } catch (error) {
     console.error('[worksheets] 清除作答数据失败:', error);
-    res.status(500).json({ error: '清除作答数据失败' });
+    throw error;
   }
-});
+}));
 
 router.get('/classroom/:classroomId/answers', async (req, res) => {
   try {
@@ -1968,13 +1977,13 @@ interface StudentWorksheetContext {
   };
 }
 
-async function requireOwnWorksheet(req: Request, res: Response): Promise<StudentWorksheetContext | null> {
+async function requireOwnWorksheet(req: Request, res: Response, database?: PrismaClient): Promise<StudentWorksheetContext | null> {
   const student = getStudentSession(req);
   if (!student) {
     res.status(401).json({ error: '需要学生身份' });
     return null;
   }
-  const prisma: PrismaClient = req.app.get('prisma');
+  const prisma: PrismaClient = database || req.app.get('prisma');
 
   const participant = await prisma.classroomStudent.findUnique({
     where: { id: student.studentId },
@@ -1982,9 +1991,11 @@ async function requireOwnWorksheet(req: Request, res: Response): Promise<Student
       id: true,
       classroomId: true,
       groupId: true,
+      blacklisted: true,
       classroom: {
         select: {
           mode: true,
+          status: true,
           // ★ M5a：锁定作答的判据跟着 context 走 —— 写路径要用它，免得每个端点再查一次课堂。
           answersLocked: true,
           // ★ 2026-09-30：同上 —— 「逐题开放」的清单也随 context 走（学生读学习单那条路要下发它）。
@@ -1999,6 +2010,11 @@ async function requireOwnWorksheet(req: Request, res: Response): Promise<Student
     return null;
   }
 
+  if (['PUT', 'POST'].includes(req.method) && (participant.blacklisted || participant.classroom.status !== 'active')) {
+    const code = participant.blacklisted ? 'student-blacklisted' : participant.classroom.status === 'paused' ? 'classroom-paused' : 'classroom-ended';
+    res.status(409).json({ error: code === 'classroom-paused' ? '课堂已暂停，请等待老师恢复' : code === 'classroom-ended' ? '课堂已结束' : '老师已暂停你的参与', code });
+    return null;
+  }
   const classroomLevelId = await loadClassroomLevelWorksheetId(prisma, participant.classroomId);
   const targetId = resolveMaterialTargetId({
     mode: participant.classroom.mode,
@@ -2257,6 +2273,7 @@ function broadcastAnswerUpdate(
   answer: AnswerRow,
 ): void {
   // `io` 从 `req.app.get('io')` 取（本项目约定：路由不直接 import io）。
+  if (mutationEvents.has(req)) { mutationEvents.get(req)!.push(() => broadcastAnswerUpdate(req, ctx, answer)); return; }
   const io = req.app.get('io') as Server | undefined;
   if (!io) {
     // 不明着吞掉：缺 io 时广播会静默消失，而看板只会「不动」——那是最难查的一种表现。
@@ -2486,9 +2503,9 @@ router.get('/:id/student-view', async (req, res) => {
  * ——顺手建一个 `WorksheetResponse` 会让教师看板把一个什么都没做的学生
  * 显示成「已开始作答」，而这条路径只是打开面板而已。
  */
-router.get('/:id/answers', async (req, res) => {
+router.get('/:id/answers', worksheetMutation(async (req, res, database) => {
   try {
-    const ctx = await requireOwnWorksheet(req, res);
+    const ctx = await requireOwnWorksheet(req, res, database);
     if (!ctx) return;
 
     const rows = await ctx.prisma.worksheetAnswer.findMany({
@@ -2535,7 +2552,7 @@ router.get('/:id/answers', async (req, res) => {
         })
       : [];
     const scoringByQuestion = new Map(scoringRows.map(item => [item.questionId, item.perStudent]));
-    res.json({ rows: rows.map(row => ({
+    res.json({ generation: await readAnswerGeneration(ctx.prisma, ctx.classroomId, ctx.worksheet.id, ctx.participantId), rows: rows.map(row => ({
       ...row,
       // 只下发当前学生自己的评分、简短评价与详细建议，不下发全班评分或智能体分析正文。
       aiReferenceScore: byId.has(row.questionId)
@@ -2563,17 +2580,17 @@ router.get('/:id/answers', async (req, res) => {
     })) });
   } catch (error) {
     console.error('[worksheets] 读取学生作答失败:', error);
-    res.status(500).json({ error: '读取作答失败' });
+    throw error;
   }
-});
+}));
 
 /**
  * 保存单题（学生端防抖 1.5s 调一次）。**幂等**：同一个 `(参与者, 学习单, 题)`
  * 连打两次只留一行，`value` 是后一次（规格 §5.3）。
  */
-router.put('/:id/answers', async (req, res) => {
+router.put('/:id/answers', worksheetMutation(async (req, res, database) => {
   try {
-    const ctx = await requireOwnWorksheet(req, res);
+    const ctx = await requireOwnWorksheet(req, res, database);
     if (!ctx) return;
 
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -2581,6 +2598,8 @@ router.put('/:id/answers', async (req, res) => {
     if (!questionId) return res.status(400).json({ error: '缺少 questionId' });
     // `questionId` 必须**属于这份 content**：题目 id 是答案行的关联键（规格 §3-P），
     // 收下一个不属于它的 id 会在看板上凭空多出一道题。
+    const generation = await readAnswerGeneration(ctx.prisma, ctx.classroomId, ctx.worksheet.id, ctx.participantId);
+    if ((body.generation ?? '0:0') !== answerGenerationFor(generation, questionId)) return res.status(409).json({ error: '老师已清除旧作答，请重新作答', code: 'answers-cleared' });
     const node = findQuestion(ctx.worksheet.content, questionId);
     if (!node) {
       return res.status(400).json({ error: '该题不属于这份学习单' });
@@ -2720,9 +2739,9 @@ router.put('/:id/answers', async (req, res) => {
     res.json({ success: true, questionId, status: 'draft' });
   } catch (error) {
     console.error('[worksheets] 保存作答失败:', error);
-    res.status(500).json({ error: '保存作答失败' });
+    throw error;
   }
-});
+}));
 
 /**
  * 提交单题。🔴 **判分在这里做**（规格 §5.4 第二条）：服务端算，前端只拿判分结果。
@@ -2737,9 +2756,9 @@ router.put('/:id/answers', async (req, res) => {
  *     **由得分驱动**（规格 §9），不下发 `score` 恰恰等于学生端画不出奖励。
  * 所以现在返回 `{ isCorrect, gradeState, score }`。
  */
-router.post('/:id/answers/submit', async (req, res) => {
+router.post('/:id/answers/submit', worksheetMutation(async (req, res, database) => {
   try {
-    const ctx = await requireOwnWorksheet(req, res);
+    const ctx = await requireOwnWorksheet(req, res, database);
     if (!ctx) return;
 
     // ★ M5a：`answersLocked` **不拦这里** —— 裁定 ③ 是「停笔，但还能交卷」。
@@ -2755,6 +2774,8 @@ router.post('/:id/answers/submit', async (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const questionId = typeof body.questionId === 'string' ? body.questionId.trim() : '';
     if (!questionId) return res.status(400).json({ error: '缺少 questionId' });
+    const generation = await readAnswerGeneration(ctx.prisma, ctx.classroomId, ctx.worksheet.id, ctx.participantId);
+    if ((body.generation ?? '0:0') !== answerGenerationFor(generation, questionId)) return res.status(409).json({ error: '老师已清除旧作答，请重新作答', code: 'answers-cleared' });
     const node = findQuestion(ctx.worksheet.content, questionId);
     if (!node) return res.status(400).json({ error: '该题不属于这份学习单' });
 
@@ -2894,9 +2915,9 @@ router.post('/:id/answers/submit', async (req, res) => {
     });
   } catch (error) {
     console.error('[worksheets] 提交作答失败:', error);
-    res.status(500).json({ error: '提交作答失败' });
+    throw error;
   }
-});
+}));
 
 // ── 内部工具 ────────────────────────────────────────────────────────
 

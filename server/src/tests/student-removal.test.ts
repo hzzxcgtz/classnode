@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,6 +11,7 @@ import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import classRoutes from '../routes/classes.js';
+import classroomRoutes from '../routes/classroom.js';
 
 /**
  * 「把学生从名册里去掉」与「把他整个人删掉」是**两件事**（★ 2026-10-09 教师裁定）。
@@ -44,6 +46,7 @@ async function openTempDb(): Promise<TempDb> {
   // 🔴 安全闸门（不是装饰）：保证下面那次 db push 不可能落在真实库上。
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), `DATABASE_URL 必须指向临时目录，实际是 ${url}`);
   assert.notEqual(path.resolve(file), path.resolve(HERE, '../../prisma/dev.db'));
+  prepareTemporarySqliteFile(url);
   execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url },
     stdio: 'pipe',
@@ -54,7 +57,7 @@ async function openTempDb(): Promise<TempDb> {
 
 interface Harness {
   get: (pathname: string) => Promise<Response>;
-  post: (pathname: string) => Promise<Response>;
+  post: (pathname: string, body?: unknown) => Promise<Response>;
   del: (pathname: string) => Promise<Response>;
 }
 
@@ -64,6 +67,7 @@ async function startServer(t: { after: (fn: () => void) => void }, prisma: Prism
   app.set('prisma', prisma);
   app.set('io', { to: () => ({ emit: () => {} }) });
   app.use('/api/classes', classRoutes);
+  app.use('/api/classroom', classroomRoutes);
   // 兜底 404 一律回 JSON（express 默认回 HTML，会把「路由不存在」盖成一句 JSON 解析错误）。
   app.use((_req, res) => { res.status(404).json({ error: 'not found' }); });
   const server = createServer(app);
@@ -73,7 +77,7 @@ async function startServer(t: { after: (fn: () => void) => void }, prisma: Prism
   const base = `http://127.0.0.1:${port}`;
   return {
     get: (p) => fetch(`${base}${p}`),
-    post: (p) => fetch(`${base}${p}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } }),
+    post: (p, body) => fetch(`${base}${p}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }),
     del: (p) => fetch(`${base}${p}`, { method: 'DELETE' }),
   };
 }
@@ -127,9 +131,11 @@ test('🔴 移出班级：从名册里消失，但**一条历史都不许动**',
   assert.deepEqual(await historyCounts(prisma, student.id),
     { participants: 1, messages: 1, responses: 1, participantsInClass: 1 }, '前置：历史确实挂在他身上');
 
+  const group = await prisma.classGroup.create({ data: { classId: klass.id, name: '分组', studentIds: JSON.stringify([student.id, 'retained-id']) } });
   const res = await post(`/api/classes/${klass.id}/students/${student.id}/remove`);
   assert.equal(res.status, 200);
 
+  assert.equal((await prisma.classGroup.findUniqueOrThrow({ where: { id: group.id } })).studentIds, JSON.stringify(['retained-id']));
   // ① 名册里没有了。
   const roster = await (await get(`/api/classes/${klass.id}/students`)).json() as Array<{ id: string }>;
   assert.deepEqual(roster.map((row) => row.id), [], '移出之后他还留在名册上 —— 教师点了一下什么也没发生');
@@ -172,4 +178,29 @@ test('🔴 阴性对照：不是这个班的学生，两个动作都不许碰（
   assert.equal(after?.classId, student.classId, '拒了却还是把人动了');
   assert.deepEqual(await historyCounts(prisma, student.id),
     { participants: 1, messages: 1, responses: 1, participantsInClass: 1 });
+});
+
+
+test('Phase 5: 三种课堂快照排除已移出学生和外班学生，历史不变', async t => {
+  const { prisma, post } = await withServer(t);
+  const { klass, student } = await seedStudentWithHistory(prisma);
+  const kept = await prisma.student.create({ data: { classId: klass.id, name: '保留' } });
+  const otherClass = await prisma.class.create({ data: { name: '外班' } });
+  const outsider = await prisma.student.create({ data: { classId: otherClass.id, name: '外班同学' } });
+  const worksheet = await prisma.worksheet.create({ data: { title: '学习单', content: { schemaVersion: 1, nodes: [] }, settings: {} } });
+  await post(`/api/classes/${klass.id}/students/${student.id}/remove`);
+  // 故意模拟旧版本遗留的脏分组，证明创建时的二次归属检查真的生效。
+  await prisma.classGroup.create({ data: { classId: klass.id, name: '甲组', studentIds: JSON.stringify([student.id, kept.id, outsider.id]) } });
+  for (const mode of ['standard', 'group', 'advanced']) {
+    const response = mode === 'advanced'
+      ? await post('/api/classroom/create-advanced', { classId: klass.id, groups: [{ name: '甲组', worksheetId: worksheet.id }] })
+      : await post('/api/classroom/create', { classIds: [klass.id], mode, worksheetIds: [worksheet.id], agentIds: [] });
+    const body = await response.json() as { id: string };
+    assert.equal(response.status, 200, JSON.stringify(body));
+    const ids = mode === 'standard'
+      ? (await prisma.classroomStudent.findMany({ where: { classroomId: body.id } })).map(row => row.studentId)
+      : (await prisma.classroomGroupMember.findMany({ where: { classroomId: body.id } })).map(row => row.studentId);
+    assert.deepEqual(ids, [kept.id], mode);
+  }
+  assert.deepEqual(await historyCounts(prisma, student.id), { participants: 1, messages: 1, responses: 1, participantsInClass: 1 });
 });

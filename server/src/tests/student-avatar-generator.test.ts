@@ -21,7 +21,9 @@ test('student avatar generator creates safe self-contained SVGs for both genders
       assert.equal(avatar.gender, gender);
       assert.match(avatar.svgContent, /^<svg viewBox="0 0 64 64"/);
       assert.ok(avatar.svgContent.endsWith('</svg>'));
-      assert.equal(sanitizeSvg(avatar.svgContent), avatar.svgContent);
+      const safe = sanitizeSvg(avatar.svgContent);
+      assert.ok(safe);
+      assert.equal(sanitizeSvg(safe), safe, 'serialized SVG remains valid and stable');
       assert.doesNotMatch(avatar.svgContent, /(?:href\s*=|url\s*\(|data:|<script|<style)/i);
     }
   }

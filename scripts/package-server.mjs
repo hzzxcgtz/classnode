@@ -194,7 +194,7 @@ console.log('[package-server] 生成 Prisma Client');
 run('npx', ['prisma', 'generate'], installEnv);
 
 console.log('[package-server] 初始化内置数据库');
-run('npx', ['prisma', 'db', 'push', '--skip-generate', '--accept-data-loss'], installEnv);
+run('npx', ['prisma', 'db', 'push', '--skip-generate'], installEnv);
 
 if (runtime.platform === 'win32') {
   console.log('[package-server] 准备 Windows Node.js 运行时');

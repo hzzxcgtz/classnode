@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -52,6 +53,7 @@ before(() => {
   assert.ok(fs.existsSync(SCHEMA_SRC), `找不到 schema.prisma：${SCHEMA_SRC}`);
   assert.ok(fs.existsSync(PRISMA_BIN), `找不到 prisma CLI：${PRISMA_BIN}`);
   fs.copyFileSync(SCHEMA_SRC, SCHEMA_COPY);
+  prepareTemporarySqliteFile(`file:${TEMPLATE_DB}`);
   const r = spawnSync(PRISMA_BIN, ['db', 'push', '--schema', SCHEMA_COPY, '--skip-generate'], {
     env: { ...process.env, DATABASE_URL: `file:${TEMPLATE_DB}` },
     encoding: 'utf8',

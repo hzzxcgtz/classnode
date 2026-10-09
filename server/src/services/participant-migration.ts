@@ -79,7 +79,7 @@ export async function migrateClassroomParticipants(prisma: PrismaClient): Promis
 
   const studentColumns = await prisma.$queryRawUnsafe<{ name: string; notnull: number }[]>(`PRAGMA table_info('ClassroomStudent')`);
   const needsParticipantShape = !studentColumns.some(column => column.name === 'type')
-    || studentColumns.find(column => column.name === 'studentId')?.notnull === 1;
+    || Number(studentColumns.find(column => column.name === 'studentId')?.notnull) === 1;
 
   if (needsParticipantShape) {
     // SQLite 不支持直接移除 NOT NULL，使用保留 ID 的重建方式迁移。

@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 /**
  * M6c：`/history/all` 那三件套的聚合 —— `loadHistoryTraces` 的唯一回归网。
  *
@@ -39,6 +40,7 @@ async function openTempDb() {
   // 🔴 安全闸门，不是装饰：保证下面那次 db push 不可能落在真实库上。
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), `DATABASE_URL 必须指向临时目录，实际是 ${url}`);
   assert.notEqual(path.resolve(file), path.resolve(HERE, '../../prisma/dev.db'));
+  prepareTemporarySqliteFile(url);
   execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe',
   });

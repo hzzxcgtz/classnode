@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -61,6 +62,7 @@ async function openTempDb(): Promise<TempDb> {
     `DATABASE_URL 必须指向临时目录，实际是 ${url}`,
   );
   assert.notEqual(path.resolve(file), path.resolve(HERE, '../../prisma/dev.db'));
+  prepareTemporarySqliteFile(url);
   execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url },
     stdio: 'pipe',
@@ -81,6 +83,7 @@ interface TestServer {
   put: (pathname: string, body: unknown, headers?: Record<string, string>) => Promise<Response>;
   /** 教师 cookie —— 默认带在所有请求上（学生 token 会覆盖闸门的分支，见下）。 */
   cookie: string;
+  del: (pathname: string, body: unknown) => Promise<Response>;
 }
 
 /**
@@ -93,10 +96,11 @@ interface TestServer {
  * 那是**更严**的一侧：闸门必须靠**学生 token** 把请求认成学生（它先判学生分支），
  * 带着教师 cookie 也拦不住。要模拟纯学生请求传 `{ Cookie: '' }` 覆盖即可。
  */
-async function startServer(t: { after: (fn: () => void) => void }, prisma: PrismaClient): Promise<TestServer> {
+async function startServer(t: { after: (fn: () => void) => void }, prisma: PrismaClient, before?: express.RequestHandler): Promise<TestServer> {
   const app = express();
   app.use(express.json());
   app.set('prisma', prisma);
+  if (before) app.use(before);
   app.use('/api/worksheets', worksheetAccessGate, worksheetRoutes);
   // 兜底 404 一律回 JSON：express 默认回的是 HTML，断言失败时 `await res.json()` 会抛
   // `Unexpected token '<'`，把「状态码不对」这个真正的原因盖成一句解析错误。
@@ -118,6 +122,7 @@ async function startServer(t: { after: (fn: () => void) => void }, prisma: Prism
     post: (pathname, body, headers) => call('POST')(pathname, body, headers),
     put: (pathname, body, headers) => call('PUT')(pathname, body, headers),
     cookie,
+    del: (pathname, body) => call('DELETE')(pathname, body),
   };
 }
 
@@ -1170,7 +1175,7 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
   const res = await server.get(`/api/worksheets/${worksheet.id}/answers`, bearer(refreshed));
   const raw = await res.text();
   assert.equal(res.status, 200, raw);
-  const body = JSON.parse(raw) as {
+  const body = JSON.parse(raw) as { generation: unknown;
     rows: Array<{
       questionId: string; value: unknown; status: string;
       submittedAt: string | null; isCorrect: boolean | null;
@@ -1182,7 +1187,8 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
   // ⚠️ 信封那个键是 `rows`（「作答行」），**不是** `answers` —— 后者是 `ANSWER_KEYS`
   // 里**正确答案**那个字段的名字，见 `routes/worksheets.ts` 那段注释。逐字钉住它，
   // 免得将来有人「顺手改个更自然的名字」而把下面那条键名扫描变成一处误报。
-  assert.deepEqual(Object.keys(body), ['rows'], `信封只能是 rows：${raw}`);
+  assert.deepEqual(Object.keys(body).sort(), ['generation', 'rows'], `信封包含作答版本和 rows：${raw}`);
+  assert.deepEqual(body.generation, { all: 0, questions: {} });
   const byId = new Map(body.rows.map(row => [row.questionId, row]));
   assert.equal(body.rows.length, 6, `六道题的作答一道都不能少：${raw}`);
   assert.deepEqual(
@@ -1282,7 +1288,7 @@ test('回读：没作答是空数组；别人组那份 403；教师 cookie 401',
   const empty = await server.get(`/api/worksheets/${worksheet.id}/answers`, bearer(token));
   const emptyRaw = await empty.text();
   assert.equal(empty.status, 200, emptyRaw);
-  assert.deepEqual(JSON.parse(emptyRaw), { rows: [] }, '没开始作答 = 空数组，不是 404、也不是 500');
+  assert.deepEqual(JSON.parse(emptyRaw), { generation: { all: 0, questions: {} }, rows: [] }, '没开始作答 = 空数组，不是 404、也不是 500');
   // ⚠️ 空响应对**没有作答会话**的学生同样成立：读路径不得顺手建一行
   // `WorksheetResponse`（那会让教师看板把一个什么都没做的学生显示成「已开始作答」）。
   assert.equal(await db.prisma.worksheetResponse.count(), 0, '读作答不得留下作答会话');
@@ -1567,4 +1573,60 @@ test('🔴 题目级「允许自动评分」关掉之后：残留同样要清（
     { isCorrect: null, gradeState: null, score: null, status: 'submitted' },
     '再次提交：同一把尺子 —— 本地判分对这道题**有**结论（在开关打开时），那三列就不可能是 AI 的',
   );
+});
+
+
+test('Phase 5: 作答状态矩阵与清除代际阻止旧请求回写', async t => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  let entered!: () => void;
+  let release!: () => void;
+  const arrival = new Promise<void>(resolve => { entered = resolve; });
+  const hold = new Promise<void>(resolve => { release = resolve; });
+  const server = await startServer(t, db.prisma, (req, _res, next) => {
+    if (req.headers['x-phase5-hold']) { entered(); void hold.then(() => next()); } else next();
+  });
+  const { classroom, participant } = await seedClassroom(db.prisma, 'phase5');
+  const worksheet = await seedWorksheet(db.prisma);
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const token = createStudentToken(classroom.id, participant.id);
+  const url = `/api/worksheets/${worksheet.id}/answers`;
+  const save = (generation = '0:0') => server.put(url, { questionId: 'q_1', value: CHOICE(['B']), generation }, bearer(token));
+  assert.equal((await save()).status, 200);
+  for (const state of ['paused', 'ended']) {
+    await db.prisma.classroom.update({ where: { id: classroom.id }, data: { status: state } });
+    const before = await db.prisma.worksheetAnswer.findMany();
+    for (const response of [await save(), await server.post(`${url}/submit`, { questionId: 'q_1' }, bearer(token))]) {
+      assert.equal(response.status, 409);
+      assert.equal((await response.json() as { code: string }).code, `classroom-${state}`);
+    }
+    assert.deepEqual(await db.prisma.worksheetAnswer.findMany(), before);
+  }
+  await db.prisma.classroom.update({ where: { id: classroom.id }, data: { status: 'active', answersLocked: true } });
+  assert.equal((await save()).status, 409);
+  assert.equal((await server.post(`${url}/submit`, { questionId: 'q_1' }, bearer(token))).status, 200);
+  await db.prisma.classroomStudent.update({ where: { id: participant.id }, data: { blacklisted: true } });
+  assert.equal((await save()).status, 409);
+  assert.equal((await server.post(`${url}/submit`, { questionId: 'q_1' }, bearer(token))).status, 409);
+  await db.prisma.classroomStudent.update({ where: { id: participant.id }, data: { blacklisted: false } });
+  await db.prisma.classroom.update({ where: { id: classroom.id }, data: { answersLocked: false } });
+  const clear = (questionId?: string) => server.del(`/api/worksheets/classroom/${classroom.id}/answers`, { worksheetId: worksheet.id, participantId: participant.id, questionId });
+  assert.equal((await clear('q_1')).status, 200);
+  assert.equal(await db.prisma.worksheetAnswer.count(), 0);
+  assert.equal((await save()).status, 409);
+  assert.equal(await db.prisma.worksheetResponse.count(), 1, '单题清除保留原响应，旧请求不得新增响应');
+  const snapshot = await (await server.get(url, bearer(token))).json() as { generation: unknown; rows: unknown[] };
+  assert.deepEqual(snapshot, { generation: { all: 0, questions: { q_1: 1 } }, rows: [] });
+  assert.equal((await save('0:1')).status, 200);
+  const lateSave = server.put(url, { questionId: 'q_1', value: CHOICE(['B']), generation: '0:1' }, { ...bearer(token), 'x-phase5-hold': '1' });
+  await arrival;
+  assert.equal((await clear()).status, 200);
+  release();
+  assert.equal((await lateSave).status, 409, '已发出但迟到的旧保存不能越过清除代际');
+  assert.equal(await db.prisma.worksheetAnswer.count(), 0);
+  assert.equal((await save('0:1')).status, 409);
+  assert.equal((await save('1:0')).status, 200);
+  const replacement = createStudentToken(classroom.id, participant.id);
+  assert.equal((await save('1:0')).status, 401, '新会话必须立即撤销旧 REST token');
+  assert.equal((await server.put(url, { questionId: 'q_1', value: CHOICE(['B']), generation: '1:0' }, bearer(replacement))).status, 200);
 });

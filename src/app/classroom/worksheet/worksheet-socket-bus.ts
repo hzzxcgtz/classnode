@@ -53,6 +53,7 @@ export interface WorksheetClearCommand {
   worksheetId: string;
   /** `null` = 整张清除；非空 = 只清了那一题。 */
   questionId: string | null;
+  generation?: { all: number; questions: Record<string, number> };
 }
 
 type Listener = (command: WorksheetClearCommand) => void;
@@ -77,6 +78,7 @@ export function publishWorksheetClear(data: {
   participantId: string;
   worksheetId: string;
   questionId?: string | null;
+  generation?: { all: number; questions: Record<string, number> };
 }): void {
   sequence += 1;
   const command: WorksheetClearCommand = {
@@ -85,6 +87,7 @@ export function publishWorksheetClear(data: {
     participantId: data.participantId,
     worksheetId: data.worksheetId,
     questionId: data.questionId ?? null,
+    ...(data.generation ? { generation: data.generation } : {}),
   };
   for (const listener of [...listeners]) listener(command);
 }

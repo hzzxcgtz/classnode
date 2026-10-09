@@ -68,7 +68,10 @@ export function requireTeacher(req: Request, res: Response, next: NextFunction):
 }
 
 export function isLoopbackRequest(req: Request): boolean {
-  const address = req.socket.remoteAddress || '';
+  return isLoopbackAddress(req.socket.remoteAddress);
+}
+
+export function isLoopbackAddress(address?: string): boolean {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 

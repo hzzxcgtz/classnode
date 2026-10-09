@@ -48,7 +48,7 @@ function resolveEncryptionKey(): string {
 
 let _encryptionKey: string | null = null;
 
-function getEncryptionKey(): string {
+export function getEncryptionKey(): string {
   if (_encryptionKey) return _encryptionKey;
   _encryptionKey = resolveEncryptionKey();
   return _encryptionKey;
@@ -70,10 +70,14 @@ export function encrypt(text: string): string {
 }
 
 export function decrypt(encryptedText: string): string {
+  return decryptWithKey(encryptedText, getEncryptionKey());
+}
+
+export function decryptWithKey(encryptedText: string, key: string): string {
   const [ivHex, authTagHex, encrypted] = encryptedText.split(':');
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
-  const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(getEncryptionKey(), 'utf8'), iv);
+  const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(key, 'utf8'), iv);
   decipher.setAuthTag(authTag);
   let decrypted = decipher.update(encrypted, 'hex', 'utf8');
   decrypted += decipher.final('utf8');

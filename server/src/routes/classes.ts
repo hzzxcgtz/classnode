@@ -249,7 +249,16 @@ router.post('/:classId/students/:studentId/remove', async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
     const student = await findStudentInClass(prisma, req.params.classId, req.params.studentId);
     if (!student) return res.status(404).json({ error: '这个班级里没有这名学生' });
-    await prisma.student.update({ where: { id: student.id }, data: { classId: null } });
+    await prisma.$transaction(async tx => {
+      await tx.student.update({ where: { id: student.id }, data: { classId: null } });
+      const groups = await tx.classGroup.findMany({ where: { classId: req.params.classId } });
+      for (const group of groups) {
+        let ids: unknown = [];
+        try { ids = JSON.parse(group.studentIds); } catch {}
+        const remaining = Array.isArray(ids) ? ids.filter(id => typeof id === 'string' && id !== student.id) : [];
+        await tx.classGroup.update({ where: { id: group.id }, data: { studentIds: JSON.stringify(remaining) } });
+      }
+    });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: '移出班级失败' });

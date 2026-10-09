@@ -47,14 +47,21 @@ async function proxyAwareFetch(url: string, options?: { signal?: AbortSignal }):
       timeout: options?.signal ? undefined : 8000,
     }, (res) => {
       const chunks: Buffer[] = [];
+      res.on('error', reject);
+      res.on('aborted', () => reject(new Error('版本服务器响应被中断')));
       res.on('data', (chunk: Buffer) => chunks.push(chunk));
       res.on('end', () => {
-        const body = Buffer.concat(chunks);
-        resolve(new Response(body, {
-          status: res.statusCode || 200,
-          statusText: res.statusMessage || 'OK',
-          headers: res.headers as Record<string, string>,
-        }));
+        try {
+          const body = Buffer.concat(chunks);
+          resolve(new Response(body.length ? body : null, {
+            status: res.statusCode || 200,
+            statusText: res.statusMessage || 'OK',
+            headers: res.headers as Record<string, string>,
+          }));
+        } catch (error) {
+          // Callback exceptions do not reject the outer Promise automatically.
+          reject(error);
+        }
       });
     });
 
@@ -64,6 +71,7 @@ async function proxyAwareFetch(url: string, options?: { signal?: AbortSignal }):
     const ac = options?.signal;
     if (ac) {
       const onAbort = () => { req.destroy(); reject(new Error('The operation was aborted due to timeout')); };
+      req.once('close', () => ac.removeEventListener('abort', onAbort));
       if (ac.aborted) { onAbort(); return; }
       ac.addEventListener('abort', onAbort);
     }
@@ -87,7 +95,11 @@ async function proxyAwareFetch(url: string, options?: { signal?: AbortSignal }):
  */
 export function checkForUpdateOnStartup(): Promise<UpgradeCheckResult> {
   if (startupCheck) return startupCheck;
-  startupCheck = fetchUpgradeCheck();
+  startupCheck = fetchUpgradeCheck().catch((error: unknown) => {
+    // Share an in-flight/successful check, but let the next call retry a failure.
+    startupCheck = null;
+    throw error;
+  });
   return startupCheck;
 }
 
@@ -110,27 +122,33 @@ async function fetchUpgradeCheck(): Promise<UpgradeCheckResult> {
   const [giteeUrl, githubUrl] = UPSTREAM_URLS;
   const TIMEOUT = 8000;
 
-  const giteePromise = proxyAwareFetch(giteeUrl, { signal: AbortSignal.timeout(TIMEOUT) })
+  // Handle rejection as soon as each request starts. The backup request may
+  // fail before Gitee settles, or after it succeeds and we no longer await it.
+  const request = (url: string, label: string) => proxyAwareFetch(url, { signal: AbortSignal.timeout(TIMEOUT) })
     .then(async (resp) => {
-      if (!resp.ok) throw new Error(`Gitee ${resp.status}`);
+      if (!resp.ok) throw new Error(`${label} ${resp.status}`);
       return resp.json() as Promise<{ version: string; notes?: string; pub_date?: string }>;
-    });
-
-  const githubPromise = proxyAwareFetch(githubUrl, { signal: AbortSignal.timeout(TIMEOUT) })
-    .then(async (resp) => {
-      if (!resp.ok) throw new Error(`GitHub ${resp.status}`);
-      return resp.json() as Promise<{ version: string; notes?: string; pub_date?: string }>;
-    });
+    })
+    .then(
+      (remote) => ({ ok: true as const, remote }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+  const giteePromise = request(giteeUrl, 'Gitee');
+  const githubPromise = request(githubUrl, 'GitHub');
 
   // 优先等 Gitee
   let remote: { version: string; notes?: string; pub_date?: string };
-  try {
-    remote = await giteePromise;
-  } catch (giteeErr) {
+  const gitee = await giteePromise;
+  if (gitee.ok) {
+    remote = gitee.remote;
+  } else {
+    const giteeErr = gitee.error;
     console.warn('[upgrade/check] Gitee 失败，降级到 GitHub:', giteeErr instanceof Error ? giteeErr.message : String(giteeErr));
-    try {
-      remote = await githubPromise;
-    } catch (githubErr) {
+    const github = await githubPromise;
+    if (github.ok) {
+      remote = github.remote;
+    } else {
+      const githubErr = github.error;
       console.error('[upgrade/check] 所有上游全部失败:', githubErr instanceof Error ? githubErr.message : String(githubErr));
       throw new Error('无法连接到版本服务器，请检查网络后重试');
     }

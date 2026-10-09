@@ -3,7 +3,7 @@ use std::net::TcpStream;
 use std::process::{Child, Command, Output};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -30,6 +30,17 @@ const SERVER_PORT: u16 = 3001;
 // （serverPort + 1），并显式下发给子进程，避免两边各自推算。
 const WEBAPP_PORT: u16 = SERVER_PORT + 1;
 static IS_STARTING: AtomicBool = AtomicBool::new(false);
+struct StartGuard<'a>(&'a AtomicBool);
+impl<'a> StartGuard<'a> {
+    fn acquire(flag: &'a AtomicBool) -> Result<Self, String> {
+        flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| "服务正在启动中，请勿重复操作".to_string())?;
+        Ok(Self(flag))
+    }
+}
+impl Drop for StartGuard<'_> {
+    fn drop(&mut self) { self.0.store(false, Ordering::Release); }
+}
 static LAST_START_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
 struct ServerInfo {
@@ -226,11 +237,6 @@ fn process_output_details(output: &Output) -> String {
     }
 }
 
-fn is_prisma_data_loss_refusal(details: &str) -> bool {
-    details.contains("--accept-data-loss")
-        && details.to_ascii_lowercase().contains("data loss")
-}
-
 /// Prefer a path relative to the child process working directory. On Windows,
 /// passing a JavaScript entry point below Program Files as an absolute path can
 /// be truncated to `C:` by the Node command-line parsing chain.
@@ -238,28 +244,24 @@ fn child_script_arg<'a>(script: &'a std::path::Path, cwd: &std::path::Path) -> &
     script.strip_prefix(cwd).unwrap_or(script)
 }
 
-fn run_prisma_db_push(
+fn run_database_upgrade(
     node: &str,
-    prisma_cli: &std::path::Path,
+    script: &std::path::Path,
     server_dir: &std::path::Path,
     db_url: &str,
-    accept_data_loss: bool,
+    data_dir: &std::path::Path,
 ) -> Result<Output, String> {
     let mut cmd = Command::new(node);
-    cmd.arg(child_script_arg(prisma_cli, server_dir))
-        .args(["db", "push", "--skip-generate"])
+    cmd.arg(child_script_arg(script, server_dir))
         .current_dir(server_dir)
-        .env("DATABASE_URL", db_url);
-    if accept_data_loss {
-        cmd.arg("--accept-data-loss");
-    }
+        .env("DATABASE_URL", db_url)
+        .env("CLASSNODE_DATA_DIR", data_dir);
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
-    cmd.output()
-        .map_err(|e| format!("执行数据库迁移失败: {}", e))
+    cmd.output().map_err(|e| format!("执行安全数据库升级失败: {}", e))
 }
 
-fn spawn_server(app: &AppHandle) -> Result<(), String> {
+fn spawn_server_inner(app: &AppHandle) -> Result<(), String> {
     // 主端口绑不上，服务端根本起不来 —— 硬失败是对的，保持不变。
     ensure_port_free(SERVER_PORT)?;
     // 托管端口**只警告**：它与主服务是同一个进程里的两个监听，服务端自己遇到 EADDRINUSE
@@ -306,77 +308,19 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
     let data_dir_str = data_dir.to_string_lossy().to_string();
     let db_url = format!("file:{}", db_path.to_string_lossy().replace('\\', "/"));
 
-    // 检查 schema 版本，避免每次启动都跑 prisma db push
-    // 使用 schema.prisma 文件内容的哈希作为版本标识（比 package.json 版本更准确）
-    let version_file = data_dir.join(".schema-version");
-    let schema_path = server_dir.join("prisma").join("schema.prisma");
-    let current_schema = std::fs::read_to_string(&schema_path).unwrap_or_default();
-    let current_schema_hash = schema_hash(&current_schema);
-    let schema_up_to_date = std::fs::read_to_string(&version_file)
-        .map(|s| s.trim() == current_schema_hash)
-        .unwrap_or(false);
-
-    if schema_up_to_date {
-        eprintln!("数据库 schema 已是最新, 跳过同步");
-    } else {
-        let prisma_cli = server_dir.join("node_modules").join("prisma").join("build").join("index.js");
-        if prisma_cli.exists() {
-            let backup_dir = data_dir.join("backups");
-            fs::create_dir_all(&backup_dir)
-                .map_err(|e| format!("创建升级备份目录失败: {}", e))?;
-            let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            let safety_backup = backup_dir.join(format!("classnode-backup-{}-pre-upgrade.classdb", timestamp));
-            fs::copy(&db_path, &safety_backup)
-                .map_err(|e| format!("数据库升级前备份失败，已取消升级: {}", e))?;
-            let _ = fs::write(
-                safety_backup.with_extension("classdb.meta"),
-                r#"{"source":"safety-upgrade"}"#,
-            );
-            eprintln!("升级前安全备份已创建: {:?}", safety_backup);
-            eprintln!("同步数据库 schema...");
-            let mut output = run_prisma_db_push(
-                &node,
-                &prisma_cli,
-                &server_dir,
-                &db_url,
-                false,
-            )?;
-            let mut details = process_output_details(&output);
-
-            // Prisma 会在删除已废弃的列时要求显式确认。数据库已在上方完成
-            // 完整备份，因此仅在 Prisma 明确提示 --accept-data-loss 时重试；
-            // 引擎缺失、权限、数据库损坏等其他错误仍然立即中止。
-            if !output.status.success() && is_prisma_data_loss_refusal(&details) {
-                eprintln!("检测到已知的 schema 清理操作，使用安全备份后继续升级...");
-                output = run_prisma_db_push(
-                    &node,
-                    &prisma_cli,
-                    &server_dir,
-                    &db_url,
-                    true,
-                )?;
-                details = process_output_details(&output);
-            }
-
-            if output.status.success() {
-                // 写入版本标记，下次跳过
-                let _ = std::fs::write(&version_file, &current_schema_hash);
-                eprintln!("数据库同步完成, schema 已标记");
-            } else {
-                return Err(format!(
-                    "数据库升级失败（退出码 {:?}）。\n{}\n备份位于 {:?}",
-                    output.status.code(), details, safety_backup
-                ));
-            }
-        } else {
-            eprintln!("Prisma CLI 未找到，跳过数据库 schema 同步");
-        }
+    // Both desktop and source startup use the same ordered, candidate-based migration.
+    // A schema hash alone cannot prove that legacy data migration completed.
+    let upgrade_script = server_dir.join("dist").join("upgrade-database.js");
+    if !upgrade_script.exists() {
+        return Err("安全数据库升级入口缺失，已取消启动；请重新安装完整版本".to_string());
     }
+    let output = run_database_upgrade(&node, &upgrade_script, &server_dir, &db_url, &data_dir)?;
+    if !output.status.success() {
+        return Err(format!("数据库升级失败（退出码 {:?}），服务未启动。\n{}", output.status.code(), process_output_details(&output)));
+    }
+    eprintln!("{}", process_output_details(&output));
 
-    let child = {
+    let mut child = {
         let mut cmd = Command::new(&node);
         cmd.arg(child_script_arg(&server_script, &server_dir))
             .current_dir(&server_dir)
@@ -391,23 +335,33 @@ fn spawn_server(app: &AppHandle) -> Result<(), String> {
             .map_err(|e| format!("启动服务失败: {} (node路径: {})", e, node))?
     };
 
+    let mut ready = false;
+    for _ in 0..120 {
+        let exit = match child.try_wait() {
+            Ok(exit) => exit,
+            Err(error) => { let _ = child.kill(); let _ = child.wait(); return Err(format!("检查服务进程失败: {error}")); }
+        };
+        if let Some(status) = exit {
+            return Err(format!("服务进程在启动时退出: {status}"));
+        }
+        if TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok() { ready = true; break; }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    if !ready {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err("服务启动超时，已回收子进程".to_string());
+    }
     *app.state::<ServerState>().0.lock().unwrap() = Some(ServerInfo { child });
 
     Ok(())
 }
 
 /// 使用多项式哈希计算 schema 内容的确定性哈希值
-fn schema_hash(content: &str) -> String {
-    let bytes = content.as_bytes();
-    let len = bytes.len();
-    let mut h: u64 = 0;
-    for &b in bytes.iter() {
-        h = h.wrapping_mul(31).wrapping_add(b as u64);
-    }
-    format!("v{}:{}", len, h)
-}
+
 
 fn stop_server(app: &AppHandle) -> Result<(), String> {
+    if IS_STARTING.load(Ordering::Acquire) { return Err("服务仍在启动，请稍后再停止".to_string()); }
     if let Some(info) = app.state::<ServerState>().0.lock().unwrap().take() {
         let mut child = info.child;
         let pid = child.id();
@@ -484,20 +438,27 @@ fn get_server_status(app: tauri::AppHandle) -> ServerStatus {
 
 #[tauri::command]
 fn cmd_start_server(app: tauri::AppHandle) -> Result<(), String> {
-    if IS_STARTING.load(Ordering::Relaxed) {
-        return Err("服务正在启动中，请勿重复操作".to_string());
+    let guard = StartGuard::acquire(&IS_STARTING)?;
+    {
+        let state = app.state::<ServerState>();
+        let mut managed = state.0.lock().unwrap();
+        if let Some(info) = managed.as_mut() {
+            match info.child.try_wait().map_err(|e| format!("检查现有服务进程失败: {e}"))? {
+                None => return Err("已有受控服务进程，请先停止服务".to_string()),
+                Some(_) => { *managed = None; }
+            }
+        }
     }
     if TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok() {
         return Err("服务已在运行中".to_string());
     }
     *LAST_START_ERROR.lock().unwrap() = None;
-    IS_STARTING.store(true, Ordering::Relaxed);
 
     // 后台线程启动（避免阻塞 IPC 线程导致窗口无响应）
     let h = app.clone();
     std::thread::spawn(move || {
-        let result = spawn_server(&h);
-        IS_STARTING.store(false, Ordering::Relaxed);
+        let _guard = guard;
+        let result = spawn_server_inner(&h);
         match result {
             Ok(()) => {
                 let h2 = h.clone();
@@ -621,12 +582,11 @@ pub fn run() {
                 })
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "start" => {
-                        if let Err(e) = spawn_server(app) {
+                        if let Err(e) = cmd_start_server(app.clone()) {
                             *LAST_START_ERROR.lock().unwrap() = Some(e.clone());
                             eprintln!("启动服务失败: {}", e);
                         } else {
                             *LAST_START_ERROR.lock().unwrap() = None;
-                            update_tray(app, true);
                         }
                     }
                     "stop" => {
@@ -666,13 +626,11 @@ pub fn run() {
             let h = app.handle().clone();
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(2));
-                if let Err(e) = spawn_server(&h) {
+                if let Err(e) = cmd_start_server(h.clone()) {
                     *LAST_START_ERROR.lock().unwrap() = Some(e.clone());
                     eprintln!("自动启动服务失败: {}", e);
                 } else {
                     *LAST_START_ERROR.lock().unwrap() = None;
-                    let h2 = h.clone();
-                    let _ = h.run_on_main_thread(move || update_tray(&h2, true));
                 }
             });
 
@@ -701,20 +659,60 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{child_script_arg, is_prisma_data_loss_refusal, node_compatible_path};
+    use super::{child_script_arg, node_compatible_path, run_database_upgrade, StartGuard};
     use std::path::Path;
 
     #[test]
-    fn retries_only_prisma_data_loss_refusals() {
-        assert!(is_prisma_data_loss_refusal(
-            "There might be data loss. You can use the --accept-data-loss flag."
-        ));
-        assert!(!is_prisma_data_loss_refusal(
-            "Query engine binary could not be found."
-        ));
-        assert!(!is_prisma_data_loss_refusal(
-            "Unknown option --accept-data-loss"
-        ));
+    fn start_guard_has_one_owner_and_releases_on_error_or_unwind() {
+        use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
+        let flag = Arc::new(AtomicBool::new(false));
+        let wins = Arc::new(AtomicUsize::new(0));
+        let barrier = Arc::new(std::sync::Barrier::new(9));
+        let release = Arc::new(std::sync::Barrier::new(9));
+        let mut threads = Vec::new();
+        for _ in 0..8 {
+            let (flag, wins, barrier, release) = (flag.clone(), wins.clone(), barrier.clone(), release.clone());
+            threads.push(std::thread::spawn(move || {
+                barrier.wait();
+                let guard = StartGuard::acquire(&flag);
+                if guard.is_ok() { wins.fetch_add(1, Ordering::Relaxed); }
+                release.wait();
+                drop(guard);
+            }));
+        }
+        barrier.wait();
+        release.wait();
+        for thread in threads { thread.join().unwrap(); }
+        assert_eq!(wins.load(Ordering::Relaxed), 1);
+        assert!(!flag.load(Ordering::Acquire));
+        let _ = std::panic::catch_unwind(|| { let _guard = StartGuard::acquire(&flag).unwrap(); panic!("injected failure"); });
+        assert!(!flag.load(Ordering::Acquire));
+        assert!(StartGuard::acquire(&flag).is_ok());
+    }
+
+    #[test]
+    fn executes_shared_upgrade_script_with_paths_and_failure_status() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("classnode upgrade test {stamp}"));
+        let dist = root.join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        let script = dist.join("upgrade-database.js");
+        std::fs::write(&script, "console.log(JSON.stringify({args:process.argv.slice(2),db:process.env.DATABASE_URL,data:process.env.CLASSNODE_DATA_DIR}))").unwrap();
+        let node = std::env::var("CLASSNODE_TEST_NODE").unwrap_or_else(|_| "node".to_string());
+        let data_dir = root.join("user data");
+        let output = run_database_upgrade(&node, &script, &root, "file:isolated.db", &data_dir).unwrap();
+        assert!(output.status.success());
+        let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(result["args"], serde_json::json!([]));
+        assert_eq!(result["db"], "file:isolated.db");
+        assert_eq!(result["data"], data_dir.to_string_lossy().as_ref());
+        std::fs::write(&script, "process.exit(41)").unwrap();
+        let failed = run_database_upgrade(&node, &script, &root, "file:isolated.db", &data_dir).unwrap();
+        assert_eq!(failed.status.code(), Some(41));
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

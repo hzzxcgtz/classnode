@@ -211,12 +211,12 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     //    读的就是这条存档。
     clearStoredModule();
     // 保存会话到 localStorage
-    localStorage.setItem(`chat_session_${code}`, JSON.stringify({
+    try { localStorage.setItem(`chat_session_${code}`, JSON.stringify({
       studentId: selectedStudent.id,
       studentName: selectedStudent.name,
       token,
       timestamp: Date.now(),
-    }));
+    })); } catch { setToast({ msg: '浏览器无法保存会话，刷新后需重新选择身份；当前课堂仍可使用。', type: 'error' }); }
     // 加载头像库（仅显示教师创建的供选择）+ 头像 SVG 映射（含学生自己的）
     api.getAvatars('student').then(data => { setAllStudentAvatars(data); }).catch(() => {});
     api.getAvatarsAll('student').then(data => { const m: Record<number, string> = {}; data.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); }); setAvatarSvgs(m); }).catch(() => {});
@@ -239,7 +239,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
       o.wsRef.current.disconnect();
       o.wsRef.current = null;
     }
-    localStorage.removeItem(`chat_session_${code}`);
+    try { localStorage.removeItem(`chat_session_${code}`); } catch { /* 身份与令牌仍在内存中清除 */ }
     setStudentSessionToken();
     setMessages([]);
     setSelectedStudent(null);
@@ -253,7 +253,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     o.chatConnectionGenerationRef.current += 1;
     if (o.wsRef.current) { o.wsRef.current.disconnect(); o.wsRef.current = null; }
     if (o.statusSocketRef.current) { o.statusSocketRef.current.disconnect(); o.statusSocketRef.current = null; }
-    localStorage.removeItem(`chat_session_${code}`);
+    try { localStorage.removeItem(`chat_session_${code}`); } catch { /* 身份与令牌仍在内存中清除 */ }
     setStudentSessionToken();
     o.router.push('/');
   };
@@ -266,7 +266,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   // 必须 useCallback：[code] 之外身份稳定，否则下面那条轮询 effect 每次渲染都会重建
   // setInterval —— 流式回复期间渲染频繁，15 秒的兜底轮询将几乎永不触发。
   const handleClassroomEnded = useCallback(() => {
-    localStorage.removeItem(`chat_session_${code}`);
+    try { localStorage.removeItem(`chat_session_${code}`); } catch { /* 身份与令牌仍在内存中清除 */ }
     setToast({ msg: '课堂已结束', type: 'info' });
     optionsRef.current.router.push('/');
   }, [code]);

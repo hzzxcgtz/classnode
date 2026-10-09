@@ -34,6 +34,7 @@ import type { WorksheetGradeState, WorksheetQuestionNode } from '../../../lib/ty
 /** 队列里的一条：**一道题只留一条**（同题后一次作答覆盖前一次）。 */
 export interface WorksheetQueueItem {
   questionId: string;
+  generation?: string;
   /**
    * 要落库的作答值。
    *
@@ -97,19 +98,21 @@ export function readQueue(storage: QueueStorage, key: string): WorksheetQueueIte
     const value = row.value === null || row.value === undefined
       ? null
       : (row.value as WorksheetAnswerValue);
-    items.push({ questionId: row.questionId, value, at: row.at });
+    items.push({ questionId: row.questionId, value, at: row.at, ...(typeof row.generation === 'string' ? { generation: row.generation } : {}) });
   });
   return items;
 }
 
 /** 写队列。**队列空 ⇒ 删掉键**，不留一条 `[]` 在存储里（那会让「有没有东西要发」多一种判据）。 */
-export function writeQueue(storage: QueueStorage, key: string, items: WorksheetQueueItem[]): void {
+export function writeQueue(storage: QueueStorage, key: string, items: WorksheetQueueItem[]): boolean {
   try {
     if (items.length === 0) storage.removeItem(key);
     else storage.setItem(key, JSON.stringify(items));
+    return true;
   } catch {
     // 写不进去（配额 / 隐私模式）时**不改内存里的队列** —— 这一次会话里它仍然是对的，
     // 只是撑不过刷新。抛出去只会把面板打崩。
+    return false;
   }
 }
 
@@ -240,7 +243,7 @@ export type FailureKind = 'permanent' | 'session-expired' | 'locked' | 'transien
  */
 export function classifyFailure(status: number | null, code?: string | null): FailureKind {
   // 🔴 这一句必须排在**状态码判断之前**：锁定走的是 409，否则会被下面那条 4xx 吃掉。
-  if (code === 'answers-locked' || code === 'worksheet-step-locked') return 'locked';
+  if (code === 'answers-locked' || code === 'worksheet-step-locked' || code === 'classroom-paused' || code === 'student-blacklisted') return 'locked';
   if (status === null) return 'transient';
   // 🔴 401 走单独一档，**绝不能与 400/403/409 合并**。见 `sessionExpiredMessage`。
   if (status === 401) return 'session-expired';

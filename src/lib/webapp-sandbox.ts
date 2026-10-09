@@ -9,7 +9,8 @@
  * 为什么是这一组：
  *   · `allow-scripts` 与 `allow-same-origin` 同时给，在**同源**时是危险的组合
  *     （iframe 可以自己把 sandbox 属性摘掉）；这里安全的前提是 iframe 来自**独立源**
- *     （另一个端口），它够不到父页面，也够不到教师会话。
+ *     （另一个端口），它够不到父页面。Cookie 不按端口隔离，教师 API 与 Socket
+ *     还必须拒绝托管网页的 Origin；独立端口本身不能保护教师会话。
  *   · `allow-forms` / `allow-pointer-lock` / `allow-downloads` 是教学网页的常见需要。
  *   · ⚠️ **故意不给** `allow-top-navigation`（网页不能把整个 ClassNode 页面导走，
  *     那会让学生丢掉课堂，也会把教师从管理页导走）与 `allow-modals`（`alert` 会把

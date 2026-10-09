@@ -170,7 +170,7 @@ export function useChatSocket(options: ChatSocketOptions) {
       socket.on('student-auth-error', (data: SocketErrorEvent) => {
         optionsRef.current.sendingRef.current = false;
         setStudentSessionToken();
-        localStorage.removeItem(`chat_session_${joinCode}`);
+        try { localStorage.removeItem(`chat_session_${joinCode}`); } catch {}
         optionsRef.current.setWaitingAI(false);
         optionsRef.current.setConnectionError(data.error || '学生会话已失效，请重新选择身份');
         socket.disconnect();
@@ -190,7 +190,7 @@ export function useChatSocket(options: ChatSocketOptions) {
       });
 
       socket.on('classroom-ended', () => {
-        localStorage.removeItem(`chat_session_${optionsRef.current.code}`);
+        try { localStorage.removeItem(`chat_session_${optionsRef.current.code}`); } catch {}
         optionsRef.current.setToast({ msg: '课堂已结束', type: 'info' });
         optionsRef.current.router.push('/');
       });
@@ -245,12 +245,17 @@ export function useChatSocket(options: ChatSocketOptions) {
         publishWorksheetClear(data);
       });
 
+      socket.on('ai-busy', (data: SocketErrorEvent & { keepWaiting?: boolean }) => {
+        if (!data.keepWaiting) { optionsRef.current.sendingRef.current = false; optionsRef.current.setWaitingAI(false); }
+        optionsRef.current.setToast({ msg: data.error || '上一条回答尚未结束', type: 'error' });
+      });
       socket.on('identity-conflict', (data: SocketErrorEvent) => {
+        setStudentSessionToken();
         optionsRef.current.setMessages(prev => [...prev, { role: 'system', content: '⚠️ ' + data.error }]);
         optionsRef.current.setWaitingAI(false);
         optionsRef.current.setConnected(false);
         // 断开后清除会话，回到身份选择页
-        localStorage.removeItem(`chat_session_${optionsRef.current.code}`);
+        try { localStorage.removeItem(`chat_session_${optionsRef.current.code}`); } catch {}
         if (optionsRef.current.identityConflictTimerRef.current) window.clearTimeout(optionsRef.current.identityConflictTimerRef.current);
         optionsRef.current.identityConflictTimerRef.current = window.setTimeout(() => {
           if (generation !== optionsRef.current.chatConnectionGenerationRef.current) return;

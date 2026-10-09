@@ -1,9 +1,11 @@
+import { maintenanceGate } from './data-maintenance.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import type { Server } from 'node:http';
 import { SDK_PATH, SDK_SOURCE, SHOT_PATH, injectSdk } from './webapp-sdk.js';
+import { lanAccessGate } from '../middleware/request-security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -192,7 +194,7 @@ export interface StartWebappHostOptions {
   port: number;
   /** 主服务端口。用来拒绝「webapp 端口 == 服务端口」这个危险的配置，见 Ruling 4。 */
   serverPort: number;
-  lanAccessEnabled: boolean;
+  lanAccessEnabled: boolean | (() => boolean);
   webappsRoot: string;
 }
 
@@ -227,14 +229,10 @@ export async function startWebappHost(
   }
 
   const app = express();
+  app.use(maintenanceGate);
 
-  const isLoopback = (address?: string) =>
-    address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
-
-  app.use((req, res, next) => {
-    if (opts.lanAccessEnabled || isLoopback(req.socket.remoteAddress)) return next();
-    res.status(403).send('教师已关闭局域网访问');
-  });
+  app.use(lanAccessGate(() => typeof opts.lanAccessEnabled === 'function'
+    ? opts.lanAccessEnabled() : opts.lanAccessEnabled));
 
   // SDK 脚本。⚠️ 挂载必须在静态之前，否则会被 /webapps 的静态中间件抢走。
   app.get(SDK_PATH, (req, res) => {

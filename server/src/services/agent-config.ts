@@ -46,7 +46,7 @@ export interface AgentCredentialRow {
 export function toAgentConfig(
   agent: AgentConfigRow,
   credential: AgentCredentialRow | null | undefined,
-  extra?: { conversationId?: string },
+  extra?: { conversationId?: string; sessionId?: string },
 ): AgentConfig {
   const shared = agent.platform === 'coze' && agent.credentialId && credential ? decryptOrNull(credential.token) : null;
   return {
@@ -55,6 +55,7 @@ export function toAgentConfig(
     apiKey: shared ?? decryptOrRaw(agent.apiKey),
     botId: agent.botId || undefined,
     extra: agent.extra || undefined,
+    ...(extra?.sessionId ? { sessionId: extra.sessionId } : {}),
     ...(extra?.conversationId ? { conversationId: extra.conversationId } : {}),
   };
 }

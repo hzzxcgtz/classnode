@@ -267,6 +267,7 @@ function createHarness(options: HarnessOptions = {}) {
   return {
     io,
     emits,
+    prisma,
     connect,
     roomMembers,
     setClassroomId(id: string) { activeClassroomId = id; },
@@ -2288,4 +2289,102 @@ test('拍不出画面：drain 之后不再回放（标记随课堂一起释放�
     harness.events('webapp-student-capture-blocked'), [],
     'drain 之后那本 Map 里不该还留着这个课堂的键 —— 它是"此刻"的设备状态，课堂结束就没有意义',
   );
+});
+
+
+test('Phase 5: 采集失败回放不能从课堂 A 泄露到课堂 B', async () => {
+  resetMonitor();
+  const harness = createHarness();
+  const student = await joinAsStudent(harness, 'classroom-a');
+  await student.call('webapp-diag', { classroomId: 'classroom-a', webappId: 'webapp-1', code: 'dom-tier-gave-up', n: 2, w: 0, h: 0 });
+  const teacher = harness.connect({ cookie: teacherCookie() });
+  await teacher.call('join-teacher-board', 'classroom-b');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-b' });
+  assert.equal(harness.events('webapp-student-capture-blocked').length, 0);
+  await teacher.call('join-teacher-board', 'classroom-a');
+  await teacher.call('watch-webapp-monitor', { classroomId: 'classroom-a' });
+  assert.equal(harness.events('webapp-student-capture-blocked').length, 1);
+});
+
+
+test('Phase 5: 同参与者 AI 串行、停止后可重试、Coze 会话按课堂隔离', async t => {
+  resetMonitor();
+  t.mock.method(console, 'log', () => {});
+  const harness = createHarness();
+  const agent = { id: 'phase5-agent', name: 'test', platform: 'coze-agent', apiUrl: 'http://local.test/stream_run', apiKey: 'test', enabled: true, purpose: 'tutoring', extra: null, botId: null };
+  const lookup = harness.prisma.classroom.findUnique;
+  harness.prisma.classroom.findUnique = async () => ({ ...await lookup(), classroomAgents: [{ agentId: agent.id, agent }] }) as never;
+  const messages: Array<{ id: string; role: string; content: string; studentId: string; createdAt: Date }> = [];
+  Object.assign(harness.prisma, {
+    shieldWord: { findMany: async () => [] }, shieldConfig: { findFirst: async () => ({ rateLimit: 0 }) },
+    message: {
+      findMany: async () => [...messages].reverse(),
+      count: async () => messages.filter(row => row.role === 'user').length,
+      create: async ({ data }: { data: { role: string; content: string; studentId: string } }) => { const row = { ...data, id: String(messages.length), createdAt: new Date() }; messages.push(row); return row; },
+    },
+    interaction: { upsert: async () => ({}) },
+  });
+  Object.assign(harness.prisma.classroomStudent, { update: async () => ({}) });
+  const requests: string[] = [];
+  let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
+  let started!: () => void;
+  let arrival = new Promise<void>(resolve => { started = resolve; });
+  t.mock.method(globalThis, 'fetch', async (_url: string, options: RequestInit) => {
+    requests.push((JSON.parse(options.body as string) as { session_id: string }).session_id);
+    const body = new ReadableStream<Uint8Array>({ start(controller) { stream = controller; options.signal?.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError')), { once: true }); } });
+    started();
+    return new globalThis.Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
+  });
+  const student = await joinAsStudent(harness, 'classroom-a', 'phase5-p');
+  const input = { classroomCode: '1234', studentId: 'phase5-p', content: 'hello' };
+  const first = student.call('send-message', input);
+  await arrival;
+  await student.call('send-message', input);
+  assert.equal(requests.length, 1);
+  assert.equal(messages.length, 1);
+  assert.equal(harness.events('ai-busy').length, 1);
+  assert.equal((harness.events('ai-busy')[0].payload as { keepWaiting: boolean }).keepWaiting, true);
+  await student.call('stop-generation');
+  await first;
+  assert.equal(messages.filter(row => row.role === 'assistant').length, 0);
+  arrival = new Promise<void>(resolve => { started = resolve; });
+  const second = student.call('send-message', input);
+  await arrival;
+  stream!.enqueue(new TextEncoder().encode('data: {"type":"answer","content":{"answer":"done"}}\n\n'));
+  stream!.close();
+  await second;
+  assert.equal(messages.filter(row => row.role === 'assistant').length, 1);
+  assert.equal(requests[0], requests[1], '同课堂同参与者上下文稳定');
+  const other = await joinAsStudent(harness, 'classroom-b', 'phase5-p');
+  arrival = new Promise<void>(resolve => { started = resolve; });
+  const third = other.call('send-message', input);
+  await arrival;
+  stream!.close();
+  await third;
+  assert.notEqual(requests[0], requests[2], '同名参与者跨课堂标识不碰撞');
+  harness.setClassroomId('classroom-a');
+  let preparationEntered!: () => void;
+  let preparationRelease!: () => void;
+  const preparationArrival = new Promise<void>(resolve => { preparationEntered = resolve; });
+  const preparationHold = new Promise<void>(resolve => { preparationRelease = resolve; });
+  Object.assign(harness.prisma, { message: {
+    findMany: async () => { preparationEntered(); await preparationHold; return [...messages].reverse(); },
+    count: async () => messages.filter(row => row.role === 'user').length,
+    create: async ({ data }: { data: { role: string; content: string; studentId: string } }) => { const row = { ...data, id: String(messages.length), createdAt: new Date() }; messages.push(row); return row; },
+  } });
+  const beforePreparation = messages.length;
+  const preparing = student.call('send-message', input);
+  await preparationArrival;
+  await student.call('stop-generation');
+  preparationRelease();
+  await preparing;
+  assert.equal(requests.length, 3, '准备阶段停止不能迟到调用上游');
+  assert.equal(messages.length, beforePreparation, '准备阶段停止不能新建消息');
+  createStudentToken('classroom-a', 'phase5-p');
+
+  await student.call('send-message', input);
+  assert.equal(requests.length, 3);
+  assert.equal(harness.events('student-auth-error').length, 1);
+  await student.disconnect();
+  await other.disconnect();
 });

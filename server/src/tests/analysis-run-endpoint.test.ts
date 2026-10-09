@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 /**
  * ★ M7b：`run` 端点的接线。判据在 `analysis-agent.test.ts` 里，这里只管接线。
  *
@@ -36,6 +37,7 @@ async function openTempDb() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-analysis-run-'));
   const url = `file:${path.join(dir, 'test.db')}`;
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), 'DATABASE_URL 必须指向临时目录');
+  prepareTemporarySqliteFile(url);
   execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe',
   });
@@ -136,7 +138,9 @@ async function seed(
       settings: { analysisAgentId: opts.analysisAgentId ?? null },
     },
   });
-  const classroom = await p.classroom.create({ data: { title: '课', code: `70${Math.floor(Math.random() * 90 + 10)}`, status: 'active', mode: 'standard' } });
+  // These tests address classrooms by ID; a random code from 90 possibilities
+  // could collide when several fixture classrooms share this temporary DB.
+  const classroom = await p.classroom.create({ data: { title: '课', code: null, status: 'active', mode: 'standard' } });
   await p.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
   const roster = opts.roster ?? [{ name: '张伟', studentNo: '7' }];
   const participants: string[] = [];

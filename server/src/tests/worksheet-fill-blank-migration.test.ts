@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 /**
  * ★ 2026-09-26：把填空题的**空**从「题干外面一排输入框」迁成「题干文字中间的空」。
  *
@@ -41,6 +42,7 @@ async function openTempDb(t: { after: (fn: () => Promise<void> | void) => void }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-fillblank-migration-'));
   const url = `file:${path.join(dir, 'test.db')}`;
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), 'DATABASE_URL 必须指向临时目录');
+  prepareTemporarySqliteFile(url);
   execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe',
   });

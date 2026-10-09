@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { sanitizeSvg } from '../services/upload-security.js';
+import { safeAvatarView } from '../services/svg-sanitizer.js';
 import {
   generateRandomStudentAvatar,
   generateRandomStudentAvatarByGender,
@@ -110,7 +111,7 @@ router.get('/', async (req, res) => {
       where,
       orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     });
-    res.json(avatars);
+    res.json(avatars.map(safeAvatarView));
   } catch (error) {
     res.status(500).json({ error: '获取头像列表失败' });
   }
@@ -129,7 +130,7 @@ router.get('/all-including-student', async (req, res) => {
       where,
       orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     });
-    res.json(avatars);
+    res.json(avatars.map(safeAvatarView));
   } catch (error) {
     res.status(500).json({ error: '获取头像列表失败' });
   }
@@ -148,7 +149,7 @@ router.get('/all', async (req, res) => {
       where,
       orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     });
-    res.json(avatars);
+    res.json(avatars.map(safeAvatarView));
   } catch (error) {
     res.status(500).json({ error: '获取头像列表失败' });
   }
@@ -195,7 +196,7 @@ router.put('/:id', async (req, res) => {
     if (gender !== undefined && ['boy', 'girl', 'neutral'].includes(gender)) data.gender = gender;
     if (sortOrder !== undefined) data.sortOrder = sortOrder;
     const avatar = await prisma.avatar.update({ where: { id }, data });
-    res.json(avatar);
+    res.json(safeAvatarView(avatar));
   } catch (error) {
     res.status(500).json({ error: '更新头像失败' });
   }
@@ -398,6 +399,7 @@ router.put('/student-self/:studentId', async (req, res) => {
       select: { svgContent: true },
     });
     if (!savedAvatar) throw new Error('INVALID_AVATAR');
+    const displayedAvatar = safeAvatarView(savedAvatar);
 
     // 通知教师端实时更新头像
     try {
@@ -412,7 +414,7 @@ router.put('/student-self/:studentId', async (req, res) => {
             io.to(`teacher:${cs.classroomId}`).emit('student-avatar-changed', {
               studentId: cs.id,
               avatarId: nextAvatarId,
-              svgContent: savedAvatar.svgContent,
+              svgContent: displayedAvatar.svgContent,
             });
           }
         }
@@ -420,7 +422,7 @@ router.put('/student-self/:studentId', async (req, res) => {
     } catch {}
 
     // 将最终保存的头像直接返回给学生端，避免保存后再次查询产生短暂的旧头像状态。
-    res.json({ success: true, avatarId: nextAvatarId, svgContent: savedAvatar.svgContent });
+    res.json({ success: true, avatarId: nextAvatarId, svgContent: displayedAvatar.svgContent });
   } catch (error) {
     if (error instanceof Error && error.message === 'NO_AVATAR_TOKEN') return res.status(403).json({ error: '没有可用的更换次数' });
     if (error instanceof Error && error.message === 'INVALID_AVATAR') return res.status(400).json({ error: '所选头像不可用' });

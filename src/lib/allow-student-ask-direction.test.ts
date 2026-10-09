@@ -55,7 +55,7 @@ test('🔴 老课堂加这一列时必须 `DEFAULT 1` —— 认不出就当**�
   // 与 `webappCaptureEnabled` / `allowStudentStop` 同一方向。写成 0 的话，升级之后
   // 每一堂老课都**静默地**禁止学生提问，而教师端那条开关显示「关」——
   // 看起来像是他自己关掉的。
-  const source = readFileSync(new URL('../../server/src/index.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../../server/src/services/legacy-upgrade.ts', import.meta.url), 'utf8');
   assert.ok(
     source.includes('ADD COLUMN "allowStudentAsk" BOOLEAN NOT NULL DEFAULT 1'),
     'allowStudentAsk 的 ALTER 不是 DEFAULT 1 —— 老课堂会被静默地禁止提问',

@@ -7,7 +7,8 @@ import { createRequire } from 'module';
 const _require = createRequire(import.meta.url);
 import fs from 'fs';
 import crypto from 'crypto';
-import { reloadEncryptionKey } from '../services/crypto.js';
+import { createFullBackup, restoreFullBackup, resetAllData, extractBackup } from '../services/full-backup.js';
+import { withDataMaintenance } from '../services/data-maintenance.js';
 import { safeExtractZip } from '../services/upload-security.js';
 import {
   generateConversationsDocx,
@@ -39,42 +40,6 @@ function getBackupDir(): string {
   return dir;
 }
 
-function getDbPath(): string {
-  if (process.env.DATABASE_URL) {
-    const m = process.env.DATABASE_URL.match(/^file:(.+)/);
-    if (m) {
-      const p = m[1];
-      // DATABASE_URL 是相对于 prisma/ 目录的，fs 操作需要绝对路径
-      if (!path.isAbsolute(p) && !p.startsWith('.')) return p;
-      return path.resolve(__dirname, '../../prisma', p);
-    }
-  }
-  return path.join(__dirname, '../../prisma/dev.db');
-}
-
-async function validateClassNodeDatabase(filePath: string): Promise<void> {
-  const { PrismaClient: ValidationClient } = await import('@prisma/client');
-  const client = new ValidationClient({ datasources: { db: { url: `file:${filePath}` } } });
-  try {
-    const tables = await client.$queryRawUnsafe<{ name: string }[]>(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('Classroom', 'Class', 'Agent')",
-    );
-    if (tables.length < 3) throw new Error('数据库结构不匹配');
-    const integrity = await client.$queryRawUnsafe<{ integrity_check: string }[]>('PRAGMA integrity_check');
-    if (integrity[0]?.integrity_check !== 'ok') throw new Error('数据库完整性检查失败');
-  } finally {
-    await client.$disconnect();
-  }
-}
-
-async function createDatabaseSafetySnapshot(prisma: PrismaClient, backupDir: string): Promise<string> {
-  const snapshotPath = path.join(backupDir, `classnode-backup-${readableTimestamp()}-${crypto.randomUUID().slice(0, 8)}-pre-restore.classdb`);
-  const escaped = snapshotPath.replace(/'/g, "''");
-  await prisma.$executeRawUnsafe(`VACUUM INTO '${escaped}'`);
-  fs.writeFileSync(snapshotPath + '.meta', JSON.stringify({ source: 'safety-restore' }));
-  return snapshotPath;
-}
-
 // Multer: 备份文件上传
 const backupStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -86,7 +51,7 @@ const backupStorage = multer.diskStorage({
 });
 const backupUpload = multer({
   storage: backupStorage,
-  limits: { fileSize: 200 * 1024 * 1024 },
+  limits: { fileSize: 1100 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ok = ['.classbak', '.classdb', '.db', '.zip'].some(ext => file.originalname.endsWith(ext));
     if (!ok) {
@@ -455,65 +420,11 @@ router.post('/:classroomId/stats/csv', async (req, res) => {
 // 数据库备份（含附件）
 router.post('/backup', async (req, res) => {
   try {
-    const dbPath = getDbPath();
-    const chatDir = getUploadsChatDir();
-    const backupDir = getBackupDir();
-
-    const timestamp = readableTimestamp();
-    const backupPath = path.join(backupDir, `classnode-backup-${timestamp}.classbak`);
-
-    const { ZipArchive } = _require('archiver');
-    const archive = new ZipArchive();
-    const writeStream = fs.createWriteStream(backupPath);
-    archive.pipe(writeStream);
-
-    // 添加数据库
-    archive.file(dbPath, { name: 'data.db' });
-
-    // 添加附件目录（支持 chat、avatars 和 logos，不备份 temp）
-    if (fs.existsSync(chatDir) && fs.readdirSync(chatDir).length > 0) {
-      archive.directory(chatDir, 'chat');
-    }
-    const avatarsDir = path.join(getUploadsDir(), 'avatars');
-    if (fs.existsSync(avatarsDir) && fs.readdirSync(avatarsDir).length > 0) {
-      archive.directory(avatarsDir, 'avatars');
-    }
-    const logosDir = path.join(getUploadsDir(), 'logos');
-    if (fs.existsSync(logosDir) && fs.readdirSync(logosDir).length > 0) {
-      archive.directory(logosDir, 'logos');
-    }
-
-    // 添加加密密钥文件（确保恢复后 API Key 可解密）
-    const keyDir = process.env.CLASSNODE_DATA_DIR
-      ? path.resolve(process.env.CLASSNODE_DATA_DIR)
-      : path.resolve(__dirname, '../..');
-    const keyFile = path.join(keyDir, '.encryption.key');
-    if (fs.existsSync(keyFile)) {
-      archive.file(keyFile, { name: '.encryption.key' });
-    }
-
-    await archive.finalize();
-    await new Promise<void>((resolve, reject) => {
-      writeStream.on('close', resolve);
-      writeStream.on('error', reject);
-    });
-
-    // 计算文件哈希并写入 meta 信息
-    const hash = crypto.createHash('sha256').update(fs.readFileSync(backupPath)).digest('hex');
-    fs.writeFileSync(backupPath + '.meta', JSON.stringify({ source: 'local', hash }));
-
-    res.json({
-      success: true,
-      path: backupPath,
-      size: fs.statSync(backupPath).size,
-    });
-  } catch (error: unknown) {
-    console.error('[Backup] 创建失败:', errorMessage(error));
-    res.status(500).json({ error: '备份失败: ' + errorMessage(error) });
-  }
+    const file = await withDataMaintenance(() => createFullBackup(req.app.get('prisma')));
+    res.json({ success: true, path: file, size: fs.statSync(file).size });
+  } catch (error) { res.status(500).json({ error: '备份失败: ' + errorMessage(error) }); }
 });
 
-// 获取备份列表
 router.get('/backups', async (req, res) => {
   try {
     const backupDir = getBackupDir();
@@ -573,136 +484,13 @@ router.delete('/backup/:name', async (req, res) => {
 
 // 从备份恢复数据库（兼容 .classbak 和旧版 .classdb）
 router.post('/restore/:name', async (req, res) => {
-  let safetyBackupPath: string | null = null;
-  let dbPathForRollback: string | null = null;
   try {
-    const dbPath = getDbPath();
-    dbPathForRollback = dbPath;
-    const backupDir = getBackupDir();
-    const prisma: PrismaClient = req.app.get('prisma');
     const name = path.basename(req.params.name);
-    const filePath = path.join(backupDir, name);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: '备份文件不存在' });
-    }
-
-    const isLegacy = name.endsWith('.classdb') || name.endsWith('.db');
-    let candidateDbPath = filePath;
-
-    if (isLegacy) {
-      // 旧版 .classdb：直接复制数据库
-      const header = fs.readFileSync(filePath, { encoding: 'binary' }).slice(0, 16);
-      if (header !== 'SQLite format 3\0') {
-        return res.status(400).json({ error: '备份文件格式无效' });
-      }
-    } else {
-      // 新版 .classbak：解压后恢复数据库和附件
-      const tmpDir = path.join(backupDir, `extract-${Date.now()}`);
-      fs.mkdirSync(tmpDir, { recursive: true });
-
-      const AdmZip = _require('adm-zip');
-      const zip = new AdmZip(filePath);
-      safeExtractZip(zip, tmpDir, {
-        maxFiles: 5000,
-        maxTotalBytes: 1024 * 1024 * 1024,
-        maxSingleFileBytes: 500 * 1024 * 1024,
-      });
-
-      // 恢复数据库
-      const dataFile = path.join(tmpDir, 'data.db');
-      if (!fs.existsSync(dataFile)) {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-        return res.status(400).json({ error: '备份文件不包含数据库' });
-      }
-      const dbHeader = fs.readFileSync(dataFile, { encoding: 'binary' }).slice(0, 16);
-      if (dbHeader !== 'SQLite format 3\0') {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-        return res.status(400).json({ error: '备份中的数据库文件无效' });
-      }
-      candidateDbPath = dataFile;
-
-      await validateClassNodeDatabase(candidateDbPath);
-      safetyBackupPath = await createDatabaseSafetySnapshot(prisma, backupDir);
-      await prisma.$disconnect();
-      fs.copyFileSync(candidateDbPath, dbPath);
-
-      // 恢复附件（chat + logos）
-      for (const sub of ['chat', 'avatars', 'logos']) {
-        const srcDir = path.join(tmpDir, sub);
-        const dstDir = path.join(getUploadsDir(), sub);
-        if (fs.existsSync(srcDir) && fs.readdirSync(srcDir).length > 0) {
-          if (!fs.existsSync(dstDir)) fs.mkdirSync(dstDir, { recursive: true });
-          for (const f of fs.readdirSync(srcDir)) {
-            fs.cpSync(path.join(srcDir, f), path.join(dstDir, f), { recursive: true, force: true });
-          }
-        }
-      }
-
-      // 恢复加密密钥文件
-      const keyFileRestore = path.join(tmpDir, '.encryption.key');
-      if (fs.existsSync(keyFileRestore)) {
-        const keyDir = process.env.CLASSNODE_DATA_DIR
-          ? path.resolve(process.env.CLASSNODE_DATA_DIR)
-          : path.resolve(__dirname, '../..');
-        const keyFile = path.join(keyDir, '.encryption.key');
-        fs.copyFileSync(keyFileRestore, keyFile);
-        reloadEncryptionKey();
-      }
-
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-
-    }
-
-    if (isLegacy) {
-      await validateClassNodeDatabase(candidateDbPath);
-      safetyBackupPath = await createDatabaseSafetySnapshot(prisma, backupDir);
-      await prisma.$disconnect();
-      fs.copyFileSync(candidateDbPath, dbPath);
-    }
-
-    // 清除可能存在的旧 WAL/SHM 文件，避免干扰
-    const walPath = dbPath + '-wal';
-    const shmPath = dbPath + '-shm';
-    if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
-    if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
-
-    // 3. 尝试同步数据库结构（不同版本间新增表/字段自动补齐，静默处理）
-    try {
-      const { execFileSync } = await import('child_process');
-      const prismaCli = path.join(__dirname, '../../node_modules/prisma/build/index.js');
-      if (fs.existsSync(prismaCli)) {
-        execFileSync(process.execPath, [prismaCli, 'db', 'push', '--skip-generate'], {
-          cwd: path.join(__dirname, '../..'),
-          stdio: 'ignore',
-          timeout: 30000,
-          env: { ...process.env, DATABASE_URL: `file:${dbPath}` },
-        });
-      } else {
-        throw new Error('Prisma CLI 不可用');
-      }
-    } catch (error) {
-      throw new Error(`恢复后的数据库无法安全同步: ${error instanceof Error ? error.message : String(error)}`);
-    }
-
-    await prisma.$connect();
-
-    res.json({ success: true, restoredFrom: name, safetyBackup: safetyBackupPath ? path.basename(safetyBackupPath) : null });
-  } catch (error) {
-    console.error('[Restore] error:', error);
-    if (safetyBackupPath && dbPathForRollback && fs.existsSync(safetyBackupPath)) {
-      try {
-        const prisma: PrismaClient = req.app.get('prisma');
-        await prisma.$disconnect();
-        fs.copyFileSync(safetyBackupPath, dbPathForRollback);
-        await prisma.$connect();
-        console.warn('[Restore] 恢复失败，已自动回滚到操作前数据库');
-      } catch (rollbackError) {
-        console.error('[Restore] 自动回滚失败:', rollbackError);
-      }
-    }
-    res.status(500).json({ error: '恢复失败: ' + (error instanceof Error ? error.message : '未知错误') });
-  }
+    const file = path.join(getBackupDir(), name);
+    if (!fs.existsSync(file)) return res.status(404).json({ error: '备份文件不存在' });
+    const result = await withDataMaintenance(() => restoreFullBackup(req.app.get('prisma'), file, req.app.get('dataMaintenanceHooks')));
+    res.json({ success: true, restoredFrom: name, ...result });
+  } catch (error) { res.status(500).json({ error: '恢复失败: ' + errorMessage(error) }); }
 });
 
 // 下载备份文件（用于跨设备迁移）
@@ -752,7 +540,7 @@ const chatUpload = multer({
     destination: (_req, _file, cb) => cb(null, getBackupDir()),
     filename: (_req, _file, cb) => cb(null, `chat-upload-${Date.now()}.zip`),
   }),
-  limits: { fileSize: 200 * 1024 * 1024 },
+  limits: { fileSize: 1100 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, ext === '.zip' || ext === '.classchat');
@@ -792,21 +580,6 @@ router.post('/backup/uploads-chat/import', chatUpload.single('file'), async (req
   }
 });
 
-// ─── 合并备份：数据库 + 附件（一键全量备份） ─────────────
-
-function getUploadsDir(): string {
-  return process.env.CLASSNODE_DATA_DIR
-    ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads')
-    : path.join(__dirname, '../../uploads');
-}
-
-function getUploadsChatDir(): string {
-  return process.env.CLASSNODE_DATA_DIR
-    ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'chat')
-    : path.join(__dirname, '../../uploads', 'chat');
-}
-
-
 router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
   try {
     if (!req.file) {
@@ -815,18 +588,10 @@ router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
     const originalName = req.file.originalname.toLowerCase();
     const isZip = originalName.endsWith('.classbak') || originalName.endsWith('.zip');
     if (isZip) {
-      const AdmZip = _require('adm-zip');
-      const zip = new AdmZip(req.file.path);
-      const entries = zip.getEntries();
-      const allowedRoot = /^(data\.db|\.encryption\.key|(?:chat|avatars|logos)(?:\/|$))/;
-      if (!entries.some((entry: { entryName: string }) => entry.entryName === 'data.db') || entries.some((entry: { entryName: string }) => !allowedRoot.test(String(entry.entryName).replace(/\\/g, '/')))) {
-        fs.unlinkSync(req.file.path);
-        return res.status(400).json({ error: '备份压缩包结构无效' });
-      }
       const verifyDir = path.join(getBackupDir(), `verify-${crypto.randomUUID()}`);
       fs.mkdirSync(verifyDir, { recursive: true });
       try {
-        safeExtractZip(zip, verifyDir, { maxFiles: 5000, maxTotalBytes: 1024 * 1024 * 1024, maxSingleFileBytes: 500 * 1024 * 1024 });
+        extractBackup(req.file.path, verifyDir, true);
         const dataFile = path.join(verifyDir, 'data.db');
         if (fs.readFileSync(dataFile, { encoding: 'binary' }).slice(0, 16) !== 'SQLite format 3\0') throw new Error('数据库文件无效');
       } catch (error) {
@@ -849,7 +614,7 @@ router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
     // 重命名为标准格式并写入 meta 信息
     const timestamp = readableTimestamp();
     const ext = isZip ? '.classbak' : '.classdb';
-    const newName = `classnode-backup-${timestamp}${ext}`;
+    const newName = `classnode-backup-${timestamp}-${crypto.randomUUID()}${ext}`;
     const newPath = path.join(path.dirname(req.file.path), newName);
     fs.renameSync(req.file.path, newPath);
     const hash = crypto.createHash('sha256').update(fs.readFileSync(newPath)).digest('hex');
@@ -860,44 +625,12 @@ router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
   }
 });
 
-// 初始化清零（删除所有数据）
+// 清零采用候选库与完整安全备份，保留管理员密码及内置屏蔽词。
 router.post('/reset', async (req, res) => {
   try {
-    const prisma: PrismaClient = req.app.get('prisma');
-
-    const tables = [
-      'Message', 'ClassroomStudent', 'ClassroomGroup',
-      'ClassroomAgent', 'ClassroomClass', 'Interaction',
-      'Student', 'Avatar', 'ClassGroup', 'Classroom', 'Class', 'Agent',
-    ];
-
-    await prisma.$executeRawUnsafe('PRAGMA foreign_keys = OFF');
-    for (const table of tables) {
-      await prisma.$executeRawUnsafe(`DELETE FROM "${table}"`);
-    }
-    await prisma.$executeRawUnsafe('PRAGMA foreign_keys = ON');
-
-    // 清空上传文件（头像、聊天附件、智能体 Logo）
-    const uploadsBase = process.env.CLASSNODE_DATA_DIR
-      ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads')
-      : path.join(__dirname, '../../uploads');
-    for (const sub of ['avatars', 'chat', 'logos', 'temp']) {
-      const dir = path.join(uploadsBase, sub);
-      if (fs.existsSync(dir)) {
-        for (const f of fs.readdirSync(dir)) {
-          fs.rmSync(path.join(dir, f), { recursive: true, force: true });
-        }
-      }
-    }
-
-    // 清空屏蔽警告记录（保留系统屏蔽词）
-    await prisma.$executeRawUnsafe(`DELETE FROM "ShieldWarning"`);
-    await prisma.$executeRawUnsafe(`DELETE FROM "ShieldWord" WHERE builtin = 0`);
-
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: '初始化失败' });
-  }
+    const result = await withDataMaintenance(() => resetAllData(req.app.get('prisma'), req.app.get('dataMaintenanceHooks')));
+    res.json({ success: true, ...result });
+  } catch (error) { res.status(500).json({ error: '初始化失败: ' + errorMessage(error) }); }
 });
 
 export default router;

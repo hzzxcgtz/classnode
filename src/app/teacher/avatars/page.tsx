@@ -979,11 +979,11 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     {previewSvg ? (
-                      <div style={{
+                      <img alt="头像预览" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(fixSvgUrl(previewSvg))}`} style={{
                         width: 48, height: 48,
                         borderRadius: category === 'class' ? 12 : '50%',
                         overflow: 'hidden',
-                      }} dangerouslySetInnerHTML={{ __html: previewSvg.replace('<svg', '<svg width="48" height="48"') }} />
+                      }} />
                     ) : (
                       <span style={{ fontSize: "0.75rem", color: '#cbd5e1' }}>无效</span>
                     )}

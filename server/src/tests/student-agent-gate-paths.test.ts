@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 /**
  * ★ M7b：**学生端那道闸在「两条路径」上都生效**（独立审查 C2 + 它建议的这条网）。
  *
@@ -43,6 +44,7 @@ async function openTempDb() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-agent-gate-paths-'));
   const url = `file:${path.join(dir, 'test.db')}`;
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), 'DATABASE_URL 必须指向临时目录');
+  prepareTemporarySqliteFile(url);
   execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe',
   });

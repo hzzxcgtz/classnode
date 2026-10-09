@@ -1,7 +1,7 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { PrismaClient, Prisma } from '@prisma/client';
-import { createStudentToken } from '../middleware/student-auth.js';
-import { hasTeacherSession } from '../middleware/auth.js';
+import { createStudentToken, getStudentSession } from '../middleware/student-auth.js';
+import { hasTeacherSession, requireTeacher } from '../middleware/auth.js';
 import { ALLOWED_SOURCE_STATUSES } from '../services/classroom-state.js';
 import { compareStudentNumbers } from '../services/student-sort.js';
 import { initialModuleRows, isValidModuleKey, isValidModuleState, mergeModuleStates } from '../services/classroom-module-state.js';
@@ -19,6 +19,24 @@ import { flattenAnswerable } from '../services/worksheet-heading.js';
 import type { WorksheetContent } from '../services/worksheet-questions.js';
 
 const router: Router = Router();
+
+/** Shared by the production mount and route integration tests. */
+export const classroomAccessGate: RequestHandler = (req, res, next) => {
+  const publicStudentAccess =
+    (req.method === 'POST' && /^\/code\/[^/]+\/student-session\/?$/.test(req.path)) ||
+    (req.method === 'GET' && (
+      /^\/code\/[^/]+\/?$/.test(req.path) || /^\/[^/]+\/students\/?$/.test(req.path)
+    ));
+  if (publicStudentAccess) return next();
+  const student = getStudentSession(req);
+  const message = req.path.match(/^\/([^/]+)\/student\/([^/]+)\/messages\/?$/);
+  const notifications = req.path.match(/^\/([^/]+)\/notifications\/?$/);
+  if (req.method === 'GET' && student && (
+    (message && student.classroomId === message[1] && student.studentId === message[2]) ||
+    (notifications && student.classroomId === notifications[1])
+  )) return next();
+  requireTeacher(req, res, next);
+};
 
 const PUBLIC_CODE_WINDOW_MS = 60_000;
 const PUBLIC_CODE_MAX_REQUESTS = 120;
@@ -478,7 +496,7 @@ router.post('/create', async (req, res) => {
         let memberIds: string[] = [];
         try { memberIds = JSON.parse(classGroup.studentIds || '[]'); } catch {}
         const members = memberIds.length > 0 ? await tx.student.findMany({
-          where: { id: { in: memberIds } },
+          where: { id: { in: memberIds }, classId: classGroup.classId },
           select: { id: true, name: true, studentNo: true },
         }) : [];
         if (members.length > 0) {
@@ -661,7 +679,7 @@ router.post('/create-advanced', async (req, res) => {
       let memberIds: string[] = [];
       try { memberIds = JSON.parse(sourceGroup?.studentIds || '[]'); } catch {}
       const members = memberIds.length > 0 ? await tx.student.findMany({
-        where: { id: { in: memberIds } }, select: { id: true, name: true, studentNo: true },
+        where: { id: { in: memberIds }, classId }, select: { id: true, name: true, studentNo: true },
       }) : [];
       if (members.length > 0) await tx.classroomGroupMember.createMany({ data: members.map(member => ({
         classroomId: created.id, groupId: classroomGroup.id,
@@ -1808,16 +1826,45 @@ router.get('/history/all', async (req, res) => {
 router.get('/:id/notifications', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { studentId } = req.query;
+    const student = getStudentSession(req);
+    let participantId: string | null = null;
+    if (student) {
+      if (student.classroomId !== req.params.id
+        || (req.query.studentId !== undefined && req.query.studentId !== student.studentId)) {
+        return res.status(403).json({ error: '无权读取其他参与者的通知' });
+      }
+      participantId = student.studentId;
+    } else {
+      if (!hasTeacherSession(req)) return res.status(401).json({ error: '需要教师或学生身份' });
+      if (req.query.studentId !== undefined) {
+        if (typeof req.query.studentId !== 'string' || !req.query.studentId) {
+          return res.status(400).json({ error: '参与者参数无效' });
+        }
+        participantId = req.query.studentId;
+      }
+    }
+    let recipientScope: Prisma.TeacherNotificationWhereInput | undefined;
+    if (participantId) {
+      const participant = await prisma.classroomStudent.findFirst({
+        where: { id: participantId, classroomId: req.params.id },
+        select: { id: true, studentId: true, groupId: true },
+      });
+      if (!participant) return res.status(403).json({ error: '参与者不属于当前课堂' });
+      recipientScope = {
+        OR: [
+          { studentId: null, groupId: null },
+          { studentId: participant.id },
+          // Older notifications used the base Student ID. Its ownership is
+          // obtained from the verified participant, never a query parameter.
+          ...(participant.studentId ? [{ studentId: participant.studentId }] : []),
+          ...(participant.groupId ? [{ studentId: null, groupId: participant.groupId }] : []),
+        ],
+      };
+    }
     const notifications = await prisma.teacherNotification.findMany({
       where: {
         classroomId: req.params.id,
-        ...(typeof studentId === 'string' ? {
-          OR: [
-            { studentId: null },
-            { studentId },
-          ],
-        } : {}),
+        ...recipientScope,
       },
       // 重连只需恢复最近通知；限制读取量避免长期课堂的通知记录拖慢学生端恢复。
       orderBy: { createdAt: 'desc' },

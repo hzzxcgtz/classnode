@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 /**
  * ★ 2026-09-25：**任务制迁移** —— 把现有学习单的平铺题包进一个任务容器。
  *
@@ -47,6 +48,7 @@ async function openTempDb(t: { after: (fn: () => Promise<void> | void) => void }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-task-migration-'));
   const url = `file:${path.join(dir, 'test.db')}`;
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), 'DATABASE_URL 必须指向临时目录');
+  prepareTemporarySqliteFile(url);
   execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe',
   });

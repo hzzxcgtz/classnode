@@ -45,7 +45,7 @@ export class Anonymizer {
    */
   anonymizeMessage(text: string, realName: string): string {
     const anonId = this.anonymize(realName);
-    return text.replace(new RegExp(realName, 'g'), anonId);
+    return realName ? text.split(realName).join(anonId) : text;
   }
 
   /**
@@ -54,7 +54,7 @@ export class Anonymizer {
   deanonymizeMessage(text: string): string {
     let result = text;
     for (const [realName, anonId] of this.nameMap) {
-      result = result.replace(new RegExp(anonId, 'g'), realName);
+      result = result.split(anonId).join(realName);
     }
     return result;
   }

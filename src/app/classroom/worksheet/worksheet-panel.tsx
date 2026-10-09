@@ -1,5 +1,7 @@
 'use client';
 
+import { normalizeGeneration, type WorksheetGeneration } from './worksheet-generation';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { getStudentSessionAuthorization } from '@/lib/api';
@@ -234,6 +236,7 @@ interface LoadedWorksheet {
    * 是它引用稳定的**唯一**来源。挪出去现 map 一份，学生每敲一个字都会被水合抹掉。
    */
   savedAnswers: SavedAnswerRow[];
+  generation: WorksheetGeneration;
   /**
    * AI 对当前学生的逐题参考分（评语与建议）。
    * 🔴 ★ 2026-10-07（教师裁定 2）：那份分**也**写回了 `WorksheetAnswer.score` ⇒
@@ -906,6 +909,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
               : null,
             // 每次 fetch **只建这一份**（引用稳定，见 `LoadedWorksheet.savedAnswers`）。
             savedAnswers: parseSavedAnswers(rowsData),
+            generation: normalizeGeneration(rowsData?.generation),
             aiReferenceScores: parseAiReferenceScores(rowsData),
           },
         });
@@ -924,6 +928,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
     questions,
     // ⚠️ 走 `NO_SAVED_ANSWERS`（模块级常量）而不是现写 `[]`：水合 effect 拿它当依赖项，
     // 每次渲染换一个数组身份就会把学生正在敲的字抹掉。见那个常量的注释。
+    generation: load.kind === 'ready' ? load.worksheet.generation : undefined,
     savedAnswers: load.kind === 'ready' ? load.worksheet.savedAnswers : NO_SAVED_ANSWERS,
     setToast,
     // ★ M5a：**从 props 进来**（D1 铺好的那条路：会话层专门 state → 外壳 → 本面板）。

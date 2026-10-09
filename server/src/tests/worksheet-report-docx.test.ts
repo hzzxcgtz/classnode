@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 /**
  * M6a：**报告到底产不产得出来** —— 端到端 smoke（真 Prisma + 真 SQLite + 真 docx + 真 sharp）。
  *
@@ -38,6 +39,7 @@ async function openTempDb() {
   // 🔴 安全闸门，不是装饰：保证下面那次 db push 不可能落在真实库上。
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), `DATABASE_URL 必须指向临时目录，实际是 ${url}`);
   assert.notEqual(path.resolve(file), path.resolve(HERE, '../../prisma/dev.db'));
+  prepareTemporarySqliteFile(url);
   execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe',
   });

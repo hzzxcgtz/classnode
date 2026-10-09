@@ -441,7 +441,7 @@ export default function HistoryPage() {
               <div>
                 <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>数据备份与恢复</h2>
                 <p style={{ color: '#64748b', fontSize: "0.75rem", margin: '2px 0 0' }}>
-                  备份包含全部课堂数据和上传附件，跨设备迁移无忧
+                  新备份包含课堂数据、API 凭据、上传附件和教学网页。旧备份可能缺少附件或网页。
                 </p>
               </div>
             </div>
@@ -763,7 +763,8 @@ function BackupManager() {
     setBackupAction('restore');
     setRestoring(true);
     try {
-      await api.restoreBackup(name);
+      const result = await api.restoreBackup(name);
+      if (result.warnings?.length) window.alert('恢复成功。\n' + result.warnings.join('\n'));
       setRestoreTarget(null);
       setToast({ msg: '数据恢复成功！页面将重新加载。', type: 'success' });
       window.location.reload();
@@ -978,7 +979,7 @@ function BackupManager() {
               padding: 12, borderRadius: 8, background: '#f8eeee', border: '1px solid #fecaca',
               fontSize: "0.813rem", color: '#934e4e', lineHeight: 1.6, marginBottom: 20,
             }}>
-              <strong>⚠ 警告：</strong>恢复操作将<strong>覆盖</strong>当前数据库中的所有数据。建议在恢复前先备份当前数据。
+              <strong>⚠ 警告：</strong>恢复操作将<strong>覆盖</strong>当前数据库、密钥和备份包含的资产。系统会自动保留操作前完整备份。旧版备份缺少的资产仅能沿用本机文件。
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setRestoreTarget(null)} disabled={restoring}
@@ -1003,7 +1004,7 @@ function BackupManager() {
             </div>
             <h3 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: '#0f172a', textAlign: 'center' }}>系统初始化</h3>
             <p style={{ fontSize: '0.813rem', color: '#64748b', textAlign: 'center', margin: '0 0 16px' }}>
-              将清空所有数据，恢复到初始状态。<br />管理员密码将保留。
+              将清空所有数据，恢复到初始状态。<br />管理员密码和系统内置屏蔽词将保留。
             </p>
 
             <div style={{ background: '#f8fafc', borderRadius: 10, padding: 14, marginBottom: 16, fontSize: '0.75rem', lineHeight: 1.8, color: '#475569' }}>
@@ -1012,11 +1013,14 @@ function BackupManager() {
                 <span>• 所有班级和学生</span>
                 <span>• 所有智能体配置</span>
                 <span>• 所有课堂和对话</span>
-                <span>• 所有屏蔽词配置</span>
+                <span>• 自定义屏蔽词及配置</span>
                 <span>• 用户上传的头像</span>
                 <span>• 聊天附件文件</span>
                 <span>• 智能体 Logo</span>
                 <span>• 系统设置项</span>
+                <span>• 学习单及作答记录</span>
+                <span>• 共享 API 凭据</span>
+                <span>• 教学网页及使用记录</span>
               </div>
             </div>
 
@@ -1024,7 +1028,7 @@ function BackupManager() {
               padding: '10px 14px', borderRadius: 8, background: '#f8eeee', border: '1px solid #fecaca',
               fontSize: '0.75rem', color: '#934e4e', lineHeight: 1.6, marginBottom: 16,
             }}>
-              <strong>⚠ 此操作不可撤销。</strong>建议先备份数据。
+              <strong>⚠ 将清空当前数据，系统会自动保留完整备份。</strong>建议先备份数据。
             </div>
 
             <div style={{ marginBottom: 20 }}>

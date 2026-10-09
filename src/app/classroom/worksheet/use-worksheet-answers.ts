@@ -1,5 +1,7 @@
 'use client';
 
+import { normalizeGeneration, generationFor, retainCurrentGeneration, type WorksheetGeneration } from './worksheet-generation';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { getApiBaseUrl } from '@/lib/api-base';
@@ -105,6 +107,7 @@ export interface UseWorksheetAnswersOptions {
    * state 里（`worksheet-panel.tsx` 的 `load` 就是这么做的），不要现 map 一份。
    */
   savedAnswers: SavedAnswerRow[];
+  generation?: WorksheetGeneration;
   setToast: Dispatch<SetStateAction<ChatToast | null>>;
   /**
    * ★ M5a：这间课堂此刻是否锁定了作答。
@@ -184,6 +187,7 @@ export function useWorksheetAnswers({
   worksheetId,
   questions,
   savedAnswers,
+  generation,
   setToast,
   answersLocked,
   onCleared,
@@ -202,6 +206,9 @@ export function useWorksheetAnswers({
 
   /** 队列的**内存权威**。`localStorage` 是它的镜像（每写必同步）。 */
   const pendingRef = useRef<WorksheetQueueItem[]>([]);
+  const generationRef = useRef(normalizeGeneration(generation));
+  useEffect(() => { if (generation) generationRef.current = generation; }, [generation]);
+  const storageWarningRef = useRef(false);
   /**
    * ★ 2026-10-09（审计 §B4b）：**此刻正在发的那一条**（`flush` 取走的快照），没有就是 `null`。
    *
@@ -254,7 +261,14 @@ export function useWorksheetAnswers({
     pendingRef.current = items;
     setPendingCount(items.length);
     const key = queueKeyRef.current;
-    if (key) writeQueue(window.localStorage, key, items);
+    if (key) {
+      let persisted = false;
+      try { persisted = writeQueue(window.localStorage, key, items); } catch {}
+      if (!persisted && !storageWarningRef.current) {
+        storageWarningRef.current = true;
+        setToastRef.current({ msg: '浏览器无法保存离线草稿，当前内容仍在内存中；请勿刷新或关闭页面。', type: 'error' });
+      }
+    }
   }, []);
 
   // ── 水合：挂载 / 换键 / 服务端作答到达时，把三个来源合成一份界面态 ───────────
@@ -278,6 +292,7 @@ export function useWorksheetAnswers({
   // （不是 ref）：作答读回来的那一刻正是水合该发生的时刻，漏了它，
   // 服务端的作答永远填不回屏幕 —— 那正是这次要修的 bug。
   useEffect(() => {
+    const previousQueueKey = queueKeyRef.current;
     queueKeyRef.current = queueKey;
     setSubmitting({});
     setOffline(false);
@@ -293,7 +308,10 @@ export function useWorksheetAnswers({
       lastSentRef.current = {};
       return;
     }
-    const queued = readQueue(window.localStorage, queueKey);
+    let stored: WorksheetQueueItem[] = [];
+    try { stored = storageWarningRef.current && previousQueueKey === queueKey ? pendingRef.current : readQueue(window.localStorage, queueKey); } catch {}
+    const queued = retainCurrentGeneration(stored, generationRef.current);
+    try { writeQueue(window.localStorage, queueKey, queued); } catch {}
     pendingRef.current = queued;
     setPendingCount(queued.length);
 
@@ -395,6 +413,7 @@ export function useWorksheetAnswers({
       if (command.worksheetId !== worksheetId) { console.warn('[worksheet] 清除指令被丢：不是这份学习单'); return; }
 
       // ① 丢掉这个 scope 的待保存项。整张清除时丢**全部**（这份 hook 就是逐份学习单的）。
+      if (command.generation) generationRef.current = normalizeGeneration(command.generation);
       const scope = command.questionId;
       commitQueue(scope === null ? [] : pendingRef.current.filter((item) => item.questionId !== scope));
 
@@ -408,7 +427,7 @@ export function useWorksheetAnswers({
   // ── 写入通道 ────────────────────────────────────────────────────────────
 
   const putAnswer = useCallback(async (worksheetIdForSave: string, item: WorksheetQueueItem): Promise<SaveOutcome> => {
-    const body: Record<string, unknown> = { questionId: item.questionId };
+    const body: Record<string, unknown> = { questionId: item.questionId, generation: item.generation ?? '0:0' };
     // ⚠️ `null` = 清空这一题：**不发这个键**。服务端的 `toJsonValue` 把「没有 value」
     // 收成 SQL NULL（那正是「这一题的作答被清空了」），而 `JSON.stringify` 会把
     // `undefined` 整个丢掉 —— 所以这里不写 `value: undefined`，而是根本不写。
@@ -481,6 +500,7 @@ export function useWorksheetAnswers({
         } finally {
           inFlightRef.current = null;
         }
+        if ((next.generation ?? '0:0') !== generationFor(generationRef.current, next.questionId)) continue;
         if (outcome.ok) {
           // ★ 只有服务端 200 才出队（规格 §8.3）。
           sessionExpiredRef.current = false;
@@ -514,6 +534,7 @@ export function useWorksheetAnswers({
           break;
         }
         if (kind === 'permanent') {
+          if (outcome.code === 'answers-cleared') onCleared();
           // 永久失败：出队**并说话**。留着重试只会让队列永远清不空（服务端每次都拒）。
           commitQueue(dropQueueItem(pendingRef.current, next));
           setToastRef.current({
@@ -546,13 +567,13 @@ export function useWorksheetAnswers({
       setDebouncing(false);
     });
     return run;
-  }, [commitQueue, putAnswer]);
+  }, [commitQueue, putAnswer, onCleared]);
 
   /** 防抖计时器。每次改动重置 —— 学生连着敲字时只在停手 1.5s 后发一次。 */
   const timerRef = useRef<number | null>(null);
 
   const enqueue = useCallback((item: WorksheetQueueItem) => {
-    commitQueue(upsertQueueItem(pendingRef.current, item));
+    commitQueue(upsertQueueItem(pendingRef.current, { ...item, generation: generationFor(generationRef.current, item.questionId) }));
     setDebouncing(true);
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => {
@@ -735,7 +756,7 @@ export function useWorksheetAnswers({
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json', ...getStudentSessionAuthorization() },
-          body: JSON.stringify({ questionId: node.id }),
+          body: JSON.stringify({ questionId: node.id, generation: generationFor(generationRef.current, node.id) }),
         });
       } catch {
         // 提交失败**不进队列**：作答本身已经在服务端了（上面刚 flush 过），学生再点一次即可，

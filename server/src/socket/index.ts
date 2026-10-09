@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { maintenanceBusy, trackDataTask } from '../services/data-maintenance.js';
 import { Server, Socket } from 'socket.io';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { proxyAIRequestStream } from '../services/ai-proxy.js';
@@ -22,6 +24,7 @@ const PLATFORM_CONVERSATION_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** 活跃 AI 流式请求的 AbortController（key: socketId）
  *  学生端请求停止生成时，通过此 map 中断对应的 AI 请求 */
+const participantRequests = new Map<string, { owner: symbol; socketId: string }>();
 const activeStreams = new Map<string, AbortController>();
 
 /** 教师通知缓存：key=classroomId，value=最近 N 条通知（用于 socket 重连时回放）
@@ -812,7 +815,7 @@ export function scheduleDemandNotification(io: Server, prisma: PrismaClient, cla
     if (hasWatchers(io, classroomId)) return;
     // 定时器回调里不能 await：这条路径要读一次课堂配置。失败只记日志 ——
     // 通知没发出去的最坏后果是学生多推一会儿，不该把进程带下去。
-    broadcastWebappDemand(io, prisma, classroomId).catch((error) => {
+    trackDataTask(() => broadcastWebappDemand(io, prisma, classroomId)).catch((error) => {
       console.error('[Socket] 下发推流档位失败:', error);
     });
   }, WEBAPP_DEMAND_DEBOUNCE_MS);
@@ -1082,16 +1085,22 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
   const cacheCleanupTimer = setInterval(() => pruneSocketCaches(), NOTIFICATION_CACHE_TTL);
   cacheCleanupTimer.unref();
   io.on('connection', (socket: Socket) => {
+    if (maintenanceBusy()) { socket.disconnect(true); return; }
+    // Track complete async handlers so late AI/DB writes cannot cross a restore.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const onManaged = (event: string, handler: (...args: any[]) => unknown) => socket.on(event, (...args) => {
+      return trackDataTask(() => handler(...args)).catch(error => console.error('[Socket] 操作失败:', error));
+    });
     console.log(`[Socket] Client connected: ${socket.id}`);
 
     // 身份选择页监听课堂在线状态（无需身份）
-    socket.on('listen-classroom-status', (classroomId: string) => {
+    onManaged('listen-classroom-status', (classroomId: string) => {
       socket.join(`status:${classroomId}`);
       socket.emit('online-students', { classroomId, studentIds: getOnlineStudentIds(classroomId, activeConnections) });
     });
 
     // 学生加入课堂
-    socket.on('join-classroom', async (data: JoinRoomData) => {
+    onManaged('join-classroom', async (data: JoinRoomData) => {
       try {
         const classroom = await prisma.classroom.findUnique({
           where: { code: data.classroomCode },
@@ -1125,7 +1134,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         const connKey = `${classroom.id}:${classroomStudent.id}`;
         const oldSocketId = activeConnections.get(connKey);
         if (oldSocketId && oldSocketId !== socket.id) {
-          try { io.sockets.sockets.get(oldSocketId)?.emit('ai-error', { error: '账号已在其他设备登录' }); } catch {}
+          try { io.sockets.sockets.get(oldSocketId)?.emit('identity-conflict', { error: '账号已在其他设备登录，请重新选择身份' }); } catch {}
           try { io.sockets.sockets.get(oldSocketId)?.disconnect(true); } catch {}
         }
 
@@ -1142,6 +1151,8 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         });
 
         socket.join(`classroom:${classroom.id}`);
+        socket.join(`participant:${classroom.id}:${classroomStudent.id}`);
+        socket.data.sessionToken = data.token;
         if (classroomStudent.studentId) socket.join(`student:${classroomStudent.studentId}`);
         socket.data.classroomId = classroom.id;
         socket.data.studentId = classroomStudent.id;
@@ -1228,7 +1239,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     });
 
     // 教师加入课堂看板
-    socket.on('join-teacher-board', async (classroomId: string) => {
+    onManaged('join-teacher-board', async (classroomId: string) => {
       if (!hasTeacherSessionCookie(socket.handshake.headers.cookie)) {
         socket.emit('teacher-auth-error', { error: '教师会话已失效，请重新登录' });
         return;
@@ -1374,7 +1385,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
      * 管的是**转发**。理由与帧那条同款 —— 反过来（没人看就不记）会让教师打开看板时
      * 图墙上一片「未打开」，而学生其实一直开着页面。
      */
-    socket.on('webapp-event', async (data: unknown) => {
+    onManaged('webapp-event', async (data: unknown) => {
       try {
         const payload = validateWebappEventPayload(data);
         if (!payload) return;
@@ -1453,7 +1464,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
      * **转发**。反过来（没人看就不存）会让课后汇总在教师没开看板时整批为空，
      * 而汇总正是本模块唯一的落盘项。
      */
-    socket.on('webapp-frame', async (data: unknown) => {
+    onManaged('webapp-frame', async (data: unknown) => {
       try {
         const payload = validateWebappFramePayload(data);
         if (!payload) {
@@ -1528,7 +1539,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
      * 归属校验不通过（重连未重新 join 之类）。若这里也要求是有效学生，
      * 最需要的那一类诊断恰好会被丢掉。所以只校验**形状**，然后连同拒因一起记。
      */
-    socket.on('webapp-diag', async (data: unknown) => {
+    onManaged('webapp-diag', async (data: unknown) => {
       try {
         const payload = validateWebappDiagPayload(data);
         if (!payload) {
@@ -1574,7 +1585,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
      *      （按需推流的判据就是这个房间）+ 立刻广播 watching:true，
      *      否则先开看板的教师永远等不到学生推流。
      */
-    socket.on('watch-webapp-monitor', (data: unknown) => {
+    onManaged('watch-webapp-monitor', (data: unknown) => {
       const classroomId = validateWebappWatchPayload(data);
       if (!classroomId) return;
       // 鉴权由两部分组成，**都只读这条 socket 自己就有的事实**：
@@ -1613,6 +1624,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       // 教师中途进来会看到「等待画面…」—— 那句话说的是「第一帧还在路上」，与事实不符。
       // 一句话：**流的等待是有界的，粘性事件的等待是无限的。**
       for (const key of webappMonitor.captureBlocked.keys()) {
+        if (!key.startsWith(classroomId + ':')) continue;
         const ids = splitWebappKey(key, classroomId);
         if (!ids) continue;
         socket.emit('webapp-student-capture-blocked', {
@@ -1624,8 +1636,8 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       socket.join(webappMonitorRoom(classroomId));
       // 有人回来了：取消待触发的「停止推流」（Ruling 9 第 2 条的防抖）。
       cancelDemandNotification(classroomId);
-      broadcastWebappDemand(io, prisma, classroomId);
       console.log(`[Socket] Teacher watching webapp monitor: ${classroomId}`);
+      return broadcastWebappDemand(io, prisma, classroomId);
     });
 
     /**
@@ -1639,7 +1651,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
      * 抽屉本来就是开的），随后 `watch-webapp-monitor` 会用 broadcastWebappDemand
      * 把正确的组合一起发出去。
      */
-    socket.on('focus-webapp-student', (raw: unknown) => {
+    onManaged('focus-webapp-student', (raw: unknown) => {
       const payload = validateWebappFocusPayload(raw);
       if (!payload) return;
       const boundClassroomId = socket.data.classroomId as string | undefined;
@@ -1651,7 +1663,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       }
       if (payload.studentId) webappMonitor.focus.set(payload.classroomId, payload.studentId);
       else webappMonitor.focus.delete(payload.classroomId);
-      broadcastWebappDemand(io, prisma, payload.classroomId);
+      return broadcastWebappDemand(io, prisma, payload.classroomId);
     });
 
     /**
@@ -1663,7 +1675,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
      * ⚠️ 模块 key 走白名单：只认三件套与 null。拼错的**整条丢掉**，不要把垃圾写进状态
      * —— 教师端的「跟随」会照着它渲染，写进去就会渲染出一个不存在的模块。
      */
-    socket.on('module-focus', (data: unknown) => {
+    onManaged('module-focus', (data: unknown) => {
       if (!data || typeof data !== 'object') return;
       const d = data as { classroomId?: unknown; moduleId?: unknown };
       const classroomId = socket.data.classroomId as string | undefined;
@@ -1693,7 +1705,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
      * （只用 `socket.id` 与房间名），所以它本来就不受 join-teacher-board 先后的影响。
      * 它的「不对称」是刻意的安全取舍，不是为了绕开顺序问题 —— 别把它改成对称的。
      */
-    socket.on('unwatch-webapp-monitor', (data: unknown) => {
+    onManaged('unwatch-webapp-monitor', (data: unknown) => {
       const classroomId = validateWebappWatchPayload(data);
       if (!classroomId) return;
       const socketIds = webappMonitor.watchers.get(classroomId);
@@ -1711,7 +1723,15 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     });
 
     // 学生发送消息（流式）
-    socket.on('send-message', async (input: SendMessageData) => {
+    onManaged('send-message', async (input: SendMessageData) => {
+      const requestKey = `${socket.data.classroomId}:${socket.data.studentId}`;
+      const owner = Symbol();
+      const pendingRequest = participantRequests.get(requestKey);
+      if (pendingRequest) { socket.emit('ai-busy', { error: '上一条回答尚未结束，请稍后再发', keepWaiting: pendingRequest.socketId === socket.id }); return; }
+      participantRequests.set(requestKey, { owner, socketId: socket.id });
+      const abortController = new AbortController();
+      const streamKey = socket.id;
+      activeStreams.set(streamKey, abortController);
       try {
         const data = validateStudentMessagePayload(input);
         if (!data) {
@@ -1722,6 +1742,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           socket.emit('student-auth-error', { error: '学生身份无效，请重新进入课堂' });
           return;
         }
+        if (socket.data.sessionToken && !verifyStudentToken(socket.data.sessionToken)) { socket.emit('student-auth-error', { error: '学生会话已被其他设备替换' }); return; }
         const classroom = await prisma.classroom.findUnique({
           where: { code: data.classroomCode },
           include: {
@@ -1934,6 +1955,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         });
         const roundCount = pastUserCount + 1;
 
+        if (abortController.signal.aborted) return;
         // Save user message
         const userMessage = await prisma.message.create({
           data: {
@@ -1987,11 +2009,10 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         const agentConfig: AgentConfig = toAgentConfig(agent, credential, {
 
           conversationId: platformNeedsConvId ? platformConvId : undefined,
+          sessionId: 'classnode_' + createHash('sha256').update(JSON.stringify([classroom.id, classroomStudent.id, agent.id])).digest('hex').slice(0, 32),
         });
 
-        const abortController = new AbortController();
-        const streamKey = socket.id;
-        activeStreams.set(streamKey, abortController);
+        if (abortController.signal.aborted) return;
 
         let fullContent = '';
         let displayedContent = '';
@@ -2170,11 +2191,16 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           }
           }
         } finally {
-          activeStreams.delete(streamKey);
+          if (activeStreams.get(streamKey) === abortController) activeStreams.delete(streamKey);
         }
       } catch (error) {
         console.error('[Socket] send-message error:', error);
         io.to(socket.id).emit('ai-error', { error: '消息发送失败' });
+        if (socket.data.classroomId) io.to(`teacher:${socket.data.classroomId}`).emit('student-thinking', { studentId: socket.data.studentId, status: false });
+      } finally {
+        if (activeStreams.get(streamKey) === abortController) activeStreams.delete(streamKey);
+        if (abortController.signal.aborted && socket.data.classroomId) io.to(`teacher:${socket.data.classroomId}`).emit('student-thinking', { studentId: socket.data.studentId, status: false });
+        if (participantRequests.get(requestKey)?.owner === owner) participantRequests.delete(requestKey);
       }
     });
 
@@ -2201,7 +2227,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
      * 最坏后果是教师那一格收到一份画不出来的内容（`answerView` 会落成「未作答」）——
      * 比在这里加一次数据库往返划算得多。
      */
-    socket.on('worksheet-draft-preview', (data: {
+    onManaged('worksheet-draft-preview', (data: {
       classroomId?: unknown; worksheetId?: unknown; questionId?: unknown; value?: unknown;
     }) => {
       const classroomId = socket.data.classroomId as string | undefined;
@@ -2219,7 +2245,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       });
     });
 
-    socket.on('stop-generation', async () => {
+    onManaged('stop-generation', async () => {
       // 查该学生所在课堂是否允许中断
       let classroomId: string | null = null;
       for (const room of socket.rooms) {
@@ -2237,7 +2263,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
     // 教师发送通知给学生：全班广播 / 定向单个学生 / 定向多个学生（如小组成员）
     // 教师通知：全班广播 / 定向单个学生 / 定向组（分组/高级模式）
-    socket.on('teacher-send-notification', async (data: unknown) => {
+    onManaged('teacher-send-notification', async (data: unknown) => {
       if (!socket.data.isTeacher || !hasTeacherSessionCookie(socket.handshake.headers.cookie)) {
         socket.emit('teacher-auth-error', { error: '无权发送教师通知' });
         return;
@@ -2313,7 +2339,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     });
 
     // 断开连接
-    socket.on('disconnect', async () => {
+    onManaged('disconnect', async () => {
       console.log(`[Socket] Client disconnected: ${socket.id}`);
       // 浏览器关闭、网络切换或被新设备顶下线时，立即取消仍在进行的 AI 请求。
       // 否则上游流会持续到自然结束，既浪费额度也可能留下无接收方的任务。
@@ -2356,4 +2382,23 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       }
     });
   });
+}
+
+/** Called only after a successful maintenance switch, with handlers quiescent. */
+export function resetSocketData(io: Server, app: import('express').Application): void {
+  io.disconnectSockets(true);
+  for (const timer of pendingDemandTimers.values()) clearTimeout(timer);
+  pendingDemandTimers.clear();
+  agentAlertCooldown.clear();
+  platformConversations.clear();
+  teacherNotificationCache.clear();
+  studentMsgTimestamps.clear();
+  activeStreams.clear();
+  participantRequests.clear();
+  for (const cache of Object.values(webappMonitor)) cache.clear();
+  app.get('activeConnections')?.clear();
+  rateLimitCacheTime = 0;
+  cachedFilter = null;
+  shieldWordsCacheTime = 0;
+  anonymizer.reset();
 }

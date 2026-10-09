@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+export { sanitizeSvg } from './svg-sanitizer.js';
 
 export type SafeFileKind = 'png' | 'jpg' | 'webp' | 'pdf' | 'doc' | 'docx' | 'txt';
 
@@ -24,21 +25,6 @@ export function detectSafeChatFile(buffer: Buffer, originalName: string): SafeFi
 export function detectSafeImage(buffer: Buffer): 'png' | 'jpg' | 'webp' | null {
   const kind = detectSafeChatFile(buffer, 'image.png');
   return kind === 'png' || kind === 'jpg' || kind === 'webp' ? kind : null;
-}
-
-/** 保守 SVG 白名单：允许基础图形，拒绝脚本、事件、外部资源与可嵌 HTML。 */
-export function sanitizeSvg(svg: string): string | null {
-  const trimmed = svg.trim();
-  if (!/^<svg[\s>]/i.test(trimmed) || !/<\/svg>$/i.test(trimmed) || trimmed.length > 200_000) return null;
-  const forbidden = [
-    /<\s*(script|foreignObject|iframe|object|embed|audio|video|canvas|style|link|meta)\b/i,
-    /\son[a-z]+\s*=/i,
-    /(?:javascript|vbscript)\s*:/i,
-    /\b(?:href|xlink:href)\s*=\s*["']\s*(?:https?:|\/\/|data:)/i,
-    /url\s*\(\s*["']?\s*(?:https?:|\/\/|data:|javascript:)/i,
-    /<!DOCTYPE|<!ENTITY/i,
-  ];
-  return forbidden.some(pattern => pattern.test(trimmed)) ? null : trimmed;
 }
 
 export interface ZipLimits {

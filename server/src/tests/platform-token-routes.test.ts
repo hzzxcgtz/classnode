@@ -1,3 +1,4 @@
+import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 /**
  * ★ API Token 共享（第 3 步）：管理端点的行为。
  *
@@ -32,6 +33,7 @@ async function start(t: { after: (fn: () => Promise<void> | void) => void }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-token-routes-'));
   const url = `file:${path.join(dir, 'test.db')}`;
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), 'DATABASE_URL 必须指向临时目录');
+  prepareTemporarySqliteFile(url);
   execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe',
   });

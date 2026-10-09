@@ -21,7 +21,6 @@ import settingsRoutes from './routes/settings.js';
 import shieldRoutes from './routes/shield.js';
 import changelogRoutes from './routes/changelogs.js';
 import { startAgentChecker } from './services/agent-checker.js';
-import { sendPing } from './services/ping.js';
 import uploadRoutes, { cleanupOrphanedUploads } from './routes/upload.js';
 import avatarRoutes from './routes/avatars.js';
 import systemRoutes from './routes/system.js';
@@ -813,8 +812,6 @@ async function main() {
     interfaces.forEach((iface: { name: string; label: string; ip: string }) => {
       console.log(`   http://${iface.ip}:${port}  (${iface.label})`);
     });
-    // 匿名心跳统计（需先通过设置配置 ping_url）
-    sendPing(prisma);
     // 每次服务启动后仅检查一次版本；失败不影响课堂服务正常运行。
     void checkForUpdateOnStartup()
       .then((result) => console.log(result.hasUpdate

@@ -67,7 +67,7 @@
 27. `drainWebappMonitor` 是破坏性的、调用方「先取走再写库」、失败只打日志（`classroom.ts:1246-1251`）⇒ 统计静默丢失（测试里可复现 `database is locked`）
 28. `file-logger.ts:25-27` 无大小上限、无轮转；`agents.ts:393-398` 一条 400 分支漏清理上传的 logo；`agent-checker` 的 `Promise.all` 被一个卡住的上游拖住整批；`moduleFocus` 学生 disconnect 不清（6h TTL）；`unwatch` 无条件删整个课堂的 focus；`worksheet-draft-preview` 无上界/无限流；导出 CSV 公式注入（前端零调用点）；`export-doc` 的 blob 下载锚点不入 DOM + 同步 revoke（老 iPad Safari）
 29. **`src` 源码里无正则后向断言等 Safari 15 禁用写法**（三个审计员各自 grep 源码确认零命中）—— 这是**源码级**结论；构建期闸门扫的是上次产物
-30. **`ping`**：每次启动向硬编码 IP **明文**上报持久设备 ID + 智能体计数；`CLAUDE.md` 写 opt-in、`index.ts:816` 注释写「需先配置 `ping_url`」，而全仓无该设置读取，唯一门是 `NODE_ENV==='development'`。→ **教师已定：整个删掉**
+30. **`ping`**：每次启动向硬编码 IP **明文**上报持久设备 ID + 智能体计数；`CLAUDE.md` 写 opt-in、`index.ts:816` 注释写「需先配置 `ping_url`」，而全仓无该设置读取，唯一门是 `NODE_ENV==='development'`。→ ✅ **已删（§I）**
 
 ---
 
@@ -93,7 +93,7 @@ tool 分流台账：`drawing-tool-body.tsx:89-95`、`worksheet-drawing-document.
 
 1. ~~给「在途出队」补竞态回归网（先写会红的），跑红→绿~~ ✅ 2026-10-09 完成，见 §F
 2. ~~批次 B ① 剩四条~~ ✅ **全部完成**（三条见 §G，清空画布 + 4b 见 §H）
-3. `ping` 整个删 + 改 `CLAUDE.md`
+3. ~~`ping` 整个删 + 改 `CLAUDE.md`~~ ✅ 2026-10-09 完成，见 §I
 4. 填空题简化 · 删学生拆分
 5. 开**批次 4（教师端 `src/app/teacher/**`）**，再 `src/lib` 105 文件、测试与假绿
 
@@ -241,3 +241,54 @@ H2 要人工验「慢网下答一题、趁保存还在路上删干净 ⇒ 服务
 H1 的纯判据那一半是硬的（真值表 + 变异）。
 
 **至此 §E 第 2 步全部完成。** 下一步按 §E 第 3 步：`ping` 整个删 + 改 `CLAUDE.md`。
+
+---
+
+## I. 2026-10-09 续做（§E 第 3 步）：`ping` 整个删 + `CLAUDE.md` 两处改口径
+
+### I1 · `ping` 删掉（§B30，教师已定）
+**核实**（本次重读）：`sendPing` 在 `index.ts:817` **无条件**调用，`ping.ts:64` 唯一的门是
+`NODE_ENV === 'development'`；`index.ts:816` 那句注释说「需先配置 `ping_url`」，而
+**全仓没有 `ping_url` 这个设置的任何读写**（URL 是 `ping.ts:18` 硬编码的）——
+也就是说 `CLAUDE.md` 那句「opt-in via setting」与实际行为相反：**所有真实用户的每一次启动都在报**。
+**删**：`services/ping.ts` 整个文件 + `index.ts` 的 import 与调用（`tsc` 通过即无悬空引用）。
+
+**留了一条能判定的规矩**：新增 `server/src/tests/no-hardcoded-outbound-ip.test.ts` ——
+扫 `server/src/**/*.ts`，**不许出现指向裸公网 IP 的外发地址**（域名可审、可换、有 TLS；
+`127.0.0.1` / `0.0.0.0` / `192.168.x` / `10.x` 这些正当的内网地址放行）。
+🔴 **这条网第一次跑起来时被它自己的阳性对照救了一次**：我照搬本仓别处那个
+`stripComments`（`//[^\n]*`），而它会把 `http://` 里的 `//` 当注释吃掉 ⇒ 扫描器对
+**唯一的真阳性**瞎掉、主用例**空着就绿**。阳性对照报了「认不出那个地址」，改成
+「只把前面不是 `:` 的 `//` 当注释」之后，主用例才在真阳性上红（点到 `services/ping.ts`），
+删掉 `ping` 后转绿 —— **这条网是被看着在真阳性上红过的**。
+
+**遗留（未动，交教师定）**：老库里 `Setting` 表可能留着一行 `instance_id`（ping 写的，
+删掉之后**没有任何代码再读它**）。我没写迁移去删它 —— 删数据不该顺手做。
+`server/.instance_id` 那个回落文件在本机不存在。
+
+### I2 · `CLAUDE.md` 的隐私口径（§D4）
+教师 10-07 裁定维持：分析路径（`proxyAnalysisRequest`）**继续**发「姓名 + 学号」（`张伟#7`），
+**代码不动**，只改文档。⚠️ 那句话在 `CLAUDE.md` 里有**两份拷贝**，两处都改了：
+- Key Patterns 的 `anonymizer` 那一条：删掉「so no AI provider ever receives a student's name」
+  这个**假的**保证，改成「聊天路径照旧发伪名 + **分析路径是唯一那处刻意的例外**」，
+  并写明理由（班级级、标签要逐字回收分数、伪名只差一位会让模型看串格）、
+  以及「不是遗漏 —— 别不问就『修』」。
+- 服务表里的 **Anonymizer** 行：原文「applied on the way into and out of **every** AI request」
+  是同一个事实的另一份拷贝，同样改了。
+
+**顺带核过、确认没问题的**：代码里那三处注释（`ai-proxy.ts` `proxyAnalysisRequest`、
+`analysis-agent.ts`、`analysis-payload.ts`）在 10-07 那次已经改到位了，逐字写着
+「分析这一条路上真名会离开本机…不是遗漏；聊天那条路没有变」✓。
+`README.md` / `README.en.md` / `myportal/` / 帮助页**没有任何**关于「姓名不离开本机」的
+用户可见承诺（逐词 grep 过），所以没有第二处要改。
+
+### 实测（同一棵树上）
+| 命令 | 结果 |
+|---|---|
+| `pnpm test` | client **1506 / 0** · server 982 → **984 / 0**（+2 = 新那条网） |
+| `pnpm build:server` | tsc 通过（删 import 后无悬空引用） |
+| `npx tsc --noEmit`（前端） | 退出码 **0** |
+| `npx eslint <改动文件>` | 无输出 |
+| `grep -rn ping server/src src/ src-tauri/ scripts/` | 只剩文心 SSE 的 `ping` 事件（协议无关）+ 新网自己注释里的引用 |
+
+**下一步按 §E 第 4 步**：填空题简化 · 删学生拆分（两条都改产品行为，改动面分别五处 / 两个动作）。

@@ -194,10 +194,9 @@ All routes inject Prisma via `req.app.get('prisma')` and Socket.IO via `req.app.
 | **Default Avatars** | `default-avatars.ts` | 44 seed SVG avatars |
 | **Student Avatar Generator** | `student-avatar-generator.ts` | Programmatic SVG avatar generation for students |
 | **Student Sort** | `student-sort.ts` | Student ordering utilities |
-| **Anonymizer** | `anonymizer.ts` | Real name ⇄ `User_NNN` pseudonym map applied on the way into and out of every AI request (see Key Patterns) |
+| **Anonymizer** | `anonymizer.ts` | Real name ⇄ `User_NNN` pseudonym map for the **chat** path (`proxyAIRequest`) — the AI-**analysis** path is the one deliberate exception (see Key Patterns) |
 | **Export Service** | `export-service.ts` | Word document generation (conversations + stats) |
 | **File Logger** | `file-logger.ts` | Captures console.log → file in `CLASSNODE_DATA_DIR/logs/` or `server/logs/` |
-| **Ping** | `ping.ts` | Anonymous usage statistics ping (opt-in via setting) |
 
 **Important:** `file-logger.ts` must be imported first in `index.ts` — it monkey-patches `console.log/warn/error` to tee output to a log file. Any module failure before this import won't be logged.
 
@@ -297,7 +296,8 @@ Frontend reads it via `src/lib/version.ts` → `import pkg from '../../package.j
 - **API keys** are AES-encrypted at rest via `services/crypto.ts`; decrypted on-the-fly for AI proxying.
 - **Changelogs** are individual markdown files in `server/changelogs/v*.md`, served at `/api/changelogs` (sorted by semver, newest first).
 - **Tests** live in `server/src/tests/`; run via Node.js built-in test runner (`node --test`).
-- **`anonymizer`** is a minors-privacy boundary, not a display filter. Before any prompt leaves the machine, `ai-proxy.ts` rewrites the student's real name to a stable pseudonym (`User_001`, …) and re-substitutes the real name into the model's reply before persisting it — so no AI provider ever receives a student's name. The `Anonymizer` singleton holds a bidirectional map that resets when full (500 entries) or on a new classroom.
+- **`anonymizer`** is a minors-privacy boundary, not a display filter. On the **chat** path (`proxyAIRequest`) `ai-proxy.ts` rewrites the student's real name to a stable pseudonym (`User_001`, …) before the prompt leaves the machine, and re-substitutes the real name into the model's reply before persisting it. The `Anonymizer` singleton holds a bidirectional map that resets when full (500 entries) or on a new classroom.
+  - 🔴 **The one deliberate exception: the AI-analysis path** (`proxyAnalysisRequest`). It sends **real names + student numbers** (`张伟#7`) to Coze, so that real names *do* leave the machine there. Analysis is class-level (there is no single "that student" to pseudonymize), and the labels come back verbatim to attribute scores — pseudonyms one digit apart made the model misread the contact sheet and silently attach a score to the wrong student. The teacher made this call on 2026-10-07 and accepted the cost; the reasoning is written at `server/src/services/ai-proxy.ts`'s `proxyAnalysisRequest` and `server/src/services/analysis-agent.ts`. **It is not an oversight — do not "fix" it without asking first.**
 
 ## Compatibility constraints
 

@@ -80,6 +80,7 @@ jobs:
         run: pnpm --filter classnode-server db:generate
 
       - name: Run regression tests
+        timeout-minutes: 15
         run: pnpm test
 
       - name: Upload regression test logs

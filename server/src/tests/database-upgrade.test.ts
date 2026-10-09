@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 
@@ -207,7 +207,7 @@ test('actual source server startup upgrades the legacy database before listening
     globalThis.fetch=(input,options)=>{const url=new URL(typeof input==='string'||input instanceof URL?input:input.url);
     if(url.hostname==='127.0.0.1'||url.hostname==='localhost')return original(input,options);
     return Promise.reject(new Error('External network disabled in startup regression'));};`);
-  const child = spawn(process.execPath, ['--import', preload, path.join(serverRoot, 'dist/index.js')], { cwd: serverRoot, env: { ...process.env, http_proxy: '', https_proxy: '', DATABASE_URL: f.url, CLASSNODE_DATA_DIR: f.root, PORT: String(port), CLASSNODE_WEBAPP_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, path.join(serverRoot, 'dist/index.js')], { cwd: serverRoot, env: { ...process.env, http_proxy: '', https_proxy: '', DATABASE_URL: f.url, CLASSNODE_DATA_DIR: f.root, PORT: String(port), CLASSNODE_WEBAPP_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   child.stdout.on('data', chunk => { output += chunk.toString(); });
   child.stderr.on('data', chunk => { output += chunk.toString(); });

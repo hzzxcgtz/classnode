@@ -53,7 +53,7 @@ test('🔴 存档键**只有一个所有者** —— 换个地方清档时不会
   //    而**没有任何东西会红**（清档是一句 `removeItem`，键名写错不会抛）。
   const owners = sourceFiles(SRC)
     .filter((file) => stripComments(readFileSync(file, 'utf8')).includes(STORAGE_KEY))
-    .map((file) => path.relative(SRC, file));
+    .map((file) => path.relative(SRC, file).split(path.sep).join('/'));
 
   assert.deepEqual(owners, ['app/classroom/shell/use-module-tabs.ts'],
     '这条存档键只许出现在所有者那一个文件里；别处要清档请调它导出的函数');

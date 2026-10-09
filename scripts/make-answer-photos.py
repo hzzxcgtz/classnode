@@ -31,18 +31,33 @@ FONT_CANDIDATES = [
     ('/System/Library/Fonts/Hiragino Sans GB.ttc', 0),
     ('/Library/Fonts/Arial Unicode.ttf', 0),
 ]
+
+# ★ 2026-10-08：**笔算竖式**那一档要等宽字体。
+#   竖式的意思全在**列对齐**上（商的十位对着被除数的十位、减数对着被减数）——
+#   等宽字体下每个字符占同样宽度，对齐才成立；换成宋体，那些空格就对不齐了，
+#   而图上看起来"有字"，AI 读出来的竖式却是错位的（比空白更难查）。
+#   `entry['mono']` 为真时用这一组；一个都装不上就退回上面那组（图还是出得来）。
+MONO_CANDIDATES = [
+    ('/System/Library/Fonts/Menlo.ttc', 0),
+    ('/System/Library/Fonts/SFNSMono.ttf', 0),
+    ('/System/Library/Fonts/Monaco.ttf', 0),
+]
 PAPER = (1000, 700)          # 一张作业纸的像素尺寸（够 AI 看清，也不至于几 MB）
 INK = (32, 46, 72)           # 蓝黑墨水
 RULE = (226, 232, 240)       # 横线
 MARGIN_X, TOP_Y, LINE_H = 78, 132, 62
 
 
-def load_font(size: int):
-    for path, index in FONT_CANDIDATES:
+def load_font(size: int, candidates=None):
+    for path, index in (candidates or FONT_CANDIDATES):
         try:
-            return ImageFont.truetype(path, size, index=index), f'{ImageFont.truetype(path, size, index=index).getname()[0]} {ImageFont.truetype(path, size, index=index).getname()[1]}'
+            font = ImageFont.truetype(path, size, index=index)
+            name = font.getname()
+            return font, f'{name[0]} {name[1]}'
         except Exception:  # noqa: BLE001 —— 换下一个，最后一定有 Arial Unicode
             continue
+    if candidates:
+        return load_font(size)          # 等宽那组一个都没有 ⇒ 退回中文字体，图照样出得来
     raise SystemExit('这台机器上找不到任何可用的中文字体')
 
 
@@ -66,7 +81,9 @@ def wrap(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> list[str
 
 def render(entry: dict, rng: random.Random) -> str:
     neat = entry.get('style') != 'sloppy'
-    font, font_name = load_font(34 if neat else 33)
+    # 竖式（`mono`）用等宽字体，且**逐行照抄、不换行** —— 见 MONO_CANDIDATES 那段理由。
+    mono = bool(entry.get('mono'))
+    font, font_name = load_font(34 if neat else 33, MONO_CANDIDATES if mono else None)
     img = Image.new('RGB', PAPER, (252, 251, 247))
     draw = ImageDraw.Draw(img)
 
@@ -79,10 +96,12 @@ def render(entry: dict, rng: random.Random) -> str:
     body = '\n'.join(entry.get('lines') or [])
     max_width = PAPER[0] - MARGIN_X * 2
     y = TOP_Y
-    for line in wrap(draw, body, font, max_width):
+    for line in ((entry.get('lines') or []) if mono else wrap(draw, body, font, max_width)):
         # 逐字画：字号一致但每一笔的位置都抖一点 —— 一行字完全对齐反而像打印的
-        x = MARGIN_X + rng.randint(-3, 3)
-        jitter = (3 if neat else 6)
+        # ⚠️ 竖式（mono）抖动要更小：等宽对齐是它唯一的可读性来源，抖大了就散了。
+        # ⚠️ 竖式**每行起点必须一样**：逐行随机偏移会把列对齐毁掉，而那正是竖式的全部信息。
+        x = MARGIN_X + (0 if mono else rng.randint(-3, 3))
+        jitter = (1 if mono else 3 if neat else 6)
         for ch in line:
             draw.text((x + rng.randint(-1, 1), y + rng.randint(-jitter, jitter)), ch, font=font, fill=INK)
             x += draw.textlength(ch, font=font)

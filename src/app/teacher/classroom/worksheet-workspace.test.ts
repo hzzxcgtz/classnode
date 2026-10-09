@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const page = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const workspace = readFileSync(new URL('./matrix-overlay.tsx', import.meta.url), 'utf8');
+const questionStats = readFileSync(new URL('./question-stats-overlay.tsx', import.meta.url), 'utf8');
+const questionStatsStyles = readFileSync(new URL('./question-stats-overlay.module.css', import.meta.url), 'utf8');
 
 test('顶部学习单菜单挂完整工作区，学生卡片挂单人抽屉', () => {
   assert.match(page, /worksheetWorkspace && \(\s*<MatrixOverlay/);
@@ -42,9 +44,15 @@ test('按题目查看采用常驻题目导航与右侧详情，不再先开题�
 });
 
 test('按题详情不再提供看某人的作答下拉入口', () => {
-  const questionStats = readFileSync(new URL('./question-stats-overlay.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(questionStats, /看某人的作答/);
   assert.doesNotMatch(questionStats, /pickedId/);
+});
+
+test('按题详情使用紧凑摘要和等高双栏', () => {
+  assert.match(questionStats, /<VerdictDonut[\s\S]*?size=\{80\}[\s\S]*?centerFontSize="1\.08rem"/);
+  assert.match(questionStatsStyles, /\.metric div \{[^}]*font-size: 1\.38rem/);
+  assert.match(questionStatsStyles, /\.insightGrid \{[\s\S]*?align-items: stretch/);
+  assert.match(questionStatsStyles, /\.insightGrid > \.section \{[\s\S]*?height: 100%/);
 });
 
 test('打开学习单界面只压入一层浏览器历史，返回按钮关闭工作区或单人抽屉', () => {

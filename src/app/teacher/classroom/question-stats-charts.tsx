@@ -120,13 +120,15 @@ export function CountBars({
  * 而 recharts 的 label 在圆里居中要调一堆参数、还不跟着字号走。
  */
 export function VerdictDonut({
-  data, centerText, centerNote, size = 148, unit: unitFallback = '',
+  data, centerText, centerNote, size = 148, centerFontSize = '1.5rem', unit: unitFallback = '',
 }: {
   data: Array<{ name: string; value: number; color: string }>;
   /** 环中心那一行大字（正确率 / 已交率）。`null` ⇒ 画「—」。 */
   centerText: string | null;
   centerNote: string;
   size?: number;
+  /** 小尺寸摘要环可以单独收敛中心数字，避免百分比压住环形本身。 */
+  centerFontSize?: string;
   /** tooltip 里的量词（环里的数字是「人 / 组」）。 */
   unit?: string;
 }) {
@@ -152,8 +154,7 @@ export function VerdictDonut({
         </PieChart>
       </ResponsiveContainer>
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-        {/* 展示用：中心那个数是**这一屏最大的字**（1.5rem）—— 一眼就是它。 */}
-        <div style={{ fontSize: '1.5rem', fontWeight: 700, lineHeight: 1.1, color: centerText ? CHART.ink : CHART.faint }}>
+        <div style={{ fontSize: centerFontSize, fontWeight: 700, lineHeight: 1.1, color: centerText ? CHART.ink : CHART.faint }}>
           {centerText ?? '—'}
         </div>
         <div style={{ fontSize: '0.688rem', color: CHART.faint, marginTop: 2 }}>{centerNote}</div>

@@ -226,7 +226,8 @@ export function QuestionStatsOverlay({
               <div className={styles.donut}>
                 {/* ⚠️ 正确率是 `null` 时中心画「—」而**不是 0%** —— 0% 是一句假话（没有判过的行）。 */}
                 <VerdictDonut
-                  size={96}
+                  size={80}
+                  centerFontSize="1.08rem"
                   unit={unit}
                   centerText={stats.accuracy === null ? null : `${stats.accuracy}%`}
                   centerNote={stats.accuracy === null ? '不统计正确率' : '正确率'}

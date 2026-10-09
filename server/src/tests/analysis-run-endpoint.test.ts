@@ -30,7 +30,7 @@ import { worksheetRoutes } from '../routes/worksheets.js';
 import { grade, type QuestionNode } from '../services/worksheet-questions.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PRISMA_BIN = path.resolve(HERE, '../../node_modules/.bin/prisma');
+const PRISMA_BIN = path.resolve(HERE, '../../node_modules/prisma/build/index.js');
 const SCHEMA = path.resolve(HERE, '../../prisma/schema.prisma');
 
 async function openTempDb() {
@@ -38,7 +38,7 @@ async function openTempDb() {
   const url = `file:${path.join(dir, 'test.db')}`;
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), 'DATABASE_URL 必须指向临时目录');
   prepareTemporarySqliteFile(url);
-  execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
+  execFileSync(process.execPath, [PRISMA_BIN, 'db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe',
   });
   return { prisma: new PrismaClient({ datasources: { db: { url } } }), dir };

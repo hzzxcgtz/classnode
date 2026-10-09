@@ -21,7 +21,7 @@ test('notifications are scoped by verified identity; old avatar rows stay inert 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cn-notification-privacy-'));
   const url = `file:${path.join(root, 'test.db')}`;
   prepareTemporarySqliteFile(url);
-  execFileSync(path.resolve(here, '../../node_modules/.bin/prisma'), ['db', 'push', '--skip-generate', `--schema=${path.resolve(here, '../../prisma/schema.prisma')}`], { env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe' });
+  execFileSync(process.execPath, [path.resolve(here, '../../node_modules/prisma/build/index.js'), 'db', 'push', '--skip-generate', `--schema=${path.resolve(here, '../../prisma/schema.prisma')}`], { env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe' });
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   const app = express();
   app.set('prisma', prisma);

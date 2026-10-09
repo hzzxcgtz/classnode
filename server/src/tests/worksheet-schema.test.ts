@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
 import { ensureAnalysisClassroomColumn, ensureWorksheetAnswerColumns, ensureWorksheetTables } from '../services/worksheet-schema.js';
@@ -28,8 +29,8 @@ const INDEX_NAMES = [
   'WorksheetQuestionAnalysis_classroomId_worksheetId_questionId_key',
 ];
 
-const SCHEMA_SRC = new URL('../../prisma/schema.prisma', import.meta.url).pathname;
-const PRISMA_BIN = new URL('../../node_modules/.bin/prisma', import.meta.url).pathname;
+const SCHEMA_SRC = fileURLToPath(new URL('../../prisma/schema.prisma', import.meta.url));
+const PRISMA_BIN = fileURLToPath(new URL('../../node_modules/prisma/build/index.js', import.meta.url));
 
 /** 本次运行的唯一后缀 —— 所有产物都落在这个前缀下，互不干扰。 */
 const RUN_ID = `${process.pid}-${Date.now()}`;
@@ -54,7 +55,7 @@ before(() => {
   assert.ok(fs.existsSync(PRISMA_BIN), `找不到 prisma CLI：${PRISMA_BIN}`);
   fs.copyFileSync(SCHEMA_SRC, SCHEMA_COPY);
   prepareTemporarySqliteFile(`file:${TEMPLATE_DB}`);
-  const r = spawnSync(PRISMA_BIN, ['db', 'push', '--schema', SCHEMA_COPY, '--skip-generate'], {
+  const r = spawnSync(process.execPath, [PRISMA_BIN, 'db', 'push', '--schema', SCHEMA_COPY, '--skip-generate'], {
     env: { ...process.env, DATABASE_URL: `file:${TEMPLATE_DB}` },
     encoding: 'utf8',
   });

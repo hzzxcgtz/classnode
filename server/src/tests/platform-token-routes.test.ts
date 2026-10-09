@@ -25,7 +25,7 @@ import platformTokenRoutes from '../routes/platform-tokens.js';
 import { decrypt, isEncrypted } from '../services/crypto.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PRISMA_BIN = path.resolve(HERE, '../../node_modules/.bin/prisma');
+const PRISMA_BIN = path.resolve(HERE, '../../node_modules/prisma/build/index.js');
 const SCHEMA = path.resolve(HERE, '../../prisma/schema.prisma');
 const TOKEN = 'pat_abcdefghijklmnop_qrstuvwx';
 
@@ -34,7 +34,7 @@ async function start(t: { after: (fn: () => Promise<void> | void) => void }) {
   const url = `file:${path.join(dir, 'test.db')}`;
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), 'DATABASE_URL 必须指向临时目录');
   prepareTemporarySqliteFile(url);
-  execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
+  execFileSync(process.execPath, [PRISMA_BIN, 'db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe',
   });
   const prisma = new PrismaClient({ datasources: { db: { url } } });

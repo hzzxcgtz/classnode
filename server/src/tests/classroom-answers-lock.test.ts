@@ -37,7 +37,7 @@ import classroomRoutes from '../routes/classroom.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 /** server/node_modules/.bin/prisma（dist/tests → server 根） */
-const PRISMA_BIN = path.resolve(HERE, '../../node_modules/.bin/prisma');
+const PRISMA_BIN = path.resolve(HERE, '../../node_modules/prisma/build/index.js');
 const SCHEMA = path.resolve(HERE, '../../prisma/schema.prisma');
 
 interface TempDb {
@@ -56,7 +56,7 @@ async function openTempDb(): Promise<TempDb> {
   );
   assert.notEqual(path.resolve(file), path.resolve(HERE, '../../prisma/dev.db'));
   prepareTemporarySqliteFile(url);
-  execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
+  execFileSync(process.execPath, [PRISMA_BIN, 'db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url },
     stdio: 'pipe',
   });

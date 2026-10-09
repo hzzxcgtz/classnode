@@ -33,7 +33,7 @@ import { loadClassroomWebapps } from '../routes/webapps.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 /** server/node_modules/.bin/prisma（dist/tests → server 根） */
-const PRISMA_BIN = path.resolve(HERE, '../../node_modules/.bin/prisma');
+const PRISMA_BIN = path.resolve(HERE, '../../node_modules/prisma/build/index.js');
 const SCHEMA = path.resolve(HERE, '../../prisma/schema.prisma');
 
 /**
@@ -50,7 +50,7 @@ async function withDb(t: { after: (fn: () => Promise<void>) => void }): Promise<
   assert.ok(url.startsWith(`file:${os.tmpdir()}`), `DATABASE_URL 必须指向临时目录，实际是 ${url}`);
   assert.notEqual(path.resolve(file), path.resolve(HERE, '../../prisma/dev.db'));
   prepareTemporarySqliteFile(url);
-  execFileSync(PRISMA_BIN, ['db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
+  execFileSync(process.execPath, [PRISMA_BIN, 'db', 'push', '--skip-generate', `--schema=${SCHEMA}`], {
     env: { ...process.env, DATABASE_URL: url },
     stdio: 'pipe',
   });

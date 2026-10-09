@@ -2126,6 +2126,30 @@ async function answerStepAllowed(
 ): Promise<boolean> {
   const mode = readStudentSettings(ctx.worksheet.settings).answerMode;
   if (mode === 'open') return true;
+
+  // ★ 2026-10-09：`manual`（逐题开放）**不在这条判据的轴上** —— 它只看开放清单。
+  //
+  // 🔴 少了这一支的后果不是「体验差一点」，而是**作答静默消失**：
+  //    `manual` 原先落进下面那条「按已提交状态推的顺序前缀」（`target <= firstPending`），
+  //    于是老师只开放第 2 题时，学生答第 2 题的 `target(1) > firstPending(0)` ⇒ 409
+  //    `worksheet-step-locked` ⇒ 客户端 `classifyFailure` 把它归成 `'locked'`
+  //    （`src/app/classroom/worksheet/worksheet-queue.ts`：保留、**不重试、不弹提示**）
+  //    ⇒ 学生的作答再也不进库，而屏幕上没有任何异常。
+  //    反过来，没开放的题只要落在进度前缀里就能存进来 —— 闸门同时**漏**了另一头。
+  //
+  // 🔴 契约的原文（不是我的推断）：`src/lib/worksheet-answer-mode.ts:42-45` ——
+  //    「`manual` —— **教师**推进：只有老师在『逐题开放』里开过的那几道是可作答的。
+  //     `manual` 与上面两种分步是**两个方向**：那两种看 `statuses`（谁交了），
+  //     这一种**不看** `statuses`（老师说了算）」。
+  //    客户端那一份（`answerModeView`）本来就对；本仓纪律是「过滤在服务端执行」（§5.4），
+  //    所以服务端这一份必须自己判，不能靠前端已经藏起来了。
+  //
+  // ⚠️ 判据只有一条：`openQuestionsFor`（`services/worksheet-open.ts`），
+  //    与 `student-view` 下发清单用的是**同一个**函数 —— 没有第二套判据。
+  if (mode === 'manual') {
+    return openQuestionsFor(ctx.worksheetOpen, ctx.worksheet.id).includes(questionId);
+  }
+
   const top = (ctx.worksheet.content as unknown as WorksheetContent).nodes ?? [];
   const sequence: Array<{ id: string; group: number }> = [];
   top.forEach((node, group) => {

@@ -249,6 +249,21 @@ export interface InkCanvas { w: number; h: number }
 /** 一份笔迹作答值：落在 `WorksheetAnswer.value` 那个 Json 列里（Global Constraint 18）。 */
 export interface InkValue { format: InkFormat; canvas: InkCanvas; strokes: InkStroke[]; /** ★ 第二轮：文字（可选 ⇒ 老数据零改动）。 */ texts?: InkText[] }
 
+/**
+ * 这份笔迹值里**有没有内容**（笔画或文字，至少一样）。
+ *
+ * 🔴 **只有这一条判据**，渲染层（`ink-render.ts` 的 `inkToPng`）与报表层
+ * （`export-service.ts` 的答案格）**都必须用它**。
+ *
+ * ★ 2026-10-09：从前报表层自己写了一份「只看 `strokes`」的判据，于是**只写了字**的作答
+ * 被印成「（这一题没有笔画）」，而渲染层刚刚为它生成好的那张 PNG 被**丢掉** ——
+ * 实测：`inkToPng({strokes:[],texts:[一句]})` 回 2432 字节，报表层同时判定「没有笔画」。
+ * 同一件事两份判据、只修了其中一份，是本仓反复出现的形态。
+ */
+export function inkHasContent(ink: InkValue): boolean {
+  return ink.strokes.length > 0 || (ink.texts ?? []).length > 0;
+}
+
 /** 这个 `format` 串是不是笔迹（`ink/v1` / `drawing/v1`）。服务端 B1 有一份同名的对应实现。 */
 export function isInkFormat(raw: unknown): raw is InkFormat {
   return typeof raw === 'string' && (INK_FORMATS as readonly string[]).includes(raw);

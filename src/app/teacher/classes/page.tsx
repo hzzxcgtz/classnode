@@ -5,6 +5,9 @@ import { api } from '@/lib/api';
 import { Toast, Pagination, TeacherPageHeader, TeacherPageTabs, TeacherEmptyState, TeacherLoadingState, useTeacherConfirm } from '@/lib/components';
 import { getApiBaseUrl } from '@/lib/api-base';
 import type { AvatarSummary, ClassGroup, ClassSummary, StudentSummary } from '@/lib/types';
+// ★ 2026-10-09：删学生的后果说明**只有一份**（单人 / 批量两个入口共用），
+// 判据与回归网在 `student-delete-warning.ts` / `.test.ts`。
+import { singleStudentDeleteMessage, batchStudentDeleteMessage } from './student-delete-warning';
 const API_BASE = getApiBaseUrl();
 function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE}/uploads/`) : svg; }
 type StudentSortField = 'studentNo' | 'name' | 'gender' | 'group';
@@ -203,7 +206,7 @@ export default function ClassesPage() {
     if (!selectedClass || deleteBusyRef.current) return;
     if (!await askConfirmation({
       title: '删除这名学生？',
-      message: `学生「${studentName}」将从当前班级中删除。`,
+      message: singleStudentDeleteMessage(studentName),
       confirmLabel: '删除学生',
       tone: 'danger',
     })) return;
@@ -227,7 +230,7 @@ export default function ClassesPage() {
     const ids = [...selectedStudentIds];
     if (!ids.length || !await askConfirmation({
       title: `删除选中的 ${ids.length} 名学生？`,
-      message: '这些学生将从当前班级中删除，此操作不可撤销。',
+      message: batchStudentDeleteMessage(ids.length),
       confirmLabel: '批量删除',
       tone: 'danger',
     })) return;

@@ -927,8 +927,10 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown, tolerance
  *    返回前剥掉），所以学生能看到的答案必须**刚好是他答错的那几格**、而且**只在他提交之后**
  *    —— 两个调用点都由 `gradeState` / `submittedAt` 把着门，别在别处调它。
  *    多一格就是泄露；少一格学生的「正确答案」就空着。
- * 🔴 **没设答案键的空不发**（`acceptable.length === 0`）：那种空在 `fillBlankWrongIndexes`
- *    里**也算错**，但它没有正确答案可写 —— 发了会得到一个空串，界面会写出「正确答案：」这种半句话。
+ * 🔴 **没设答案键的空不发**（`acceptable.length === 0`）：那种空**不再进 `fillBlankWrongIndexes`**
+ *    （★ 2026-10-09：它没有对错可言，从前被错标成答错 ⇒ 学生看到一个不带答案的红叉，
+ *    且与整题的「全对」自相矛盾）。所以下面这道过滤现在是**第二道**而非唯一一道 ——
+ *    留着它是因为「这里只发答错的空」这条语义不该依赖上游那一支的实现细节。
  * ⚠️ **只发第一条**：其余是判分接受的别名（`宋朝` / `宋代`），一屏写不下。
  *    将来要在界面上展示全部别名再扩这个形状（现在是 `string`，扩成 `string[]` 即可）。
  */
@@ -1055,8 +1057,17 @@ export function fillBlankWrongIndexes(node: QuestionNode, value: unknown): numbe
   const total = answerSlotCount(node.data);
   for (let index = 0; index < total; index += 1) {
     const acceptable = gradableAnswers(node.data, index);
+    // 🔴 没有答案键的空**不进「答错」**：它没有对错可言。
+    //    这一类包含三种：主观空（`gradingMode:'ai'`）、逐空关闭（`'none'`）、以及答案没设的空。
+    //    ★ 2026-10-09：这一支从前与下面 `typeof text !== 'string'` **合在一句里**，
+    //    于是它被一并标成答错 —— 而 `wrongBlankAnswers` 又不给它正确答案（它没有），
+    //    学生端于是画出一个**不带答案的红色删除线**；更糟的是同一份响应里
+    //    `grade()` 可能刚说过「整题全对」（判分侧只把有答案的 auto 空计入命中）。
+    //    ⇒ 两处对同一件事各持一条判据，正是本仓那个反复出现的形态。
+    //    现在与判分侧**同一条**：没有答案键就不参与对错。
+    if (acceptable.length === 0) continue;
     const text = texts[index];
-    if (acceptable.length === 0 || typeof text !== 'string') {
+    if (typeof text !== 'string') {
       wrong.push(index);
       continue;
     }

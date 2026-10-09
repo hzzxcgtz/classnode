@@ -177,10 +177,12 @@ export class ChatAPI {
         }
       }
     } catch (error: unknown) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        callbacks.onEnd?.(streamConvId);
-        return { content: fullContent, conversationId: streamConvId, historyId: streamHistoryId };
-      }
+      // 🔴 **中止不许被吞成「一次成功的部分回答」**（★ 2026-10-09 审计修的）。
+      //    理由与 `wenxin/chat.ts` 那处逐字相同：吞掉之后 `ai-proxy` 的
+      //    `aborted:true` 分支（`proxyZhipuaiStream`）成了死代码，半截回答会被
+      //    当作完整回答落库 + 推教师 + 进 history。
+      //    ⚠️ 同时**不发 `onEnd`**：它不是「流正常结束」，`onEnd` 是给正常收尾用的
+      //    （对照组 coze 中止时也不发）。
       throw error;
     }
 

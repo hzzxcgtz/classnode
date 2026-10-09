@@ -288,14 +288,18 @@ export class ChatAPI {
         }
       }
     } catch (error: unknown) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        // 被取消时返回已收集到的内容
-        return {
-          content: fullContent,
-          threadId: resolvedThreadId,
-          msgId: resolvedMsgId,
-        };
-      }
+      // 🔴 **中止不许被吞成「一次成功的部分回答」**（★ 2026-10-09 审计修的）。
+      //
+      //    从前这里在 `AbortError` 时 `return` 已累积的文本 ⇒ 上游
+      //    （`ai-proxy.ts` 的 `proxyWenxinStream`）拿到非空 `fullContent` ⇒ 回
+      //    `{success:true}` 而**永远不是 `aborted:true`** ⇒ `socket/index.ts:2047`
+      //    不丢弃 ⇒ 半截回答被当作完整回答**落库**、推给教师看板、并成为下一轮 history。
+      //    `ai-proxy` 里那处 `if (AbortError) return {success:false, aborted:true}`
+      //    本来是对的 —— 被这一吞变成了**死代码**。
+      //
+      //    ⚠️ 对照组是 coze（`coze-bot/chat.ts` 一直 rethrow）。四个平台里只有
+      //    文心与智谱不一致，而这条中止链路（`activeStreams`）是 2.0 才接通的
+      //    ⇒ 是 2.0 把这段老代码从死代码变成了活缺陷。
       throw error;
     }
 

@@ -1,4 +1,4 @@
-import { INK_STROKE_COLOR, strokePath, strokeWidthPx, textBoxOf, type InkCanvas, type InkValue } from './ink-path.js';
+import { INK_STROKE_COLOR, inkHasContent, strokePath, strokeWidthPx, textBoxOf, type InkCanvas, type InkValue } from './ink-path.js';
 
 /**
  * 笔迹 → PNG（M6a）。**本批新增的模块里，只有本文件碰 `sharp`。**
@@ -86,7 +86,10 @@ export async function inkToPng(ink: InkValue): Promise<Buffer | null> {
   //    报告里「没有内容」与「没作答」必须分得开。
   //    ★ 2026-09-30 第二轮：原来只看 `strokes.length === 0` —— 那样**只写了字**的作答
   //    会被当成「没作答」（教师用卷上那格空白）。
-  if (ink.strokes.length === 0 && (ink.texts ?? []).length === 0) return null;
+  //    ★ 2026-10-09：判据抽到 `ink-path.ts` 的 `inkHasContent`。抽出来的原因是**报表层
+  //    当时另抄了一份只看 `strokes` 的旧判据**，于是第二轮那处修正被它抵掉
+  //    （图渲染出来了、纸面上仍印「这一题没有笔画」）。判定「有没有内容」只能有一条判据。
+  if (!inkHasContent(ink)) return null;
   const box: InkCanvas = ink.canvas.w > 0 && ink.canvas.h > 0 ? ink.canvas : FALLBACK_BOX;
 
   const paths = ink.strokes

@@ -26,6 +26,7 @@ import {
 } from './worksheet-report.js';
 import { questionTypeLabel } from './question-type-labels.js';
 import { inkToPng } from './ink-render.js';
+import { inkHasContent } from './ink-path.js';
 import { resolveLocalPath } from './ai-proxy.js';
 // ★ 2026-09-30：教师用卷（含答案）。判据层 + 渲染层，与上面那份报告各走各的。
 import { buildWorksheetPaper } from './worksheet-paper.js';
@@ -1184,6 +1185,40 @@ function reportTitle(title: string | null, code: string | null): string {
   return title || `课堂-${code || '未命名'}`;
 }
 
+/**
+ * 学生答案那一格**该画什么** —— 纯函数，抽出来是为了让 `node --test` 能直接钉。
+ *
+ * 🔴 **判据只有一条来源**：`inkHasContent`（`ink-path.ts`），与渲染层（`inkToPng`）同源。
+ * ★ 2026-10-09：这一格从前自己写了一份「`ink.strokes.length === 0` 就是没内容」的旧判据，
+ * 于是**只写了字**的作答被印成「（这一题没有笔画）」，而渲染层刚刚为它生成好的那张 PNG
+ * 被**丢掉** —— 学生的作答在纸面上消失，且纸上那句是**假话**。
+ * 实测（真实函数）：`inkToPng({strokes:[],texts:[一句]})` 回 2432 字节，
+ * 而这一格同时判定「没有笔画」。同一件事两份判据、只修了其中一份，是本仓反复出现的形态。
+ */
+export type AnswerCellRender =
+  | { kind: 'image'; png: Buffer }
+  | { kind: 'text'; text: string; color: string }
+  | { kind: 'message'; text: string; color: string };
+
+export function answerCellRender(cell: AnswerCell, png: Buffer | null): AnswerCellRender {
+  if (cell.kind === 'text') return { kind: 'text', text: cell.text, color: C.text };
+  if (cell.kind === 'cleared') return { kind: 'message', text: REPORT_TEXT.cleared, color: C.textLight };
+  if (cell.kind === 'unanswered') return { kind: 'message', text: REPORT_TEXT.unanswered, color: C.textLight };
+  // ⚠️ **三种成因三句话**：「一根笔画都没有」与「渲染不出来」不是一回事，
+  //    而后者那句写的是「本机无法渲染成图片」—— 拿它去说前者是**断言一个它不知道的成因**。
+  if (cell.kind === 'ink' && !inkHasContent(cell.ink)) {
+    return { kind: 'message', text: REPORT_TEXT.inkEmpty, color: C.textLight };
+  }
+  // ⚠️ 与上面那条同一个理由：**成因不同就不能借用别人的话**。
+  //    这一格是「有图、但本机没读出来」，说成「手写作答，本机无法渲染成图片」是错的。
+  if (cell.kind === 'image' && !png) {
+    return { kind: 'message', text: REPORT_TEXT.imageFallback, color: C.gold };
+  }
+  if (png) return { kind: 'image', png };
+  // 🔴 **渲染不出图时说一句话，不留空**（规格 §3.4）——「少一块」与「这一题没答」在报告里长得一样。
+  return { kind: 'message', text: REPORT_TEXT.inkFallback, color: C.gold };
+}
+
 /** 一行的三个格子：题号+题型 / 学生答案（笔迹是图）/ 判定。 */
 function worksheetRowCells(
   row: { heading: string; typeLabel: string; prompt: string; cell: AnswerCell; png: Buffer | null; grade: GradeLabel },
@@ -1192,29 +1227,15 @@ function worksheetRowCells(
   const prompt = rawPrompt.trim() || REPORT_TEXT.promptMissing;
   const short = prompt.length > 40 ? `${prompt.slice(0, 40)}…` : prompt;
 
+  const render = answerCellRender(row.cell, row.png);
   let answerChildren: Array<TextRun | ImageRun>;
-  if (row.cell.kind === 'text') {
-    answerChildren = [new TextRun({ text: row.cell.text, size: 18, color: C.text })];
-  } else if (row.cell.kind === 'cleared') {
-    answerChildren = [new TextRun({ text: REPORT_TEXT.cleared, size: 18, color: C.textLight })];
-  } else if (row.cell.kind === 'unanswered') {
-    answerChildren = [new TextRun({ text: REPORT_TEXT.unanswered, size: 18, color: C.textLight })];
-  } else if (row.cell.kind === 'ink' && row.cell.ink.strokes.length === 0) {
-    // ⚠️ **三种成因三句话**：「一根笔画都没有」与「渲染不出来」不是一回事，
-    //    而后者那句写的是「本机无法渲染成图片」—— 拿它去说前者是**断言一个它不知道的成因**。
-    answerChildren = [new TextRun({ text: REPORT_TEXT.inkEmpty, size: 18, color: C.textLight })];
-  } else if (row.cell.kind === 'image' && !row.png) {
-    // ⚠️ 与上面那条同一个理由：**成因不同就不能借用别人的话**。
-    //    这一格是「有图、但本机没读出来」，说成「手写作答，本机无法渲染成图片」是错的。
-    answerChildren = [new TextRun({ text: REPORT_TEXT.imageFallback, size: 18, color: C.gold })];
-  } else if (row.png) {
+  if (render.kind === 'image') {
     // 图片的宽高从 PNG 自己的 IHDR 里读（渲染层不知道值里的 canvas，那张图的真实尺寸在这里）。
-    const w = row.png.readUInt32BE(16);
-    const h = row.png.readUInt32BE(20);
-    answerChildren = [new ImageRun({ type: 'png', data: row.png, transformation: scaleImageSize(w, h) })];
+    const w = render.png.readUInt32BE(16);
+    const h = render.png.readUInt32BE(20);
+    answerChildren = [new ImageRun({ type: 'png', data: render.png, transformation: scaleImageSize(w, h) })];
   } else {
-    // 🔴 **渲染不出图时说一句话，不留空**（规格 §3.4）——「少一块」与「这一题没答」在报告里长得一样。
-    answerChildren = [new TextRun({ text: REPORT_TEXT.inkFallback, size: 18, color: C.gold })];
+    answerChildren = [new TextRun({ text: render.text, size: 18, color: render.color })];
   }
 
   const gradeColor = row.grade === '对' ? C.green : row.grade === '部分给分' ? C.gold : row.grade === '错' ? C.red : C.textLight;

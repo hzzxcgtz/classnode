@@ -30,7 +30,7 @@
 按「静默丢数据 / 不可逆」优先。
 
 **Critical / High**
-1. **删学生会级联销毁该生在全部课堂（含已结束）的对话与作答** —— `classes.ts:227` 是裸 `prisma.student.delete`（**紧挨其上 100 行的删班级却有守卫**，`classes.ts:106-113`）；schema 三条外键全 Cascade（`ClassroomStudent.student`、`Message.studentId`、`WorksheetResponse.participant`）。**教师已定：拆成「移出班级」/「彻底删除」**
+1. **删学生会级联销毁该生在全部课堂（含已结束）的对话与作答** —— 裸 `prisma.student.delete`（**紧挨其上的删班级却有守卫**）；外键链 `Student →(Cascade) ClassroomStudent →(Cascade) Message / WorksheetResponse`。**教师已定：拆成「移出班级」/「彻底删除」** → ✅ **已修（§K）**
 2. **屏蔽词命中后客户端卡死在「等待 AI」** —— `chat/chat-panel.tsx:562` 落两个闸门，`chat/use-chat-socket.ts:321-335` 的 `shield-warned` 不复位（**其它 11 条**终止路径全部复位 —— 原文写「8 条」，实测 11，见 §G）；`allowStudentStop === false` 时屏幕上没有可点的出口 → ✅ **已修（§G）**
 3. **「只写了字」的手写作答在客户端就发不出去** —— `lib/worksheet-answer-value.ts` `isDraftEmpty` 与 `valueFromDraft` 都只看 `strokes`、不看 `texts`；那段专为 `texts` 写的重建代码因此够不到 → ✅ **已修（§G）**
 4. **慢网下同一题的改动被在途请求顶掉** —— `worksheet-queue.ts` `dropQueueItem` 只比 `questionId`；`use-worksheet-answers.ts:466/496` 处的快照出队会把学生更新的那条一起删。→ ✅ **已修 + 已补回归网（2026-10-09，见 §F）**
@@ -83,7 +83,7 @@ tool 分流台账：`drawing-tool-body.tsx:89-95`、`worksheet-drawing-document.
 ## D. 教师拍板的四条（2026-10-09）
 
 1. **填空题简化** ✅ **已实施（§J）**：所有空都不涉及 AI 评分；主观内容走**问答题**。删 `'ai'` 与 `'none'` 两档；老 AI 空按「不算分」+ 编辑器提示。⚠️ `aiScoringEnabled` 本身不能删（问答题 / 绘图题正当需要）。
-2. **删学生拆两个动作**（仍未做）：「移出班级」只动名册不动历史；「彻底删除」保留级联行为并写明。
+2. **删学生拆两个动作** ✅ **已实施（§K）**：「移出班级」只动名册不动历史；「彻底删除」保留级联行为并写明。
 3. **`ping` 整个删掉** ✅ **已实施（§I）**。
 4. **隐私例外照旧** ✅ **已实施（§I）**：`proxyAnalysisRequest` 继续发「姓名+学号」，**代码不动**，改 `CLAUDE.md` 那句。
 
@@ -94,7 +94,7 @@ tool 分流台账：`drawing-tool-body.tsx:89-95`、`worksheet-drawing-document.
 1. ~~给「在途出队」补竞态回归网（先写会红的），跑红→绿~~ ✅ 2026-10-09 完成，见 §F
 2. ~~批次 B ① 剩四条~~ ✅ **全部完成**（三条见 §G，清空画布 + 4b 见 §H）
 3. ~~`ping` 整个删 + 改 `CLAUDE.md`~~ ✅ 2026-10-09 完成，见 §I
-4. ~~填空题简化~~ ✅ 2026-10-09 完成，见 §J · 删学生拆分（仍未做）
+4. ~~填空题简化~~ ✅（§J）· ~~删学生拆分~~ ✅（§K）—— **§E 第 4 步全部完成**
 5. 开**批次 4（教师端 `src/app/teacher/**`）**，再 `src/lib` 105 文件、测试与假绿
 
 ---
@@ -344,3 +344,47 @@ H1 的纯判据那一半是硬的（真值表 + 变异）。
 - 学生端 `worksheet-panel.tsx` 的 `mixedFillScoring` 分支（「自动评分部分全对」那套措辞）
   随着填空 AI 参考分消失而**不可能再为真**（它是 `aiReferenceScore` 驱动的）。这一版**没删**
   —— 那是学生端的显示改动，与 §E 后面的学生端批次一起做更合适。
+
+---
+
+## K. 2026-10-09 续做（§E 第 4 步之二）：删学生拆成「移出班级 / 彻底删除」
+
+**教师裁定原话**：「『移出班级』= 只从名册去掉，**不动历史数据**；『彻底删除』= 保留现在的级联行为
+（会删掉该生在全部课堂含已结束的对话与学习单作答），且弹窗必须写明。两个按钮都要说清各自做什么。」
+
+### 实现：移出班级 = 把 `Student.classId` 置空
+外键链是 `Student` →(Cascade) `ClassroomStudent` →(Cascade) `Message` / `WorksheetResponse`
+→(Cascade) `WorksheetAnswer`；而名册上**每一处读取都按 `classId` 过滤**
+（`GET /:classId/students` 等）⇒ 置空 = 从名册消失，而三张历史表仍然指着这个人 ⇒ **历史一个字不动**。
+
+| 处 | 改动 |
+|---|---|
+| `schema.prisma` | `Student.classId` **可空**（+ `class Class?`）。⚠️ 注释写明了「不要改回非空」的理由；`@@unique([classId, name])` 在 SQLite 里对 NULL 互不相同 ⇒ 移出后同名再加回来不撞键（正是要的语义） |
+| `routes/classes.ts` | 新增 `POST /:classId/students/:studentId/remove`（置空）；**两条路都**先过 `findStudentInClass` 那道闸（判据带 `classId`，命中不到回 404）—— 原先 `DELETE` 是裸 `delete({ where: { id } })`，一个拼错/过期的 `classId` 能删掉**别的班**的学生 |
+| `lib/api.ts` | `removeStudentFromClass`（POST `…/remove`）与 `deleteStudent` 各打各的路 |
+| `classes/student-delete-warning.ts` | 四句文案（单人 / 批量 × 两个动作）；「移出」那句说**保留** + 可加回来 + 正在上课不会被踢出课堂；「彻底删除」那句加了「**不只是**移出班级」 |
+| `classes/page.tsx` | 行内一颗 × 拆成**两颗**（移出=中性色、彻底删除=危险色，`title` 各说各的后果）；批量栏同样拆两个按钮；两处**同一个三元形状**分派 |
+| `avatars/page.tsx` | 「谁在用这张头像」名单的类型跟着改（`class` 现在可为 null；显示处本来就有 `?.` 兜底） |
+
+### 回归网（这次是**真库行为**，不是源码扫描）
+- 新增 `server/src/tests/student-removal.test.ts`（真 Prisma + 真 SQLite，照 `classroom-answers-lock`）：
+  ① **移出班级** ⇒ 名册里没有了 + 学生行还在 + `classId` 为 null + **三张历史表一条不少**；
+  ② **彻底删除** ⇒ 学生与三张表一起清干净（这条保证「刻意破坏性」的那半没被顺手削弱）；
+  ③ **阴性对照**：拿别的班的 `classId` 去操作 ⇒ 两条路都 404 且什么都不改。
+- 新增 `classes/student-removal-wiring.test.ts`（8 条接线）+ 扩写文案网（+4 条）。
+- **变异验证**：把单人那处的分派**接反** ⇒ 接线网当场红（这条网的存在理由就是「看着一句
+  『历史都会保留』把东西删光」）；把「移出」那句文案抄成「删除」那句 ⇒ 3 条文案网红。
+
+### 实测（同一棵树上）
+`pnpm test:client` **1521 / 0** · `pnpm test:server` **987 / 0** · `tsc --noEmit` **0** · `eslint` 无输出。
+
+### 要教师知道的两件事
+1. **这次改了 schema**（`Student.classId` 可空）。打包版在升级时会自动 `prisma db push`
+   （schema 哈希变了就 push）✓；**开发机上要手动跑一次 `pnpm --filter classnode-server db:push`** ——
+   运行期的自动对齐只**加列**，改可空性它做不到，不 push 的话「移出班级」会 500（失败是响的，不是静默的）。
+2. 顺带收紧了「彻底删除」：它现在也要求「这名学生确实在这个班里」（原先任意 `studentId` 都删得掉）。
+   ⚠️ 老客户端（只调 `DELETE`）行为不变 —— 那是「彻底删除」那条路。
+
+### 没做的
+- §B15（删班级那条守卫的提示指向一个不存在的功能）**没动**：它是另一件事，且要教师定夺怎么处置。
+- 已移出的学生**没有**「回收站 / 已移出名单」这类界面（教师没要求）；他们在历史里照旧可见。

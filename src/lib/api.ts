@@ -182,6 +182,14 @@ export const api = {
     request<StudentSummary>(`/api/classes/${classId}/students`, { method: 'POST', body: JSON.stringify(data) }),
   batchCreateStudentsFromNames: (classId: string, names: (string | { name: string; gender?: string })[]) =>
     request<StudentBatchCreateResponse>(`/api/classes/${classId}/students/batch-names`, { method: 'POST', body: JSON.stringify({ names }) }),
+  /**
+   * **移出班级**（名册）—— 只断开名册归属，一条历史都不动。
+   * ⚠️ 与下面的 `deleteStudent`（彻底删除，级联清掉全部课堂的对话与作答）**不是同一件事**，
+   *    别用错：两个确认弹窗的文案写在 `app/teacher/classes/student-delete-warning.ts`。
+   */
+  removeStudentFromClass: (classId: string, studentId: string) =>
+    request(`/api/classes/${classId}/students/${studentId}/remove`, { method: 'POST' }),
+  /** **彻底删除**这名学生（含他在全部课堂的对话与学习单作答）。 */
   deleteStudent: (classId: string, studentId: string) =>
     request(`/api/classes/${classId}/students/${studentId}`, { method: 'DELETE' }),
   updateStudent: (classId: string, studentId: string, data: { name?: string; studentNo?: string; gender?: string | null; tag?: string | null; avatarId?: number | null }) =>

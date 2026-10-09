@@ -121,7 +121,13 @@ model ClassGroup {
 // 学生
 model Student {
   id        String   @id @default(uuid())
-  classId   String
+  /// ★ 2026-10-09（教师裁定「删学生拆两件事」）：**可空** —— 「移出班级」就是把它置空。
+  /// 名册上的每一处读取都按 `classId` 过滤，所以置空 = 从名册消失，
+  /// 而 `ClassroomStudent` / `Message` / `WorksheetResponse` 仍然指着这个人 ⇒ **历史一个字不动**。
+  /// ⚠️ 不要改回 `String`（非空）：那样「移出班级」只能靠删行，而删行会级联清掉全部历史。
+  /// ⚠️ 唯一索引 `@@unique([classId, name])` 在 SQLite 里对 NULL 是**互不相同**的
+  ///（同名的人被移出再添加不会撞键）—— 这正是这里需要的语义。
+  classId   String?
   name      String   // 学生姓名
   studentNo String?  // 学号
   gender    String?  // boy / girl（用于头像匹配、自动分配）
@@ -131,7 +137,7 @@ model Student {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  class     Class           @relation(fields: [classId], references: [id], onDelete: Cascade)
+  class     Class?          @relation(fields: [classId], references: [id], onDelete: Cascade)
   avatar    Avatar?         @relation(fields: [avatarId], references: [id])
   classroomStudents ClassroomStudent[]
 }

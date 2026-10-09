@@ -220,11 +220,55 @@ router.put('/:classId/students/:studentId', async (req, res) => {
   }
 });
 
-// 删除学生
+/**
+ * 这名学生**确实在这个班里**吗 —— 「移出」与「彻底删除」两条路共用的第一道闸。
+ *
+ * 🔴 判据必须带上 `classId`：路径里那两个 id 都由前端给，光按 `studentId` 操作的话，
+ *    一个拼错/过期的 `classId` 也能删掉**别的班**的学生（而教师以为自己点的是这个班）。
+ * ⚠️ 命中不到时回 **404**（不是 403）：对这两个端点来说「不是你班上的学生」与
+ *    「这个 id 不存在」处置相同 —— 都不该动任何东西。
+ */
+async function findStudentInClass(prisma: PrismaClient, classId: string, studentId: string) {
+  return prisma.student.findFirst({ where: { id: studentId, classId }, select: { id: true } });
+}
+
+/**
+ * ★ 2026-10-09（教师裁定「删学生拆两件事」）：**把学生移出班级**（名册），
+ * **一条历史都不动** —— 实现就是断开 `Student.classId`。
+ *
+ * 🔴 为什么不是删行：`Student` →(Cascade) `ClassroomStudent` →(Cascade) `Message` /
+ *    `WorksheetResponse`（见 `schema.prisma`），删一行会把他**在全部课堂（含已结束）**的
+ *    对话与学习单作答一起带走，且不可恢复。教师按日常名册维护的预期点下去，
+ *    上个学期的东西就没了（审计 §B1）。
+ *
+ * ⚠️ 副作用（**弹窗里已写明**）：他若正待在某个课堂里，**仍然留在那个课堂**（课堂参与者是
+ *    `ClassroomStudent` 那一行，与名册无关）；历史也照旧看得见（人还在，只是不在名册上）。
+ */
+router.post('/:classId/students/:studentId/remove', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const student = await findStudentInClass(prisma, req.params.classId, req.params.studentId);
+    if (!student) return res.status(404).json({ error: '这个班级里没有这名学生' });
+    await prisma.student.update({ where: { id: student.id }, data: { classId: null } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: '移出班级失败' });
+  }
+});
+
+/**
+ * **彻底删除**这名学生（含他在全部课堂的对话与学习单作答）。
+ *
+ * 🔴 这条路**刻意**是破坏性的：它删的是「这个人不存在了」那种情况（录错、测试数据），
+ *    而不是「他不在我这个班了」—— 后者走上面的 `remove`。
+ *    ⚠️ 前端弹窗必须把这条后果写出来（文案在 `classes/student-delete-warning.ts`）。
+ */
 router.delete('/:classId/students/:studentId', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    await prisma.student.delete({ where: { id: req.params.studentId } });
+    const student = await findStudentInClass(prisma, req.params.classId, req.params.studentId);
+    if (!student) return res.status(404).json({ error: '这个班级里没有这名学生' });
+    await prisma.student.delete({ where: { id: student.id } });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: '删除学生失败' });

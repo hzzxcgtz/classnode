@@ -2,8 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   STUDENT_DELETE_CONSEQUENCE,
+  STUDENT_REMOVE_CONSEQUENCE,
   singleStudentDeleteMessage,
   batchStudentDeleteMessage,
+  singleStudentRemoveMessage,
+  batchStudentRemoveMessage,
 } from './student-delete-warning.ts';
 
 /**
@@ -59,4 +62,51 @@ test('阴性对照：不许把后果说成「只是移出班级」（那正是�
     assert.doesNotMatch(message, /仅从.*班级中删除|只是从.*班级中删除/,
       '只说「从班级中删除」等于隐瞒了级联销毁');
   }
+});
+
+// ── ★ 2026-10-09（教师裁定「删学生拆两件事」）：两个动作各说各的后果 ──────────
+//
+// 🔴 拆开的理由（审计 §B1）：名册上那个 × 一直是**裸删** —— `Student` →(Cascade)
+//    `ClassroomStudent` →(Cascade) `Message` / `WorksheetResponse` ⇒ 教师按日常名册维护的
+//    预期（「他不在我这个班了」）点下去，上个学期的东西一起没了。
+//    ⇒ 「移出班级」只断名册归属（`Student.classId = null`，服务端那条路有真库用例
+//      `server/src/tests/student-removal.test.ts` 钉着），「彻底删除」才是原来那个破坏性动作。
+//
+// 两句话必须**互不相同**，而且各自说对：说反了比不说更坏（教师会照着一句假话去点）。
+
+test('🔴 移出班级说的必须是「历史保留」，不是「会删」', () => {
+  const message = singleStudentRemoveMessage('张三');
+  assert.ok(message.includes('张三'), '要说清楚动的是谁');
+  assert.match(message, /保留/, '「移出班级」必须说清历史与作答**保留**');
+  assert.match(message, /所有课堂|全部课堂/, '范围要说清（他所有课堂里的东西都不动）');
+  assert.match(message, /已结束/, '范围里那句「包括已结束的」不能省');
+  assert.match(message, /重新加回|再加回|重新添加/, '要说清这一步是可逆的（还能加回来）');
+  assert.doesNotMatch(message, /无法恢复|不可恢复/, '移出班级不删任何东西 —— 说「无法恢复」是句假话');
+  assert.match(message, /仍然会留在那个课堂/, '要说清「正在上课的学生不会被踢出课堂」这个非直觉的后果');
+});
+
+test('🔴 批量移出：同一份说明（两个入口不许有一个少说）', () => {
+  const message = batchStudentRemoveMessage(3);
+  assert.match(message, /3 名/, '要说清几个人');
+  assert.match(message, /保留/);
+  assert.doesNotMatch(message, /无法恢复|不可恢复/);
+});
+
+test('🔴 两个动作的文案必须**分开**：彻底删除那句要说「不只是移出班级」', () => {
+  // 没有这一条，两个按钮共用一句「删除」也能让上面全绿 —— 而教师分不出哪个是哪个。
+  assert.ok(singleStudentRemoveMessage('张三') !== singleStudentDeleteMessage('张三'),
+    '两个动作用了同一句话 —— 教师没法从弹窗上分出自己在点哪个');
+  assert.match(singleStudentDeleteMessage('张三'), /不只是移出班级/,
+    '「彻底删除」必须点明它**不只是**从名册上去掉');
+  assert.match(batchStudentDeleteMessage(2), /不只是移出班级/);
+  // 反过来也要成立：移出那句不许把自己说成删除。
+  assert.doesNotMatch(singleStudentRemoveMessage('张三'), /彻底删除/);
+});
+
+test('🔴 四个入口共用两份后果说明（防止只改一处、另一处悄悄漂移）', () => {
+  assert.ok(singleStudentRemoveMessage('张三').includes(STUDENT_REMOVE_CONSEQUENCE));
+  assert.ok(batchStudentRemoveMessage(2).includes(STUDENT_REMOVE_CONSEQUENCE));
+  assert.ok(singleStudentDeleteMessage('张三').includes(STUDENT_DELETE_CONSEQUENCE));
+  assert.ok(batchStudentDeleteMessage(2).includes(STUDENT_DELETE_CONSEQUENCE));
+  assert.notEqual(STUDENT_REMOVE_CONSEQUENCE, STUDENT_DELETE_CONSEQUENCE);
 });

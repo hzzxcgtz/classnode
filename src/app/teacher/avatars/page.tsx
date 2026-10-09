@@ -12,7 +12,9 @@ type TabType = 'student' | 'class';
 
 type Avatar = AvatarSummary;
 type AvatarUsage = {
-  students: Array<{ name: string; class: { name: string } }>;
+  // ★ 2026-10-09：`class` 可为 null —— 「移出班级」的学生（`Student.classId = null`）仍然挂着头像，
+  //    所以他们照样出现在这份「谁在用这张图」的名单里，只是没有班级名（下面各处已用 `?.`）。
+  students: Array<{ name: string; class: { name: string } | null }>;
   classes: Array<{ name: string }>;
 };
 

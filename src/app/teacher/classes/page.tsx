@@ -7,7 +7,7 @@ import { getApiBaseUrl } from '@/lib/api-base';
 import type { AvatarSummary, ClassGroup, ClassSummary, StudentSummary } from '@/lib/types';
 // ★ 2026-10-09：删学生的后果说明**只有一份**（单人 / 批量两个入口共用），
 // 判据与回归网在 `student-delete-warning.ts` / `.test.ts`。
-import { singleStudentDeleteMessage, batchStudentDeleteMessage } from './student-delete-warning';
+import { batchStudentDeleteMessage, batchStudentRemoveMessage, singleStudentDeleteMessage, singleStudentRemoveMessage } from './student-delete-warning';
 const API_BASE = getApiBaseUrl();
 function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE}/uploads/`) : svg; }
 type StudentSortField = 'studentNo' | 'name' | 'gender' | 'group';
@@ -202,51 +202,75 @@ export default function ClassesPage() {
     }
   };
 
-  const handleDeleteStudent = async (studentId: string, studentName: string) => {
+  /**
+   * ★ 2026-10-09（教师裁定）：名册上这两个动作是**两件事**，各自确认一次、各自说清后果。
+   *
+   * 🔴 从前只有一个 ×，而它是**裸删**（级联清掉该生在全部课堂含已结束的对话与作答）——
+   *    教师按日常名册维护的预期点下去，上个学期的东西一起没了（审计 §B1）。
+   *    ⇒ 现在：「移出班级」只断名册归属（历史一个字节不动），「彻底删除」才是原来那个动作，
+   *      而且它的文案里点明「不只是移出班级」。
+   *
+   * ⚠️ 两个动作共用同一套忙碌闸门（`deleteBusyRef` / `deleteBusyId`）：一次只允许一个在飞，
+   *    否则「移出」与「彻底删除」同时点下去，屏幕上的名册会按两个不同的结果各刷一次。
+   */
+  const runStudentAction = async (studentId: string, studentName: string, action: 'remove' | 'delete') => {
     if (!selectedClass || deleteBusyRef.current) return;
+    const remove = action === 'remove';
     if (!await askConfirmation({
-      title: '删除这名学生？',
-      message: singleStudentDeleteMessage(studentName),
-      confirmLabel: '删除学生',
-      tone: 'danger',
+      title: remove ? `把「${studentName}」移出班级？` : `彻底删除「${studentName}」？`,
+      message: remove ? singleStudentRemoveMessage(studentName) : singleStudentDeleteMessage(studentName),
+      confirmLabel: remove ? '移出班级' : '彻底删除',
+      // 「移出班级」不是破坏性操作（可以再加回来）⇒ 不给它红色危险态。
+      tone: remove ? 'default' : 'danger',
     })) return;
     deleteBusyRef.current = true;
     setDeleteBusyId(`student:${studentId}`);
     try {
-      await api.deleteStudent(selectedClass, studentId);
+      // ⚠️ 分派的形状与批量那一处**逐字相同**（`remove ? … : …`）：`student-removal-wiring.test.ts`
+      //    靠这个形状判「两个入口有没有接反」—— 写成 if/else 它就只认得出半处。
+      await (remove
+        ? api.removeStudentFromClass(selectedClass, studentId)
+        : api.deleteStudent(selectedClass, studentId));
       await Promise.all([loadStudents(), loadClasses()]);
       setSelectedStudentIds(previous => { const next = new Set(previous); next.delete(studentId); return next; });
-      setToast({ msg: `学生「${studentName}」已删除`, type: 'success' });
+      setToast({ msg: remove ? `学生「${studentName}」已移出班级` : `学生「${studentName}」已彻底删除`, type: 'success' });
     } catch (error) {
-      setToast({ msg: `删除学生失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+      setToast({ msg: `${remove ? '移出班级' : '彻底删除'}失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
     } finally {
       deleteBusyRef.current = false;
       setDeleteBusyId(null);
     }
   };
 
-  const handleBatchDeleteStudents = async () => {
+  /** 批量版的两个动作（与单人的 `runStudentAction` 同一套语义，只是逐个人发）。 */
+  const runBatchStudentAction = async (action: 'remove' | 'delete') => {
     if (!selectedClass || batchActionRef.current) return;
     const ids = [...selectedStudentIds];
+    const remove = action === 'remove';
     if (!ids.length || !await askConfirmation({
-      title: `删除选中的 ${ids.length} 名学生？`,
-      message: batchStudentDeleteMessage(ids.length),
-      confirmLabel: '批量删除',
-      tone: 'danger',
+      title: remove ? `把选中的 ${ids.length} 名学生移出班级？` : `彻底删除选中的 ${ids.length} 名学生？`,
+      message: remove ? batchStudentRemoveMessage(ids.length) : batchStudentDeleteMessage(ids.length),
+      confirmLabel: remove ? '移出班级' : '彻底删除',
+      tone: remove ? 'default' : 'danger',
     })) return;
     batchActionRef.current = true;
-    setBatchAction('delete');
+    setBatchAction(action === 'remove' ? 'remove' : 'delete');
     try {
-      const results = await Promise.allSettled(ids.map(studentId => api.deleteStudent(selectedClass, studentId)));
+      const results = await Promise.allSettled(ids.map(studentId => (
+        remove ? api.removeStudentFromClass(selectedClass, studentId) : api.deleteStudent(selectedClass, studentId)
+      )));
       const succeeded = results.filter(result => result.status === 'fulfilled').length;
       const failed = results.length - succeeded;
       if (succeeded) {
         setSelectedStudentIds(new Set());
         await Promise.all([loadStudents(), loadClasses()]);
       }
-      setToast(failed ? { msg: `已删除 ${succeeded} 名学生，${failed} 名删除失败，请重试`, type: 'error' } : { msg: `已删除 ${succeeded} 名学生`, type: 'success' });
+      const verb = remove ? '移出' : '删除';
+      setToast(failed
+        ? { msg: `已${verb} ${succeeded} 名学生，${failed} 名${verb}失败，请重试`, type: 'error' }
+        : { msg: `已${verb} ${succeeded} 名学生`, type: 'success' });
     } catch (error) {
-      setToast({ msg: `批量删除失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
+      setToast({ msg: `批量${remove ? '移出' : '删除'}失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
     } finally {
       batchActionRef.current = false;
       setBatchAction(null);
@@ -652,9 +676,15 @@ export default function ClassesPage() {
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         修改标签
                       </button>
-                      <button onClick={() => void handleBatchDeleteStudents()} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#a85d5d', border: '1px solid #fca5a5', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {/* ★ 2026-10-09：批量那一栏也是**两个动作**（与行内那颗 × 同一套语义）。
+                          「移出班级」用中性色（可逆），「彻底删除」才用危险色。 */}
+                      <button onClick={() => void runBatchStudentAction('remove')} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#475569', border: '1px solid #cbd5e1', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="11" x2="23" y2="11"/></svg>
+                        {batchAction === 'remove' ? '移出中...' : '移出班级'}
+                      </button>
+                      <button onClick={() => void runBatchStudentAction('delete')} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#a85d5d', border: '1px solid #fca5a5', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                        {batchAction === 'delete' ? '删除中...' : '删除学生'}
+                        {batchAction === 'delete' ? '删除中...' : '彻底删除'}
                       </button>
                       <button onClick={() => void handleBatchClearAvatars()} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#956834', border: '1px solid #fcd34d', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -979,8 +1009,22 @@ export default function ClassesPage() {
                                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                               </button>
-                              <button title={deleteBusyId ? '正在删除，请稍候' : '删除'} disabled={deleteBusyId !== null}
-                                onClick={() => void handleDeleteStudent(s.id, s.name)}
+                              {/* ★ 2026-10-09（教师裁定）：行内也拆成两颗 —— 「移出班级」（中性色，
+                                  可逆）与「彻底删除」（危险色）。两颗的 `title` 各自说清做什么：
+                                  这颗 × 从前是**裸删**，教师以为只是从名册上划掉。 */}
+                              <button title={deleteBusyId ? '正在处理，请稍候' : '移出班级（保留他在所有课堂的对话与作答）'} disabled={deleteBusyId !== null}
+                                onClick={() => void runStudentAction(s.id, s.name, 'remove')}
+                                style={{
+                                  background: 'transparent', border: 'none', cursor: 'pointer',
+                                  padding: '4px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center',
+                                  color: '#64748b',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="11" x2="23" y2="11"/></svg>
+                              </button>
+                              <button title={deleteBusyId ? '正在处理，请稍候' : '彻底删除（含他在所有课堂的对话与作答，无法恢复）'} disabled={deleteBusyId !== null}
+                                onClick={() => void runStudentAction(s.id, s.name, 'delete')}
                                 style={{
                                   background: 'transparent', border: 'none', cursor: 'pointer',
                                   padding: '4px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center',

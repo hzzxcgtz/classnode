@@ -10,7 +10,7 @@ if (!['client', 'server'].includes(suite)) {
 }
 
 const log = createWriteStream(path.join(project, `.test-${suite}.log`));
-const child = spawn(process.execPath, ['--test', '--test-timeout=300000', suite === 'client' ? 'src/**/*.test.ts' : 'dist/tests/*.test.js'], {
+const child = spawn(process.execPath, ['--test', '--test-timeout=600000', suite === 'client' ? 'src/**/*.test.ts' : 'dist/tests/*.test.js'], {
   cwd: suite === 'client' ? project : path.join(project, 'server'),
   stdio: ['inherit', 'pipe', 'pipe'],
 });

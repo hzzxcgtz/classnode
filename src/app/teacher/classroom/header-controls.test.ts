@@ -114,11 +114,11 @@ test('🔴 学习单 / 矩阵 已经合成一个下拉：不再有那两个各�
   assert.equal(list.includes('matrix' as HeaderControlId), false, '原来的「矩阵」按钮不该还在');
 });
 
-test('🔴 那个下拉里的三项：两个「看」的在前，一个「改课堂状态」的在后', () => {
+test('🔴 学习单下拉：三个查看入口在前，一个课堂控制动作在后', () => {
   // ★ 2026-09-30：「逐题开放」并进来成了第三项。前两项是**看**，第三项**当着全班改**
   // 学生屏幕上有什么 —— 顺序不是随手排的，改的人要能一眼分清。
-  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.label), ['答题结果', '矩阵分析', '逐题开放']);
-  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.id), ['analysis', 'matrix', 'open']);
+  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.label), ['学习单总览', '按学生查看', '按题目查看', '逐题开放']);
+  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.id), ['overview', 'student', 'question', 'open']);
   // ⚠️ 三项的 id 必须互不相同 —— 相同的话菜单里点哪一项都会开同一个东西，而屏幕上不报错。
   assert.equal(new Set(WORKSHEET_MENU_ITEMS.map((item) => item.id)).size, WORKSHEET_MENU_ITEMS.length);
   // ⚠️ 每一项都要有一句悬浮说明：那个下拉里三项挤在一起，标题是唯一说清「按下去会怎样」的地方。
@@ -289,8 +289,9 @@ test('🔴 关键悬浮说明与两个分析维度一致（它们是唯一的解
   assert.equal(control('worksheet-menu').title, '按题分析全班，或按学生分析整份学习单');
   assert.equal(control('fullscreen').title, '全屏显示学生面板');
   // 那两项各自的悬浮说明在 `WORKSHEET_MENU_ITEMS` 里（它们不是头部的控件）。
-  assert.equal(WORKSHEET_MENU_ITEMS[0].title, '按学习单看全班：先按学习单分组，再按题看正确率与作答');
-  assert.equal(WORKSHEET_MENU_ITEMS[1].title, '按学生查看整份学习单的作答情况，也可交叉定位需要关注的题目');
+  assert.equal(WORKSHEET_MENU_ITEMS[0].title, '用学生 × 题目的矩阵查看全班进度，并快速进入详情');
+  assert.equal(WORKSHEET_MENU_ITEMS[1].title, '查看某个学生或小组整份学习单的完成情况');
+  assert.equal(WORKSHEET_MENU_ITEMS[2].title, '查看某一道题的全班统计与具体作答');
 });
 
 /* ── 8. `headerLayout`：头部那几段显不显示 ─────────────────────── */

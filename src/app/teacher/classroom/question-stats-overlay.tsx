@@ -158,7 +158,7 @@ function Section({ title, children, note }: { title: string; children: React.Rea
 }
 
 export function QuestionStatsOverlay({
-  mode, board, worksheetId, questionId, nodesByWorksheet, onClose, onOpenAnalysis,
+  mode, board, worksheetId, questionId, nodesByWorksheet, onClose, onOpenAnalysis, embedded = false,
 }: {
   /** 课堂 mode —— 只在量词上用（分组 / 高级模式下「人」要写成「组」），与旁边两屏同源。 */
   mode: string;
@@ -169,6 +169,8 @@ export function QuestionStatsOverlay({
   onClose: () => void;
   /** 两个入口统一打开同一个 AI 分析结果窗口，避免内嵌版与独立版继续分叉。 */
   onOpenAnalysis: () => void;
+  /** 统一学习单工作区内直接渲染，不再创建遮罩和第二层浮窗。 */
+  embedded?: boolean;
 }) {
   const worksheet = board?.worksheets.filter((item) => item.id === worksheetId)[0];
   const nodes = nodesByWorksheet[worksheetId] ?? null;
@@ -211,12 +213,16 @@ export function QuestionStatsOverlay({
 
   const distribution = stats?.distribution ?? null;
 
-  return (
-    <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 292, background: 'rgb(25 43 62 / 34%)', backdropFilter: 'blur(2px)' }} />
+  const panel = (
       <div data-overscroll-guard="" style={{
-        position: 'fixed', top: 48, bottom: 32, left: '50%', transform: 'translateX(-50%)',
-        width: 'min(900px, calc(100vw - 48px))', zIndex: 293,
+        position: embedded ? 'relative' : 'fixed',
+        top: embedded ? undefined : 48,
+        bottom: embedded ? undefined : 32,
+        left: embedded ? undefined : '50%',
+        transform: embedded ? undefined : 'translateX(-50%)',
+        width: embedded ? '100%' : 'min(900px, calc(100vw - 48px))',
+        height: embedded ? '100%' : undefined,
+        zIndex: embedded ? undefined : 293,
         background: '#f7fafc', borderRadius: 18, border: '1px solid #d7e2ec',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 24px 70px rgb(15 35 55 / 24%)',
@@ -226,12 +232,12 @@ export function QuestionStatsOverlay({
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #dce6ef', background: '#fff' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ marginBottom: 3, color: '#66809b', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em' }}>答题结果</div>
+              <div style={{ marginBottom: 3, color: '#66809b', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em' }}>按题目查看</div>
               <h3 style={{ margin: 0, color: '#213850', fontSize: '1rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {node ? `${heading ? `${heading} · ` : ''}${questionTypeNickname(node.type)}` : '正在读取题目'}
               </h3>
             </div>
-            <button type="button" onClick={onClose} style={{ border: '1px solid #cbd8e5', borderRadius: 9, padding: '7px 12px', background: '#fff', color: '#4d647c', cursor: 'pointer' }}>关闭</button>
+            <button type="button" onClick={onClose} style={{ border: '1px solid #cbd8e5', borderRadius: 9, padding: '7px 12px', background: '#fff', color: '#4d647c', cursor: 'pointer' }}>{embedded ? '返回题目列表' : '关闭'}</button>
           </div>
           {stats && (
             // ★ 2026-09-28（教师：课堂展示、有听课老师）：页头改成**数字块 + 结论环**。
@@ -450,6 +456,13 @@ export function QuestionStatsOverlay({
 
         </div>
       </div>
+  );
+
+  if (embedded) return panel;
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 292, background: 'rgb(25 43 62 / 34%)', backdropFilter: 'blur(2px)' }} />
+      {panel}
     </>
   );
 }

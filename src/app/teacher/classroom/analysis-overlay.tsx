@@ -24,6 +24,7 @@ export function AnalysisOverlay({
   mode,
   zIndex = 270,
   onClose,
+  embedded = false,
 }: {
   /** 🔴 必填：同一份学习单可以被多个课堂引用，服务端不许猜（猜错就把别的班的数据给这个班看）。 */
   classroomId: string;
@@ -37,14 +38,15 @@ export function AnalysisOverlay({
    */
   zIndex?: number;
   onClose: () => void;
+  /** 统一学习单工作区内直接渲染，避免在题目详情上再叠一层弹窗。 */
+  embedded?: boolean;
 }) {
   const state = useWorksheetAnalysis(classroomId, worksheetId, questionId, mode);
   const { payload, busy } = state;
 
-  return (
-    <div data-overscroll-guard="" className={styles.backdrop} style={{ zIndex }}
-      onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="analysis-dialog-title">
+  const panel = (
+      <section className={`${styles.dialog} ${embedded ? styles.embeddedDialog : ''}`}
+        role={embedded ? 'region' : 'dialog'} aria-modal={embedded ? undefined : true} aria-labelledby="analysis-dialog-title">
       <div className={styles.header}>
         <div className={styles.heading}>
           <div className={styles.eyebrow}>AI 分析</div>
@@ -65,7 +67,7 @@ export function AnalysisOverlay({
         <button type="button" onClick={onClose}
           title={busy ? '关闭后任务仍会在后台继续' : undefined}
           className={styles.closeButton}>
-          {busy ? '关闭（后台继续）' : '关闭'}
+          {embedded ? '返回本题统计' : busy ? '关闭（后台继续）' : '关闭'}
         </button>
       </div>
 
@@ -76,6 +78,13 @@ export function AnalysisOverlay({
         <AnalysisActions state={state} />
       </div>
       </section>
+  );
+
+  if (embedded) return panel;
+  return (
+    <div data-overscroll-guard="" className={styles.backdrop} style={{ zIndex }}
+      onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      {panel}
     </div>
   );
 }

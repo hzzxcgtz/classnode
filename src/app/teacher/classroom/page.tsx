@@ -16,14 +16,11 @@ import { useWebappMonitor } from './use-webapp-monitor';
 import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-tiles';
 import { WorksheetTileContent } from './worksheet-tiles';
 import { SvgAvatar } from '@/components/svg-avatar';
-import { MatrixOverlay } from './matrix-overlay';
-import { AnalysisOverlay } from './analysis-overlay';
-import { QuestionStatsOverlay } from './question-stats-overlay';
+import { MatrixOverlay, type WorksheetWorkspaceEntry } from './matrix-overlay';
 import { clearConfirmText, participantOverview } from './worksheet-drawer-state';
 import { resolveRewardScale, rewardAmountLabel } from '@/lib/worksheet-reward';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { activeAnswer, moduleCountUnit, stateHasCells, tileBadgeText, tileShowsWorksheetClear, worksheetTileState, type TileBadge } from './worksheet-tile-state';
-import { WorksheetDrawer, type WorksheetDrawerEntry, type WorksheetDrawerView } from './worksheet-drawer';
 import { useWorksheetBoard } from './use-worksheet-board';
 import { applyModuleState, DEFAULT_MODULE_STATE, isClassroomModuleKey, isClassroomModuleState, isModuleId, MODULE_KEY_BY_ID, MODULE_KEYS, MODULE_STATES, moduleStateOf, type ModuleId } from '@/lib/classroom-modules';
 import { cardInOnlineModule, onlineModuleDistribution, onlineTotal, resolveFocus, unplacedNote, type FocusModule } from './board-module-counts';
@@ -354,8 +351,7 @@ function CompanionMenu({ onSelect, onClose }: {
 }
 
 /**
- * 「学习单」下拉的面板。两个分析入口分别从题目和学生维度进入，
- * 第三项用于控制逐题开放。
+ * 「学习单」下拉的面板。前三项进入同一个查看工作区，最后一项用于控制逐题开放。
  *
  * 🔴 各项的**名字**在 `WORKSHEET_MENU_ITEMS`（判据层，有用例钉着）—— 这里只把 id 接到动作。
  * 少了那一条的话，「有哪几项、叫什么」会只活在这段 JSX 里，删掉一项没有任何东西会红。
@@ -374,7 +370,7 @@ function WorksheetMenu({ onSelect, onClose }: {
       {WORKSHEET_MENU_ITEMS.map((item) => (
         <button key={item.id} type="button" role="menuitem" title={item.title}
           onClick={() => { onClose(); onSelect(item.id); }}
-          style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 0, borderRadius: 8, background: 'transparent', color: '#334155', fontSize: '0.813rem', fontWeight: 600, cursor: 'pointer' }}>
+          style={{ display: 'block', width: '100%', textAlign: 'left', marginTop: item.id === 'open' ? 6 : 0, padding: item.id === 'open' ? '12px 10px 8px' : '8px 10px', border: 0, borderTop: item.id === 'open' ? '1px solid #e2e8f0' : undefined, borderRadius: 8, background: 'transparent', color: '#334155', fontSize: '0.813rem', fontWeight: 600, cursor: 'pointer' }}>
           {item.label}
         </button>
       ))}
@@ -824,18 +820,8 @@ function ClassroomBoardContent() {
   const [gridFullscreen, setGridFullscreen] = useState(false);
   // ★ M5b：学习单矩阵的覆盖层。**第三份独立 state** —— 不参与「跟随 / 指定」的分支，
   // 也不共用 `gridFullscreen` 的列数与筛选（规格 §3.1 / GC 28）。
-  const [matrixOpen, setMatrixOpen] = useState(false);
-  /**
-   * ★ M7a：正在看哪一道题的分析载荷（`null` = 没开）。
-   * ⚠️ 与 `matrixOpen` **可以同时为真** —— 分析浮层（270）就叠在矩阵浮层（250）之上，
-   * 关掉分析会回到矩阵，而不是回到课堂页。
-   */
-  const [analysisTarget, setAnalysisTarget] = useState<{ worksheetId: string; questionId: string } | null>(null);
-  /**
-   * ★ 2026-09-28：**按题统计浮层**开在哪一题（`null` = 没开）。规格 `specs/2026-09-28-按题统计与分析.md`。
-   * 层级 293（在抽屉 291 之上）—— 它是从抽屉里点开的，关闭后回到题列表。
-   */
-  const [questionStatsTarget, setQuestionStatsTarget] = useState<{ worksheetId: string; questionId: string } | null>(null);
+  /** 学习单查看只使用这一层全屏工作区；矩阵、学生、题目与 AI 分析都在内部切换。 */
+  const [worksheetWorkspace, setWorksheetWorkspace] = useState<WorksheetWorkspaceEntry | null>(null);
   /**
    * 看板模式（P2.3 把 `board` / `webapp` 两个视图合成了一个）。
    *
@@ -889,7 +875,6 @@ function ClassroomBoardContent() {
    * 都算新的一次 —— 少了它，教师从「张三」切到「李四」时抽屉会停在张三那个下钻层次上。
    * 🔴 与「数据新鲜度」是**两件事**：数据由 `wb` 供给，`token` 只管下钻栈。
    */
-  const [worksheetDrawer, setWorksheetDrawer] = useState<WorksheetDrawerEntry | null>(null);
   /** 正在标记「已查看」的那一条（`participantId:questionId`）—— 防止连点，并让按钮显示「标记中…」。 */
   const [worksheetReviewBusy, setWorksheetReviewBusy] = useState<string | null>(null);
   /**
@@ -940,7 +925,7 @@ function ClassroomBoardContent() {
   const settingsDialogOpenedRef = useRef(false);
   const [showModulesMenu, setShowModulesMenu] = useState(false);
   const modulesMenuRef = useRef<HTMLDivElement>(null);
-  /** 「学习单」下拉：答题结果 / 矩阵分析 / 逐题开放。 */
+  /** 「学习单」下拉：总览 / 按学生 / 按题目，以及分隔后的逐题开放。 */
   const [showWorksheetMenu, setShowWorksheetMenu] = useState(false);
   const worksheetMenuRef = useRef<HTMLDivElement>(null);
   /** ★ 2026-09-29：「智能学伴」那个下拉（对话分析 / 设置）。 */
@@ -1095,18 +1080,13 @@ function ClassroomBoardContent() {
     return () => window.clearInterval(timer);
   }, []);
 
-  /**
-   * 打开抽屉。`token` 每次换新 ⇒ 抽屉内部的下钻栈从这一层重新开始。
-   *
-   * ⚠️ 顺手把**对话抽屉**关掉：两者是同一块位置（右上角、宽 420）的浮层，
-   * 同时开着会叠在一起，而教师只会看到上面那一个。
-   */
-  const openWorksheetDrawer = useCallback((view: WorksheetDrawerView) => {
+  /** 打开唯一的学习单工作区；不同入口只决定初始视图，不再制造互相叠加的抽屉。 */
+  const openWorksheetWorkspace = useCallback((entry: Omit<WorksheetWorkspaceEntry, 'token'>) => {
     setSelectedStudent(null);
     setSelectedGroup(null);
     selectedStudentIdRef.current = null;
     setExploreDetailId(null);
-    setWorksheetDrawer({ token: Date.now(), view });
+    setWorksheetWorkspace({ token: Date.now(), ...entry });
     // ★ 2026-09-28：打开抽屉时**仍然重拉一次**（而不是只吃 30 秒轮询的那一份）。
     // 理由没变、而且更成立了：教师几乎总是为了「此刻他做到哪了」才点开抽屉，而轮询那份
     // 最多可能旧 30 秒。这一次重拉由 `wb` 拥有，所以「数据只有一个来源」这条没有被破坏。
@@ -1118,13 +1098,6 @@ function ClassroomBoardContent() {
    * ⚠️ 抽屉的层级是 290/291，本覆盖层是 250 ⇒ 抽屉画在上面，**不关矩阵**。
    *    只重开抽屉（让下钻栈从入口那层重新开始），教师关掉抽屉就回到矩阵原来的位置。
    */
-  const openMatrixQuestion = useCallback((worksheetId: string, questionId: string) => {
-    openWorksheetDrawer({ kind: 'question', worksheetId, questionId });
-  }, [openWorksheetDrawer]);
-  const openMatrixParticipant = useCallback((participantId: string) => {
-    openWorksheetDrawer({ kind: 'participant', participantId });
-  }, [openWorksheetDrawer]);
-
   // ★ 2026-09-28：矩阵那条「开着才轮询」的 effect 搬进了 `useWorksheetBoard`（常开）。
   // 它当时成立的前提是「只有矩阵在用这份数据」—— 格子接上来之后那个前提就没有了，
   // 而格子恰恰是最需要历史的那一个（第 1 条 bug）。节拍没变，仍是 30 秒。
@@ -1430,7 +1403,7 @@ function ClassroomBoardContent() {
   const openStudentDrawer = async (student: StudentSummary) => {
     if (selectedStudentIdRef.current === student.id) return; // 已选中，无需重复拉取
     // 对话抽屉与学习单抽屉是**同一块位置**（右上角、宽 420）的浮层，同时开着会叠在一起。
-    setWorksheetDrawer(null);
+    setWorksheetWorkspace(null);
     selectedStudentIdRef.current = student.id;
     setSelectedStudent(student);
     setLoadingMessages(true);
@@ -2270,7 +2243,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
     setSelectedGroup(null);
     selectedStudentIdRef.current = null;
     // 与另外两个浮层互斥（同一块 420px 位置，见 `openStudentDrawer` 的同款一行）。
-    setWorksheetDrawer(null);
+    setWorksheetWorkspace(null);
     setExploreDetailId(studentId);
   };
 
@@ -2702,14 +2675,14 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                           )}
                           {control.id === 'worksheet-menu' && showWorksheetMenu && (
                             <WorksheetMenu
-                              // 「答题结果」按题看全班；「矩阵分析」按学生看整份学习单，
-                              // 同时保留题目与学生交叉定位能力。
+                              // 三个查看入口进入同一个工作区；矩阵负责总览，学生与题目负责详情。
                               // ★ 2026-09-30：「逐题开放」= 新加的那个浮层（手动逐题开放那一档）。
                               // ⚠️ 三分支写成 `switch` 而不是 if/else 链：再加一项时 tsc 会**报错**
                               //（`item` 的联合类型没被穷尽），而 if/else 链会静默走进最后一个分支。
                               onSelect={(item) => {
-                                if (item === 'analysis') { openWorksheetDrawer({ kind: 'worksheets' }); return; }
-                                if (item === 'matrix') { setMatrixOpen(true); return; }
+                                if (item === 'overview') { openWorksheetWorkspace({ view: 'overview' }); return; }
+                                if (item === 'student') { openWorksheetWorkspace({ view: 'student' }); return; }
+                                if (item === 'question') { openWorksheetWorkspace({ view: 'question' }); return; }
                                 setShowWorksheetOpen(true);
                               }}
                               onClose={() => setShowWorksheetMenu(false)} />
@@ -2915,7 +2888,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       // 小组 / 高级模式下它是「组」那一个参与者，而抽屉与 `review` 端点要的
                       // 正是这个 id。用 `student.id` 会指向一个不在课堂里的人（且不报错）。
                       if (tileModule === 'worksheet') {
-                        openWorksheetDrawer({ kind: 'participant', participantId: cs.id });
+                        openWorksheetWorkspace({ view: 'student', participantId: cs.id });
                         return;
                       }
                       setExploreDetailId(null);
@@ -3135,31 +3108,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             )}
           </div>
         </div>
-
-        {/* 学习单抽屉（规格 §7.3）——与下面的对话抽屉**同一块 420px 位置**。
-            两者互斥：`openWorksheetDrawer` 会把对话抽屉关掉，`openStudentDrawer`
-            反过来（见各自的注释）。所以这里不需要再判「另一个开着没有」。
-            ⚠️ 它必须与对话抽屉挂在**同一个层级**（格子容器的**外面**）：抽屉是
-            `position: fixed`，而格子容器是 `overflow: auto` —— 挂进去会被裁掉，
-            表现是「抽屉一打开就只剩一半」，且不报任何错。 */}
-        {worksheetDrawer && (
-          <WorksheetDrawer
-            entry={worksheetDrawer}
-            onClose={() => setWorksheetDrawer(null)}
-            board={wb.board}
-            nodesByWorksheet={wb.nodesByWorksheet}
-            settingsByWorksheet={wb.settingsByWorksheet}
-            /* ★ 2026-10-07（教师）：「卡片与抽屉显示的不是同一份」——
-               抽屉也吃同一条实时预览（`wb.liveDrafts`）。🔴 必须**同源**：
-               各取各的会让同一时刻两处画出两张不同的图，而两边都不报错。 */
-            liveDrafts={wb.liveDrafts}
-            loading={wb.loading}
-            reviewBusy={worksheetReviewBusy}
-            onReview={(worksheetId, participantId, questionId) => void reviewWorksheetAnswer(worksheetId, participantId, questionId)}
-            onClearQuestion={(_worksheetId, participantId, questionId) => { void clearWorksheetDataFor(participantId, worksheetParticipantName(participantId), questionId); }}
-            onOpenQuestionStats={(worksheetId, questionId) => setQuestionStatsTarget({ worksheetId, questionId })}
-          />
-        )}
 
         {/* 右侧对话详情 - 浮层模式 */}
         {selectedStudent && (
@@ -3705,7 +3653,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       if (!isGroup && tileModule === 'explore') { openExploreDetail(sid); return; }
                       // 与主看板那一条同款（全屏与主看板共用同一套「点开的内容跟着格子走」规则）。
                       if (tileModule === 'worksheet') {
-                        openWorksheetDrawer({ kind: 'participant', participantId: cs.id });
+                        openWorksheetWorkspace({ view: 'student', participantId: cs.id });
                         return;
                       }
                       setExploreDetailId(null);
@@ -3895,12 +3843,14 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         </div>
       )}
 
-      {/* ★ M5b：学习单矩阵覆盖层。与 `gridFullscreen` 是**两块互不相交**的覆盖层
-          （矩阵的按钮在 `!gridFullscreen` 的头部里，所以两者不可能同时被点开）。 */}
-      {matrixOpen && (
+      {/* 学习单总览、按学生、按题目和 AI 分析共用这一层工作区，不再叠抽屉与弹出页。 */}
+      {worksheetWorkspace && (
         <MatrixOverlay
+          entry={worksheetWorkspace}
           board={wb.board}
           nodesByWorksheet={wb.nodesByWorksheet}
+          settingsByWorksheet={wb.settingsByWorksheet}
+          liveDrafts={wb.liveDrafts}
           live={wb.progress}
           liveTrustedAfter={undefined}
           loading={wb.loading}
@@ -3911,10 +3861,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           // 而两个快照取自不同时刻时差额**可能是正的**（课中途有人加入、或教师点了同步分组）
           // ⇒ 不收窄的话屏幕上会出现一句「另有 1 个参与者没有可作答的学习单」的**假话**（审查抓到）。
           advancedMode={classroom?.mode === 'advanced'}
-          onClose={() => setMatrixOpen(false)}
-          onOpenQuestion={openMatrixQuestion}
-          onOpenParticipant={openMatrixParticipant}
-          onOpenAnalysis={(worksheetId, questionId) => setAnalysisTarget({ worksheetId, questionId })}
+          mode={classroom?.mode ?? 'standard'}
+          reviewBusy={worksheetReviewBusy}
+          onClose={() => setWorksheetWorkspace(null)}
+          onReview={(worksheetId, participantId, questionId) => void reviewWorksheetAnswer(worksheetId, participantId, questionId)}
+          onClearQuestion={(_worksheetId, participantId, questionId) => { void clearWorksheetDataFor(participantId, worksheetParticipantName(participantId), questionId); }}
         />
       )}
 
@@ -3929,41 +3880,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           onChange={setOpenQuestions}
           busy={worksheetOpenBusy}
           onClose={() => setShowWorksheetOpen(false)}
-        />
-      )}
-
-      {/* AI 分析结果窗。第一次点击只在题行按钮上显示后台进度；完成后再次点击才打开本窗。
-          **独立居中浮层**（zIndex 270：矩阵 250 之上、学习单抽屉 290/291 之下）。
-          它**不复用**学生端外壳的 `layer-overlays` —— 那条「非前台层的浮层不得浮在上面」
-          的不变量属于学生端的三层结构，与教师端这两个浮层无关。
-          ⚠️ `mode` 是**必需**的：浮层里「已交 N/M」的单位靠 `moduleCountUnit(mode)` 定
-          （分组 / 高级模式下是「组」而不是「人」）。 */}
-      {analysisTarget && (
-        <AnalysisOverlay
-          classroomId={classroom.id}
-          worksheetId={analysisTarget.worksheetId}
-          questionId={analysisTarget.questionId}
-          mode={classroom?.mode ?? 'standard'}
-          onClose={() => setAnalysisTarget(null)}
-        />
-      )}
-
-      {/* ★ 2026-09-28：按题统计与分析（层级 292/293，在抽屉 291 之上）。 */}
-      {questionStatsTarget && (
-        <QuestionStatsOverlay
-          mode={classroom?.mode ?? 'standard'}
-          board={wb.board}
-          worksheetId={questionStatsTarget.worksheetId}
-          questionId={questionStatsTarget.questionId}
-          nodesByWorksheet={wb.nodesByWorksheet}
-          onClose={() => setQuestionStatsTarget(null)}
-          onOpenAnalysis={() => {
-            setQuestionStatsTarget(null);
-            setAnalysisTarget({
-              worksheetId: questionStatsTarget.worksheetId,
-              questionId: questionStatsTarget.questionId,
-            });
-          }}
         />
       )}
 

@@ -308,7 +308,7 @@ function WorksheetList({ board, onOpen }: { board: WorksheetBoard; onOpen: (work
 
 // ── 形态 B · 第二层：题目列表（正确率 / 已交 N/M）────────────────────
 
-function QuestionList({
+export function QuestionList({
   board, worksheetId, nodes, onOpen,
 }: {
   board: WorksheetBoard;
@@ -527,8 +527,9 @@ export function QuestionAnswers({
 
 // ── 形态 A：某参与者的逐题详情 ───────────────────────────────────────
 
-function ParticipantAnswers({
+export function ParticipantAnswers({
   board, participantId, nodesByWorksheet, settingsByWorksheet, liveDrafts, reviewBusy, onReview, onClearQuestion,
+  focusQuestionId = null,
 }: {
   board: WorksheetBoard;
   participantId: string;
@@ -539,6 +540,8 @@ function ParticipantAnswers({
   reviewBusy: string | null;
   onReview: (worksheetId: string, participantId: string, questionId: string) => void;
   onClearQuestion: (worksheetId: string, participantId: string, questionId: string) => void;
+  /** 从总览矩阵的交叉格进入时，直接展开对应题目。 */
+  focusQuestionId?: string | null;
 }) {
   /**
    * 教师手动展开/收起过的题（`questionId → 展开?`）。
@@ -585,7 +588,8 @@ function ParticipantAnswers({
   const attentionCount = overview.partial + overview.wrong + overview.noVerdict;
   const answeredCount = items.length - overview.unanswered;
   const completedCount = overview.correct + overview.partial + overview.wrong + overview.noVerdict;
-  const suggestedExpandedId = defaultExpandedId
+  const suggestedExpandedId = focusQuestionId
+    ?? defaultExpandedId
     ?? enriched.filter(({ outcome }) => outcome.mark === 'partial' || outcome.mark === 'wrong' || (outcome.status === 'submitted' && outcome.mark === 'none'))[0]?.node.id
     ?? null;
   const latestActivityMs = participant.answerRows.reduce((latest, row) => {

@@ -11,6 +11,7 @@ import { CHART, CountBars, HeatLegend, VerdictDonut } from './question-stats-cha
 import { StackedBar } from './question-stacked-bar';
 import { questionStats, showsAgentAnalysis, type MatrixCell, type StatsRow } from './worksheet-question-stats';
 import { questionTypeNickname } from '@/lib/worksheet-questions';
+import styles from './question-stats-overlay.module.css';
 
 /**
  * 「按题统计与分析」的浮层（规格 `specs/2026-09-28-按题统计与分析.md`）。
@@ -147,10 +148,10 @@ function emphasizeNumbers(text: string): React.ReactNode {
 /** 一行小标题。 */
 function Section({ title, children, note }: { title: string; children: React.ReactNode; note?: string }) {
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <h4 style={{ margin: 0, fontSize: '0.813rem', fontWeight: 700, color: '#0f172a' }}>
+    <section className={styles.section}>
+      <h4>
         {title}
-        {note && <span style={{ marginLeft: 8, fontSize: '0.688rem', fontWeight: 400, color: MUTED }}>{note}</span>}
+        {note && <span>{note}</span>}
       </h4>
       {children}
     </section>
@@ -214,36 +215,23 @@ export function QuestionStatsOverlay({
   const distribution = stats?.distribution ?? null;
 
   const panel = (
-      <div data-overscroll-guard="" style={{
-        position: embedded ? 'relative' : 'fixed',
-        top: embedded ? undefined : 48,
-        bottom: embedded ? undefined : 32,
-        left: embedded ? undefined : '50%',
-        transform: embedded ? undefined : 'translateX(-50%)',
-        width: embedded ? '100%' : 'min(900px, calc(100vw - 48px))',
-        height: embedded ? '100%' : undefined,
-        zIndex: embedded ? undefined : 293,
-        background: '#f7fafc', borderRadius: 18, border: '1px solid #d7e2ec',
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        boxShadow: '0 24px 70px rgb(15 35 55 / 24%)',
-          overscrollBehavior: 'contain',
-      }}>
+      <div data-overscroll-guard="" className={styles.panel} data-embedded={embedded ? 'true' : 'false'}>
         {/* 页头 */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #dce6ef', background: '#fff' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ marginBottom: 3, color: '#66809b', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em' }}>按题目查看</div>
-              <h3 style={{ margin: 0, color: '#213850', fontSize: '1rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div className={styles.header}>
+          <div className={styles.headingRow}>
+            <div className={styles.headingText}>
+              <div className={styles.eyebrow}>题目详情</div>
+              <h3>
                 {node ? `${heading ? `${heading} · ` : ''}${questionTypeNickname(node.type)}` : '正在读取题目'}
               </h3>
             </div>
-            <button type="button" onClick={onClose} style={{ border: '1px solid #cbd8e5', borderRadius: 9, padding: '7px 12px', background: '#fff', color: '#4d647c', cursor: 'pointer' }}>{embedded ? '返回题目列表' : '关闭'}</button>
+            {!embedded && <button type="button" onClick={onClose} className={styles.closeButton}>关闭</button>}
           </div>
           {stats && (
             // ★ 2026-09-28（教师：课堂展示、有听课老师）：页头改成**数字块 + 结论环**。
             // 数字块给精确值，环给「一眼抓住比例」—— 两者并列才算「丰富」。
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 10, padding: '8px 12px', border: '1px solid #e0e8f0', borderRadius: 12, background: '#f5f8fb' }}>
-              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+            <div className={styles.summary}>
+              <div className={styles.metrics}>
                 {[
                   { label: `参与者`, value: String(stats.total), suffix: unit, color: '#0f172a' },
                   { label: '已交', value: String(stats.submitted), suffix: unit, color: '#0f172a' },
@@ -252,15 +240,15 @@ export function QuestionStatsOverlay({
                   { label: '答错', value: String(stats.wrong), suffix: unit, color: BAD },
                 ].map((cell) => (
                   // 展示用：数值 1.375rem/700（这一屏第二大的字），标签降到 0.688rem 灰。
-                  <div key={cell.label}>
-                    <div style={{ fontSize: '0.688rem', color: CHART.faint, marginBottom: 2 }}>{cell.label}</div>
-                    <div style={{ fontSize: '1.375rem', fontWeight: 700, lineHeight: 1, color: cell.color }}>
-                      {cell.value}<span style={{ fontSize: '0.75rem', fontWeight: 500, color: CHART.faint, marginLeft: 2 }}>{cell.suffix}</span>
+                  <div key={cell.label} className={styles.metric}>
+                    <small>{cell.label}</small>
+                    <div style={{ color: cell.color }}>
+                      {cell.value}<span>{cell.suffix}</span>
                     </div>
                   </div>
                 ))}
               </div>
-              <div style={{ marginLeft: 'auto' }}>
+              <div className={styles.donut}>
                 {/* ⚠️ 正确率是 `null` 时中心画「—」而**不是 0%** —— 0% 是一句假话（没有判过的行）。 */}
                 <VerdictDonut
                   size={96}
@@ -280,7 +268,7 @@ export function QuestionStatsOverlay({
           )}
         </div>
 
-        <div style={{ flex: 1, overflow: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div className={styles.body}>
           {!node && <div style={{ color: FAINT, fontSize: '0.813rem' }}>这一题的内容还没加载到。</div>}
 
           {stats && (

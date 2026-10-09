@@ -14,7 +14,7 @@ import { indexQuestions, isGradedType, questionAggregate } from './worksheet-dra
 import { buildWorksheetMatrix, matrixGroups, matrixHeadline, questionTallies, rowTally, uncoveredCount, type CellState, type MatrixHeadline, type MatrixRow } from './worksheet-matrix';
 import { questionTypeNickname } from '@/lib/worksheet-questions';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
-import { ParticipantAnswers, QuestionList } from './worksheet-drawer';
+import { ParticipantAnswers } from './worksheet-drawer';
 import { QuestionStatsOverlay } from './question-stats-overlay';
 import { AnalysisOverlay } from './analysis-overlay';
 import styles from './matrix-overlay.module.css';
@@ -112,8 +112,26 @@ export function MatrixOverlay({
       worksheetId: worksheet.id,
       worksheetTitle: worksheet.title,
     }))) ?? []), [board]);
+  const questionOptions = useMemo(() => (board?.worksheets.flatMap((worksheet) => {
+    const nodes = nodesByWorksheet[worksheet.id];
+    if (!nodes) return [];
+    return indexQuestions(nodes).items.map((item) => {
+      const rows = worksheet.participants.map((participant) =>
+        participant.answerRows.find((row) => row.questionId === item.node.id));
+      return {
+        worksheetId: worksheet.id,
+        worksheetTitle: worksheet.title,
+        questionId: item.node.id,
+        heading: item.heading,
+        typeLabel: questionTypeNickname(item.node.type),
+        aggregate: questionAggregate(rows),
+        manual: !isGradedType(item.node.type) || item.node.autoGrade === false,
+      };
+    });
+  })) ?? [], [board, nodesByWorksheet]);
   const selectedParticipantId = participantId || participantOptions[0]?.id || '';
-  const selectedWorksheetId = questionWorksheetId || board?.worksheets[0]?.id || '';
+  const selectedQuestionTarget = questionTarget ?? questionOptions.find((item) =>
+    !questionWorksheetId || item.worksheetId === questionWorksheetId) ?? null;
 
   const openParticipant = (nextParticipantId: string, questionId?: string) => {
     setParticipantId(nextParticipantId);
@@ -219,45 +237,62 @@ export function MatrixOverlay({
             </main>
           </div>
         ) : (
-          <div className={styles.questionWorkspace}>
-            {analysisTarget ? (
-              <AnalysisOverlay
-                classroomId={classroomId}
-                worksheetId={analysisTarget.worksheetId}
-                questionId={analysisTarget.questionId}
-                mode={mode}
-                embedded
-                onClose={() => setAnalysisTarget(null)}
-              />
-            ) : questionTarget ? (
-              <QuestionStatsOverlay
-                mode={mode}
-                board={board}
-                worksheetId={questionTarget.worksheetId}
-                questionId={questionTarget.questionId}
-                nodesByWorksheet={nodesByWorksheet}
-                embedded
-                onClose={() => setQuestionTarget(null)}
-                onOpenAnalysis={() => setAnalysisTarget(questionTarget)}
-              />
-            ) : (
-              <>
-                {board.worksheets.length > 1 && (
-                  <div className={styles.worksheetPicker}>
-                    {board.worksheets.map((worksheet) => (
-                      <button key={worksheet.id} type="button" data-active={selectedWorksheetId === worksheet.id}
-                        onClick={() => setQuestionWorksheetId(worksheet.id)}>{worksheet.title}</button>
-                    ))}
-                  </div>
-                )}
-                <QuestionList
-                  board={board}
-                  worksheetId={selectedWorksheetId}
-                  nodes={nodesByWorksheet[selectedWorksheetId] ?? null}
-                  onOpen={(questionId) => openQuestion(selectedWorksheetId, questionId)}
+          <div className={`${styles.workspaceSplit} ${styles.questionSplit}`}>
+            <aside className={`${styles.workspaceSidebar} ${styles.questionSidebar}`}>
+              <div className={styles.sidebarHeading}>题目</div>
+              {board.worksheets.map((worksheet) => {
+                const options = questionOptions.filter((item) => item.worksheetId === worksheet.id);
+                if (options.length === 0) return null;
+                return (
+                  <section key={worksheet.id} className={styles.questionGroup}>
+                    {board.worksheets.length > 1 && <h3>{worksheet.title}</h3>}
+                    {options.map((item) => {
+                      const active = selectedQuestionTarget?.worksheetId === item.worksheetId
+                        && selectedQuestionTarget.questionId === item.questionId;
+                      return (
+                        <button key={item.questionId} type="button" data-active={active}
+                          onClick={() => openQuestion(item.worksheetId, item.questionId)}>
+                          <span className={styles.questionNavTitle}>
+                            <strong>{item.heading}</strong>
+                            <small>{item.typeLabel}</small>
+                          </span>
+                          <span className={styles.questionNavMeta}>
+                            <small>已交 {item.aggregate.submitted}/{item.aggregate.total}</small>
+                            <strong data-tone={item.manual ? 'neutral' : (item.aggregate.accuracy ?? 100) < 60 ? 'warning' : 'good'}>
+                              {item.manual ? '主观题' : item.aggregate.graded > 0 ? `${item.aggregate.accuracy}%` : '待判分'}
+                            </strong>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </section>
+                );
+              })}
+              {questionOptions.length === 0 && <div className={styles.sidebarEmpty}>这份学习单还没有题目</div>}
+            </aside>
+            <main className={styles.questionDetailPanel}>
+              {analysisTarget ? (
+                <AnalysisOverlay
+                  classroomId={classroomId}
+                  worksheetId={analysisTarget.worksheetId}
+                  questionId={analysisTarget.questionId}
+                  mode={mode}
+                  embedded
+                  onClose={() => setAnalysisTarget(null)}
                 />
-              </>
-            )}
+              ) : selectedQuestionTarget ? (
+                <QuestionStatsOverlay
+                  mode={mode}
+                  board={board}
+                  worksheetId={selectedQuestionTarget.worksheetId}
+                  questionId={selectedQuestionTarget.questionId}
+                  nodesByWorksheet={nodesByWorksheet}
+                  embedded
+                  onClose={() => {}}
+                  onOpenAnalysis={() => setAnalysisTarget(selectedQuestionTarget)}
+                />
+              ) : <div className={styles.emptyState}>从左侧选择一道题查看详情</div>}
+            </main>
           </div>
         )}
       </div>

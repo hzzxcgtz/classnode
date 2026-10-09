@@ -32,6 +32,15 @@ test('题目统计和 AI 分析以内嵌模式呈现，不再产生第二层业�
   assert.match(workspace, /<AnalysisOverlay[\s\S]*?embedded/);
 });
 
+test('按题目查看采用常驻题目导航与右侧详情，不再先开题目列表再进入详情页', () => {
+  assert.match(workspace, /questionSplit/);
+  assert.match(workspace, /questionSidebar/);
+  assert.match(workspace, /questionDetailPanel/);
+  assert.match(workspace, /questionOptions\.filter/);
+  assert.match(workspace, /options\.map/);
+  assert.doesNotMatch(workspace, /<QuestionList/);
+});
+
 test('打开学习单界面只压入一层浏览器历史，返回按钮关闭工作区或单人抽屉', () => {
   assert.match(page, /window\.history\.pushState\(\{ \.\.\.base, classnodeWorksheetWorkspace: token \}/);
   assert.match(page, /window\.addEventListener\('popstate', handlePopState\)/);

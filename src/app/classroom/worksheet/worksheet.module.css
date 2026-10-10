@@ -2144,9 +2144,9 @@
 
 .aiScoreCommentMark {
   display: grid;
-  flex: 0 0 30px;
-  width: 30px;
-  height: 30px;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
   place-items: center;
   border-radius: 9px;
   background: #e2eef9;
@@ -2155,32 +2155,34 @@
   font-weight: 800;
 }
 
-.aiScoreCommentBody { display: grid; min-width: 0; flex: 1; gap: 4px; }
-.aiScoreCommentBody[open] { gap: 10px; }
-.aiScoreCommentSummary {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  cursor: pointer;
-  list-style: none;
+.aiFeedbackIcon { width: 28px; height: 28px; flex: 0 0 auto; }
+.aiAdviceMark { background: #fff5d9; }
+
+.aiScoreCommentBody { display: grid; min-width: 0; flex: 1; gap: 8px; }
+.aiScoreCommentHeading { color: #29455f; font-size: .95rem; line-height: 1.5; }
+.aiScoreCommentText {
+  margin: 0;
+  color: #506b84;
+  font-size: 1rem;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
-.aiScoreCommentSummary::-webkit-details-marker { display: none; }
-.aiScoreCommentHeading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
-.aiScoreCommentHeading strong { font-size: .78rem; }
-.aiScoreCommentHeading small { color: #7890a6; font-size: .64rem; }
-.aiScoreCommentText { color: #506b84; font-size: .78rem; line-height: 1.55; }
 .aiScoreAdvice {
   display: grid;
-  gap: 5px;
-  padding: 10px 11px;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 12px 14px;
   border-radius: 9px;
   background: #eaf3fb;
   color: #405f7b;
-  font-size: .76rem;
-  line-height: 1.6;
-  white-space: pre-wrap;
+  font-size: 1rem;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
 }
-.aiScoreAdvice strong { color: #315f90; font-size: .72rem; }
+.aiScoreAdvice strong { display: flex; align-items: center; gap: 8px; color: #315f90; font-size: .95rem; }
+.aiScoreAdvice .aiFeedbackIcon { width: 24px; height: 24px; }
+.aiScoreAdvice p { margin: 0; white-space: pre-wrap; }
 
 /* ⊘ 2026-09-28 删掉：那一档减号的「往上提 1px」（`padding-bottom: 2px`）。
    🔴 **它换一个浏览器就偏高了**（教师实测）。原因很实在：那 1px 是在补**某一个浏览器的
@@ -3154,37 +3156,56 @@
   padding: 0 12px;
 }
 
-/*
-  ② 连接句柄（小圆点）。
-  🔴 它**只是视觉锚点，刻意不改拖动机制**：
-     · 拖动源仍是**整条** `.matchItem`（`bothProps`），不是只给圆点 —— 整条的命中区在
-       老 iPad 上宽容得多，把拖动收窄成一个小圆只会更难点。
-       「改成拖拽把手」那条出路（见本文件 `.dragSource` 附近那段注释）是**真机上发现
-       拖拽被判成滚动时**才走的路，今天没有那个症状，不走。
-     · 圆点**有**指针事件（不写 `pointer-events: none`）：它是条目的**子元素**，
-       按在它上面的事件冒泡给条目自己的处理函数 ⇒ 从圆点上起拖也好使。
-     · 圆的**中心正好落在条目的连接那条边上**（左列右缘 / 右列左缘），而
-       `match-body.tsx` 的 `measure()` 与跟手线取的正是那条边（`a.right` / `a.left`）
-       ⇒ **线的端点与圆心天然重合，两端都不用改测量**。
-       ⚠️ 所以 `right` / `left` 取 −3px 是有前提的：直径 **6px**（`box-sizing: border-box`）。
-       ★ 2026-10-08 第二批（教师）：「**这个圈太大了，要小一点**」⇒ 12px 缩到 8px；
-        随后又：「**圈还要再小，变成实心的**」⇒ 8px 缩到 6px，且由"白底 + 2px 描边"
-        改成**实心**（`background: var(--ws-accent)`、`border: 0`）。
-        偏移同步 −6px ⇒ −4px ⇒ **−3px**（**直径与偏移是一对，改一个必须改另一个**）。
-     🔴 **常显**，不做 hover 才出现 —— 学生端主设备是老 iPad，没有 hover。
-  ⚠️ 定位只用 `top` + `transform: translateY(-50%)`（动效只碰 transform，本仓对学生端的纪律）。
-*/
-.matchItem { position: relative; }
+/* 向连接区域突出的半圆与实心端点；整条选项仍可点选、拖拽。 */
+.matchItem {
+  position: relative;
+  z-index: 1;
+  --match-fill: #fff;
+}
+.matchItemSelected { --match-fill: #f5f8ff; }
+.matchItem.dropActive { --match-fill: #eef3f8; }
 .matchHandle {
   position: absolute;
   top: 50%;
-  width: 6px;
-  height: 6px;
+  width: 26px;
+  height: 26px;
   box-sizing: border-box;
-  border: 0;
   border-radius: 50%;
-  background: var(--ws-accent);
+  border-color: inherit;
   transform: translateY(-50%);
 }
-.matchColumnLeft .matchHandle { right: -3px; }
-.matchColumnRight .matchHandle { left: -3px; }
+.matchHandle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 14px;
+  height: 26px;
+  box-sizing: border-box;
+  border: 1px solid;
+  border-color: inherit;
+  background: var(--match-fill);
+}
+.matchHandle::after {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #5b6573;
+}
+.matchColumnLeft .matchHandle { right: -14px; }
+.matchColumnRight .matchHandle { left: -14px; }
+.matchColumnLeft .matchHandle::before {
+  right: 0;
+  border-left: 0;
+  border-radius: 0 14px 14px 0;
+}
+.matchColumnRight .matchHandle::before {
+  left: 0;
+  border-right: 0;
+  border-radius: 14px 0 0 14px;
+}
+.matchItemSelected .matchHandle::after,
+.matchItemLinked .matchHandle::after { background: var(--ws-accent); }

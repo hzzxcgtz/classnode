@@ -1,3 +1,5 @@
+import { recordAnalysisUsage } from '../services/analysis-usage.js';
+import { parseAnalysisFeedback, readAnalysisFeedback, mergeAnalysisFeedback } from '../services/analysis-feedback.js';
 import { readAnswerGeneration, advanceAnswerGeneration, answerGenerationFor, type AnswerGeneration } from '../services/answer-generation.js';
 import crypto from 'crypto';
 import { readFile } from 'node:fs/promises';
@@ -56,7 +58,7 @@ import {
 } from '../services/analysis-question.js';
 import {
   KNOBS_SETTING_KEY, analysisLabelNo, buildAnalysisPayload, entriesFromAggregate, entriesToAggregate,
-  isAnalysisStale, lastSubmittedAt, layoutSheets, normalizeAnalysisKnobs, payloadLabels, selectAnalyzeEntries,
+  isAnalysisStale, lastSubmittedAt, normalizeAnalysisKnobs, selectAnalyzeEntries,
   type AnalyzeEntry, type Participant, type RawAnswer, type SheetKnobs,
 } from '../services/analysis-payload.js';
 import { labelsRenderOk, renderSheets } from '../services/analysis-render.js';
@@ -1121,13 +1123,17 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
         worksheetId: { in: [...participantsByWorksheet.keys()] },
         narrative: { not: null },
       },
-      select: { worksheetId: true, questionId: true },
+      select: { worksheetId: true, questionId: true, analyzedAt: true },
     });
     const analyzedByWorksheet = new Map<string, string[]>();
+    const analysisTimes = new Map<string, Record<string, string | null>>();
     for (const analysis of analyses) {
       const ids = analyzedByWorksheet.get(analysis.worksheetId) ?? [];
       ids.push(analysis.questionId);
       analyzedByWorksheet.set(analysis.worksheetId, ids);
+      const times = analysisTimes.get(analysis.worksheetId) ?? {};
+      times[analysis.questionId] = analysis.analyzedAt?.toISOString() ?? null;
+      analysisTimes.set(analysis.worksheetId, times);
     }
 
     // 作答行**一次查全**（不是逐份 / 逐个参与者查 —— 40 人 × 20 题会变成 N+1）。
@@ -1182,6 +1188,7 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
           id: worksheetId,
           title: titleById.get(worksheetId)!,
           analyzedQuestionIds: analyzedByWorksheet.get(worksheetId) ?? [],
+          analysisTimes: analysisTimes.get(worksheetId) ?? {},
           participants: participants.map(participant => ({
             participantId: participant.id,
             name: participant.name,
@@ -1503,6 +1510,7 @@ function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: 
     referenceAnswer: analysisReferenceAnswer(node),
     rubricText: rubric.text,
     rubricImageUrl: rubric.imageUrl,
+    photoWriting: node.type === 'short-answer' && node.inputMode === 'photo',
     // ★ 2026-10-06：这题有没有教师给的「初始图」—— 判据与前端 `readDrawingStarter` 同一把尺子
     // （`hasDrawingStarter`）。它决定发给 AI 的提示词要不要加那句「初始图不算学生的作答」：
     // 位图快照是**完整那张图**（含教师画的内容），不说这一句模型会把底稿算成学生的成果。
@@ -1530,7 +1538,7 @@ async function payloadResponse(
   participants: Participant[],
   labeled: boolean,
   stale: boolean,
-  analysis: { narrative: string | null; perStudent: unknown; agentId: string | null; model: string | null },
+  analysis: { narrative: string | null; analyzedAt: Date | null; perStudent: unknown; agentId: string | null; model: string | null },
 ): Promise<Record<string, unknown>> {
   // ★ M7b：**「现在能不能发」由服务端算** —— 它需要三件事，而那三件的数据都在这一侧：
   // 有没有指定智能体 · 那个智能体启没启用 · 平台收不收得了这份载荷的形态。
@@ -1574,7 +1582,7 @@ async function payloadResponse(
   const participantNames = Object.fromEntries(
     participants.map((participant) => [participant.participantId, participant.name]),
   );
-  return { ...payload, labeled, stale, ...analysis, perStudent, participantNames, analysisAgent, canSend };
+  return { ...payload, labeled, stale, ...analysis, perStudent, feedback: readAnalysisFeedback(analysis.perStudent, payload.entries.map(entry => entry.studentId)), participantNames, analysisAgent, canSend };
 }
 
 router.post('/:id/analysis/:questionId', async (req, res) => {
@@ -1622,10 +1630,10 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
     // ⚠️ 刚算完时这四格是**旧值**（`upsert` 的 update 刻意不碰它们）—— 如实读库里的。
     const fresh = await prisma.worksheetQuestionAnalysis.findUnique({
       where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
-      select: { narrative: true, perStudent: true, agentId: true, model: true },
+      select: { narrative: true, analyzedAt: true, perStudent: true, agentId: true, model: true },
     });
     res.json(await payloadResponse(prisma, classroomId, worksheetId, payload, participants, await labelsRenderOk(), false,
-      fresh ?? { narrative: null, perStudent: null, agentId: null, model: null }));
+      fresh ?? { narrative: null, analyzedAt: null, perStudent: null, agentId: null, model: null }));
   } catch (error) {
     console.error('[worksheets] 生成分析载荷失败:', error);
     res.status(500).json({ error: '生成分析载荷失败' });
@@ -1659,7 +1667,7 @@ router.get('/:id/analysis/:questionId', async (req, res) => {
     res.json(await payloadResponse(prisma, classroomId, worksheetId,
       payloadFromStoredRow(row, target.node, target.heading, target.scoringUnit, knobs, participants),
       participants, await labelsRenderOk(), stale,
-      { narrative: row.narrative, perStudent: row.perStudent, agentId: row.agentId, model: row.model }));
+      { narrative: row.narrative, analyzedAt: row.analyzedAt, perStudent: row.perStudent, agentId: row.agentId, model: row.model }));
   } catch (error) {
     console.error('[worksheets] 读取分析载荷失败:', error);
     res.status(500).json({ error: '读取分析载荷失败' });
@@ -1679,21 +1687,24 @@ router.get('/:id/analysis/:questionId/sheet/:index', async (req, res) => {
     if (!classroomId) return res.status(400).json({ error: '缺少 classroomId' });
     const row = await prisma.worksheetQuestionAnalysis.findUnique({
       where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
-      select: { aggregate: true },
+      select: { aggregate: true, totalCount: true },
     });
     if (!row) return res.status(404).json({ error: '这道题还没有生成过分析' });
 
     const entries: AnalyzeEntry[] = entriesFromAggregate(row.aggregate);
+    const target = await loadAnalysisTarget(prisma, classroomId, worksheetId, questionId);
+    if (!target.ok) return res.status(target.status).json({ error: target.error });
     const knobs = await loadAnalysisKnobs(prisma);
     // ★ 2026-10-07：这里渲出来的图**必须**与载荷上的标签逐字一致 ——
     //   教师是在图上核对「第 3 格是谁」，而面板上的「第 3 格」读的是载荷里那一份。
     const participants = await loadAnalysisParticipants(prisma, classroomId, worksheetId);
-    const layouts = layoutSheets(entries, payloadLabels(entries, participants), knobs);
+    const payload = payloadFromStoredRow(row, target.node, target.heading, target.scoringUnit, knobs, participants);
+    const layouts = payload.sheetLayouts;
     if (sheetIndex >= layouts.length) return res.status(404).json({ error: '没有这一张' });
 
     // 🔴 **按需渲染**（规格 §3.1 决定 1）：库里只存结构化的 `aggregate`，
     // 图是派生物。旋钮改了以后旧图不会变成「看着对、其实按旧参数画的」。
-    const rendered = await renderSheets(entries, [layouts[sheetIndex]], knobs);
+    const rendered = await renderSheets(entries, [layouts[sheetIndex]], payload.knobs);
     if (!rendered || rendered.sheets.length === 0) {
       return res.status(503).json({ error: '这一张渲染不出来（本机缺图片渲染能力）' });
     }
@@ -1711,7 +1722,8 @@ router.get('/:id/analysis/:questionId/sheet/:index', async (req, res) => {
  * ★ M7b：把 M7a 那道缝接活 —— 读已存的载荷，发给学习单上指定的分析型智能体，写回解读。
  *
  * 🔴 **它只写 AI 产出的 `narrative`/`perStudent`/`agentId`/`model`**。
- * `perStudent` 仅在本题开启 AI 评分时更新；关闭时保留旧值但响应层会隐藏。
+ * 同一 JSON 结果列保存评分及独立 analysisFeedback；分数仅在开启 AI 评分时更新，
+ * 各题型的个人建议与问题名单均可保存。响应分别校验评分与反馈。
  * `aggregate`/`totalCount`/`computedAt` 属于「这份载荷是什么时候、按什么算的」，
  * 与「AI 怎么解读它」是两件事 —— 教师只想重发一次时不该连带把前者也改掉。
  *
@@ -1839,8 +1851,9 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     // ★ 2026-10-07：姓名只喂给**解析**这一侧（模型偶尔会只回姓名、丢掉 `#学号`）——
     //   不进载荷、不进 aggregate。名册用的就是上面构造载荷那一份，标签与姓名才是同一批人。
     const nameOfParticipant = new Map(participants.map((participant) => [participant.participantId, participant.name]));
+    const parsedFeedback = parseAnalysisFeedback(result.content ?? '', payload.entries);
     const parsed = parseAiAnalysisResult(
-      result.content ?? '',
+      parsedFeedback.narrative,
       payload.aiScoring,
       payload.entries
         .filter((entry) => scorable.has(entry.anonLabel))
@@ -1862,35 +1875,46 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
      */
     /* 「还缺谁」按**全班**算（不是这一轮发出去的那几个）—— 面板要的是「谁还没有分」。 */
     const studentIds = allEntries.map((entry) => entry.studentId);
-    const existing = await prisma.worksheetQuestionAnalysis.findUnique({
-      where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
-      select: { perStudent: true },
-    });
-    const merged = mergeAiScoring(
-      readStoredAiScoring(existing?.perStudent ?? null, payload.aiScoring, studentIds),
-      parsed.perStudent,
-      studentIds,
-    );
-    const scored = new Set((merged?.scores ?? []).map((row) => row.studentId));
-    const missing = studentIds.filter((id) => !scored.has(id));
-    const perStudent = merged === null ? null : { ...merged, ...(missing.length > 0 ? { missing } : {}) };
+    const { perStudent, feedback, analyzedAt } = await prisma.$transaction(async tx => {
+      const existing = await tx.worksheetQuestionAnalysis.findUnique({
+        where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
+        select: { perStudent: true, agentId: true, narrative: true },
+      });
+      const merged = mergeAiScoring(
+        readStoredAiScoring(existing?.perStudent ?? null, payload.aiScoring, studentIds),
+        parsed.perStudent,
+        studentIds,
+      );
+      const scored = new Set((merged?.scores ?? []).map((row) => row.studentId));
+      const missing = studentIds.filter((id) => !scored.has(id));
+      const perStudent = merged === null ? null : { ...merged, ...(missing.length > 0 ? { missing } : {}) };
 
-    /*
-     * ★ 2026-10-07（教师问：「只补这几个人的话，AI 对整体的分析是不是也要更新呢？」）——
-     *   **要，但不能在这里更新**：补跑只发了几个人，模型给的那段「整体解读」说的是这几个人，
-     *   拿它盖掉全班那份是错的 ✗。所以补跑**只补分、不动整体解读**，
-     *   而「整体解读是按几个人写的」这一条由面板对照 `covered` 与现有分数自己说出来
-     *   （见 `analysis-panel.tsx`）——人齐了它会提示「点重新生成，按完整的人重写一遍整体分析」。
-     */
-    await prisma.worksheetQuestionAnalysis.update({
-      where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
-      // ⚠️ 只动 AI 结果字段。`aggregate`/`totalCount`/`computedAt` 一个字都不动。
-      data: {
-        ...(scoped && row.narrative ? {} : { narrative }),
-        ...(perStudent === null ? {} : { perStudent: perStudent as unknown as Prisma.InputJsonValue }),
-        agentId: agent.id,
-        model: agent.platform,
-      },
+      /*
+       * ★ 2026-10-07（教师问：「只补这几个人的话，AI 对整体的分析是不是也要更新呢？」）——
+       *   **要，但不能在这里更新**：补跑只发了几个人，模型给的那段「整体解读」说的是这几个人，
+       *   拿它盖掉全班那份是错的 ✗。所以补跑**只补分、不动整体解读**，
+       *   而「整体解读是按几个人写的」这一条由面板对照 `covered` 与现有分数自己说出来
+       *   （见 `analysis-panel.tsx`）——人齐了它会提示「点重新生成，按完整的人重写一遍整体分析」。
+       */
+      const feedback = mergeAnalysisFeedback(
+        readAnalysisFeedback(existing?.perStudent, studentIds), parsedFeedback.feedback, studentIds, scoped && Boolean(row.narrative),
+      );
+      // 沿用现有 JSON 结果列，新增独立元数据；评分读取和成绩写回仍只识别 scores。
+      const previousResult = existing?.perStudent && typeof existing.perStudent === 'object' && !Array.isArray(existing.perStudent) ? existing.perStudent : {};
+      const storedResult = { ...(perStudent ?? previousResult), analysisFeedback: feedback, analysisUsage: recordAnalysisUsage(existing?.perStudent, existing?.agentId ?? null, existing?.narrative ?? null, agent.id, (result.content ?? '').length) };
+      const analyzedAt = scoped && row.narrative ? row.analyzedAt : new Date();
+      await tx.worksheetQuestionAnalysis.update({
+        where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
+        // ⚠️ 只动 AI 结果字段。`aggregate`/`totalCount`/`computedAt` 一个字都不动。
+        data: {
+          ...(scoped && row.narrative ? {} : { narrative, analyzedAt }),
+          perStudent: storedResult as unknown as Prisma.InputJsonValue,
+          agentId: agent.id,
+          model: agent.platform,
+        },
+      });
+
+      return { perStudent, feedback, analyzedAt };
     });
 
     /*
@@ -1910,11 +1934,14 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
       });
     }
 
+    req.app.get('io')?.to(`classroom:${classroomId}`).emit('worksheet-analysis-updated', { worksheetId });
     res.json({
       /* ⚠️ 补跑那一轮**不动**整体解读 ⇒ 回给界面的也必须是**存下来的那一份**，
          否则面板会拿一段「只说了 3 个人」的文字当全班结论显示。 */
       narrative: scoped && row.narrative ? row.narrative : narrative,
+      analyzedAt,
       perStudent,
+      feedback,
       agentId: agent.id,
       model: agent.platform,
       /* 这一轮模型漏了谁（教师面板据此提示「缺 N 人」）。 */
@@ -2538,9 +2565,7 @@ router.get('/:id/answers', worksheetMutation(async (req, res, database) => {
     const byId = new Map(nodes.map(item => [item.node.id, item.node]));
     const studentSettings = readStudentSettings(ctx.worksheet.settings);
     const scoringUnit = aiScoringUnitForRewardStyle(studentSettings.rewardStyle);
-    const scoringQuestionIds = nodes
-      .filter(({ node }) => aiScoringConfigOf(node, scoringUnit).enabled)
-      .map(({ node }) => node.id);
+    const scoringQuestionIds = nodes.map(({ node }) => node.id);
     const scoringRows = scoringQuestionIds.length > 0
       ? await ctx.prisma.worksheetQuestionAnalysis.findMany({
           where: {
@@ -2554,6 +2579,7 @@ router.get('/:id/answers', worksheetMutation(async (req, res, database) => {
     const scoringByQuestion = new Map(scoringRows.map(item => [item.questionId, item.perStudent]));
     res.json({ generation: await readAnswerGeneration(ctx.prisma, ctx.classroomId, ctx.worksheet.id, ctx.participantId), rows: rows.map(row => ({
       ...row,
+      aiAdvice: readAnalysisFeedback(scoringByQuestion.get(row.questionId), [ctx.participantId])?.students.find(item => item.studentId === ctx.participantId)?.advice ?? null,
       // 只下发当前学生自己的评分、简短评价与详细建议，不下发全班评分或智能体分析正文。
       aiReferenceScore: byId.has(row.questionId)
         ? readStudentAiReferenceScore(

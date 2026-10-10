@@ -113,6 +113,7 @@ const TABLES: Array<{ name: string; createTable: string; indexes: Array<{ name: 
     "totalCount" INTEGER NOT NULL,
     "computedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "narrative" TEXT,
+    "analyzedAt" DATETIME,
     "perStudent" JSONB,
     "agentId" TEXT,
     "model" TEXT,

@@ -90,7 +90,7 @@ function teacherCookie(): string {
  * `createHarness` / `socketPrisma` 的覆盖项。
  *
  * `captureEnabled` / `captureWidth` / `captureFrameIntervalMs` 是 P2.2 新增的三列
- * （课堂级采集设置）。默认值 **与生产默认值逐字一致**（开 / 320 / 10000）——
+ * （课堂级采集设置）。默认值 **与生产默认值逐字一致**（开 / 640 / 10000）——
  * 大部分用例不关心它们，但假 prisma 必须**真的把它们返回**，否则生产代码里
  * `normalizeCaptureConfig(await prisma.classroom.findUnique(...))` 拿到的是缺字段的行，
  * 于是「默认值」这件事在这份测试里根本没被走到。
@@ -142,7 +142,7 @@ function socketPrisma(classroomId: () => string, options: HarnessOptions = {}) {
         classroomAgents: [],
         groups: [],
         webappCaptureEnabled: options.captureEnabled ?? true,
-        webappThumbnailWidth: options.captureWidth ?? 320,
+        webappThumbnailWidth: options.captureWidth ?? 640,
         webappFrameIntervalMs: options.captureFrameIntervalMs ?? 10_000,
       }),
     },
@@ -324,7 +324,7 @@ function demand(
     watching,
     detail,
     captureEnabled: overrides.captureEnabled ?? true,
-    width: overrides.width ?? 320,
+    width: overrides.width ?? 640,
     // ⚠️ 这里是**图墙基准**（生产默认 10000）。detail 档的周期由服务端算成
     //    `max(1000, round(基准/5))`，所以 detail 的用例必须**显式**写出那个数字
     //    （如 `{ frameIntervalMs: 2000 }`），不能在这里用生产公式推 —— 用被测代码
@@ -565,12 +565,13 @@ test('🔴 normalizeCaptureConfig：认不出就当**开** —— undefined 绝�
 
 test('normalizeCaptureConfig：整行 null / undefined 时返回整份默认值', () => {
   // ★ 2026-09-25：多了 `detailIntervalMs`，默认 **`null`**（= 没调过 ⇒ 按基准派生）。
-  const defaults = { enabled: true, width: 320, frameIntervalMs: 10_000, detailIntervalMs: null };
+  const defaults = { enabled: true, width: 640, frameIntervalMs: 10_000, detailIntervalMs: null };
   assert.deepEqual(normalizeCaptureConfig(null), defaults);
   assert.deepEqual(normalizeCaptureConfig(undefined), defaults);
   // 阳性对照：给了一行的（哪怕是空的）走的是另一条分支，但三列同样落到默认值 ——
   // 与上面两条**逐字段相同**，区别只在「有没有那一行」，所以这里把两者放在一起比。
   assert.deepEqual(normalizeCaptureConfig({}), defaults);
+  assert.equal(normalizeCaptureConfig({ webappThumbnailWidth: 320 }).width, 320, '保留教师已保存的分辨率');
 });
 
 test('★ 详情档周期：默认**派生**（基准 ÷ 5），教师调过就固定成他那个值', () => {

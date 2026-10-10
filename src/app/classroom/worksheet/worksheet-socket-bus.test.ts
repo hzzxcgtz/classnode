@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   publishDraftPreview,
+  publishWorksheetAnalysisUpdated,
+  subscribeWorksheetAnalysisUpdated,
   publishWorksheetClear,
   resetWorksheetClearBusForTest,
   subscribeDraftPreview,
@@ -162,4 +164,15 @@ test('★ 出站：退订之后不再收到（面板卸载）', () => {
   off();
   publishDraftPreview({ classroomId: 'c1', worksheetId: 'w1', questionId: 'q1', value: 'b' });
   assert.equal(count, 1);
+});
+
+test('分析保存通知保留学习单身份，取消订阅后不再刷新', () => {
+  const received: string[] = [];
+  const unsubscribe = subscribeWorksheetAnalysisUpdated(event => received.push(event.worksheetId));
+  publishWorksheetAnalysisUpdated({ worksheetId: 'worksheet-a' });
+  publishWorksheetAnalysisUpdated({ worksheetId: '' });
+  publishWorksheetAnalysisUpdated({ worksheetId: 'worksheet-b' });
+  unsubscribe();
+  publishWorksheetAnalysisUpdated({ worksheetId: 'worksheet-a' });
+  assert.deepEqual(received, ['worksheet-a', 'worksheet-b']);
 });

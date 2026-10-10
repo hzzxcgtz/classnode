@@ -53,8 +53,6 @@ function runsOf(prompt) {
   if (cursor < prompt.length) runs.push({ start: cursor, end: prompt.length, blank: '' });
   return runs.map((run) => ({ ...run, bold: false, italic: false, underline: false, emphasis: false, color: '#1e293b' }));
 }
-/** 没有空的题干也要给一条整段 run。 */
-const plainRun = (prompt) => [{ start: 0, end: prompt.length, blank: '', bold: false, italic: false, underline: false, emphasis: false, color: '#1e293b' }];
 
 const node = (type, prompt, data, extra = {}) => ({
   id: nid('q'), type, prompt, inputMode: 'keyboard', data, children: [], ...extra,
@@ -358,12 +356,6 @@ const byId = new Map();
 (function collect(list) {
   for (const n of list) { byId.set(n.id, n); if (n.children?.length) collect(n.children); }
 })(nodes);
-const findQ = (type, index) => {
-  const all = [...byId.values()].filter((n) => n.type === type);
-  const target = all[index];
-  if (!target) throw new Error(`找不到第 ${index} 道 ${type}`);
-  return target;
-};
 
 // order（两处）：按条目的文字写出**正确**顺序。
 // 🔴 必须与 `items` 的书写顺序**不同** —— 相同会被服务端 400（`validateOrder`）。

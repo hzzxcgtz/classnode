@@ -6,7 +6,7 @@ import { applyModuleState, isClassroomModuleKey, isClassroomModuleState } from '
 import type { ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 // ★ 2026-09-30：「逐题开放」那条广播的载荷要收干净（判据在那个文件里，有用例）。
 import { normalizeOpenQuestions } from '@/lib/worksheet-answer-mode';
-import { publishWorksheetClear, subscribeDraftPreview } from '../worksheet/worksheet-socket-bus';
+import { publishWorksheetClear, publishWorksheetAnalysisUpdated, subscribeDraftPreview } from '../worksheet/worksheet-socket-bus';
 // 线缆上的类型住在 socket-events（与 ServerToClientEvents 的声明同处），不从
 // classroom-types 转一手 —— 那边只是**消费**它。
 import type { WebappDemand } from '@/lib/socket-events';
@@ -241,6 +241,8 @@ export function useChatSocket(options: ChatSocketOptions) {
       // 而那条链上每一次投递都要让整棵会话树重渲染一遍；教师报「学生在输入时清除该题
       // ⇒ 学生端浏览器假死」，而我在那条链上读了三遍都没读出回路。命令（边沿触发）
       // 本来就该走总线而不是 state（电平触发）—— 见 `worksheet-clear-bus.ts` 那一段。
+      socket.on('worksheet-analysis-updated', publishWorksheetAnalysisUpdated);
+
       socket.on('worksheet-answers-cleared', (data) => {
         publishWorksheetClear(data);
       });

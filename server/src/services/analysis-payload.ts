@@ -357,6 +357,8 @@ export interface QuestionMeta {
   /** 教师补充的主观题评分标准与示例图片。 */
   rubricText?: string;
   rubricImageUrl?: string | null;
+  /** 拍照问答含密集文字，发送联系表时保留更大的阅读区域。 */
+  photoWriting?: boolean;
   /**
    * ★ 2026-10-06：这道绘图题有没有教师预先给出的「初始图」（判据在 `analysis-question.ts` 的
    * `hasDrawingStarter`，与前端 `readDrawingStarter` 同一把尺子）。
@@ -702,7 +704,15 @@ export function buildAnalysisPayload(input: {
   question: QuestionMeta; entries: AnalyzeEntry[]; total: number; knobs: SheetKnobs;
   participants: Participant[];
 }): AnalysisPayload {
-  const { question, entries, total, knobs, participants } = input;
+  const { question, entries, total, participants } = input;
+  const knobs = question.photoWriting && entries.some(entry => entry.kind === 'photo')
+    ? {
+      cellWidth: Math.max(input.knobs.cellWidth, 768),
+      cellHeight: Math.max(input.knobs.cellHeight, 1024),
+      columns: Math.min(input.knobs.columns, 2),
+      maxCellsPerSheet: Math.min(input.knobs.maxCellsPerSheet, 4),
+    }
+    : input.knobs;
   const labels = payloadLabels(entries, participants);
   const payloadKind = payloadKindOf(entries);
   return {

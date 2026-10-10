@@ -41,6 +41,7 @@ export interface ServerToClientEvents {
    * 空载荷会让客户端要么整份重拉、要么显示过期的一屏。
    */
   'worksheet-open-changed': (data: { worksheetId: string; questionIds: string[] }) => void;
+  'worksheet-analysis-updated': (data: { worksheetId: string }) => void;
   'allow-stop-changed': (data: { allow: boolean }) => void;
   // ★ 2026-09-25：只禁提问（与 `classroom-paused` 那个整节课暂停是两件事）。
   'allow-ask-changed': (data: { allow: boolean }) => void;

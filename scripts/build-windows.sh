@@ -5,13 +5,16 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPOSITORY="${CLASSNODE_GITHUB_REPOSITORY:-hzzxcgtz/classnode}"
 BRANCH="${CLASSNODE_RELEASE_BRANCH:-main}"
-ARCH="${1:-both}"
+ARCH=both
 WAIT=false
 RUN_ID_FILE=""
 
-shift || true
+if (($#)) && [[ "$1" != --* && "$1" != -h ]]; then ARCH="$1"; shift; fi
 while (($#)); do
   case "$1" in
+    -h|--help)
+      echo "用法: scripts/build-windows.sh [both|x64|arm64] [--no-wait|--wait] [--run-id-file <path>]"
+      exit 0 ;;
     --wait) WAIT=true; shift ;;
     --no-wait) WAIT=false; shift ;;
     --run-id-file)

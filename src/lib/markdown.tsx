@@ -16,10 +16,12 @@ interface MarkdownProps {
   className?: string;
   /** 是否为流式输出模式（追加闪烁光标） */
   streaming?: boolean;
+  /** 页面可接管内部链接；返回 undefined 时使用默认链接。 */
+  renderLink?: (href: string | undefined, children: React.ReactNode) => React.ReactNode | undefined;
 }
 
 /** 使用 react-markdown 渲染 Markdown 内容的 React 组件 */
-export function Markdown({ children, allowImages = true, className, streaming }: MarkdownProps) {
+export function Markdown({ children, allowImages = true, className, streaming, renderLink }: MarkdownProps) {
   const content = (
     <ReactMarkdown
       remarkPlugins={[remarkGfmCompat, remarkMath, remarkBreaks]}
@@ -34,10 +36,11 @@ export function Markdown({ children, allowImages = true, className, streaming }:
               style={{ maxWidth: 220, maxHeight: 180, borderRadius: 10, objectFit: 'cover', display: 'block', margin: '4px 0' }} />
           );
         },
-        a: ({ href, children }) => (
-          <a href={href} target="_blank" rel="noopener noreferrer"
-            style={{ color: 'var(--primary)', textDecoration: 'underline' }}>{children}</a>
-        ),
+        a: ({ href, children }) => {
+          const custom = renderLink?.(href, children);
+          return custom === undefined ? <a href={href} target="_blank" rel="noopener noreferrer"
+            style={{ color: 'var(--primary)', textDecoration: 'underline' }}>{children}</a> : <>{custom}</>;
+        },
         pre: ({ children }) => (
           <pre style={{ background: '#f1f5f9', borderRadius: 8, padding: '10px 14px', overflow: 'auto', fontSize: '0.813rem', lineHeight: 1.5, margin: '6px 0' }}>{children}</pre>
         ),

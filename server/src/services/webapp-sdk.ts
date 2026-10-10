@@ -301,7 +301,7 @@ export const SDK_SOURCE = `/*
    *
    * 默认值与服务端一致：**认不出就用默认，绝不让"认不出"变成"更小"或"不截"**。
    */
-  var thumbnailWidth = 320;
+  var thumbnailWidth = 640;
 
   /**
    * 是否采集**画面**。false ⇒ 连 canvas 直读也不发，只留文字档。

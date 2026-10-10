@@ -427,7 +427,7 @@ function buildInsights(input: {
   distribution: QuestionDistribution;
   submittedRows: ReadonlyArray<StatsRow>;
 }): Insight[] {
-  const { node, total, submitted, correct, partial, wrong, noVerdict, graded, distribution } = input;
+  const { node, total, submitted, correct, partial, wrong, noVerdict, graded, distribution, submittedRows } = input;
   const out: Insight[] = [];
 
   // ① 交卷情况（**总是**有话说 —— 它是所有百分比的分母）。
@@ -505,7 +505,12 @@ function buildInsights(input: {
   if (distribution?.kind === 'order') {
     // ★ 「完全正确」是纯等式（长度相同 + 每一位相同）⇒ 如实说得出**人数**，
     // 但措辞是「按答案顺序排的」，不是「判对」——判分那件事由服务端说（页头那四格）。
-    const full = distribution.positions.filter((position) => position.hits === submitted).length;
+    const expected = Array.isArray(node.data.correctOrder) ? node.data.correctOrder : [];
+    const full = submittedRows.filter(row => {
+      const draft = draftFromValue(node, row.value);
+      return draft.kind === 'order' && expected.length > 0 && draft.order.length === expected.length
+        && draft.order.every((id, index) => id === expected[index]);
+    }).length;
     if (distribution.positions.length > 0) {
       out.push({ level: 'info', text: `${submitted} 人里，有 ${full} 人每一处都排在答案的位置上。` });
     }

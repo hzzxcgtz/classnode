@@ -16,10 +16,11 @@ const requested = process.argv[2];
 function usage(message) {
   if (message) console.error(`错误: ${message}`);
   console.error('用法: pnpm prepare-release <x.y.z|major|minor|patch>');
-  process.exit(2);
+  process.exit(message ? 2 : 0);
 }
 
-if (!requested) usage('缺少目标版本');
+if (['--help', '-h'].includes(requested)) { usage(); }
+if (!requested || process.argv.length !== 3) usage('请提供一个目标版本');
 if (!/^\d+\.\d+\.\d+$/.test(current)) usage(`当前版本不是标准 SemVer: ${current}`);
 
 function increment(version, part) {
@@ -33,8 +34,12 @@ const next = ['major', 'minor', 'patch'].includes(requested)
   ? increment(current, requested)
   : requested;
 
-if (!/^\d+\.\d+\.\d+$/.test(next)) usage(`无效版本: ${next}`);
+if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(next)) usage(`无效版本: ${next}`);
 if (next === current) usage(`版本没有变化: ${current}`);
+const before = current.split('.').map(Number);
+const after = next.split('.').map(Number);
+const different = after.findIndex((value, index) => value !== before[index]);
+if (after.some(value => !Number.isSafeInteger(value)) || after[different] < before[different]) usage(`目标版本必须大于 ${current}`);
 
 pkg.version = next;
 fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
@@ -54,6 +59,7 @@ if (fs.existsSync(manifestPath)) {
 
 const changelogPath = path.join(root, 'server', 'changelogs', `v${next}.md`);
 if (!fs.existsSync(changelogPath)) {
+  fs.mkdirSync(path.dirname(changelogPath), { recursive: true });
   const today = new Date().toISOString().slice(0, 10);
   let subjects = [];
   try {

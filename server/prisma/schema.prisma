@@ -172,7 +172,7 @@ model Classroom {
   /// 只传文字档（可见性 + 滚动深度）—— 那是给老设备用的便宜档。
   webappCaptureEnabled Boolean @default(true)
   /// 探究空间：缩略图目标宽度（像素）。服务端夹在 160~640 之间再下发。
-  webappThumbnailWidth Int @default(320)
+  webappThumbnailWidth Int @default(640)
   /// 探究空间：**图墙档**的截图基准周期（毫秒）。详情档由服务端按比例推。
   webappFrameIntervalMs Int @default(10000)
   /// 探究空间：**详情档**周期的教师覆盖值（毫秒），可空。
@@ -526,11 +526,12 @@ model WorksheetQuestionAnalysis {
   aggregate    Json     // 本地聚合的结构化快照 —— 唯一的事实来源
   totalCount   Int      // 该题应作答的参与者数（高级模式下**不是**全班人数）
   computedAt   DateTime @default(now())
-  // ↓ 下面四格本版恒为 null —— 它们就是「留的接口」（用户 2026-09-25 裁定 1）
-  narrative    String?  // 以后：AI 写的解读
-  perStudent   Json?    // 以后：按人的建议
-  agentId      String?  // 以后：用了哪个分析型智能体
-  model        String?  // 以后：平台 / 模型标识
+  // AI 结果与本地统计快照分别保存，重算统计不清空已有结果。
+  narrative    String?  // AI 写的整体解读
+  analyzedAt   DateTime? // 最近一次成功生成整体 AI 解读的时间；旧结果未知
+  perStudent   Json?    // 逐生评分与建议
+  agentId      String?  // 使用的分析型智能体
+  model        String?  // 平台 / 模型标识
 
   classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
   worksheet Worksheet @relation(fields: [worksheetId], references: [id], onDelete: Cascade)

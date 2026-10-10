@@ -3380,6 +3380,7 @@ tr:hover td {
 }
 
 .webapp-management-card-meta {
+  padding-bottom: 12px;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -3593,6 +3594,7 @@ tr:hover td {
 }
 
 .worksheet-management-card-meta {
+  padding-bottom: 12px;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -9682,18 +9684,19 @@ tr:hover td {
   border-color: #7e9fbe;
   background: #f1f6fb;
 }
-/*
-  ★ 2026-10-08（教师）：「这四个选择按钮可以设计成胶囊按钮，小一点，放左侧。」
-  ⇒ 只改**作图工具四选一**那一排：由等分网格改成靠左的胶囊行。
-  🔴 刻意**不改**它上面那条共用的 `…-tools, …-swatches` 网格规则 —— 颜色色块（swatches）
-     跟工具按钮**共用同一条规则**，直接改会把色块也一起改成胶囊。
-     所以这里只覆盖 tools 自己（沿用本文件既有的「写在后面覆盖、不重写」惯例）。
-*/
+/* 作图工具采用分段选择样式，与学习单工作区的视图切换一致。 */
 .worksheet-editor-drawing-tools {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-start;
-  gap: 6px;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 3px;
+  border: 1px solid #d8e2ec;
+  border-radius: 11px;
+  background: #f4f7fa;
 }
 .worksheet-editor-drawing-tool {
   display: inline-flex;
@@ -9702,6 +9705,23 @@ tr:hover td {
   padding: 5px 14px;
   border-radius: 999px;
   font-size: .74rem;
+}
+.worksheet-editor-drawing-tools > .worksheet-editor-drawing-tool {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 11px;
+  background: transparent;
+  color: #66798f;
+  font-weight: 600;
+}
+.worksheet-editor-drawing-tools > .worksheet-editor-drawing-tool[data-checked='1'] {
+  background: #fff;
+  color: #29445f;
+  box-shadow: 0 1px 5px rgb(35 57 82 / 12%);
+}
+.worksheet-editor-drawing-tools > .worksheet-editor-drawing-tool:focus {
+  outline: 2px solid #7e9fbe;
+  outline-offset: 1px;
 }
 .worksheet-editor-drawing-swatch-preview {
   width: 100%;

@@ -46,11 +46,11 @@ function segmentCount(stats: QuestionStats, key: typeof SEGMENTS[number]['key'])
  * 🔴 **它和页头那条走的是同一个函数**（`questionStats` 的分档计数）——
  * 各数一份的表现是「题列表说 3 人全对、点进去说 4 人」，而没有人会去核对这两个数。
  */
-export function StackedBar({ stats, compact = false }: { stats: QuestionStats; compact?: boolean }) {
+export function StackedBar({ stats, compact = false, legendOnly = false }: { stats: QuestionStats; compact?: boolean; legendOnly?: boolean }) {
   const total = Math.max(1, stats.total);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 0 : 4 }}>
-      <div style={{ display: 'flex', height: compact ? 6 : 10, borderRadius: 999, overflow: 'hidden', background: '#f1f5f9' }}>
+      {!legendOnly && <div style={{ display: 'flex', height: compact ? 6 : 10, borderRadius: 999, overflow: 'hidden', background: '#f1f5f9' }}>
         {SEGMENTS.map((segment) => {
           const count = segmentCount(stats, segment.key);
           if (count === 0) return null;
@@ -59,7 +59,7 @@ export function StackedBar({ stats, compact = false }: { stats: QuestionStats; c
               style={{ width: `${(count / total) * 100}%`, background: segment.color }} />
           );
         })}
-      </div>
+      </div>}
       {!compact && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: '0.688rem', color: MUTED }}>
           {SEGMENTS.map((segment) => (

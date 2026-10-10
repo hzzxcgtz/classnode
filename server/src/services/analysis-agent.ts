@@ -1,3 +1,4 @@
+import { feedbackInstruction } from './analysis-feedback.js';
 import type { AnalysisPayload } from './analysis-payload.js';
 import { AI_SCORE_BLOCK_END, AI_SCORE_BLOCK_START } from './analysis-scoring.js';
 
@@ -75,7 +76,7 @@ export function analysisGateOf(
 }
 
 /** 固定引导语（**进代码**）。具体要什么口径由教师写在平台的提示词里（规格 §3.7）。 */
-const LEAD = '请分析下面这道小题的全班作答。不要重复简单统计，重点发现统计无法直接呈现的理解方式、共同困难、思维差异或合理异解，并给教师一个简短的反馈切入点。';
+const LEAD = '请分析下面这道小题的班级整体作答，只分析本次材料。采用所配置学科与学段模板的班级报告结构，包含核心结论、典型表现与作答依据、本题关键认识或方法、课堂讲评或活动方案、讲评后检查五部分；各部分标题和重点随学科、学段与题型调整，简单题可以合并段落。说明已掌握什么、最值得优先处理的 1—2 个问题以及应全班澄清还是个别帮助。典型表现同时关注共性问题与优秀回答。有真实且有教学价值的优秀作答时，选取 1—2 个实例，说明作答片段或方法、值得学习之处，并用独立名单链接准确关联作者完整标签；单人实例只关联本人，不与问题名单混用。文字引用保留原意，不把润色冒充学生原话；图形或作品只概括可见亮点，没有可靠实例时不强行添加，身份不清时说明需核实。依据用简短的真实答案特征或作品片段，不逐人罗列；原因只作可能性判断，并给可验证的追问。只有最终答案或选项时不推断思考过程，认可合理异解，不复述统计面板、不强行找错、不从单题推断长期能力。给与问题对应的讲评或活动，再给新材料或改变条件的检查任务，说明怎样的表现表明理解已改善。班级正文不直接显示学生姓名、学号或可识别身份的个人错误；典型问题与优秀回答的对应名单按机器协议返回，正文仅放对应名单链接，由 ClassNode 显示人数、悬停显示姓名。材料不清时说明需核实。个人小建议与班级报告分开逐人返回，准确对应本次名单；只有明确开启 AI 评分时才附带评分结果。';
 
 /**
  * ★ 2026-10-06：**绘图题的初始图**提示 —— 唯一一份文字，`buildAnalysisMessage` 是唯一追加点。
@@ -108,7 +109,7 @@ export const DRAWING_STARTER_NOTE = '注意：本题的图里有教师预先给�
 export function buildAnalysisMessage(payload: AnalysisPayload, labeled = true): string {
   // 🔴 **唯一的追加点**：三种载荷形态（text / image / mixed）的正文都由 `analysisBody` 产出，
   //    「初始图」那一句只在末尾拼**一次** ⇒ 既不会「某一种形态漏加」，也不会「同一句话加两遍」。
-  return `${analysisBody(payload, labeled)}${payload.drawingStarter ? `\n\n${DRAWING_STARTER_NOTE}` : ''}`;
+  return `${analysisBody(payload, labeled)}\n\n${feedbackInstruction(payload.entries)}${payload.drawingStarter ? `\n\n${DRAWING_STARTER_NOTE}` : ''}`;
 }
 
 /** 正文。**不含** `DRAWING_STARTER_NOTE`（那一句由 `buildAnalysisMessage` 统一追加）。 */
@@ -156,6 +157,7 @@ function analysisBody(payload: AnalysisPayload, labeled: boolean): string {
     payload.scorableLabels.length > 0
       ? `请给下面这些学生评分：${payload.scorableLabels.join('、')}。每人返回一句评价与可操作的详细建议；无法可靠判断时 score 填 null，不要猜分，但仍需如实返回评价和建议。`
       : '这一次没有任何可评分的作答：不要给任何人评分，也不要在机器块里编造学生标签。',
+    'reason 和 advice 是直接给学生看的：用“你”称呼，统一保持温柔、耐心、尊重、以鼓励为主的口吻，使用符合题目学段的易懂短句。先肯定可确认的真实表现，再温和指出待改进的地方；不责备、不比较、不使用训斥或命令语气。温柔表达不改变评分标准，不为鼓励而虚增分数。reason 根据真实作答肯定具体做得好的地方或温和指出困难，不贴标签、不夸大表扬。advice 写2—4句：指出一个具体可改进的地方，给出学生能立即操作的步骤和检查方法；全部正确时提供与本题相关的巩固做法或小拓展。不能只写“继续保持”“再仔细一点”“加油”等空泛话，不替学生完成答案，也不编造作答中没有的表现。',
     '⚠️ **名单之外的学生不要出现在机器块里**（他们的作答这一版读不出来，不是没交）——不要给他们编分数或评价。',
     // ★ 2026-10-07：标签从「`User_001` 这样的伪名」换成「**姓名 + 学号**」（`张伟#7`）。
     // 示例必须跟着换 —— 留着一个对不上输入的示例，模型会照着它编代号。

@@ -5,11 +5,15 @@ import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
 // ★ 2026-09-30：矩阵表头是**连线右项 / 归类框名**（教师原文）⇒ 认公式。
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { indexQuestions } from './worksheet-drawer-state';
-import { CHART, CountBars, HeatLegend, VerdictDonut } from './question-stats-charts';
+import { CHART, HeatLegend, VerdictDonut } from './question-stats-charts';
 import { StackedBar } from './question-stacked-bar';
 import { questionStats, showsAgentAnalysis, type MatrixCell, type StatsRow } from './worksheet-question-stats';
-import { questionTypeNickname } from '@/lib/worksheet-questions';
+import { questionTypeNickname, supportsAiScoring } from '@/lib/worksheet-questions';
 import styles from './question-stats-overlay.module.css';
+import { BlankDistribution, OrderDistribution } from './question-type-distributions';
+import { QuestionContentPreview } from './question-content-preview';
+import { OptionDistribution } from './question-option-distribution';
+import { QuestionAnalysisSection } from './question-analysis-section';
 
 /**
  * 「按题统计与分析」的浮层（规格 `specs/2026-09-28-按题统计与分析.md`）。
@@ -23,13 +27,12 @@ import styles from './question-stats-overlay.module.css';
  *
  * ── 两块（规格 §6）──────────────────────────────────────────────────
  *   ① 本题统计（答案分布、课堂观察和作答过程）
- *   ② AI 分析 ← **打开统一的分析结果浮层**（裁决：见下面 `onOpenAnalysis` 那段注释）
+ *   ② AI 分析：在统计下方展开统一结果面板，保持题目导航和统计可见。
  */
 
 const OK = '#15803d';
 const BAD = '#934e4e';
 const WARN = '#b45309';
-const MUTED = '#64748b';
 const FAINT = '#94a3b8';
 
 /**
@@ -65,7 +68,7 @@ function Matrix({ rowLabel, colLabel, rows, cols, cells }: {
           <tr>
             <th style={{ ...th, textAlign: 'left' }}>{rowLabel} ＼ {colLabel}</th>
             {cols.map((col) => (
-              <th key={col.id} title={col.text} style={{ ...th, maxWidth: 108, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <th key={col.id} title={col.text} style={{ ...th, maxWidth: 150, minWidth: 75, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
                 {/* ★ 2026-09-30：`col.text` 是**教师原文**（`col.id` 那条回落路是机器的）。 */}
                 {col.text ? <PromptText text={col.text} placeholder="" /> : col.id}
               </th>
@@ -76,7 +79,7 @@ function Matrix({ rowLabel, colLabel, rows, cols, cells }: {
         <tbody>
           {rows.map((row) => (
             <tr key={row.id}>
-              <th title={row.text} style={{ ...th, textAlign: 'left', maxWidth: 132, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: CHART.ink }}>
+              <th title={row.text} style={{ ...th, textAlign: 'left', maxWidth: 160, minWidth: 100, whiteSpace: 'normal', overflowWrap: 'anywhere', color: CHART.ink }}>
                 {/* ★ 2026-09-30：同列头（`row.text` 是教师原文）。 */}
                 {row.text ? <PromptText text={row.text} placeholder="" /> : row.id}
               </th>
@@ -144,17 +147,18 @@ function Section({ title, children, note }: { title: string; children: React.Rea
 }
 
 export function QuestionStatsOverlay({
-  mode, board, worksheetId, questionId, nodesByWorksheet, onClose, onOpenAnalysis, embedded = false,
+  classroomId, mode, board, worksheetId, questionId, nodesByWorksheet, onClose, expandAnalysis = false, embedded = false,
 }: {
   /** 课堂 mode —— 只在量词上用（分组 / 高级模式下「人」要写成「组」），与旁边两屏同源。 */
   mode: string;
+  classroomId: string;
   board: WorksheetBoard | null;
   worksheetId: string;
   questionId: string;
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
   onClose: () => void;
-  /** 两个入口统一打开同一个 AI 分析结果窗口，避免内嵌版与独立版继续分叉。 */
-  onOpenAnalysis: () => void;
+  /** 从总览的 AI 入口进入时，直接展开本题下方的分析。 */
+  expandAnalysis?: boolean;
   /** 统一学习单工作区内直接渲染，不再创建遮罩和第二层浮窗。 */
   embedded?: boolean;
 }) {
@@ -206,6 +210,7 @@ export function QuestionStatsOverlay({
             // ★ 2026-09-28（教师：课堂展示、有听课老师）：页头改成**数字块 + 结论环**。
             // 数字块给精确值，环给「一眼抓住比例」—— 两者并列才算「丰富」。
             <div className={styles.summary}>
+              <div className={styles.summaryFigures}>
               <div className={styles.metrics}>
                 {[
                   { label: `参与者`, value: String(stats.total), suffix: unit, color: '#0f172a' },
@@ -227,7 +232,8 @@ export function QuestionStatsOverlay({
                 {/* ⚠️ 正确率是 `null` 时中心画「—」而**不是 0%** —— 0% 是一句假话（没有判过的行）。 */}
                 <VerdictDonut
                   size={80}
-                  centerFontSize="1.08rem"
+                  centerFontSize="0.9rem"
+                  centerNoteFontSize="0.55rem"
                   unit={unit}
                   centerText={stats.accuracy === null ? null : `${stats.accuracy}%`}
                   centerNote={stats.accuracy === null ? '不统计正确率' : '正确率'}
@@ -240,6 +246,9 @@ export function QuestionStatsOverlay({
                   ]}
                 />
               </div>
+              </div>
+              <div className={styles.summaryStatus}><StackedBar stats={stats} compact /></div>
+              <div className={styles.summaryLegend}><StackedBar stats={stats} legendOnly /></div>
             </div>
           )}
         </div>
@@ -249,56 +258,20 @@ export function QuestionStatsOverlay({
 
           {stats && (
             <>
-              <div className={styles.statusBand}>
-                <StackedBar stats={stats} />
-              </div>
 
-              <div className={styles.insightGrid}>
+              <div className={styles.insightGrid} data-subjective={node ? supportsAiScoring(node) : false}>
                 {/* ① 本题统计：图与事实并排，课堂上不需要来回滚动。 */}
-                <Section title="答案分布">
+                {node && !supportsAiScoring(node) && <Section title="答案分布">
                   {distribution === null && (
                     <div style={{ fontSize: '0.75rem', color: FAINT }}>
                       这一题没有可统计的分布，或者题型修改后存在多种作答形状。
                     </div>
                   )}
                   {distribution?.kind === 'options' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      <CountBars bars={distribution.bars} unit={unit} />
-                      {distribution.combos.length > 0 && (
-                        <div>
-                          <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>选答组合（前 3）</div>
-                          <CountBars bars={distribution.combos} unit={unit} colorFor={() => CHART.muted} dense />
-                        </div>
-                      )}
-                    </div>
+                    <OptionDistribution bars={distribution.bars} combos={distribution.combos} total={stats.submitted} unit={unit} />
                   )}
-                  {distribution?.kind === 'blanks' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {distribution.blanks.map((blank) => (
-                        <div key={blank.label}>
-                          <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>
-                            {blank.label}
-                            {blank.distinct > 0 && <span style={{ marginLeft: 6 }}>共 {blank.distinct} 种写法</span>}
-                          </div>
-                          <CountBars bars={blank.bars} unit={unit} dense />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {distribution?.kind === 'order' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      <CountBars
-                        bars={distribution.positions.map((position) => ({ label: `第 ${position.index + 1} 位`, count: position.hits }))}
-                        unit={unit}
-                      />
-                      {distribution.topOrders.length > 0 && (
-                        <div>
-                          <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>出现最多的顺序（前 3）</div>
-                          <CountBars bars={distribution.topOrders} unit={unit} colorFor={() => CHART.muted} dense />
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {distribution?.kind === 'blanks' && <BlankDistribution blanks={distribution.blanks} total={stats.submitted} unit={unit} />}
+                  {distribution?.kind === 'order' && <OrderDistribution positions={distribution.positions} orders={distribution.topOrders} total={stats.submitted} unit={unit} />}
                   {(distribution?.kind === 'match' || distribution?.kind === 'categorize') && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <Matrix
@@ -311,30 +284,22 @@ export function QuestionStatsOverlay({
                       <HeatLegend max={Math.max(0, ...distribution.cells.map((cell) => cell.count))} unit={unit} />
                     </div>
                   )}
-                  {distribution?.kind === 'text' && (() => {
-                    const present = distribution.lengths.filter((item) => item.count > 0);
-                    return present.length > 0
-                      ? <CountBars bars={present} unit={unit} dense height={Math.max(54, present.length * 30)} />
-                      : <div style={{ fontSize: '0.75rem', color: FAINT }}>尚无可统计的文字作答。</div>;
-                  })()}
-                  {distribution?.kind === 'ink' && (
-                    <div style={{ fontSize: '0.75rem', color: MUTED }}>
-                      {distribution.drawn} {unit}提交了笔迹作答。
-                    </div>
-                  )}
-                </Section>
+                </Section>}
 
-                <Section title="课堂观察">
-                  {stats.insights.length > 0 ? (
-                    <ul className={styles.insightList}>
-                      {stats.insights.map((insight, index) => (
-                        <li key={index} data-tone={insight.level}>
-                          <span>{emphasizeNumbers(insight.text)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : <div className={styles.quietState}>当前没有需要补充的统计说明。</div>}
-                </Section>
+                <div className={styles.insightRail}>
+                  {node && <Section title="题目内容"><QuestionContentPreview node={node} /></Section>}
+                  <Section title="课堂观察">
+                    {stats.insights.length > 0 ? (
+                      <ul className={styles.insightList}>
+                        {stats.insights.map((insight, index) => (
+                          <li key={index} data-tone={insight.level}>
+                            <span>{emphasizeNumbers(insight.text)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <div className={styles.quietState}>当前没有需要补充的统计说明。</div>}
+                  </Section>
+                </div>
               </div>
 
               <Section title="作答过程" note="旧数据缺少过程记录时显示「—」">
@@ -354,21 +319,14 @@ export function QuestionStatsOverlay({
             </>
           )}
 
-          {/* ② AI 分析。结果只保留一个统一查看窗口；这里不再内嵌第二套结果页。 */}
+          {/* AI 分析复用统一结果面板，在本题统计下原地展开。 */}
           {node && showsAgentAnalysis(node) && (
-            <Section title="AI 分析" note="发现简单统计之外的理解方式与共同困难">
-              <button type="button" onClick={onOpenAnalysis} className={styles.analysisAction}>
-                <span>
-                  <strong>
-                    {worksheet?.analyzedQuestionIds?.includes(questionId) ? '查看已保存的 AI 分析' : '生成 AI 分析'}
-                  </strong>
-                  <span>
-                    分析结论、逐生 AI 评分和发送数据都在统一结果窗口中查看
-                  </span>
-                </span>
-                <b>进入分析</b>
-              </button>
-            </Section>
+            <div className={styles.section}>
+              <QuestionAnalysisSection key={`${worksheetId}:${questionId}`} classroomId={classroomId}
+                worksheetId={worksheetId} questionId={questionId} mode={mode} initiallyExpanded={expandAnalysis}
+                analyzed={worksheet?.analyzedQuestionIds?.includes(questionId) ?? false}
+                analyzedAt={worksheet?.analysisTimes?.[questionId] ?? null} />
+            </div>
           )}
 
         </div>

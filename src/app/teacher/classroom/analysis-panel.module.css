@@ -1,7 +1,7 @@
 .body {
   flex: 1;
   overflow: auto;
-  padding: 18px;
+  padding: 24px;
   color: #20344c;
 }
 
@@ -19,92 +19,38 @@
 }
 
 .resultCard {
-  margin-top: 14px;
-  overflow: hidden;
-  border: 1px solid #cddceb;
-  border-radius: 14px;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
   background: #fff;
-  box-shadow: 0 8px 24px rgb(36 71 107 / 7%);
-}
-
-.resultHeader {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 13px 16px;
-  border-bottom: 1px solid #e3ebf3;
-  background: #f2f7fc;
-}
-
-.aiMark {
-  display: inline-grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  background: #dceafa;
-  color: #315f8c;
-  font-size: 0.72rem;
-  font-weight: 750;
-  letter-spacing: 0.04em;
-}
-
-.resultTitle {
-  color: #243b55;
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.resultMeta {
-  margin-left: auto;
-  color: #7a8da2;
-  font-size: 0.74rem;
 }
 
 .resultText,
-.payloadText {
-  margin: 0;
-  word-break: break-word;
-  color: #25384d;
-  font: inherit;
-  font-size: 0.94rem;
-  line-height: 1.72;
-}
-
-.resultText {
-  padding: 18px 22px 22px;
-  font-size: 1rem;
-}
-
-/* Markdown 组件带有通用的行内尺寸；分析卡片需要更适合长文扫读的专用层级。 */
+.payloadText { margin: 0; word-break: break-word; color: #34485e; font: inherit; font-size: .9rem; line-height: 1.85; }
+.resultText { margin-top: 18px; padding: 24px; border-radius: 12px; background: #f5f8fb; }
 .resultText h1,
 .resultText h2,
 .resultText h3 {
-  margin: 1.05em 0 0.45em !important;
-  color: #1d3047 !important;
-  line-height: 1.4;
+  margin: 1.8em 0 .65em !important;
+  padding-bottom: 0 !important;
+  border-bottom: 0 !important;
+  color: #263d55 !important;
+  font-size: 1rem !important;
+  line-height: 1.5;
 }
-
-.resultText h1 { font-size: 1.32rem !important; }
-.resultText h2 { font-size: 1.24rem !important; }
-.resultText h3 { font-size: 1.16rem !important; }
-
-.resultText p { margin: 0.42em 0 !important; }
-
+.resultText h1 { font-size: 1.12rem !important; }
+.resultText > p:first-of-type {
+  padding: 14px 18px;
+  border-left: 3px solid #7996b1;
+  background: #eaf1f7;
+  border-radius: 0 6px 6px 0;
+}
+.resultText p { margin: .6em 0 !important; }
 .resultText ul,
-.resultText ol {
-  margin: 0.4em 0 0.7em !important;
-  padding-left: 1.55em !important;
-}
-
-.resultText li { padding: 0.08em 0 !important; }
-.resultText li + li { margin-top: 0.38em; }
-
-.resultText strong {
-  color: #172b43;
-  font-weight: 750 !important;
-}
-
+.resultText ol { margin: .55em 0 1em !important; padding-left: 1.5em !important; }
+.resultText li { padding: .12em 0 !important; }
+.resultText li + li { margin-top: .65em; }
+.resultText strong { color: #2e455d; font-weight: 650 !important; }
 .resultText > :first-child { margin-top: 0 !important; }
 .resultText > :last-child { margin-bottom: 0 !important; }
 
@@ -124,7 +70,17 @@
   border-bottom: 1px solid #e3ebf3;
   background: #f5f9fd;
   color: #243b55;
+  cursor: pointer;
+  list-style: none;
 }
+
+.scoreHeader::-webkit-details-marker { display: none; }
+.scoreHeader:focus-visible { outline: 2px solid #6f89a7; outline-offset: -3px; }
+.scoreHeaderActions { flex-wrap: wrap; justify-content: flex-end; }
+.scoreCard:not([open]) .scoreHeader { border-bottom: 0; }
+.scoreToggleOpen { display: none; }
+.scoreCard[open] .scoreToggleClosed { display: none; }
+.scoreCard[open] .scoreToggleOpen { display: inline; }
 
 .scoreHeader > div { display: flex; align-items: baseline; gap: 9px; }
 .scoreHeader strong { font-size: 0.94rem; }
@@ -152,7 +108,7 @@
 .scoreList { display: grid; }
 .scoreRow {
   display: grid;
-  grid-template-columns: minmax(90px, 0.8fr) 110px minmax(180px, 2fr);
+  grid-template-columns: minmax(90px, 0.8fr) 140px minmax(180px, 2fr);
   gap: 14px;
   align-items: center;
   padding: 11px 16px;
@@ -163,7 +119,8 @@
 .scoreName { color: #263c54; font-weight: 700; }
 .scoreValue { color: #315f8c; }
 .scoreReason { display: grid; gap: 4px; color: #63778d; line-height: 1.5; }
-.scoreAdvice summary { width: fit-content; color: #315f8c; cursor: pointer; font-size: .74rem; }
+.scoreAdvice { margin-top: 6px; padding: 10px 12px; border-radius: 8px; background: #f1f6fa; }
+.scoreAdvice > strong { color: #486b8c; font-size: .7rem; font-weight: 600; }
 .scoreAdvice p { margin: 5px 0 0; color: #526a83; white-space: pre-wrap; }
 
 .payloadText { white-space: pre-wrap; }
@@ -244,20 +201,26 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 58px;
-  padding: 10px 0;
-  border-top: 1px solid #e2eaf2;
+  min-height: 44px;
+  padding: 8px 0;
 }
 
 .actionButton {
-  border: 1px solid #9db4cb;
-  border-radius: 10px;
-  padding: 8px 15px;
-  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #c8d9e7;
+  border-radius: 8px;
+  padding: 8px 13px;
+  background: #edf4fa;
+  font-size: .78rem;
   color: #315f8c;
   cursor: pointer;
   font-weight: 650;
 }
+
+.actionButton:hover:not(:disabled) { background: #e0edf7; border-color: #9ebbd1; }
+.actionButton:focus-visible { outline: 2px solid #769dc0; outline-offset: 3px; }
 
 .actionButton:disabled {
   border-color: #d8e0e8;
@@ -330,4 +293,35 @@
   color: #7b8ea3;
   font-size: 0.72rem;
   line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .body { padding: 16px; }
+  .resultText { padding: 16px; border-radius: 10px; font-size: .85rem; }
+  .resultText > p:first-of-type { padding: 12px; }
+}
+
+.scoreRewards { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+
+.scoreAdviceHeading { display: flex; align-items: center; gap: 5px; }
+.scoreAdviceHeading svg { flex-shrink: 0; }
+
+.feedbackRow { display: grid; grid-template-columns: minmax(100px, .35fr) minmax(0, 1fr); align-items: center; gap: 14px; padding: 14px 16px; border-bottom: 1px solid #edf1f5; }
+.feedbackRow:last-child { border-bottom: 0; }
+@media (max-width: 640px) { .feedbackRow { grid-template-columns: 1fr; gap: 6px; } }
+
+/* 题目工作区沿用报告配色，减少重复容器间距，保留正文阅读空间。 */
+.compactBody { flex: none; overflow: visible; padding: 14px 20px 20px; }
+.compactBody .resultCard { max-width: none; background: transparent; }
+.compactBody .resultText { margin-top: 14px; padding: 18px 20px; }
+.compactBody .resultText > :first-child { margin-top: 0 !important; }
+.compactBody .scoreHeader { padding: 9px 14px; gap: 10px; }
+.compactBody .scoreCard { border-radius: 10px; }
+.compactActions { min-height: 0; padding: 0; flex-wrap: wrap; gap: 6px; }
+.compactActions .actionHint { display: none; }
+.compactActions .actionButton { padding: 6px 10px; }
+@media (max-width: 640px) {
+  .compactBody { padding: 12px; }
+  .compactBody .resultText { padding: 14px; }
+  .compactActions { flex-direction: row; align-items: center; }
 }

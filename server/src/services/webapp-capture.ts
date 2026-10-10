@@ -27,7 +27,7 @@ export interface WebappCaptureConfig {
 
 export const DEFAULT_WEBAPP_CAPTURE: WebappCaptureConfig = {
   enabled: true,
-  width: 320,
+  width: 640,
   frameIntervalMs: 10000,
   // 没调过 ⇒ 派生（基准 10 秒 ⇒ 详情 2 秒，与 P2.2 的行为逐字相同）
   detailIntervalMs: null,

@@ -1,0 +1,15 @@
+.preview { display: grid; gap: 10px; color: #4b657e; font-size: .73rem; line-height: 1.65; max-height: 340px; overflow: auto; overflow-wrap: anywhere; padding-right: 4px; }
+.type { width: fit-content; background: #edf3f8; color: #5e7d98; border-radius: 5px; padding: 2px 6px; font-size: .6rem; }
+.prompt { white-space: pre-wrap; }
+.image { display: block; max-width: 100%; max-height: 180px; object-fit: contain; border-radius: 6px; }
+.items { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.items li { display: flex; align-items: baseline; gap: 8px; padding: 5px 8px; background: #f7f9fb; border-radius: 5px; }
+.items b { color: #8a9bad; font-size: .65rem; flex-shrink: 0; }
+.match { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.match > div { padding: 8px; background: #f7f9fb; border-radius: 6px; }
+.match p { margin: 5px 0; }
+.match small, .pool small, .starter small { color: #899bac; font-size: .6rem; }
+.pool { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pool > span { background: #f0f5f8; border-radius: 5px; padding: 2px 6px; }
+.starter { height: 180px; overflow: hidden; }
+.starter svg { max-height: 150px; }

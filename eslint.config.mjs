@@ -60,7 +60,7 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["scripts/**/*.js", "serve-frontend.js"],
+    files: ["scripts/**/*.js"],
     rules: {
       // These standalone Node utilities intentionally run as CommonJS.
       "@typescript-eslint/no-require-imports": "off",

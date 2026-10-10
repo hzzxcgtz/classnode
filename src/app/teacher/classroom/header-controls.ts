@@ -96,7 +96,7 @@ export const COMPANION_MENU_ITEMS: ReadonlyArray<{ id: 'analysis' | 'settings'; 
 export const WORKSHEET_MENU_ITEMS: ReadonlyArray<{ id: 'overview' | 'student' | 'question' | 'open'; label: string; title: string }> = [
   {
     id: 'overview',
-    label: '学习单总览',
+    label: '学习单矩阵',
     title: '用学生 × 题目的矩阵查看全班进度，并快速进入详情',
   },
   {

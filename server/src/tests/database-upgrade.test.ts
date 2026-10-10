@@ -147,6 +147,67 @@ test('foreign-key failure in candidate cannot replace the original', async () =>
   } finally { await f.close(); }
 });
 
+async function addOrphanNotification(prisma: PrismaClient) {
+  await prisma.$executeRawUnsafe('PRAGMA foreign_keys=OFF');
+  try {
+    await prisma.teacherNotification.create({ data: { id: 'orphan-notice', classroomId: 'deleted-classroom', content: 'notification retained in backup' } });
+  } finally { await prisma.$executeRawUnsafe('PRAGMA foreign_keys=ON'); }
+}
+
+test('upgrade cleans only notifications for missing classrooms and retains their full backup', async () => {
+  const f = await fixture();
+  try {
+    await addOrphanNotification(f.prisma);
+    const result = await upgradeDatabase(f.prisma, { databaseUrl: f.url });
+    assert.ok(result.backupPath);
+    assert.equal(await f.prisma.teacherNotification.count(), 1);
+    assert.equal(await f.prisma.teacherNotification.findUnique({ where: { id: 'orphan-notice' } }), null);
+    await assertHistory(f.prisma);
+    const backup = new PrismaClient({ datasources: { db: { url: `file:${result.backupPath}` } } });
+    try {
+      assert.equal((await backup.teacherNotification.findUniqueOrThrow({ where: { id: 'orphan-notice' } })).content, 'notification retained in backup');
+      assert.equal(await backup.teacherNotification.count(), 2);
+    } finally { await backup.$disconnect(); }
+    assert.deepEqual(await upgradeDatabase(f.prisma, { databaseUrl: f.url }), { backupPath: null });
+    await assertHistory(f.prisma);
+  } finally { await f.close(); }
+});
+
+test('failure after orphan cleanup leaves the original notification intact; retry can upgrade', async () => {
+  const f = await fixture();
+  try {
+    await addOrphanNotification(f.prisma);
+    await assert.rejects(upgradeDatabase(f.prisma, { databaseUrl: f.url, afterLegacy: async candidate => {
+      assert.equal(await candidate.teacherNotification.findUnique({ where: { id: 'orphan-notice' } }), null);
+      throw new Error('failure after candidate-only cleanup');
+    } }), /failure after candidate-only cleanup/);
+    assert.equal(await f.prisma.teacherNotification.count(), 2);
+    assert.equal(await f.prisma.setting.count(), 0);
+    assert.equal(await f.prisma.worksheetAnswer.count(), 1);
+    await upgradeDatabase(f.prisma, { databaseUrl: f.url });
+    await assertHistory(f.prisma);
+  } finally { await f.close(); }
+});
+
+test('orphan cleanup does not permit core-data foreign-key damage or removal of valid notifications', async () => {
+  const f = await fixture();
+  try {
+    await addOrphanNotification(f.prisma);
+    await assert.rejects(upgradeDatabase(f.prisma, { databaseUrl: f.url, afterLegacy: async candidate => {
+      await candidate.$executeRawUnsafe('PRAGMA foreign_keys=OFF');
+      await candidate.$executeRawUnsafe("UPDATE Message SET studentId='missing'");
+    } }), /数据库升级失败/);
+    assert.equal(await f.prisma.teacherNotification.count(), 2);
+    assert.equal(await f.prisma.setting.count(), 0);
+    assert.equal((await f.prisma.message.findUniqueOrThrow({ where: { id: 'message' } })).studentId, 'participant');
+    await assert.rejects(upgradeDatabase(f.prisma, { databaseUrl: f.url, afterLegacy: async candidate => {
+      await candidate.teacherNotification.delete({ where: { id: 'notice' } });
+    } }), /丢失 TeacherNotification 原有记录/);
+    assert.equal(await f.prisma.teacherNotification.count(), 2);
+    assert.equal(await f.prisma.setting.count(), 0);
+  } finally { await f.close(); }
+});
+
 test('concurrent writes in original abort promotion and remain intact', async () => {
   const f = await fixture();
   try {

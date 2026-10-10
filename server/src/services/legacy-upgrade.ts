@@ -293,7 +293,7 @@ export async function migrateLegacyDatabase(prisma: PrismaClient, backupDatabase
       console.log('[server] Added webappCaptureEnabled column to Classroom');
     }
     if (!classroomColNames.includes('webappThumbnailWidth')) {
-      await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "webappThumbnailWidth" INTEGER NOT NULL DEFAULT 320`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "webappThumbnailWidth" INTEGER NOT NULL DEFAULT 640`);
       console.log('[server] Added webappThumbnailWidth column to Classroom');
     }
     if (!classroomColNames.includes('webappFrameIntervalMs')) {

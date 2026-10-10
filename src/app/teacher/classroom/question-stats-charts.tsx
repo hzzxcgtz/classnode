@@ -120,7 +120,7 @@ export function CountBars({
  * 而 recharts 的 label 在圆里居中要调一堆参数、还不跟着字号走。
  */
 export function VerdictDonut({
-  data, centerText, centerNote, size = 148, centerFontSize = '1.5rem', unit: unitFallback = '',
+  data, centerText, centerNote, size = 148, centerFontSize = '1.5rem', centerNoteFontSize = '0.688rem', unit: unitFallback = '',
 }: {
   data: Array<{ name: string; value: number; color: string }>;
   /** 环中心那一行大字（正确率 / 已交率）。`null` ⇒ 画「—」。 */
@@ -129,6 +129,7 @@ export function VerdictDonut({
   size?: number;
   /** 小尺寸摘要环可以单独收敛中心数字，避免百分比压住环形本身。 */
   centerFontSize?: string;
+  centerNoteFontSize?: string;
   /** tooltip 里的量词（环里的数字是「人 / 组」）。 */
   unit?: string;
 }) {
@@ -157,7 +158,7 @@ export function VerdictDonut({
         <div style={{ fontSize: centerFontSize, fontWeight: 700, lineHeight: 1.1, color: centerText ? CHART.ink : CHART.faint }}>
           {centerText ?? '—'}
         </div>
-        <div style={{ fontSize: '0.688rem', color: CHART.faint, marginTop: 2 }}>{centerNote}</div>
+        <div style={{ fontSize: centerNoteFontSize, lineHeight: 1.2, maxWidth: '60%', textAlign: 'center', color: CHART.faint, marginTop: 1 }}>{centerNote}</div>
       </div>
     </div>
   );

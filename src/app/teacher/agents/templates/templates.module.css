@@ -1,0 +1,23 @@
+.panel { background: #fff; border: 1px solid #d8e2ec; border-radius: 14px; padding: 20px; margin-bottom: 16px; }
+.filters { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+.filters label { display: flex; flex-direction: column; gap: 6px; color: #52667e; font-size: .82rem; }
+.filters select { min-width: 145px; padding: 9px 12px; background: #fff; border: 1px solid #d8e2ec; border-radius: 8px; color: #263b53; font: inherit; }
+.hint { margin: 14px 0 0; color: #66798f; font-size: .8rem; line-height: 1.7; }
+.heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+.heading h2 { font-size: 1.1rem; margin: 0; }
+.tabs { display: flex; gap: 4px; background: #f4f7fa; padding: 3px; border: 1px solid #d8e2ec; border-radius: 10px; }
+.tabs button { padding: 6px 12px; border: 0; border-radius: 7px; background: transparent; color: #66798f; font: inherit; cursor: pointer; font-size: .8rem; }
+.tabs button[aria-pressed='true'] { background: #fff; color: #29445f; box-shadow: 0 1px 5px rgb(35 57 82 / 12%); }
+.content { max-width: 900px; line-height: 1.85; color: #334155; overflow-wrap: anywhere; }
+.content h1 { font-size: 1.25rem; }
+.content h2 { font-size: 1.05rem; margin-top: 24px; }
+.content h3 { font-size: .95rem; }
+.raw { display: block; width: 100%; min-height: 65vh; padding: 16px; box-sizing: border-box; border: 1px solid #d8e2ec; border-radius: 9px; font: .85rem/1.8 ui-monospace, monospace; resize: vertical; }
+@media (max-width: 600px) { .panel { padding: 14px; } .filters label { flex: 1; } .filters select { min-width: 0; width: 100%; } }
+
+.editableRegion, .fixedRegion { border: 1px solid #dce6ef; border-radius: 10px; padding: 16px 18px; margin-bottom: 18px; }
+.editableRegion { background: #f7fbf8; border-color: #d5e4da; }
+.fixedRegion { background: #f7f9fc; }
+.regionHeading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; padding-bottom: 10px; border-bottom: 1px solid #dce6ef; margin-bottom: 14px; }
+.regionHeading strong { color: #37566c; font-size: .9rem; }
+.regionHeading span { color: #728496; font-size: .75rem; }

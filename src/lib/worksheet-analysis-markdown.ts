@@ -15,6 +15,8 @@ export function normalizeWorksheetAnalysisMarkdown(source: string): string {
     // `**主要表现：**正文` 在 CommonMark 中可能因中文标点边界无法闭合，继而与
     // 后面的加粗片段错误配对。只修正以冒号结尾的字段标签，避免改动普通强调内容。
     .replace(/\*\*([^*\n]+?[：:])\*\*(?=\S)/g, '**$1** ')
+    // 括号等标点结束的加粗标题紧接箭头时，也需要明确闭合边界。
+    .replace(/\*\*([^*\n]+?[）)】\]。！？!?；;，,])\*\*(?=\S)/g, '**$1** ')
     .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n')
     .trim();
 }

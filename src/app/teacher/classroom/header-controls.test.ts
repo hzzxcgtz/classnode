@@ -117,7 +117,7 @@ test('🔴 学习单 / 矩阵 已经合成一个下拉：不再有那两个各�
 test('🔴 学习单下拉：三个查看入口在前，一个课堂控制动作在后', () => {
   // ★ 2026-09-30：「逐题开放」并进来成了第三项。前两项是**看**，第三项**当着全班改**
   // 学生屏幕上有什么 —— 顺序不是随手排的，改的人要能一眼分清。
-  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.label), ['学习单总览', '按学生查看', '按题目查看', '逐题开放']);
+  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.label), ['学习单矩阵', '按学生查看', '按题目查看', '逐题开放']);
   assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.id), ['overview', 'student', 'question', 'open']);
   // ⚠️ 三项的 id 必须互不相同 —— 相同的话菜单里点哪一项都会开同一个东西，而屏幕上不报错。
   assert.equal(new Set(WORKSHEET_MENU_ITEMS.map((item) => item.id)).size, WORKSHEET_MENU_ITEMS.length);

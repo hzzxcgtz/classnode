@@ -1,3 +1,4 @@
+import { readAnalysisUsage } from '../services/analysis-usage.js';
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
@@ -118,6 +119,18 @@ router.get('/storage-stats', async (req, res) => {
       }
       agentUsageMap[msg.agentId].totalCalls++;
       agentUsageMap[msg.agentId].totalChars += msg.content.length;
+    }
+
+    const analysisRows = await prisma.worksheetQuestionAnalysis.findMany({
+      select: { classroomId: true, agentId: true, narrative: true, perStudent: true },
+    });
+    for (const row of analysisRows) {
+      for (const entry of readAnalysisUsage(row.perStudent, row.agentId, row.narrative).agents) {
+        const stats = agentUsageMap[entry.agentId] ??= { classroomIds: new Set(), totalCalls: 0, totalChars: 0 };
+        stats.classroomIds.add(row.classroomId);
+        stats.totalCalls += entry.calls;
+        stats.totalChars += entry.chars;
+      }
     }
 
     const agentUsage = allAgents.map(a => {

@@ -301,7 +301,6 @@ function mindMapSnapshot(data) {
     let childTop = top + (height - total) / 2;
     for (const kid of kids) {
       const kh = mmHeight(kid);
-      const childWidth = mmWidth(kid.topic);
       /*
        * 🔴 `anchorX` 的约定是「**靠父节点那条边**的 x」（见本函数的签名注释）——
        * 递归时要传的就是它，不是盒子的左边缘。⊘ 2026-10-08 第一版传的是左边缘，

@@ -3,10 +3,11 @@
  * 给一个课堂灌一批**像真人写的**学习单作答数据（仅供开发 / 演示 / 试用 AI 分析）。
  *
  * 用法（在仓库根目录）：
- *   npx tsx scripts/seed-worksheet-demo.mjs                    # 默认课堂：1001课堂
+ *   npx tsx scripts/seed-worksheet-demo.mjs                    # 默认课堂：1001课堂，只演练
  *   npx tsx scripts/seed-worksheet-demo.mjs --classroom 8268   # 按互动码 / 课堂 id / 课堂名
- *   npx tsx scripts/seed-worksheet-demo.mjs --dry              # 只打印，不写库
+ *   npx tsx scripts/seed-worksheet-demo.mjs --dry-run              # 只打印，不写库（默认）
  *   npx tsx scripts/seed-worksheet-demo.mjs --seed 7           # 换一组随机数
+ *   npx tsx scripts/seed-worksheet-demo.mjs --apply          # 写入（默认会替换旧作答）
  *   npx tsx scripts/seed-worksheet-demo.mjs --keep             # 不清旧数据，追加
  *   npx tsx scripts/seed-worksheet-demo.mjs --python <path>    # 渲染照片作答用的解释器
  *                                                              #（默认 `python3`，需要 Pillow）
@@ -82,7 +83,8 @@ const hasFlag = (name) => process.argv.includes(`--${name}`);
 const CLASSROOM_ARG = argOf('classroom', '1001课堂');
 const SEED = Number(argOf('seed', '20261001'));
 const PYTHON = argOf('python', process.env.CLASSNODE_PYTHON || 'python3');
-const DRY = hasFlag('dry');
+if ((hasFlag('dry') || hasFlag('dry-run')) && hasFlag('apply')) throw new Error('--dry-run 与 --apply 不能同时使用');
+const DRY = !hasFlag('apply');
 const KEEP = hasFlag('keep');
 /**
  * `--dump-snapshots <目录>`：把这一批**绘图快照**额外落一份到该目录（文件名带题号）。

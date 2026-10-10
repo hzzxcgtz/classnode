@@ -88,7 +88,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: regression-logs-${{ matrix.arch }}
-          path: .test-*.log
+          path: .dev/logs/test-*.log
           include-hidden-files: true
           if-no-files-found: ignore
 
@@ -113,39 +113,7 @@ jobs:
         run: pnpm tauri build --bundles msi --target ${{ matrix.target }}
 
       - name: Rename Windows installers
-        shell: bash
-        run: |
-          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
-          VERSION="${{ steps.version.outputs.version }}"
-          ARCH="${{ matrix.arch }}"
-
-          # 统一重命名标准：ClassNode_{VERSION}_windows_{ARCH}.msi
-          # Tauri 输出的原始文件名架构标识不确定（arm64/aarch64 等），
-          # 故不依赖匹配具体架构模式，而是找出所有不带 _windows_ 前缀的文件进行重命名
-
-          # 重命名 MSI 安装程序
-          MSI_DIR="$BUNDLE_DIR/msi"
-          if ls "$MSI_DIR"/ClassNode_*.msi 1>/dev/null 2>&1; then
-            for f in "$MSI_DIR"/ClassNode_*.msi; do
-              base=$(basename "$f")
-              target="$MSI_DIR/ClassNode_${VERSION}_windows_${ARCH}.msi"
-              if [[ "$base" != *"_windows_"* ]]; then
-                rm -f "$target"
-                mv "$f" "$target"
-                echo "Renamed: $base → ClassNode_${VERSION}_windows_${ARCH}.msi"
-              fi
-            done
-          fi
-
-          # 清理残留：确保没有不带 _windows_ 前缀的旧文件留在构建目录中
-          for f in "$MSI_DIR"/ClassNode_*.msi; do
-            [ -f "$f" ] || continue
-            base=$(basename "$f")
-            if [[ "$base" != *"_windows_"* ]]; then
-              rm -f "$f"
-              echo "Cleaned up leftover: $base"
-            fi
-          done
+        run: node scripts/rename-bundle.mjs ${{ matrix.target }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v5

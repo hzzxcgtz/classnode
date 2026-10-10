@@ -195,6 +195,20 @@ test('🔴 混杂时不许把笔迹丢掉：mixed 是必须的（教师中途改
 
 // 题号是**两级**的串（`任务一 · 3`），服务端与前端同一份（对拍用例钉着）。
 const meta = { questionId: 'q1', typeLabel: '问答题', prompt: '说说你的看法', heading: '任务一 · 3' };
+
+test('拍照习作保留阅读分辨率，20人分5张，标签与学生顺序保持一致', () => {
+  const entries: AnalyzeEntry[] = Array.from({ length: 20 }, (_, i) => ({ studentId: `p${i}`, kind: 'photo', photoUrl: `/uploads/chat/${i}.png` }));
+  const participants = entries.map((e, i) => ({ participantId: e.studentId, name: `同学${i}`, labelNo: String(i + 1) }));
+  const input = { question: { ...meta, photoWriting: true }, entries, participants, total: 20, knobs: DEFAULT_ANALYSIS_KNOBS };
+  const payload = buildAnalysisPayload(input);
+  assert.deepEqual(payload.knobs, { cellWidth: 768, cellHeight: 1024, columns: 2, maxCellsPerSheet: 4 });
+  assert.equal(payload.sheetLayouts.length, 5);
+  assert.deepEqual(payload.sheetLayouts.flatMap(sheet => sheet.cells.map(cell => cell.studentId)), entries.map(e => e.studentId));
+  assert.equal(payload.sheetLayouts[4].cells[3].anonLabel, '同学19#20');
+  assert.deepEqual(buildAnalysisPayload({ ...input, question: meta }).knobs, DEFAULT_ANALYSIS_KNOBS);
+  assert.deepEqual(buildAnalysisPayload({ ...input, knobs: { cellWidth: 1024, cellHeight: 1024, columns: 1, maxCellsPerSheet: 1 } }).knobs, { cellWidth: 1024, cellHeight: 1024, columns: 1, maxCellsPerSheet: 1 });
+  assert.deepEqual(buildAnalysisPayload({ ...input, entries: [], participants: [] }).knobs, DEFAULT_ANALYSIS_KNOBS);
+});
 const docLabels = new Map([['p1', 'User_001'], ['p2', 'User_002'], ['p3', 'User_003']]);
 
 test('文档：抬头有题号/题型/题干/覆盖数，逐条带伪名，顺序就是入参顺序', () => {

@@ -153,3 +153,15 @@ export function resetWorksheetClearBusForTest(): void {
   draftListeners.clear();
   sequence = 0;
 }
+
+/** 分析保存通知经已加入学生房间的会话连接转发；面板只重新读取反馈。 */
+type AnalysisUpdated = { worksheetId: string };
+const analysisListeners = new Set<(event: AnalysisUpdated) => void>();
+export function publishWorksheetAnalysisUpdated(event: AnalysisUpdated) {
+  if (typeof event?.worksheetId !== 'string' || !event.worksheetId) return;
+  for (const listener of analysisListeners) listener(event);
+}
+export function subscribeWorksheetAnalysisUpdated(listener: (event: AnalysisUpdated) => void): () => void {
+  analysisListeners.add(listener);
+  return () => { analysisListeners.delete(listener); };
+}

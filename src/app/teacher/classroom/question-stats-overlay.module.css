@@ -21,6 +21,7 @@
   inset: auto;
   width: 100%;
   height: 100%;
+  overflow: auto;
   transform: none;
   border: 0;
   border-radius: 0;
@@ -116,6 +117,12 @@
   padding: 18px 20px 24px;
 }
 
+/* 工作区内整页滚动，题目标题与摘要不再占用固定顶部空间。 */
+.panel[data-embedded='true'] .body {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
 .section {
   display: flex;
   flex-direction: column;
@@ -150,7 +157,8 @@
   align-items: stretch;
 }
 
-.insightGrid > .section {
+.insightGrid > .section,
+.insightRail > .section {
   min-width: 0;
   height: 100%;
   padding: 14px 16px 16px;
@@ -201,7 +209,7 @@
 .processMetric small { display: block; color: #8392a4; font-size: .62rem; }
 .processMetric strong { display: block; margin-top: 3px; color: #263a51; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88rem; }
 
-.analysisAction {
+.analysisSummary {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -216,12 +224,14 @@
   text-align: left;
 }
 
-.analysisAction:hover { border-color: #afc3d7; background: #e9f1f7; }
-.analysisAction:active { transform: translateY(1px); }
-.analysisAction > span { min-width: 0; }
-.analysisAction > span > strong { display: block; font-size: .8rem; }
-.analysisAction > span > span { display: block; margin-top: 3px; color: #71859a; font-size: .68rem; }
-.analysisAction > b { flex: 0 0 auto; padding: 6px 9px; border-radius: 7px; background: #526f8e; color: #f8fafc; font-size: .66rem; white-space: nowrap; }
+
+.inlineAnalysis { margin-top: 12px; border-radius: 10px; background: #fff; overflow: hidden; }
+.inlineAnalysisActions { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px 24px; border-top: 1px solid #e3ebf3; }
+
+.analysisSummary > span { min-width: 0; }
+.analysisSummary > span > strong { display: block; font-size: .8rem; }
+.analysisSummary > span > span { display: block; margin-top: 3px; color: #71859a; font-size: .68rem; }
+.analysisSummary > b { flex: 0 0 auto; padding: 6px 9px; border-radius: 7px; background: #526f8e; color: #f8fafc; font-size: .66rem; white-space: nowrap; }
 
 @media (max-width: 900px) {
   .metrics { grid-template-columns: repeat(3, minmax(70px, 1fr)); row-gap: 10px; }
@@ -241,5 +251,33 @@
   .processStrip { grid-template-columns: 1fr; }
   .processMetric { border-right: 0; border-bottom: 1px solid #e2e9f0; }
   .processMetric:last-child { border-bottom: 0; }
-  .analysisAction { align-items: flex-start; }
+  .analysisSummary { align-items: flex-start; }
 }
+
+.analysisSummary { padding: 12px 16px; background: #fff; border-color: #e0e7ee; }
+.analysisSummary > b { background: #f0f4f8; color: #526d87; font-weight: 600; }
+.analysisSummary > span > span { color: #718397; }
+
+.analysisSummary { cursor: default; width: 100%; text-align: left; }
+
+.analysisSummary .analysisHeading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.analysisHeading small { color: #8293a5; font-size: .65rem; font-weight: 400; }
+
+.insightRail { display: grid; align-content: start; gap: 14px; min-width: 0; }
+.insightRail > .section { height: auto; }
+
+.insightGrid[data-subjective='true'] { grid-template-columns: minmax(0, 1fr); }
+.insightGrid[data-subjective='true'] > .insightRail { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 900px) {
+  .insightGrid[data-subjective='true'] > .insightRail { grid-template-columns: minmax(0, 1fr); }
+}
+
+.summary { position: relative; display: block; padding: 0; overflow: hidden; }
+.summaryFigures { display: flex; align-items: center; gap: 14px; padding: 12px 16px 17px; }
+.summaryStatus { position: absolute; bottom: 0; left: 0; right: 0; }
+.summaryLegend { padding: 0 16px 12px; }
+.analysisResultHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 14px 20px; border-bottom: 1px solid #e7edf3; }
+.analysisResultHeader > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.analysisResultHeader strong { color: #29465f; font-size: .85rem; }
+.analysisResultHeader span span { color: #718397; font-size: .7rem; }
+.inlineAnalysisActions { border: 0; padding: 0; margin-left: auto; }

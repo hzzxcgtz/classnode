@@ -274,11 +274,17 @@
 }
 
 .table {
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+  min-width: calc(168px + var(--student-count) * 30px);
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
 }
+
+/* 两侧固定，学生列均分剩余宽度；每列至少 30px，超出时在表格容器内滚动。 */
+.questionColumn { width: 120px; }
+.aggregateColumn { width: 48px; }
+.studentColumn { width: auto; }
 
 .taskHeaderRow th { height: 24px; }
 
@@ -407,12 +413,23 @@
   text-align: left;
 }
 
-.matrixFooterCell { text-align: center; }
+/* 底部单元格也必须限定内边距，避免全局表格 padding 撑宽学生列。 */
+.matrixFooterCell {
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px;
+  padding: 0 2px;
+  text-align: center;
+}
+.matrixFooterCell button { padding: 0; }
 .matrixFooterCell[data-stuck='true'] { background: #f8ead4; }
 .matrixFooterTotal {
   right: 0;
   z-index: 5;
-  min-width: 86px;
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  padding: 0 4px;
   color: #60758b;
   font-size: .61rem;
   text-align: center;
@@ -508,14 +525,14 @@
   white-space: nowrap;
 }
 
-.questionGroup > button {
+.questionNavSelect {
   display: grid;
   width: 100%;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
-  padding: 10px;
+  gap: 0;
+  margin: 0;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
@@ -524,15 +541,17 @@
   text-align: left;
 }
 
-.questionGroup > button:hover {
+.questionNavRow:not([data-active='true']):hover,
+.questionNavRow:not([data-active='true']):focus-within {
   background: #f2f6f9;
+  border-color: #dce6ef;
 }
 
-.questionGroup > button:active {
+.questionNavSelect:active {
   transform: translateY(1px);
 }
 
-.questionGroup > button[data-active='true'] {
+.questionNavRow[data-active='true'] {
   border-color: #cfddea;
   background: #e8f0f7;
   color: #294a69;
@@ -602,9 +621,9 @@
 }
 
 .participantHead {
-  width: 48px;
-  min-width: 48px;
-  max-width: 48px;
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px;
   padding: 6px 2px;
   color: #62758b;
   font-size: .6rem;
@@ -646,8 +665,10 @@
 .aggregateHead {
   right: 0;
   z-index: 6;
-  width: 94px;
-  min-width: 94px;
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  padding: 0 4px;
   color: #718399;
   font-size: .64rem;
 }
@@ -762,9 +783,9 @@
 }
 
 .bodyCell {
-  width: 86px;
-  min-width: 86px;
-  max-width: 86px;
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px;
   padding: 8px 2px;
   border-bottom: 1px solid #edf1f5;
   text-align: center;
@@ -772,8 +793,8 @@
 
 .cellButton {
   display: block;
-  width: 20px;
-  height: 20px;
+  width: 14px;
+  height: 14px;
   margin: auto;
   border: 1px solid rgb(74 95 119 / 7%);
   cursor: pointer;
@@ -784,8 +805,10 @@
   position: sticky;
   right: 0;
   z-index: 2;
-  width: 94px;
-  min-width: 94px;
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  padding: 0 4px;
   border-bottom: 1px solid #e8edf3;
   background: #fff;
   color: #5e7187;
@@ -821,8 +844,55 @@
   .workspaceSidebar > button { min-width: 130px; }
   .questionSplit { display: flex; flex-direction: column; }
   .questionSidebar { flex: 0 0 auto; max-height: 190px; display: block; overflow-y: auto; }
-  .questionGroup > button { min-width: 0; }
+  .questionNavSelect { min-width: 0; }
   .questionDetailPanel { min-height: 480px; }
   .sidebarHeading { display: none; }
   .corner, .studentRowHead { width: 150px; min-width: 150px; max-width: 150px; }
 }
+
+.questionNavRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 8px; margin-bottom: 4px; padding: 8px 10px; border: 1px solid transparent; border-radius: 10px; }
+.questionNavRow .questionNavSelect { margin-bottom: 0; border: 0; }
+.questionNavAnalysis { display: flex; grid-column: 2; grid-row: 1; justify-content: flex-end; }
+.questionNavAnalysis .analysisButton { min-height: 27px; padding: 4px 9px; font-size: .65rem; border-radius: 6px; }
+
+.questionNavAnalysis .analysisButton[data-state='ready'] { color: #466c5b; border-color: #cdded4; background: #f4f8f5; }
+.questionNavAnalysis .analysisButton:focus { outline: 2px solid #7996b1; outline-offset: 2px; }
+
+.questionNavRow .questionNavSelect { grid-column: 1; grid-row: 1; min-width: 0; }
+.questionNavRow .questionNavMeta { grid-column: 1 / -1; grid-row: 2; flex-direction: row; align-items: center; gap: 12px; text-align: left; }
+
+.questionNavRow { position: relative; cursor: pointer; }
+.questionNavRow .questionNavSelect::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  cursor: pointer;
+}
+.questionNavRow .questionNavSelect:focus-visible::after {
+  outline: 2px solid #7996b1;
+  outline-offset: -2px;
+}
+.questionNavRow .questionNavAnalysis { position: relative; z-index: 1; }
+
+/* 学生横向排列，题目行与左侧选择卡片使用相同的视觉语言。 */
+.participantHeadButton { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; border: 0; padding: 2px 0; background: transparent; color: #425b73; cursor: pointer; }
+.participantVerticalName { writing-mode: vertical-rl; text-orientation: upright; max-height: 64px; overflow: hidden; font-size: .63rem; line-height: 1.3; letter-spacing: 1px; }
+.participantHead, .aggregateHead { height: auto; }
+.participantHead { vertical-align: top; }
+.matrixQuestionCorner { width: 120px; min-width: 120px; max-width: 120px; padding: 0 6px; position: sticky; top: 0; background: #edf2f7; border-bottom: 1px solid #dce5ee; }
+.matrixQuestionHead { position: sticky; left: 0; z-index: 3; width: 120px; min-width: 120px; max-width: 120px; padding: 6px; background: #fff; border-right: 1px solid #dce5ee; border-bottom: 1px solid #e8edf3; text-align: left; }
+.matrixQuestionHead .questionHeadButton { text-align: left; margin-bottom: 4px; }
+.matrixQuestionHead .questionHeadButton strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; line-height: 1.4; }
+.matrixQuestionMeta { display: flex; align-items: center; justify-content: space-between; gap: 4px; color: #7a8a9d; font-size: .56rem; }
+.matrixQuestionMeta > span { white-space: nowrap; }
+.matrixQuestionMeta .analysisButton { padding: 2px 4px; font-size: .56rem; white-space: nowrap; }
+.matrixFooterTotal { overflow-wrap: anywhere; }
+.matrixQuestionHead[data-stuck='true'] { background: #fff8ed; }
+.workspaceSidebar > button { border: 1px solid transparent; padding: 10px 12px; border-radius: 10px; }
+.workspaceSidebar > button:hover { background: #f2f6f9; border-color: #dce6ef; }
+.workspaceSidebar > button[data-active='true'] { border-color: #cfddea; background: #e8f0f7; box-shadow: inset 3px 0 0 #6f89a7; }
+.workspaceSidebar > button:focus-visible { outline: 2px solid #769dc0; outline-offset: 2px; }
+
+/* 固定表格布局由 colgroup 分配学生列，单元格不再提供固定列宽。 */
+.participantHead, .bodyCell, .matrixFooterCell { width: auto; max-width: none; }

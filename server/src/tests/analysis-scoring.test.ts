@@ -7,6 +7,14 @@ import {
   readStoredAiScoring,
   readStudentAiReferenceScore,
 } from '../services/analysis-scoring.js';
+
+test('学生与教师优先使用同一份个人建议，旧评分建议兼容且不串学生', () => {
+  const stored = { maxScore: 5, unit: '分', scores: [{ studentId: 's1', score: 4, reason: '评价', advice: '旧评分建议' }], analysisFeedback: { version: 1, groups: [], students: [{ studentId: 's1', advice: '最新个人建议' }, { studentId: 's2', advice: '另一位学生的建议' }] } };
+  const config = { enabled: true, maxScore: 5, unit: '分', criteria: '' };
+  assert.equal(readStudentAiReferenceScore(stored, config, 's1')?.advice, '最新个人建议');
+  assert.equal(readStudentAiReferenceScore(stored, config, 's2'), null);
+  assert.equal(readStudentAiReferenceScore({ ...stored, analysisFeedback: null }, config, 's1')?.advice, '旧评分建议');
+});
 import type { QuestionNode } from '../services/worksheet-questions.js';
 
 function node(data: Record<string, unknown>, type = 'short-answer'): QuestionNode {

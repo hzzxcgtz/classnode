@@ -4,19 +4,19 @@
 // 直接写 `React.CSSProperties` 会 `tsc` 报「找不到名称 React」。惯例见 `worksheet-panel.tsx:4`。
 // ★ 2026-09-29：`Fragment` 是**具名** import（不是 `React.Fragment`）—— 段头行与它下面的题行
 // 是同一层里的兄弟节点，key 只能挂在 Fragment 上。同目录的 `analysis-panel.tsx` 也是这么引 hook 的。
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 import { api } from '@/lib/api';
 import { isNotFound } from '@/lib/http-error';
-import { activeWorksheetAnalysisTask, hasCompletedWorksheetAnalysis, startWorksheetAnalysisTask, type BackgroundAnalysisTask } from '@/lib/worksheet-analysis-background';
+import { activeWorksheetAnalysisTask, hasCompletedWorksheetAnalysis, startWorksheetAnalysisTask, WORKSHEET_ANALYSIS_STARTED_EVENT, type BackgroundAnalysisTask } from '@/lib/worksheet-analysis-background';
 import { worksheetAnalysisProgressLabel } from '@/lib/worksheet-analysis-progress';
 import { indexQuestions, isGradedType, questionAggregate } from './worksheet-drawer-state';
-import { buildWorksheetMatrix, matrixGroups, matrixHeadline, questionTallies, rowTally, uncoveredCount, type CellState, type MatrixHeadline, type MatrixRow } from './worksheet-matrix';
+import { buildWorksheetMatrix, matrixHeadline, questionTallies, rowTally, uncoveredCount, type CellState, type MatrixHeadline, type MatrixRow } from './worksheet-matrix';
 import { questionTypeNickname } from '@/lib/worksheet-questions';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 import { ParticipantAnswers } from './worksheet-drawer';
+import { showsAgentAnalysis } from './worksheet-question-stats';
 import { QuestionStatsOverlay } from './question-stats-overlay';
-import { AnalysisOverlay } from './analysis-overlay';
 import styles from './matrix-overlay.module.css';
 
 /**
@@ -39,10 +39,12 @@ export type WorksheetWorkspaceEntry = {
   participantId?: string;
   worksheetId?: string;
   questionId?: string;
+  analysis?: boolean;
 };
 
 export function MatrixOverlay({
   entry,
+  onNavigate,
   board,
   nodesByWorksheet,
   settingsByWorksheet,
@@ -61,6 +63,7 @@ export function MatrixOverlay({
   onClearQuestion,
 }: {
   entry: WorksheetWorkspaceEntry;
+  onNavigate?: (entry: Omit<WorksheetWorkspaceEntry, 'token'>) => void;
   board: WorksheetBoard | null;
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
   settingsByWorksheet: Record<string, WorksheetSettings>;
@@ -91,6 +94,7 @@ export function MatrixOverlay({
   const [questionTarget, setQuestionTarget] = useState<{ worksheetId: string; questionId: string } | null>(
     entry.worksheetId && entry.questionId ? { worksheetId: entry.worksheetId, questionId: entry.questionId } : null,
   );
+  const [analysisJumpCount, setAnalysisJumpCount] = useState(0);
   const [analysisTarget, setAnalysisTarget] = useState<{ worksheetId: string; questionId: string } | null>(null);
   const [questionWorksheetId, setQuestionWorksheetId] = useState(entry.worksheetId ?? '');
 
@@ -101,7 +105,9 @@ export function MatrixOverlay({
     setQuestionTarget(entry.worksheetId && entry.questionId
       ? { worksheetId: entry.worksheetId, questionId: entry.questionId }
       : null);
-    setAnalysisTarget(null);
+    setAnalysisTarget(entry.analysis && entry.worksheetId && entry.questionId
+      ? { worksheetId: entry.worksheetId, questionId: entry.questionId } : null);
+    if (entry.analysis) setAnalysisJumpCount(count => count + 1);
     setQuestionWorksheetId(entry.worksheetId ?? '');
   }, [entry]);
 
@@ -111,7 +117,9 @@ export function MatrixOverlay({
       name: participant.name,
       worksheetId: worksheet.id,
       worksheetTitle: worksheet.title,
-    }))) ?? []), [board]);
+      submitted: participant.answerRows.filter(row => row.status === 'submitted').length,
+      total: indexQuestions(nodesByWorksheet[worksheet.id] ?? []).items.length,
+    }))) ?? []), [board, nodesByWorksheet]);
   const questionOptions = useMemo(() => (board?.worksheets.flatMap((worksheet) => {
     const nodes = nodesByWorksheet[worksheet.id];
     if (!nodes) return [];
@@ -125,15 +133,55 @@ export function MatrixOverlay({
         heading: item.heading,
         typeLabel: questionTypeNickname(item.node.type),
         aggregate: questionAggregate(rows),
+        analysisAvailable: showsAgentAnalysis(item.node),
         manual: !isGradedType(item.node.type) || item.node.autoGrade === false,
       };
     });
   })) ?? [], [board, nodesByWorksheet]);
+  const participantSidebarRef = useRef<HTMLElement>(null);
   const selectedParticipantId = participantId || participantOptions[0]?.id || '';
   const selectedQuestionTarget = questionTarget ?? questionOptions.find((item) =>
     !questionWorksheetId || item.worksheetId === questionWorksheetId) ?? null;
 
+  useEffect(() => {
+    if (view !== 'student') return;
+    const frame = requestAnimationFrame(() => {
+      participantSidebarRef.current
+        ?.querySelector<HTMLButtonElement>('button[data-active="true"]')
+        ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [view, selectedParticipantId, participantOptions.length]);
+
+  const contentRef = useRef<HTMLDivElement>(null);
+  const matrixPositionRef = useRef<{ top: number; tables: { top: number; left: number }[] } | null>(null);
+  const navigate = (next: Omit<WorksheetWorkspaceEntry, 'token'>) => {
+    if (view === 'overview' && contentRef.current) {
+      matrixPositionRef.current = {
+        top: contentRef.current.scrollTop,
+        tables: Array.from(contentRef.current.querySelectorAll(`.${styles.tableShell}`))
+          .map(element => ({ top: element.scrollTop, left: element.scrollLeft })),
+      };
+    }
+    onNavigate?.(next);
+  };
+  useEffect(() => {
+    if (view !== 'overview' || !matrixPositionRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      const content = contentRef.current;
+      const position = matrixPositionRef.current;
+      if (!content || !position) return;
+      content.scrollTop = position.top;
+      content.querySelectorAll(`.${styles.tableShell}`).forEach((element, index) => {
+        const saved = position.tables[index];
+        if (saved) { element.scrollTop = saved.top; element.scrollLeft = saved.left; }
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [view]);
+
   const openParticipant = (nextParticipantId: string, questionId?: string) => {
+    navigate({ view: 'student', participantId: nextParticipantId, questionId });
     setParticipantId(nextParticipantId);
     setFocusQuestionId(questionId ?? null);
     setView('student');
@@ -141,15 +189,18 @@ export function MatrixOverlay({
     setAnalysisTarget(null);
   };
   const openQuestion = (worksheetId: string, questionId: string) => {
+    navigate({ view: 'question', worksheetId, questionId });
     setQuestionWorksheetId(worksheetId);
     setQuestionTarget({ worksheetId, questionId });
     setAnalysisTarget(null);
     setView('question');
   };
   const openAnalysis = (worksheetId: string, questionId: string) => {
+    navigate({ view: 'question', worksheetId, questionId, analysis: true });
     setQuestionWorksheetId(worksheetId);
     setQuestionTarget({ worksheetId, questionId });
     setAnalysisTarget({ worksheetId, questionId });
+    setAnalysisJumpCount(count => count + 1);
     setView('question');
   };
 
@@ -161,9 +212,9 @@ export function MatrixOverlay({
           <p>从全班总览进入学生或题目详情，所有查看都在这一层完成</p>
         </div>
         <nav className={styles.viewTabs} aria-label="学习单查看方式">
-          {([['overview', '学习单总览'], ['student', '按学生查看'], ['question', '按题目查看']] as const).map(([value, label]) => (
+          {([['overview', '学习单矩阵'], ['student', '按学生查看'], ['question', '按题目查看']] as const).map(([value, label]) => (
             <button key={value} type="button" data-active={view === value}
-              onClick={() => { setView(value); setAnalysisTarget(null); if (value !== 'question') setQuestionTarget(null); }}>
+              onClick={() => { if (value === view) return; navigate({ view: value, participantId: selectedParticipantId, worksheetId: selectedQuestionTarget?.worksheetId, questionId: value === 'question' ? selectedQuestionTarget?.questionId : undefined }); setView(value); setAnalysisTarget(null); if (value !== 'question') setQuestionTarget(null); }}>
               {label}
             </button>
           ))}
@@ -173,7 +224,7 @@ export function MatrixOverlay({
         </button>
       </div>
 
-      <div className={styles.content}>
+      <div ref={contentRef} className={styles.content}>
         {!board && loading ? (
           <div className={styles.emptyState}>正在读取作答…</div>
         ) : !board ? (
@@ -208,13 +259,14 @@ export function MatrixOverlay({
           </>
         ) : view === 'student' ? (
           <div className={styles.workspaceSplit}>
-            <aside className={styles.workspaceSidebar}>
+            <aside ref={participantSidebarRef} className={styles.workspaceSidebar}>
               <div className={styles.sidebarHeading}>学生与小组</div>
               {participantOptions.map((participant) => (
                 <button key={`${participant.worksheetId}:${participant.id}`} type="button"
                   data-active={selectedParticipantId === participant.id}
                   onClick={() => openParticipant(participant.id)}>
                   <strong>{participant.name}</strong>
+                  <span>已交 {participant.submitted}/{participant.total}</span>
                   {board.worksheets.length > 1 && <span>{participant.worksheetTitle}</span>}
                 </button>
               ))}
@@ -250,19 +302,25 @@ export function MatrixOverlay({
                       const active = selectedQuestionTarget?.worksheetId === item.worksheetId
                         && selectedQuestionTarget.questionId === item.questionId;
                       return (
-                        <button key={item.questionId} type="button" data-active={active}
-                          onClick={() => openQuestion(item.worksheetId, item.questionId)}>
-                          <span className={styles.questionNavTitle}>
-                            <strong>{item.heading}</strong>
-                            <small>{item.typeLabel}</small>
-                          </span>
-                          <span className={styles.questionNavMeta}>
-                            <small>已交 {item.aggregate.submitted}/{item.aggregate.total}</small>
-                            <strong data-tone={item.manual ? 'neutral' : (item.aggregate.accuracy ?? 100) < 60 ? 'warning' : 'good'}>
-                              {item.manual ? '主观题' : item.aggregate.graded > 0 ? `${item.aggregate.accuracy}%` : '待判分'}
-                            </strong>
-                          </span>
-                        </button>
+                        <div key={item.questionId} className={styles.questionNavRow} data-active={active}>
+                          <button type="button" className={styles.questionNavSelect}
+                            onClick={() => openQuestion(item.worksheetId, item.questionId)}>
+                            <span className={styles.questionNavTitle}>
+                              <strong>{item.heading}</strong>
+                            </span>
+                          </button>
+                            <span className={styles.questionNavMeta}>
+                              <small>已交 {item.aggregate.submitted}/{item.aggregate.total}</small>
+                              <strong data-tone={item.manual ? 'neutral' : (item.aggregate.accuracy ?? 100) < 60 ? 'warning' : 'good'}>
+                                {item.manual ? '主观题' : item.aggregate.graded > 0 ? `${item.aggregate.accuracy}%` : '待判分'}
+                              </strong>
+                            </span>
+                          {item.analysisAvailable && <div className={styles.questionNavAnalysis}>
+                            <AnalysisTrigger classroomId={classroomId} worksheetId={item.worksheetId}
+                              row={item} analyzed={worksheet.analyzedQuestionIds.includes(item.questionId)} compact
+                              onOpen={() => openAnalysis(item.worksheetId, item.questionId)} />
+                          </div>}
+                        </div>
                       );
                     })}
                   </section>
@@ -271,17 +329,10 @@ export function MatrixOverlay({
               {questionOptions.length === 0 && <div className={styles.sidebarEmpty}>这份学习单还没有题目</div>}
             </aside>
             <main className={styles.questionDetailPanel}>
-              {analysisTarget ? (
-                <AnalysisOverlay
-                  classroomId={classroomId}
-                  worksheetId={analysisTarget.worksheetId}
-                  questionId={analysisTarget.questionId}
-                  mode={mode}
-                  embedded
-                  onClose={() => setAnalysisTarget(null)}
-                />
-              ) : selectedQuestionTarget ? (
+              {selectedQuestionTarget ? (
                 <QuestionStatsOverlay
+                  key={`${selectedQuestionTarget.worksheetId}:${selectedQuestionTarget.questionId}:${Boolean(analysisTarget)}:${analysisJumpCount}`}
+                  classroomId={classroomId}
                   mode={mode}
                   board={board}
                   worksheetId={selectedQuestionTarget.worksheetId}
@@ -289,7 +340,7 @@ export function MatrixOverlay({
                   nodesByWorksheet={nodesByWorksheet}
                   embedded
                   onClose={() => {}}
-                  onOpenAnalysis={() => setAnalysisTarget(selectedQuestionTarget)}
+                  expandAnalysis={Boolean(analysisTarget)}
                 />
               ) : <div className={styles.emptyState}>从左侧选择一道题查看详情</div>}
             </main>
@@ -403,87 +454,75 @@ function MatrixBlock({
         {participants.length === 0 || visibleRows.length === 0 ? (
           <div className={styles.noMatches}>{participants.length === 0 ? '没有找到匹配的学生或小组。' : '这个筛选条件下暂时没有题目。'}</div>
         ) : (
-          <table className={styles.table}>
+          <table className={styles.table} style={{ '--student-count': participants.length } as CSSProperties}>
+            <colgroup>
+              <col className={styles.questionColumn} />
+              {participants.map(participant => <col key={participant.participantId} className={styles.studentColumn} />)}
+              <col className={styles.aggregateColumn} />
+            </colgroup>
             <thead>
-              <tr className={styles.taskHeaderRow}>
-                <th rowSpan={2} className={styles.corner}>学生 / 题目</th>
-                {matrixGroups(visibleRows).map((group, index) => (
-                  <th key={`${index}:${group.taskTitle ?? ''}`} colSpan={group.rows.length} className={styles.columnGroupHead}>
-                    {group.taskTitle ?? '题目'}
-                  </th>
-                ))}
-                <th rowSpan={2} className={styles.aggregateHead}>完成情况</th>
-              </tr>
               <tr>
-                {visibleRows.map((row) => (
-                  <th key={row.questionId} className={styles.questionHead} data-stuck={row.questionId === stuckId}>
-                    <button type="button" className={styles.questionHeadButton}
-                      title={`${row.heading} · ${row.typeLabel} · ${row.prompt || '题干为空'}`}
-                      onClick={() => onOpenQuestion(sheet.id, row.questionId)}>
-                      <strong>{row.label}</strong>
-                      <span>{questionTypeNickname(row.type)}</span>
+                <th className={`${styles.corner} ${styles.matrixQuestionCorner}`}>题目 / 学生</th>
+                {participants.map((participant) => (
+                  <th key={participant.participantId} className={styles.participantHead} scope="col">
+                    <button type="button" className={styles.participantHeadButton}
+                      title={participant.name} onClick={() => onOpenParticipant(participant.participantId)}>
+                      <span className={styles.initial}>
+                        {avatarSvgByParticipantId[participant.participantId]
+                          ? <span className={styles.participantAvatar} aria-hidden="true" dangerouslySetInnerHTML={{ __html: avatarSvgByParticipantId[participant.participantId] }} />
+                          : participant.name.trim().slice(0, 1) || '·'}
+                      </span>
+                      <span className={styles.participantVerticalName}>{participant.name}</span>
                     </button>
-                    <AnalysisTrigger classroomId={classroomId} worksheetId={sheet.id} row={row}
-                      onOpen={() => onOpenAnalysis(sheet.id, row.questionId)} />
                   </th>
                 ))}
+                <th className={styles.aggregateHead}>已交</th>
               </tr>
             </thead>
             <tbody>
-              {participants.map((participant) => {
-                const states = visibleRows.map((row) => row.cells[participant.participantId]);
-                const submitted = states.filter((state) => state === 'submitted').length;
-                const drafting = states.filter((state) => state === 'draft').length;
-                return (
-                  <tr key={participant.participantId}>
-                    <th scope="row" className={styles.studentRowHead}>
-                      <button type="button" onClick={() => onOpenParticipant(participant.participantId)}>
-                        <span className={styles.initial}>
-                          {avatarSvgByParticipantId[participant.participantId]
-                            ? <span className={styles.participantAvatar} aria-hidden="true"
-                                dangerouslySetInnerHTML={{ __html: avatarSvgByParticipantId[participant.participantId] }} />
-                            : participant.name.trim().slice(0, 1) || '·'}
-                        </span>
-                        <span>{participant.name}</span>
+              {visibleRows.map((row) => {
+                const tally = rowTally(row);
+                return <tr key={row.questionId}>
+                  <th scope="row" className={styles.matrixQuestionHead} data-stuck={row.questionId === stuckId}>
+                    <button type="button" className={styles.questionHeadButton}
+                      title={`${row.heading} · ${row.typeLabel} · ${row.prompt || '题干为空'}`}
+                      onClick={() => onOpenQuestion(sheet.id, row.questionId)}>
+                      <strong>{row.heading}</strong>
+                    </button>
+                    <div className={styles.matrixQuestionMeta}>
+                      <span>{row.typeLabel}</span>
+                      <AnalysisTrigger classroomId={classroomId} worksheetId={sheet.id} row={row} compact
+                        onOpen={() => onOpenAnalysis(sheet.id, row.questionId)} />
+                    </div>
+                  </th>
+                  {participants.map((participant) => {
+                    const state = row.cells[participant.participantId];
+                    return <td key={participant.participantId} className={styles.bodyCell} data-stuck={row.questionId === stuckId}>
+                      <button type="button" onClick={() => onOpenParticipant(participant.participantId, row.questionId)}
+                        title={`${participant.name} · ${row.heading}：${CELL_LABEL[state]}`} className={styles.cellButton}
+                        style={{ '--cell-color': CELL_COLOR[state] } as CSSProperties}>
+                        <span className={styles.srOnly}>{CELL_LABEL[state]}</span>
                       </button>
-                    </th>
-                    {visibleRows.map((row) => {
-                      const state = row.cells[participant.participantId];
-                      return (
-                        <td key={row.questionId} className={styles.bodyCell} data-stuck={row.questionId === stuckId}>
-                          <button type="button"
-                            onClick={() => onOpenParticipant(participant.participantId, row.questionId)}
-                            title={`${participant.name} · ${row.heading}：${CELL_LABEL[state]}`}
-                            className={styles.cellButton}
-                            style={{ '--cell-color': CELL_COLOR[state] } as CSSProperties}>
-                            <span className={styles.srOnly}>{CELL_LABEL[state]}</span>
-                          </button>
-                        </td>
-                      );
-                    })}
-                    <td className={styles.aggregateCell}>
-                      <button type="button" onClick={() => onOpenParticipant(participant.participantId)}>
-                        <strong>{submitted}/{visibleRows.length}</strong>
-                        <span>{drafting > 0 ? `${drafting} 题作答中` : submitted === visibleRows.length ? '已完成' : '已提交'}</span>
-                      </button>
-                    </td>
-                  </tr>
-                );
+                    </td>;
+                  })}
+                  <td className={styles.aggregateCell}>
+                    <button type="button" onClick={() => onOpenQuestion(sheet.id, row.questionId)}>
+                      <strong>{tally.submitted}/{tally.total}</strong><span>已提交</span>
+                    </button>
+                  </td>
+                </tr>;
               })}
             </tbody>
             <tfoot>
               <tr>
-                <th className={styles.matrixFooterLabel}>全班概况</th>
-                {visibleRows.map((row) => {
-                  const tally = rowTally(row);
-                  return (
-                    <td key={row.questionId} className={styles.matrixFooterCell} data-stuck={row.questionId === stuckId}>
-                      <button type="button" onClick={() => onOpenQuestion(sheet.id, row.questionId)}>
-                        <strong>{tally.submitted}/{tally.total}</strong>
-                        <span>已提交</span>
-                      </button>
-                    </td>
-                  );
+                <th className={styles.matrixFooterLabel}>完成题数</th>
+                {participants.map((participant) => {
+                  const submitted = visibleRows.filter(row => row.cells[participant.participantId] === 'submitted').length;
+                  return <td key={participant.participantId} className={styles.matrixFooterCell}>
+                    <button type="button" onClick={() => onOpenParticipant(participant.participantId)}>
+                      <strong>{submitted}/{visibleRows.length}</strong>
+                    </button>
+                  </td>;
                 })}
                 <td className={styles.matrixFooterTotal}>{totalSubmissions} 份作答</td>
               </tr>
@@ -496,26 +535,35 @@ function MatrixBlock({
 }
 
 /** 第一次点击静默启动后台分析；完成后同一位置变成结果入口。 */
-function AnalysisTrigger({ classroomId, worksheetId, row, onOpen }: {
+function AnalysisTrigger({ classroomId, worksheetId, row, onOpen, analyzed, compact = false }: {
   classroomId: string;
   worksheetId: string;
-  row: MatrixRow;
+  row: Pick<MatrixRow, 'questionId' | 'heading'>;
   onOpen: () => void;
+  analyzed?: boolean;
+  compact?: boolean;
 }) {
   const [checking, setChecking] = useState(false);
-  const [ready, setReady] = useState(() => hasCompletedWorksheetAnalysis(classroomId, worksheetId, row.questionId));
+  const [ready, setReady] = useState(() => Boolean(analyzed) || hasCompletedWorksheetAnalysis(classroomId, worksheetId, row.questionId));
   const [, setTick] = useState(0);
   const task = activeWorksheetAnalysisTask(classroomId, worksheetId, row.questionId);
 
   // 页面重新进入后也要识别服务端已经保存的 AI 结果，不能只依赖本次会话的内存标记。
   useEffect(() => {
+    if (analyzed !== undefined) { if (analyzed) setReady(true); return; }
     if (ready || task) return;
     let alive = true;
     void api.getWorksheetAnalysis(classroomId, worksheetId, row.questionId)
       .then((stored) => { if (alive && stored.narrative) setReady(true); })
       .catch(() => { /* 404 表示尚未分析；入口保持初始状态即可。 */ });
     return () => { alive = false; };
-  }, [classroomId, worksheetId, row.questionId, ready, task]);
+  }, [classroomId, worksheetId, row.questionId, ready, task, analyzed]);
+
+  useEffect(() => {
+    const started = () => setTick(value => value + 1);
+    window.addEventListener(WORKSHEET_ANALYSIS_STARTED_EVENT, started);
+    return () => window.removeEventListener(WORKSHEET_ANALYSIS_STARTED_EVENT, started);
+  }, []);
 
   const watch = (backgroundTask: BackgroundAnalysisTask) => {
     setTick((value) => value + 1);
@@ -563,8 +611,8 @@ function AnalysisTrigger({ classroomId, worksheetId, row, onOpen }: {
   else if (task) {
     buttonState = 'running';
     const elapsed = Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000));
-    text = worksheetAnalysisProgressLabel(task.stage, elapsed);
-  } else if (ready) { text = '查看 AI 分析'; buttonState = 'ready'; }
+    text = compact ? `分析中 ${elapsed}s` : worksheetAnalysisProgressLabel(task.stage, elapsed);
+  } else if (ready) { text = compact ? '查看分析' : '查看 AI 分析'; buttonState = 'ready'; }
 
   return (
     <button type="button" onClick={() => void handleClick()} disabled={checking || Boolean(task)}

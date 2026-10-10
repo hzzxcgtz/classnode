@@ -352,3 +352,9 @@ test('🔴 全部可作答题型都有智能体解读入口，未知类型没有
   assert.equal(showsAgentAnalysis({ type: 'task' }), false);
   assert.equal(showsAgentAnalysis({ type: 'future-type' }), false);
 });
+
+test('排序完整命中人数按每份作答统计，不把全班命中的位置数当作人数', () => {
+  const n = node('order', {items:[{id:'a',text:'甲'},{id:'b',text:'乙'}],correctOrder:['a','b']});
+  const stats = questionStats(n, [row({value:{format:'order/v1',order:['a','b']}}),row({value:{format:'order/v1',order:['b','a']}})]);
+  assert.ok(stats.insights.some(item=>item.text==='2 人里，有 1 人每一处都排在答案的位置上。'));
+});

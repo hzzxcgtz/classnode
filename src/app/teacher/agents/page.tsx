@@ -120,6 +120,7 @@ export default function AgentsPage() {
     <div>
       <TeacherPageHeader title="AI 智能体" description="接入并管理课堂使用的 AI 智能体。" actions={
         <>
+          <a className="btn btn-secondary" href="/teacher/agents/templates/">提示词模板库</a>
           {/* ★ 2026-09-25：与「接入智能体」并排。⚠️ 在**没有 token 时也显示** ——
               它就是教师第一次该去的地方（Coze 低代码的智能体要选一份 Token）。 */}
           <button className="btn btn-secondary" onClick={() => setShowTokens(true)}>

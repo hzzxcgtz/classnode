@@ -1,6 +1,7 @@
 'use client';
 
 import { normalizeGeneration, type WorksheetGeneration } from './worksheet-generation';
+import { subscribeWorksheetAnalysisUpdated } from './worksheet-socket-bus';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
@@ -53,10 +54,20 @@ import {
 } from './use-worksheet-answers';
 import { readCorrectBlanks, type SavedAnswerRow } from './worksheet-queue';
 import { QuestionReward, RewardBurst, RewardTotal } from './reward-badge';
-import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { ResultGlyph } from './result-glyph';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 import styles from './worksheet.module.css';
+
+function AiFeedbackIcon({ advice = false }: { advice?: boolean }) {
+  if (!advice) return <img src="/logo.png" alt="" className={styles.aiFeedbackIcon} />;
+  return (
+    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" className={styles.aiFeedbackIcon}>
+      <path d="M11 21c0-3-4-4.5-4-10a9 9 0 0 1 18 0c0 5.5-4 7-4 10" fill="#fff0ae" stroke="#bb862b" strokeWidth="1.8" />
+      <path d="M12 23h8m-7 4h6m-6-12 3 3 3-3m-3 3v4" stroke="#bb862b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="13" cy="11" r="1" fill="#926520" /><circle cx="19" cy="11" r="1" fill="#926520" />
+    </svg>
+  );
+}
 
 /**
  * 学生端的学习单面板（规格 §8）。
@@ -171,6 +182,12 @@ function parseAiReferenceScores(raw: unknown): Record<string, StudentAiReference
   return result;
 }
 
+function parseAiAdvice(raw: unknown): Record<string, string> {
+  const rows = raw && typeof raw === 'object' ? (raw as { rows?: unknown }).rows : null;
+  if (!Array.isArray(rows)) return {};
+  return Object.fromEntries(rows.filter(row => row && typeof row.questionId === 'string' && typeof row.aiAdvice === 'string' && row.aiAdvice.trim()).map(row => [row.questionId, row.aiAdvice.slice(0, 1200)]));
+}
+
 /** `student-view` 的一次读取。 */
 interface LoadedWorksheet {
   id: string;
@@ -244,6 +261,7 @@ interface LoadedWorksheet {
    *   奖励那一格读的是行上的 `score`。⚠️ 别再写「不参与正式判分与奖励」。
    */
   aiReferenceScores: Record<string, StudentAiReferenceScore>;
+  aiAdvice: Record<string, string>;
   /**
    * ★ 2026-09-30：这间课堂**已开放的题 id**（教师看板的「逐题开放」，`manual` 档才用得上）。
    *
@@ -332,6 +350,7 @@ export interface WorksheetQuestionListProps {
   gradeStates?: Record<string, WorksheetGradeState | null>;
   /** 远程智能体给当前学生的参考分；只在学生端传入，教师预览不显示。 */
   aiReferenceScores?: Record<string, StudentAiReferenceScore>;
+  aiAdvice?: Record<string, string>;
   wrongBlankIndexes?: Record<string, number[]>;
   /** ★ 2026-09-27：答错的空的正确答案（空下标 → 答案）。**只在已提交的题上有内容**。 */
   correctBlanks?: Record<string, Record<string, string>>;
@@ -372,6 +391,7 @@ export function WorksheetQuestionList({
   scores,
   gradeStates,
   aiReferenceScores,
+  aiAdvice,
   wrongBlankIndexes,
   correctBlanks,
   rewardBursts,
@@ -466,6 +486,7 @@ export function WorksheetQuestionList({
         const questionIcon = <span className={styles.questionIcon}>{questionTypeIcon(node.type)}</span>;
         const gradeState = interactive ? gradeStates?.[node.id] : undefined;
         const aiReferenceScore = interactive ? aiReferenceScores?.[node.id] : undefined;
+        const studentAdvice = interactive ? aiAdvice?.[node.id] || aiReferenceScore?.advice : undefined;
         const mixedFillScoring = node.type === 'fill-blank'
           && node.autoGrade !== false
           && hasExplicitFillGrading(fillSettingsFor(node, promptRuns))
@@ -548,12 +569,13 @@ export function WorksheetQuestionList({
                   data-tone="ai-reference"
                   aria-label={aiReferenceScore.score === null
                     ? 'AI 暂时无法可靠评分，但给出了学习建议'
-                    : `AI 评分 ${aiReferenceScore.score}/${aiReferenceScore.maxScore} ${aiReferenceScore.unit}。这是 AI 给你的小建议`}
+                    : `AI 评分 ${aiReferenceScore.score}/${aiReferenceScore.maxScore} ${aiReferenceScore.unit}。AI 参考评分`}
                 >
-                  {reward && aiReferenceScore.score !== null && <RewardIcon kind={reward.style} state="earned" size={20} />}
-                  <b>{aiReferenceScore.score === null ? 'AI 建议' : `${aiReferenceScore.score}/${aiReferenceScore.maxScore}`}</b>
-                  {aiReferenceScore.score !== null && (!reward || reward.style === 'points') && <em>{aiReferenceScore.unit}</em>}
-                  <small>这是 AI 给你的小建议</small>
+                  {!reward && aiReferenceScore.score !== null && <>
+                    <b>{`${aiReferenceScore.score}/${aiReferenceScore.maxScore}`}</b>
+                    <em>{aiReferenceScore.unit}</em>
+                  </>}
+                  <small>{aiReferenceScore.score === null ? 'AI 暂无法评分' : 'AI 参考评分'}</small>
                 </span>
               )}
             </div>
@@ -670,22 +692,24 @@ export function WorksheetQuestionList({
 
             {interactive && aiReferenceScore?.comment && (
               <aside className={styles.aiScoreComment} aria-label="AI 评分反馈">
-                <span className={styles.aiScoreCommentMark} aria-hidden="true">AI</span>
-                <details className={styles.aiScoreCommentBody}>
-                  <summary className={styles.aiScoreCommentSummary}>
-                    <span className={styles.aiScoreCommentHeading}>
-                      <strong>AI 给你的评价</strong>
-                      <small>{aiReferenceScore.advice ? '点击查看详细建议' : '继续保持并认真订正'}</small>
-                    </span>
-                    <span className={styles.aiScoreCommentText}>{aiReferenceScore.comment}</span>
-                  </summary>
-                  {aiReferenceScore.advice && (
-                    <span className={styles.aiScoreAdvice}>
-                      <strong>接下来可以这样做</strong>
-                      <span>{aiReferenceScore.advice}</span>
-                    </span>
+                <span className={styles.aiScoreCommentMark}><AiFeedbackIcon /></span>
+                <div className={styles.aiScoreCommentBody}>
+                  <strong className={styles.aiScoreCommentHeading}>AI 给你的评价</strong>
+                  <p className={styles.aiScoreCommentText}>{aiReferenceScore.comment}</p>
+                  {studentAdvice && (
+                    <div className={styles.aiScoreAdvice}>
+                      <strong><AiFeedbackIcon advice />小建议</strong>
+                      <p>{studentAdvice}</p>
+                    </div>
                   )}
-                </details>
+                </div>
+              </aside>
+            )}
+
+            {interactive && studentAdvice && !aiReferenceScore?.comment && (
+              <aside className={styles.aiScoreComment} aria-label="小建议">
+                <span className={`${styles.aiScoreCommentMark} ${styles.aiAdviceMark}`}><AiFeedbackIcon advice /></span>
+                <div className={styles.aiScoreCommentBody}><strong className={styles.aiScoreCommentHeading}>小建议</strong><p className={styles.aiScoreCommentText}>{studentAdvice}</p></div>
               </aside>
             )}
 
@@ -911,6 +935,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             savedAnswers: parseSavedAnswers(rowsData),
             generation: normalizeGeneration(rowsData?.generation),
             aiReferenceScores: parseAiReferenceScores(rowsData),
+            aiAdvice: parseAiAdvice(rowsData),
           },
         });
       } catch {
@@ -919,6 +944,31 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
     })();
     return () => { cancelled = true; };
   }, [worksheetId, reloadToken]);
+
+  // 只更新AI反馈；保留答案数组引用，避免刷新建议时覆盖学生正在编辑的草稿。
+  useEffect(() => {
+    if (!worksheetId) return;
+    let cancelled = false;
+    let revision = 0;
+    const refresh = async () => {
+      const current = ++revision;
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/api/worksheets/${encodeURIComponent(worksheetId)}/answers`, { credentials: 'include', headers: getStudentSessionAuthorization() });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled || current !== revision) return;
+        setLoad(previous => previous.kind === 'ready' && previous.worksheet.id === worksheetId
+          ? { ...previous, worksheet: { ...previous.worksheet, aiReferenceScores: parseAiReferenceScores(data), aiAdvice: parseAiAdvice(data) } }
+          : previous);
+      } catch { /* 保留已有反馈，稍后重新取得焦点时重试。 */ }
+    };
+    const unsubscribe = subscribeWorksheetAnalysisUpdated(event => { if (event.worksheetId === worksheetId) void refresh(); });
+    const visible = () => { if (document.visibilityState === 'visible') void refresh(); };
+    window.addEventListener('focus', visible);
+    document.addEventListener('visibilitychange', visible);
+    if (active) void refresh();
+    return () => { cancelled = true; unsubscribe(); window.removeEventListener('focus', visible); document.removeEventListener('visibilitychange', visible); };
+  }, [worksheetId, session?.id, active]);
 
   const questions = load.kind === 'ready' ? load.worksheet.questions : [];
   const answers = useWorksheetAnswers({
@@ -1098,6 +1148,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
               scores={answers.scores}
               gradeStates={answers.gradeStates}
               aiReferenceScores={load.worksheet.aiReferenceScores}
+              aiAdvice={load.worksheet.aiAdvice}
               wrongBlankIndexes={answers.wrongBlankIndexes}
               correctBlanks={answers.correctBlanks}
               rewardBursts={answers.rewardBursts}

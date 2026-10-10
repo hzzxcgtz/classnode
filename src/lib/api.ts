@@ -571,7 +571,9 @@ export const api = {
   runWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string, only?: string[]) =>
     request<{
       narrative: string;
+      analyzedAt: string | null;
       perStudent: WorksheetAnalysisPayload['perStudent'];
+      feedback?: WorksheetAnalysisPayload['feedback'];
       agentId: string;
       model: string;
     }>(

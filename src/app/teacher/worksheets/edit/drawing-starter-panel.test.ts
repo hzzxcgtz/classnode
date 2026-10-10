@@ -44,8 +44,8 @@ test('★ 底稿面板：用学生的画板、写回带 tool 的 drawingStarter�
   // ⑤ 数学作图也复用学生画板来制作不可修改的题目底图。
   assert.match(source, /import MathDrawing from '@\/app\/classroom\/worksheet\/questions\/drawing-surfaces\/math-drawing'/,
     '数学初始图没有复用学生端画板');
-  assert.match(source, /drawingStarter: \{ tool: 'math', data: next \}/, '数学初始图没有按 math 数据写回');
-  assert.match(source, /基础绘图暂不支持结构化初始图/, '基础绘图没有说明当前能力');
+  assert.match(source, /drawingStarter: \{ tool: 'math', data: next \}, drawingBackgroundPreset: undefined, drawingBackgroundImageUrl: undefined/, '数学初始图没有按 math 数据写回');
+  assert.match(source, /starterSupported && \(tool !== 'math' \|\| mathSource === 'draw'\)/, '基础绘图不应显示初始图，数学上传底图不应同时显示绘制入口');
   assert.match(source, /不能选中、移动、旋转或删除/, '没有向教师说明数学底图在学生端不可修改');
 });
 

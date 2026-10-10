@@ -3,6 +3,8 @@
 import { api } from './api';
 import type { WorksheetAnalysisPayload } from './types';
 
+export const WORKSHEET_ANALYSIS_STARTED_EVENT = 'classnode:worksheet-analysis-started';
+
 export const WORKSHEET_ANALYSIS_NOTICE_EVENT = 'classnode:worksheet-analysis-notice';
 
 export interface WorksheetAnalysisNotice {
@@ -15,7 +17,9 @@ export interface WorksheetAnalysisNotice {
 
 type AnalysisResult = {
   narrative: string;
+  analyzedAt?: string | null;
   perStudent: WorksheetAnalysisPayload['perStudent'];
+  feedback?: WorksheetAnalysisPayload['feedback'];
   agentId: string;
   model: string;
 };
@@ -98,6 +102,7 @@ export function startWorksheetAnalysisTask(input: {
     });
   task.promise = promise;
   tasks.set(key, task);
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(WORKSHEET_ANALYSIS_STARTED_EVENT));
   return task;
 }
 

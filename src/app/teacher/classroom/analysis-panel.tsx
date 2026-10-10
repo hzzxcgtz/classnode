@@ -5,11 +5,13 @@ import { api } from '@/lib/api';
 import { isNotFound } from '@/lib/http-error';
 import type { WorksheetAnalysisPayload } from '@/lib/types';
 import { moduleCountUnit } from './worksheet-tile-state';
-import { activeWorksheetAnalysisTask, startWorksheetAnalysisTask } from '@/lib/worksheet-analysis-background';
+import { activeWorksheetAnalysisTask, startWorksheetAnalysisTask, WORKSHEET_ANALYSIS_STARTED_EVENT } from '@/lib/worksheet-analysis-background';
 import { worksheetAnalysisProgressLabel } from '@/lib/worksheet-analysis-progress';
-import { cellLabelOf, localizeLegacyLabels } from '@/lib/worksheet-analysis-cells';
-import { Markdown } from '@/lib/markdown';
-import { normalizeWorksheetAnalysisMarkdown } from '@/lib/worksheet-analysis-markdown';
+import { localizeLegacyLabels } from '@/lib/worksheet-analysis-cells';
+import { AnalysisReport } from './analysis-report';
+import { scoreParticipantMeta, sortAnalysisScores } from '@/lib/worksheet-analysis-score-display';
+import { RewardIcon } from '@/components/worksheet-reward-icon';
+import { pointsUnitLabel, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
 import styles from './analysis-panel.module.css';
 
 export type AnalysisOperation = 'analyzing' | null;
@@ -61,6 +63,7 @@ export function useWorksheetAnalysis(
   worksheetId: string,
   questionId: string,
   mode: string,
+  enabled = true,
 ): WorksheetAnalysisState {
   const [payload, setPayload] = useState<WorksheetAnalysisPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,6 +73,12 @@ export function useWorksheetAnalysis(
   const [error, setError] = useState<string | null>(null);
   const [sheetFailed, setSheetFailed] = useState(false);
   const busy = operation !== null;
+  const [taskRevision, setTaskRevision] = useState(0);
+  useEffect(() => {
+    const started = () => setTaskRevision(value => value + 1);
+    window.addEventListener(WORKSHEET_ANALYSIS_STARTED_EVENT, started);
+    return () => window.removeEventListener(WORKSHEET_ANALYSIS_STARTED_EVENT, started);
+  }, []);
 
   useEffect(() => {
     if (operation !== 'analyzing') return;
@@ -106,7 +115,7 @@ export function useWorksheetAnalysis(
         setOperation(null);
       });
     return () => { alive = false; window.clearInterval(stageTimer); };
-  }, [classroomId, worksheetId, questionId]);
+  }, [classroomId, worksheetId, questionId, taskRevision]);
 
   /** 打开时先读已存的（不重算）；没算过则算一次。 */
   const load = useCallback(async () => {
@@ -129,7 +138,7 @@ export function useWorksheetAnalysis(
     }
   }, [classroomId, worksheetId, questionId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (enabled) void load(); }, [load, enabled]);
 
   const run = useCallback(async (only?: string[]) => {
     setOperation('analyzing');
@@ -202,7 +211,8 @@ export function AnalysisBanners({ state }: { state: WorksheetAnalysisState }) {
  * 正文（文档 / 联系表 / 解读 / 确认块）。
  * ⚠️ **从 `analysis-overlay.tsx` 原样搬过来**，行为一个字没改。
  */
-export function AnalysisBody({ state, classroomId, worksheetId, questionId, nameOf }: {
+export function AnalysisBody({ state, classroomId, worksheetId, questionId, nameOf, compact = false }: {
+  compact?: boolean;
   state: WorksheetAnalysisState;
   classroomId: string;
   worksheetId: string;
@@ -254,7 +264,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
   };
 
   return (
-    <div className={styles.body}>
+    <div className={`${styles.body} ${compact ? styles.compactBody : ''}`}>
       {loading && <div className={styles.loading}>正在读取已保存的分析结果…</div>}
 
       {!loading && payload && payload.covered === 0 && (
@@ -322,76 +332,93 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
       )}
 
       {!loading && payload?.perStudent && (
-        <section className={styles.scoreCard} aria-label="AI 评分">
-          <div className={styles.scoreHeader}>
+        <details className={styles.scoreCard} aria-label="AI 评分" key={`${classroomId}:${worksheetId}:${questionId}`}>
+          <summary className={styles.scoreHeader}>
             <div>
               <strong>AI 评分</strong>
               <span>满额 {payload.perStudent.maxScore} {payload.perStudent.unit}</span>
             </div>
             {/* ★ 2026-10-07（教师裁定 2）：这份分**已经写回成绩**（进总分、进奖励、进报告），
                 不再是「仅供参考」的旁注 —— 那句话会让教师以为不必核对。 */}
-            <span className={styles.aiScoreNotice}>已计入成绩</span>
-          </div>
+            <div className={styles.scoreHeaderActions}>
+              <span className={styles.aiScoreNotice}>已计入成绩</span>
+              <span className={styles.scoreToggleClosed}>展开评分 ▾</span>
+              <span className={styles.scoreToggleOpen}>收拢评分 ▴</span>
+            </div>
+          </summary>
           {payload.perStudent.criteria && (
             /* ★ 2026-10-05：「评分要求」与「评分标准」在编辑器里已合并成同一份东西
                （唯一读取点 `rubricTextOf`）⇒ 这里跟着改名，同一个东西不叫两个名字。
                存下来的这一份是**那次分析时**用的文字，旧分析里的仍是当年的「评分要求」原文。 */
             <div className={styles.scoreCriteria}>评分标准：{payload.perStudent.criteria}</div>
           )}
-          {/*
-            ★ 2026-10-07（教师：40 人一起交给智能体）—— **模型看串格是会发生的事**：
-            解析只要求「代号在名单里」，认错了也照收 ⇒ 分会贴到别人头上，而**两边都不报错**。
-            能核对的那张「代号 ↔ 真名 ↔ 第几格」对照表原来藏在「查看发送数据」折叠区里，
-            不看就无从核对 ⇒ 现在把它搬到每一行评分旁边（`cellLabelOf` 与联系表同一个编号），
-            并在上面写一句怎么用。
-          */}
-          <div className={styles.scoreCheckHint}>
-            下面每条评分都标着它对应的「第几格」（与上方联系表同一个编号）。
-            要是某条评价跟那位同学画的对不上，多半是智能体把格子看串了 —— 点「重新生成」再跑一次通常就好。
-          </div>
           <div className={styles.scoreList}>
-            {payload.perStudent.scores.map((item) => (
+            {sortAnalysisScores(payload.perStudent.scores, payload.entries).map((item) => (
               <div className={styles.scoreRow} key={item.studentId}>
                 <span className={styles.scoreName}>
                   {payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '未命名学生'}
                   {(() => {
-                    const cell = cellLabelOf(payload.entries, item.studentId);
-                    return cell ? <span className={styles.scoreCell}>{cell}</span> : null;
+                    const meta = scoreParticipantMeta(payload.entries, item.studentId);
+                    return <span className={styles.scoreCell}>
+                      {meta.number && `#${meta.number}`}
+                    </span>;
                   })()}
                 </span>
                 <strong className={styles.scoreValue}>
-                  {item.score === null ? '暂无法评分' : `${item.score} / ${payload.perStudent!.maxScore} ${payload.perStudent!.unit}`}
+                  {(() => {
+                    if (item.score === null) return '暂无法评分';
+                    if (item.score === 0) return null;
+                    const unit = payload.perStudent!.unit;
+                    const reward = REWARD_STYLE_OPTIONS.find(option => option.value !== 'points' && pointsUnitLabel(option.value) === unit);
+                    if (!reward || !Number.isInteger(item.score)) return `${item.score} / ${payload.perStudent!.maxScore} ${unit}`;
+                    return <span className={styles.scoreRewards} role="img" aria-label={`${item.score} ${unit}，满额 ${payload.perStudent!.maxScore}`} title={`${item.score} / ${payload.perStudent!.maxScore} ${unit}`}>
+                      {Array.from({ length: item.score }, (_, index) => <RewardIcon key={index} kind={reward.value} size={22} />)}
+                    </span>;
+                  })()}
                 </strong>
                 <div className={styles.scoreReason}>
                   <span>{item.reason || '智能体未补充简短评价'}</span>
-                  {item.advice && (
-                    <details className={styles.scoreAdvice}>
-                      <summary>查看给学生的详细建议</summary>
-                      <p>{item.advice}</p>
-                    </details>
+                  {(payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice || item.advice) && (
+                    <div className={styles.scoreAdvice}>
+                      <strong className={styles.scoreAdviceHeading}>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.9.6-1.5 1.5-1.5 2.5h-4c0-1-.6-1.9-1.5-2.5Z" />
+                        </svg>
+                        AI 给{payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位'}同学的小建议
+                      </strong>
+                      <p>{payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice || item.advice}</p>
+                    </div>
                   )}
                 </div>
               </div>
             ))}
           </div>
-        </section>
+        </details>
       )}
+
+      {!loading && payload?.feedback && (() => {
+        const scored = new Set((payload.perStudent?.scores ?? []).filter(row => row.advice).map(row => row.studentId));
+        const students = sortAnalysisScores(payload.feedback.students.filter(row => !scored.has(row.studentId)), payload.entries);
+        const missing = payload.feedback.missing.filter(id => !scored.has(id));
+        if (students.length === 0 && missing.length === 0) return null;
+        return <details className={styles.scoreCard} aria-label="学生小建议" key={`feedback:${classroomId}:${worksheetId}:${questionId}`}>
+          <summary className={styles.scoreHeader}><div><strong>学生小建议</strong><span>{students.length} 条</span></div><div><span className={styles.scoreToggleClosed}>展开建议 ▾</span><span className={styles.scoreToggleOpen}>收拢建议 ▴</span></div></summary>
+          {missing.length > 0 && <div className={styles.scoreCriteria}>还有 {missing.length} 位同学的小建议未通过核对或未返回，可重新分析补全。</div>}
+          <div className={styles.scoreList}>{students.map(item => <div className={styles.feedbackRow} key={item.studentId}>
+            <span className={styles.scoreName}>{payload.participantNames?.[item.studentId] ?? '未命名学生'} <span className={styles.scoreCell}>{scoreParticipantMeta(payload.entries, item.studentId).number && `#${scoreParticipantMeta(payload.entries, item.studentId).number}`}</span></span>
+            <div className={styles.scoreAdvice}><strong className={styles.scoreAdviceHeading}>AI 给{payload.participantNames?.[item.studentId] ?? '这位'}同学的小建议</strong><p>{item.advice}</p></div>
+          </div>)}</div>
+        </details>;
+      })()}
 
       {!loading && payload && payload.covered > 0 && payload.narrative && (
         <section className={styles.resultCard} aria-label="AI 分析结果">
-          <div className={styles.resultHeader}>
-            <span className={styles.aiMark}>AI</span>
-            <span className={styles.resultTitle}>AI 分析</span>
-            {payload.model && <span className={styles.resultMeta}>{payload.model}</span>}
-          </div>
-          <Markdown className={styles.resultText} allowImages={false}>
-            {normalizeWorksheetAnalysisMarkdown(localize(payload.narrative) ?? '')}
-          </Markdown>
+          <AnalysisReport className={styles.resultText} payload={payload} text={localize(payload.narrative) ?? ''} />
         </section>
       )}
 
       {!loading && payload && payload.covered > 0 && !payload.narrative && (
-        <div className={styles.emptyResult}>尚未生成 AI 分析。点击下方按钮后，任务会在后台完成并自动保存。</div>
+        <div className={styles.emptyResult}>尚未开始分析。点击分析按钮后，任务会在后台完成并自动保存。</div>
       )}
 
       {!loading && payload && (
@@ -455,18 +482,19 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 }
 
 /** 结果窗底部：查看结果后可以直接重新分析，不再出现发送内容确认步骤。 */
-export function AnalysisActions({ state }: { state: WorksheetAnalysisState }) {
+export function AnalysisActions({ state, compact = false }: { state: WorksheetAnalysisState; compact?: boolean }) {
   const { payload, busy, operation, runStage, runElapsedSeconds } = state;
   let actionText = payload?.narrative
-    ? (payload.aiScoring.enabled ? '重新生成 AI 分析与评分' : '重新生成 AI 分析')
-    : (payload?.aiScoring.enabled ? '生成 AI 分析与评分' : '生成 AI 分析');
+    ? (payload.aiScoring.enabled ? '重新分析与评分' : '重新分析')
+    : (payload?.aiScoring.enabled ? '分析与评分' : '开始分析');
   if (operation === 'analyzing' && runStage) actionText = worksheetAnalysisProgressLabel(runStage, runElapsedSeconds);
   return (
-    <div className={styles.actions}>
+    <div className={`${styles.actions} ${compact ? styles.compactActions : ''}`}>
       <button type="button" disabled={!payload?.canSend.ok || busy}
         onClick={() => void state.run()}
-        title={payload && !payload.canSend.ok ? payload.canSend.reason : undefined}
+        title={payload && !payload.canSend.ok ? payload.canSend.reason : '分析会在后台执行，完成后自动保存'}
         className={styles.actionButton}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6 7a7 7 0 0 1 11-2l3 3M4 16l3 3a7 7 0 0 0 11-2" /></svg>
         {actionText}
       </button>
       {/* 不可点时必须**说出来为什么** —— 只灰掉一个按钮，教师不知道该去哪儿修 */}

@@ -17,6 +17,7 @@ import { blankStarterFor, readDrawingStarter } from '@/lib/worksheet-drawing-sta
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { EditorIcon } from '../editor-icons';
+import { mathBackgroundPatch, mathBackgroundSource, type MathBackgroundSource } from '@/lib/worksheet-drawing-background-choice';
 
 /**
  * ★ 2026-10-07：思维导图的**空底稿**（只有中心主题）。
@@ -42,6 +43,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
   const starter = readDrawingStarter(node);
   /** ★ 2026-10-07：这一档能不能有初始图（判据在 `blankStarterFor`，不在这一屏）。 */
   const starterSupported = blankStarterFor(tool) !== null;
+  const mathSource = mathBackgroundSource(node);
   /** 作答方式：`photo` = 学生拍照上传 ⇒ 这一页的画板相关设置全都不参与（见下面那段注释）。 */
   const photo = node.inputMode === 'photo';
   /**
@@ -55,14 +57,22 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
   const [uploading, setUploading] = useState(false);
 
   const selectTool = (value: DrawingMode) => {
-    onDataChange({ drawingTool: value, drawingExtensions: undefined });
+    if (value === 'free' && starter && !window.confirm('基础绘图不使用初始图，切换后会清除当前初始图，确定吗？')) return;
+    onDataChange({ drawingTool: value, drawingExtensions: undefined,
+      ...(value === 'free' ? { drawingStarter: undefined } : {}) });
+  };
+
+  const selectMathSource = (source: MathBackgroundSource) => {
+    if (source === 'upload' && starter && !window.confirm('改为上传底图会清除教师绘制的底图，确定吗？')) return;
+    if (source === 'draw' && background.url && !window.confirm('改为教师绘制底图会移除已上传的底图，确定吗？')) return;
+    onDataChange(mathBackgroundPatch(node, source));
   };
 
   const uploadBackground = async (file: File) => {
     setUploading(true);
     try {
       const result = await api.uploadWorksheetImage(file);
-      onDataChange({ drawingBackgroundPreset: 'custom', drawingBackgroundImageUrl: result.url });
+      onDataChange({ drawingBackgroundPreset: 'custom', drawingBackgroundImageUrl: result.url, drawingStarter: undefined });
       onNotice('画布底图已上传', 'success');
     } catch (error) {
       onNotice(error instanceof Error ? error.message : '画布底图上传失败', 'error');
@@ -117,6 +127,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
                 aria-checked={checked}
                 className="worksheet-editor-drawing-tool"
                 data-checked={checked ? '1' : '0'}
+                disabled={uploading}
                 onClick={() => selectTool(option.value)}
               >{option.label}</button>
             );
@@ -126,6 +137,22 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
       </section>
 
       {tool === 'math' ? (
+        <section className="worksheet-editor-drawing-section" aria-labelledby={`drawing-source-${node.id}`}>
+          <div className="worksheet-editor-drawing-heading">
+            <h5 id={`drawing-source-${node.id}`}><EditorIcon kind="background" />底图来源</h5>
+          </div>
+          <div className="worksheet-editor-drawing-tools" role="radiogroup" aria-label="数学作图底图来源">
+            {([['upload', '上传底图'], ['draw', '教师绘制底图']] as const).map(([value, label]) => (
+              <button key={value} type="button" role="radio" aria-checked={mathSource === value}
+                className="worksheet-editor-drawing-tool" data-checked={mathSource === value ? '1' : '0'}
+                disabled={uploading} onClick={() => selectMathSource(value)}>{label}</button>
+            ))}
+          </div>
+          <p className="worksheet-editor-drawing-note">两种底图二选一；学生可在底图上作答，不能修改底图。不上传图片也可直接作答。</p>
+        </section>
+      ) : null}
+
+      {tool === 'math' && mathSource === 'upload' ? (
         <section className="worksheet-editor-drawing-section" aria-labelledby={`drawing-background-${node.id}`}>
           <div className="worksheet-editor-drawing-heading">
             <div>
@@ -184,12 +211,12 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
         ⚠️ 现在只有**流程图**这一档接好了（教师：「先拿流程图当试点」）——与其给一个
           画不了东西的空框，不如把话说清楚。
       */}
-      <section className="worksheet-editor-drawing-section" aria-labelledby={`drawing-starter-${node.id}`}>
+      {starterSupported && (tool !== 'math' || mathSource === 'draw') ? <section className="worksheet-editor-drawing-section" aria-labelledby={`drawing-starter-${node.id}`}>
         <div className="worksheet-editor-drawing-heading">
           <div>
-            <h5 id={`drawing-starter-${node.id}`}><EditorIcon kind="starter" />初始图</h5>
+            <h5 id={`drawing-starter-${node.id}`}><EditorIcon kind="starter" />{tool === 'math' ? '教师绘制底图' : '初始图'}</h5>
           </div>
-          <label className="worksheet-editor-drawing-switch">
+          {tool !== 'math' ? <label className="worksheet-editor-drawing-switch">
             {/* ★ 教师澄清 3：「要使用开关按钮，不要使用复选框」⇒ `role="switch"` + 自己画轨道
                 （外观见 globals.css 的 `.worksheet-editor-drawing-switch input[role='switch']`）。 */}
             <input
@@ -222,8 +249,8 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
                 if (blank) onDataChange({ drawingStarter: blank });
               }}
             />
-            <span>{tool === 'math' ? '使用教师绘制的数学底图' : '让学生从这张初始图开始画'}</span>
-          </label>
+            <span>让学生从这张初始图开始画</span>
+          </label> : null}
         </div>
         {/* 流程图与思维导图允许学生接着编辑；数学图在学生端作为独立锁定底层渲染。
             不再提供通用“锁定”开关，避免一种设置同时控制三种语义不同的画板。 */}
@@ -281,19 +308,15 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
               <div className="worksheet-editor-starter-canvas">
                 <MathDrawing
                   data={starter.tool === 'math' ? starter.data : undefined}
-                  backgroundUrl={starterBackgroundUrl}
+                  backgroundUrl={background.preset === 'custom' ? null : starterBackgroundUrl}
                   disabled={false}
-                  onChange={(next: unknown) => onDataChange({ drawingStarter: { tool: 'math', data: next } })}
+                  onChange={(next: unknown) => onDataChange({ drawingStarter: { tool: 'math', data: next }, drawingBackgroundPreset: undefined, drawingBackgroundImageUrl: undefined })}
                 />
               </div>
             </>
-          ) : (
-            <p className="worksheet-editor-drawing-note">
-              基础绘图暂不支持结构化初始图。
-            </p>
-          )
+          ) : null
         ) : null}
-      </section>
+      </section> : null}
     </div>
   );
 }

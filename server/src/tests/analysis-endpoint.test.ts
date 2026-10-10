@@ -19,11 +19,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
+import sharp from 'sharp';
 import { worksheetAccessGate, worksheetRoutes } from '../routes/worksheets.js';
 import { createStudentToken } from '../middleware/student-auth.js';
 
@@ -51,6 +53,41 @@ async function openTempDb() {
  * 而 Prisma 的 JSON 入参类型**不接受** `Record<string, unknown>`（里面的 `unknown` 过不去）。
  */
 const SHORT_ANSWER_NODE: Prisma.InputJsonValue = { id: 'q1', type: 'short-answer', prompt: '说说你的看法', inputMode: 'keyboard', data: {}, children: [] };
+
+test('拍照问答预览与载荷共用5张大图布局，后三张不能404', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const worksheet = await seedWorksheet(p, [{ id: 'photo-q', type: 'short-answer', prompt: '纸上习作', inputMode: 'photo', data: {}, children: [] }]);
+  const room = await p.classroom.create({ data: { title: '照片测试', mode: 'standard', status: 'active' } });
+  await p.classroomWorksheet.create({ data: { classroomId: room.id, worksheetId: worksheet.id } });
+  const uploadDir = path.resolve(HERE, '../../uploads/chat');
+  fs.mkdirSync(uploadDir, { recursive: true });
+  const filename = `chat-${randomUUID()}.png`;
+  const file = path.join(uploadDir, filename);
+  t.after(() => fs.rmSync(file, { force: true }));
+  await sharp({ create: { width: 32, height: 32, channels: 3, background: '#233344' } }).png().toFile(file);
+  const aggregate: Prisma.InputJsonValue[] = [];
+  for (let i = 0; i < 20; i++) {
+    const participant = await seedStudent(p, room.id, `同学${i + 1}`, String(i + 1));
+    aggregate.push({ studentId: participant.id, kind: 'photo', photoUrl: `/uploads/chat/${filename}`, gradeState: null });
+  }
+  await p.worksheetQuestionAnalysis.create({ data: { classroomId: room.id, worksheetId: worksheet.id, questionId: 'photo-q', totalCount: 20, aggregate } });
+  const srv = await withServer(p); t.after(() => srv.close());
+  const payloadResponse = await fetch(analysisUrl(srv.base, worksheet.id, 'photo-q', room.id));
+  assert.equal(payloadResponse.status, 200);
+  const payload = await payloadResponse.json() as { sheetLayouts: Array<{ width: number; height: number }> };
+  assert.equal(payload.sheetLayouts.length, 5);
+  for (let i = 0; i < 5; i++) {
+    const res = await fetch(sheetUrl(srv.base, worksheet.id, 'photo-q', i, room.id));
+    assert.equal(res.status, 200, `第${i + 1}张必须能预览`);
+    assert.match(res.headers.get('content-type') ?? '', /image\/png/);
+    const meta = await sharp(Buffer.from(await res.arrayBuffer())).metadata();
+    assert.equal(meta.width, payload.sheetLayouts[i].width);
+    assert.equal(meta.height, payload.sheetLayouts[i].height);
+  }
+  assert.equal((await fetch(sheetUrl(srv.base, worksheet.id, 'photo-q', 5, room.id))).status, 404);
+});
 /** 一条绘图题的节点（主观题之一 ⇒ 过闸门；它的载荷是**联系表**）。 */
 const DRAWING_NODE: Prisma.InputJsonValue = { id: 'q3', type: 'drawing', prompt: '画一画', inputMode: 'handwriting', data: {}, children: [] };
 /** 一条单选题：本地判分之外，智能体继续解释错误选项反映的理解方式。 */
@@ -272,7 +309,7 @@ test('🔴 重算**不清空** AI 字段（将来 AI 写进去的解读不该被
   const key = { classroomId: classroom.id, worksheetId: worksheet.id, questionId: 'q1' };
   await p.worksheetQuestionAnalysis.update({
     where: { classroomId_worksheetId_questionId: key },
-    data: { narrative: 'AI 写的解读', model: 'some-model' },
+    data: { narrative: 'AI 写的解读', model: 'some-model', analyzedAt: new Date('2026-10-01T12:00:00Z') },
   });
 
   await fetch(analysisUrl(srv.base, worksheet.id, 'q1', classroom.id), { method: 'POST' });
@@ -282,6 +319,15 @@ test('🔴 重算**不清空** AI 字段（将来 AI 写进去的解读不该被
   assert.equal(row?.narrative, 'AI 写的解读', '重算不该把 AI 的解读抹掉 —— 而抹掉是静默的');
   assert.equal(row?.model, 'some-model');
   assert.ok(row?.computedAt, '重算要更新 computedAt');
+  assert.equal(row?.analyzedAt?.toISOString(), '2026-10-01T12:00:00.000Z');
+  const result = await fetch(analysisUrl(srv.base, worksheet.id, 'q1', classroom.id));
+  const saved = await result.json() as Record<string, unknown>;
+  assert.equal(saved.analyzedAt, '2026-10-01T12:00:00.000Z');
+  await seedStudent(p, classroom.id);
+  const board = await fetch(`${srv.base}/api/worksheets/classroom/${classroom.id}/answers`);
+  assert.equal(board.status, 200);
+  const data = await board.json() as { worksheets: Array<{ id: string; analysisTimes: Record<string, string | null> }> };
+  assert.equal(data.worksheets.find(item => item.id === worksheet.id)?.analysisTimes.q1, '2026-10-01T12:00:00.000Z');
 });
 
 test('🔴 安全边界：学生 token 打这三条路径一律 403（它们不是「恰好两段」）', async (t) => {

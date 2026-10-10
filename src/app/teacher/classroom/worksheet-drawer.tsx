@@ -548,13 +548,11 @@ export function ParticipantAnswers({
   /** 从总览矩阵的交叉格进入时，直接展开对应题目。 */
   focusQuestionId?: string | null;
 }) {
-  /**
-   * 教师手动展开/收起过的题（`questionId → 展开?`）。
-   * **没点过的题走默认**（进行中的那一题展开，其余收起）—— 见 `inProgressQuestionId`。
-   * ⚠️ 用 `undefined` 判「没点过」而不是 `false`：`false` 是一个**决定**（他收起了那一题），
-   * 与「他没表过态」是两件事，混起来的表现是「他收起的那一题，等下一个广播来了又自己弹开」。
-   */
-  const [expandedOverride, setExpandedOverride] = useState<Record<string, boolean | undefined>>({});
+  // 未操作时沿用默认展开题；手动选择后只保留一道，null 表示全部收起。
+  // 按参与者与入口题隔离选择，后台刷新不重置教师的展开状态。
+  const [expandedSelection, setExpandedSelection] = useState<{
+    participantId: string; focusQuestionId: string | null; questionId: string | null;
+  } | null>(null);
   const [filter, setFilter] = useState<'all' | 'answered' | 'attention' | 'unanswered'>('all');
 
   const found = findParticipant(board, participantId);
@@ -671,12 +669,14 @@ export function ParticipantAnswers({
             <div className={styles.questionList}>
               {group.map(({ node, label, row, outcome }) => {
                 const busyKey = `${participantId}:${node.id}`;
-                const expanded = expandedOverride[node.id] ?? (node.id === suggestedExpandedId);
+                const selectedId = expandedSelection?.participantId === participantId && expandedSelection.focusQuestionId === focusQuestionId
+                  ? expandedSelection.questionId : suggestedExpandedId;
+                const expanded = node.id === selectedId;
                 const facts = outcome.status === 'unanswered' ? null : processFacts(row, serverNowMs);
                 return (
                   <article key={node.id} className={styles.question}>
                     <button type="button" className={styles.questionHeader}
-                      onClick={() => setExpandedOverride((prev) => ({ ...prev, [node.id]: !expanded }))}
+                      onClick={() => setExpandedSelection({ participantId, focusQuestionId, questionId: expanded ? null : node.id })}
                       aria-expanded={expanded}>
                       <span className={styles.questionNumber}>{label}</span>
                       <span className={styles.questionText}>

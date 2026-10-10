@@ -14,6 +14,11 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 # Foreground frontend + backend
 pnpm dev:all
 
+# Script inventory, command reference, and compatibility aliases
+# See scripts/README.md
+pnpm check:scripts
+pnpm test:scripts
+
 # Next.js 15 development uses Webpack by default. Turbopack currently panics
 # while resolving Next through this pnpm workspace and causes an HMR reload loop.
 
@@ -30,10 +35,10 @@ pnpm build:all
 pnpm build:mac:arm64
 
 # Sync version across all package.json files
-pnpm run sync-version
+pnpm version:sync
 
 # Prepare a release without committing or pushing
-pnpm prepare-release patch
+pnpm release:prepare patch
 
 # Unified release entry point
 ./release.sh --help
@@ -136,14 +141,15 @@ pnpm build:mac:arm64
 ./release.sh source
 ```
 
-The Tauri build process is implemented by `scripts/build-mac.sh` and
-`scripts/package-server.mjs` rather than duplicated in `package.json`:
-1. `sync-version.mjs` — syncs version from root package.json to all sub-packages
+The Tauri build process is implemented by `scripts/build-desktop.mjs` and
+`scripts/package-server.mjs` for both macOS and Windows. `scripts/build-mac.sh`
+is a compatibility wrapper:
+1. `pnpm build` runs `sync-version.mjs` through prebuild to sync all sub-packages
 2. `next build` — builds frontend static export to `out/`
 3. `tsc` — compiles server TypeScript to `server/dist/`
 4. Recreates `src-tauri/resources/server/` for the target architecture
 5. Installs target production dependencies and generates Prisma engines
-6. Initializes the bundled database and downloads the target Node.js runtime
+6. Initializes the bundled database and downloads the target Node.js runtime via `scripts/lib/node-runtime.mjs`
 7. `tauri build` — packages as `.dmg`
 
 ### Key Patterns

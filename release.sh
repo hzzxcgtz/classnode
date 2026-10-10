@@ -3,10 +3,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="$(node -p "require('$ROOT_DIR/package.json').version")"
-OUTPUT_DIR="${CLASSNODE_RELEASE_DIR:-$ROOT_DIR/dist/releases/v$VERSION}"
-INSTALLER_ROOT="${CLASSNODE_INSTALLER_DIR:-$HOME/Downloads/ClassNode/installer}"
-INSTALLER_DIR="$INSTALLER_ROOT/v$VERSION"
 MODE="${1:-all}"
 WINDOWS_ARCH="${2:-both}"
 GENERATED_ARTIFACTS=()
@@ -27,6 +23,8 @@ usage() {
   CLASSNODE_INSTALLER_DIR     安装包归档根目录（默认：~/Downloads/ClassNode/installer）
   CLASSNODE_NODE_VERSION      桌面包内 Node.js 版本
   CLASSNODE_GITHUB_REPOSITORY GitHub 仓库
+  CLASSNODE_RELEASE_BRANCH    Windows Actions 构建分支（默认 main）
+  CLASSNODE_ALLOW_DIRTY_RELEASE  设为 1 允许本地调试；源码包始终仅含 HEAD
 EOF
 }
 
@@ -35,15 +33,30 @@ case "$MODE" in
   all|mac|mac-arm64|mac-intel|windows|source) ;;
   *) echo "错误: 未知发布目标 $MODE" >&2; usage >&2; exit 2 ;;
 esac
-
-mkdir -p "$OUTPUT_DIR"
+if [[ "$MODE" == windows ]]; then
+  [[ $# -le 2 ]] || { echo "错误: windows 仅接受一个架构参数" >&2; exit 2; }
+  case "$WINDOWS_ARCH" in both|all|x64|arm64) ;; *) echo "错误: 未知 Windows 架构 $WINDOWS_ARCH" >&2; exit 2 ;; esac
+else
+  [[ $# -le 1 ]] || { echo "错误: $MODE 不接受额外参数" >&2; exit 2; }
+fi
 cd "$ROOT_DIR"
+VERSION="$(node -p 'require("./package.json").version')"
+OUTPUT_DIR="${CLASSNODE_RELEASE_DIR:-$ROOT_DIR/dist/releases/v$VERSION}"
+INSTALLER_ROOT="${CLASSNODE_INSTALLER_DIR:-$HOME/Downloads/ClassNode/installer}"
+INSTALLER_DIR="$INSTALLER_ROOT/v$VERSION"
 
 if [[ "${CLASSNODE_ALLOW_DIRTY_RELEASE:-0}" != 1 ]] && [[ -n "$(git status --porcelain)" ]]; then
   echo "错误: 工作区有未提交变更，拒绝创建不可复现的发行版" >&2
   echo "请先审查并提交变更；临时调试可设置 CLASSNODE_ALLOW_DIRTY_RELEASE=1" >&2
   exit 1
 fi
+
+# 源码分发始终来自 HEAD，不能以工作树的新版本号给旧提交命名。
+if [[ "$MODE" == source || "$MODE" == all ]]; then
+  head_version="$(git show HEAD:package.json | node -e 'let text="";process.stdin.on("data",chunk=>text+=chunk);process.stdin.on("end",()=>console.log(JSON.parse(text).version))')"
+  [[ "$VERSION" == "$head_version" ]] || { echo "错误: 当前版本 $VERSION 尚未提交（HEAD 为 $head_version），无法生成对应源码包" >&2; exit 1; }
+fi
+if [[ "$MODE" != windows ]]; then mkdir -p "$OUTPUT_DIR"; fi
 
 copy_macos_artifact() {
   local target="$1" suffix="$2" source

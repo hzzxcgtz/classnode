@@ -185,9 +185,9 @@ const WEBAPP_INTERVAL_OPTIONS: Array<{ ms: number; label: string }> = [
   { ms: 30000, label: '30 秒' },
 ];
 
-// 缺省值必须与服务端 `DEFAULT_WEBAPP_CAPTURE` 一致（320 / 10000）。
+// 缺省值必须与服务端 `DEFAULT_WEBAPP_CAPTURE` 一致（640 / 10000）。
 // 教师端拿到的可能是老数据（没有这三个字段），此时按默认显示 —— 而不是显示成"关闭/最小档"。
-const DEFAULT_WEBAPP_WIDTH = 320;
+const DEFAULT_WEBAPP_WIDTH = 640;
 const DEFAULT_WEBAPP_FRAME_INTERVAL_MS = 10000;
 
 /**
@@ -826,8 +826,7 @@ function ClassroomBoardContent() {
   /** 学生卡片的快捷入口仍使用原来的单人学习单抽屉，不提供其他学生切换。 */
   const [worksheetDrawer, setWorksheetDrawer] = useState<WorksheetDrawerEntry | null>(null);
   /**
-   * 打开学习单工作区或单人抽屉时压入的浏览器历史标记。它只对应当前这一层：工作区内部
-   * 切换三个视图不再 pushState，所以教师按一次浏览器返回就回到看板，不会逐层倒退。
+   * 工作区入口与内部查看步骤共用同一会话标记；浏览器后退逐步返回，关闭按钮直接回课堂。
    */
   const worksheetWorkspaceHistoryTokenRef = useRef<number | null>(null);
   /**
@@ -1088,10 +1087,17 @@ function ClassroomBoardContent() {
     return () => window.clearInterval(timer);
   }, []);
 
-  /** 浏览器返回：消费掉学习单界面这一层历史，只关闭工作区或抽屉，看板继续留在原位。 */
+  /** 浏览器返回：恢复工作区内的上一查看步骤；退到入口之外时关闭学习单界面。 */
   useEffect(() => {
     const handlePopState = () => {
       if (worksheetWorkspaceHistoryTokenRef.current === null) return;
+      const state = window.history.state;
+      if (state?.classnodeWorksheetWorkspace === worksheetWorkspaceHistoryTokenRef.current
+        && state.classnodeWorksheetEntry) {
+        setWorksheetWorkspace(state.classnodeWorksheetEntry as WorksheetWorkspaceEntry);
+        setWorksheetDrawer(null);
+        return;
+      }
       worksheetWorkspaceHistoryTokenRef.current = null;
       setWorksheetWorkspace(null);
       setWorksheetDrawer(null);
@@ -1104,7 +1110,8 @@ function ClassroomBoardContent() {
     const token = worksheetWorkspaceHistoryTokenRef.current;
     const state = window.history.state as Record<string, unknown> | null;
     if (token !== null && state?.classnodeWorksheetWorkspace === token) {
-      window.history.back();
+      const depth = typeof state.classnodeWorksheetDepth === 'number' ? state.classnodeWorksheetDepth : 0;
+      window.history.go(-(depth + 1));
       return;
     }
     worksheetWorkspaceHistoryTokenRef.current = null;
@@ -1129,7 +1136,7 @@ function ClassroomBoardContent() {
     if (worksheetWorkspaceHistoryTokenRef.current === null) {
       const previous = window.history.state;
       const base = previous && typeof previous === 'object' ? previous as Record<string, unknown> : {};
-      window.history.pushState({ ...base, classnodeWorksheetWorkspace: token }, '', window.location.href);
+      window.history.pushState({ ...base, classnodeWorksheetWorkspace: token, classnodeWorksheetDepth: 0 }, '', window.location.href);
       worksheetWorkspaceHistoryTokenRef.current = token;
     }
     return token;
@@ -1143,12 +1150,27 @@ function ClassroomBoardContent() {
     setExploreDetailId(null);
     setWorksheetDrawer(null);
     const token = beginWorksheetLayer();
-    setWorksheetWorkspace({ token, ...entry });
+    const workspaceEntry = { token, ...entry };
+    window.history.replaceState({ ...window.history.state, classnodeWorksheetEntry: workspaceEntry }, '', window.location.href);
+    setWorksheetWorkspace(workspaceEntry);
     // ★ 2026-09-28：打开抽屉时**仍然重拉一次**（而不是只吃 30 秒轮询的那一份）。
     // 理由没变、而且更成立了：教师几乎总是为了「此刻他做到哪了」才点开抽屉，而轮询那份
     // 最多可能旧 30 秒。这一次重拉由 `wb` 拥有，所以「数据只有一个来源」这条没有被破坏。
     refreshWorksheetBoard();
   }, [beginWorksheetLayer, refreshWorksheetBoard]);
+
+  const navigateWorksheetWorkspace = useCallback((entry: Omit<WorksheetWorkspaceEntry, 'token'>) => {
+    const token = worksheetWorkspaceHistoryTokenRef.current;
+    if (token === null) return;
+    const workspaceEntry = { token, ...entry };
+    const state = window.history.state;
+    window.history.pushState({
+      ...state,
+      classnodeWorksheetEntry: workspaceEntry,
+      classnodeWorksheetDepth: (state?.classnodeWorksheetDepth ?? 0) + 1,
+    }, '', window.location.href);
+    setWorksheetWorkspace(workspaceEntry);
+  }, []);
 
   /** 学生卡片：恢复原来的单人抽屉。抽屉里只呈现这个参与者，不提供同学列表。 */
   const openWorksheetParticipantDrawer = useCallback((participantId: string) => {
@@ -2680,7 +2702,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   key={group[0].id}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 4,
-                    padding: '3px 4px', borderRadius: 12, background: '#e8eef6',
+                    padding: '3px 4px', borderRadius: 12,
+                    background: group[0].kind === 'state' ? '#eaf2f8' : group[0].kind === 'global' ? '#f2eff8' : '#edf5ef',
                   }}
                 >
                   {group.map((control) => {
@@ -3932,6 +3955,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       {worksheetWorkspace && (
         <MatrixOverlay
           entry={worksheetWorkspace}
+          onNavigate={navigateWorksheetWorkspace}
           board={wb.board}
           nodesByWorksheet={wb.nodesByWorksheet}
           settingsByWorksheet={wb.settingsByWorksheet}

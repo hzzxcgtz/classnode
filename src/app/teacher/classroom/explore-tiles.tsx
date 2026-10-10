@@ -18,14 +18,7 @@ const shotBoxStyle = {
   borderRadius: 8,
 } as const;
 
-/**
- * 学生格子内容区里的「探究空间」。
- *
- * ⚠️ `objectFit: contain` 而不是 `cover`：cover 是**裁切填满**，会把画面切掉一块。
- * 学生端截的是**视口**，比例由他自己的窗口决定，未必是 16:10 ——
- * 实测常见的产物是 320x240 与 320x397 两种。图墙的任务是「一眼看出这个学生在做什么」，
- * **看全**比填满格子重要；留白处的底色就是上面的 background。
- */
+/** 学生格子里的截图等比填满预览区，从顶部展示；完整画面仍可在详情中查看。 */
 export function ExploreTile({ name, state, online, captureEnabled, compact = false }: {
   /** 学生名，只用于 `alt` 文案（格子的姓名行在内容区外面）。 */
   name: string;
@@ -40,7 +33,7 @@ export function ExploreTile({ name, state, online, captureEnabled, compact = fal
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 3 : 6, flex: 1, minHeight: 0 }}>
       <div style={{ ...shotBoxStyle, flex: 1, minHeight: 0 }}>
         {state?.dataUrl ? (
-          <img src={state.dataUrl} alt={`${name} 的探究网页缩略图`} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+          <img src={state.dataUrl} alt={`${name} 的探究网页缩略图`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', display: 'block' }} />
         ) : (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, color: '#94a3b8', fontSize: small, textAlign: 'center', padding: 4 }}>
             <span>{caption.label}</span>
@@ -213,7 +206,7 @@ export function ExploreDetailPanel({ student, state, online, webapps, captureEna
             })}
           </div>
         </div>
-        <div className="preview-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', padding: '10px 16px' }}>
+        <div className="preview-scroll" style={{ flex: 1, minHeight: 0, padding: '10px 16px' }}>
           <div style={{ padding: '30px 0', textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>
             {state?.dataUrl
               ? '这里只呈现定时快照（就是上面那张画面），以及「有没有在用、滚到哪儿」这两项状态。点击与输入不做记录。'

@@ -546,7 +546,16 @@ export type WorksheetGradeState = 'correct' | 'partial' | 'incorrect';
  * ⚠️ 图**不在**里面 —— 它走 `…/sheet/:index` 单独取（库里只存结构化快照，图是按需重渲的
  * 派生物，见规格 §3.1 决定 1）。所以这个类型里只有 `sheetLayouts`（每张的尺寸与格数）。
  */
+export interface WorksheetAnalysisFeedback {
+  version: 1;
+  groups: Array<{ id: string; studentIds: string[] }>;
+  students: Array<{ studentId: string; advice: string }>;
+  missing: string[];
+}
+
 export interface WorksheetAnalysisPayload {
+  /** 与成绩独立，班级问题名单和所有题型的个人建议。旧结果可能没有。 */
+  feedback?: WorksheetAnalysisFeedback | null;
   // ⚠️ **没有 `worksheetId` / `computedAt`** —— 服务端的 `payloadResponse` 回的是
   // `{ ...buildAnalysisPayload(...), labeled, stale }`，而那两个字段不在里面（独立审查 M1）。
   // 类型上写着它们，读的人会以为拿得到，而 `payload.computedAt` 会**静默是 `undefined`**。
@@ -581,6 +590,8 @@ export interface WorksheetAnalysisPayload {
   stale: boolean;
   /** ★ M7b：AI 写的解读。`null` = 还没分析过（按钮没点过，或点了但失败了）。 */
   narrative: string | null;
+  /** 最近一次成功生成整体 AI 分析的时间；旧结果未记录时为 null。 */
+  analyzedAt?: string | null;
   /** ★ M7b：写这段解读的智能体与平台（审计用）。 */
   agentId: string | null;
   model: string | null;
@@ -700,6 +711,7 @@ export interface WorksheetBoardWorksheet {
   title: string;
   /** 已经成功生成并保存 AI 分析的题目 id。正文仍按需读取，不随看板大列表返回。 */
   analyzedQuestionIds: string[];
+  analysisTimes?: Record<string, string | null>;
   participants: WorksheetBoardParticipant[];
 }
 

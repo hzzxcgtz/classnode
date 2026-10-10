@@ -216,7 +216,10 @@ test('开启 AI 评分时消息带满分、评分标准与机器块协议；关�
   );
   assert.ok(!message.includes('评分要求：'), '「评分要求」那一行已随合并删除');
   assert.match(message, /<classnode-scores>/);
-  assert.match(message, /"advice"/, '机器协议必须要求逐生返回可展开的详细建议');
+  assert.match(message, /"advice"/, '机器协议必须要求逐生返回详细建议');
+  assert.match(message, /用“你”称呼/);
+  assert.match(message, /立即操作的步骤和检查方法/);
+  assert.match(message, /全部正确时提供与本题相关的巩固做法或小拓展/);
   // ★ 2026-10-07：示例里的 `student` 也跟着换成新标签 —— 留一个旧形状的示例，
   // 模型会照着它编 `User_00X` 出来（而名单里根本没有那些代号 ⇒ 整班收不到分）。
   assert.match(message, /"student":"张伟#7"/);
@@ -337,7 +340,9 @@ test('★ 评分只点「有内容」的那些人的名 —— 读不出作答�
   const message = buildAnalysisMessage({ ...payload, aiScoring: { enabled: true, maxScore: 5, unit: '分', criteria: '' } });
   assert.ok(!/给每一位已提交作答的学生评分/.test(message), '又写回「每一位都要评」了 —— 那会逼模型给没图的人编分');
   assert.match(message, /请给下面这些学生评分：User_001、User_002/, '没有点名可评的那些人');
-  assert.ok(!message.includes('User_003'), '把「不可评」的那个也点进评分名单了');
+  const scoringMessage = message.split('【班级问题名单与个人建议】')[0];
+  assert.ok(!scoringMessage.includes('User_003'), '把「不可评」的那个也点进评分名单了');
+  assert.match(message.split('【班级问题名单与个人建议】')[1], /User_003/, '读不清的作答仍可返回补充材料的小建议，但不能猜分');
   assert.match(message, /名单之外的学生不要出现在机器块里/, '没有明说名单外不要出现');
 });
 

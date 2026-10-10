@@ -17,21 +17,23 @@ test('顶部学习单菜单挂完整工作区，学生卡片挂单人抽屉', ()
 });
 
 test('统一工作区提供总览、按学生、按题目三个平级视图', () => {
-  assert.match(workspace, /\['overview', '学习单总览'\]/);
+  assert.match(workspace, /\['overview', '学习单矩阵'\]/);
   assert.match(workspace, /\['student', '按学生查看'\]/);
   assert.match(workspace, /\['question', '按题目查看'\]/);
 });
 
-test('矩阵以参与者为行、题目为列，并让交叉格直达对应学生与题目', () => {
-  const participantRows = workspace.indexOf('participants.map((participant) => {');
-  const questionCells = workspace.indexOf('visibleRows.map((row) => {', participantRows);
-  assert.ok(participantRows >= 0 && questionCells > participantRows);
+test('矩阵以题目为行、参与者为列，并让交叉格直达对应学生与题目', () => {
+  const questionRows = workspace.indexOf('visibleRows.map((row) => {', workspace.indexOf('<tbody>'));
+  const participantCells = workspace.indexOf('participants.map((participant) => {', questionRows);
+  assert.ok(questionRows >= 0 && participantCells > questionRows);
   assert.match(workspace, /onOpenParticipant\(participant\.participantId, row\.questionId\)/);
 });
 
 test('题目统计和 AI 分析以内嵌模式呈现，不再产生第二层业务浮窗', () => {
   assert.match(workspace, /<QuestionStatsOverlay[\s\S]*?embedded/);
-  assert.match(workspace, /<AnalysisOverlay[\s\S]*?embedded/);
+  assert.doesNotMatch(workspace, /<AnalysisOverlay/);
+  assert.match(questionStats, /<QuestionAnalysisSection/);
+  assert.doesNotMatch(questionStats, /onClick=\{onOpenAnalysis\}/);
 });
 
 test('按题目查看采用常驻题目导航与右侧详情，不再先开题目列表再进入详情页', () => {
@@ -49,14 +51,14 @@ test('按题详情不再提供看某人的作答下拉入口', () => {
 });
 
 test('按题详情使用紧凑摘要和等高双栏', () => {
-  assert.match(questionStats, /<VerdictDonut[\s\S]*?size=\{80\}[\s\S]*?centerFontSize="1\.08rem"/);
+  assert.match(questionStats, /<VerdictDonut[\s\S]*?size=\{80\}[\s\S]*?centerFontSize="0\.9rem"/);
   assert.match(questionStatsStyles, /\.metric div \{[^}]*font-size: 1\.38rem/);
   assert.match(questionStatsStyles, /\.insightGrid \{[\s\S]*?align-items: stretch/);
-  assert.match(questionStatsStyles, /\.insightGrid > \.section \{[\s\S]*?height: 100%/);
+  assert.match(questionStatsStyles, /\.insightGrid > \.section,[\s\S]*?\.insightRail > \.section \{[\s\S]*?height: 100%/);
 });
 
-test('打开学习单界面只压入一层浏览器历史，返回按钮关闭工作区或单人抽屉', () => {
-  assert.match(page, /window\.history\.pushState\(\{ \.\.\.base, classnodeWorksheetWorkspace: token \}/);
+test('学习单入口与查看步骤记录浏览器历史，后退恢复上一视图', () => {
+  assert.match(page, /window\.history\.pushState\(\{ \.\.\.base, classnodeWorksheetWorkspace: token, classnodeWorksheetDepth: 0 \}/);
   assert.match(page, /window\.addEventListener\('popstate', handlePopState\)/);
   assert.match(page, /if \(worksheetWorkspaceHistoryTokenRef\.current === null\) return;[\s\S]*?setWorksheetWorkspace\(null\);[\s\S]*?setWorksheetDrawer\(null\)/);
 });

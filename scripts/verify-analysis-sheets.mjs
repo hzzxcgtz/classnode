@@ -36,6 +36,7 @@ function argOf(name, fallback = null) {
 const CLASSROOM_ARG = argOf('classroom');
 const WORKSHEET_ID = argOf('worksheet');
 const OUT = argOf('out', path.join(ROOT, '.dev', 'analysis-sheets'));
+if (!CLASSROOM_ARG || !WORKSHEET_ID) throw new Error('必须指定 --classroom 和 --worksheet');
 
 const prisma = new PrismaClient();
 let server;
@@ -101,6 +102,7 @@ try {
     console.log(`● ${questionId}  作答 ${n}  · 载荷 ${kind} · 联系表 ${sheets} 张 → ${written.length} 张已落盘`);
   }
   console.log(failed === 0 ? '\n✅ 全部渲染成功。' : `\n❌ 有 ${failed} 处失败（见上）。`);
+  if (failed) process.exitCode = 1;
 } finally {
   if (server) server.close();
   await prisma.$disconnect();

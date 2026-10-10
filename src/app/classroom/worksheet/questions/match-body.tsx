@@ -70,6 +70,12 @@ interface MatchLine {
   y2: number;
 }
 
+/** Measure the visible dot center, including the protruding connector. */
+function connectionPoint(el: HTMLElement) {
+  const rect = (el.querySelector<HTMLElement>('[data-match-handle]') ?? el).getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
 /**
  * ★ 2026-09-26（教师第 1 条）：「从左侧一个选项中开始向右拖动，**并出现一条连线跟随**」。
  *
@@ -133,7 +139,7 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
       // ★ 2026-09-28（教师：右往左也能连）：**两边都可能是起点** —— 从右项起手拖时
       // 锚点就是那个右项。原来这里只认 `l:` 前缀（那时的注释写着「只有左项才是连线的
       // 起点」—— 在一对一 + 只能左起手的年代是对的，现在是旧话）。
-      // ⚠️ 先看左列：**锚点用哪条边取决于源在哪一列**（见下面 x1 那一行）。
+      // 两列的连接点都由实际句柄位置确定。
       const leftEl = itemEls.current[`l:${point.id}`];
       const el = leftEl ?? itemEls.current[`r:${point.id}`];
       const box = containerRef.current;
@@ -142,16 +148,13 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
         ghost.style.visibility = 'hidden';
         return;
       }
-      const a = el.getBoundingClientRect();
+      const a = connectionPoint(el);
       const b = box.getBoundingClientRect();
       anchor = {
         id: point.id,
-        // ★ 2026-09-28（教师图 58：「不应该是从右侧矩形框的最右侧拖」）：
-        // 锚点必须**朝着对面那一列** —— 左项用右边缘（朝右）、右项用左边缘（朝左）。
-        // 原来一律用 `a.right`：左项对，从右项起手时线就从那个框的**最右边**出发，
-        // 横穿整个框再拐回来（教师一眼就看出来了）。
-        x1: Math.round((leftEl ? a.right : a.left) - b.left),
-        y1: Math.round(a.top + a.height / 2 - b.top),
+        // 左右起拖都使用朝向对面一列的实际圆点中心。
+        x1: Math.round(a.x - b.left),
+        y1: Math.round(a.y - b.top),
         originX: b.left,
         originY: b.top,
       };
@@ -176,16 +179,16 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
       // 端点节点不在 ⇒ 这一条画不出来（条目被删过 / 还没挂上）。**跳过**而不是给一个
       // 默认坐标：画一条指向 (0,0) 的线比不画更糟 —— 那是在撒谎。
       if (!leftEl || !rightEl) return;
-      const a = leftEl.getBoundingClientRect();
-      const b = rightEl.getBoundingClientRect();
+      const a = connectionPoint(leftEl);
+      const b = connectionPoint(rightEl);
       next.push({
         key: `${link.leftId}:${link.rightId}`,
         leftId: link.leftId,
         rightId: link.rightId,
-        x1: Math.round(a.right - base.left),
-        y1: Math.round(a.top + a.height / 2 - base.top),
-        x2: Math.round(b.left - base.left),
-        y2: Math.round(b.top + b.height / 2 - base.top),
+        x1: Math.round(a.x - base.left),
+        y1: Math.round(a.y - base.top),
+        x2: Math.round(b.x - base.left),
+        y2: Math.round(b.y - base.top),
       });
     });
     setLines(next);
@@ -291,18 +294,8 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
                     ? <PromptText text={entry.text} placeholder="" />
                     : <span className={styles.placeholder}>（这一条还没写）</span>}
                 </span>
-                {/*
-                  ★ 2026-10-08（教师）：「左侧框的右端和右侧框的左端可以增加一个连接句柄
-                  （例如小圆），增加连线题的操作识别度。」
-
-                  ⚠️ 它**只是视觉锚点，不改拖动**（详见 `worksheet.module.css` 那条注释）：
-                     CSS 把它摆在条目**连接那一端**的边上，而 `measure()` 与跟手线取的
-                     正是那条边（左列 `a.right` / 右列 `a.left`）⇒ 句柄中心与线的端点
-                     **天然重合**，两端都不用改测量逻辑。
-                  ⚠️ 它有指针事件（不设 `pointer-events: none`）：它是条目的**子元素**，
-                     按在它上面的事件会冒泡给条目自己的 `bothProps` ⇒ 从圆点上起拖也好使。
-                */}
-                <span className={styles.matchHandle} aria-hidden="true" />
+                {/* 半圆凸起与实心端点；事件仍冒泡给整条选项。 */}
+                <span className={styles.matchHandle} data-match-handle aria-hidden="true" />
               </div>
             );
           })}
@@ -328,7 +321,7 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
             return (
               <div className={className} key={entry.id} ref={setRef(`r:${entry.id}`)} {...drag.bothProps(entry.id)}>
                 {/* ★ 2026-10-08（教师）：右列的句柄在**左端**（朝着对面那一列）。 */}
-                <span className={styles.matchHandle} aria-hidden="true" />
+                <span className={styles.matchHandle} data-match-handle aria-hidden="true" />
                 <span className={styles.matchText}>
                   {/* ★ 2026-09-30：条目原文走 `PromptText`（不传 `runs` —— 纯文本）。 */}
                   {entry.text

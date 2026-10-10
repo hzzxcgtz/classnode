@@ -94,6 +94,26 @@ async function verifyIdentities(prisma: PrismaClient, expected: Map<string, Set<
   }
 }
 
+/** Only the known obsolete notification relation is eligible for cleanup. */
+async function removeOrphanNotifications(prisma: PrismaClient, expected: Map<string, Set<string>>): Promise<number> {
+  if (!expected.has('TeacherNotification')) return 0;
+  if (!expected.has('Classroom')) throw new Error('缺少 Classroom 表，不能判断教师通知是否可清理');
+  const removed = await prisma.$transaction(async tx => {
+    const orphanIds = await tx.$queryRawUnsafe<{ id: string }[]>(
+      'SELECT n.id FROM "TeacherNotification" n WHERE NOT EXISTS (SELECT 1 FROM "Classroom" c WHERE c.id = n.classroomId)',
+    );
+    if (!orphanIds.length) return [];
+    const count = await tx.$executeRawUnsafe(
+      'DELETE FROM "TeacherNotification" WHERE NOT EXISTS (SELECT 1 FROM "Classroom" c WHERE c.id = "TeacherNotification".classroomId)',
+    );
+    if (count !== orphanIds.length) throw new Error('孤立教师通知清理数量不一致，升级已中止');
+    return orphanIds;
+  }, { timeout: 30000 });
+  // The identity guard permits only these explicitly selected obsolete rows.
+  for (const row of removed) expected.get('TeacherNotification')!.delete(row.id);
+  return removed.length;
+}
+
 export interface UpgradeOptions {
   databaseUrl?: string;
   /** Fault injection / integration probes; never used by startup. */
@@ -154,6 +174,7 @@ export async function upgradeDatabase(source: PrismaClient, options: UpgradeOpti
     fs.copyFileSync(backupPath, candidatePath);
     candidate = new PrismaClient({ datasources: { db: { url: `file:${candidatePath}` } } });
     const identities = await preserveIdentities(candidate);
+    const removedNotifications = await removeOrphanNotifications(candidate, identities);
     await migrateLegacyDatabase(candidate, () => backupPath);
     await makeStudentClassNullable(candidate);
     await options.afterLegacy?.(candidate);
@@ -176,6 +197,7 @@ export async function upgradeDatabase(source: PrismaClient, options: UpgradeOpti
     // failure leaves the source in place and the independent backup available.
     for (const suffix of ['-wal', '-shm']) fs.rmSync(databasePath + suffix, { force: true });
     fs.renameSync(candidatePath, databasePath);
+    if (removedNotifications > 0) console.log(`[upgrade] 已清理 ${removedNotifications} 条课堂已不存在的教师通知；原记录保留在备份：${backupPath}`);
     console.log(`[upgrade] 数据库升级成功；原库备份：${backupPath}`);
     return { backupPath };
   } catch (error) {

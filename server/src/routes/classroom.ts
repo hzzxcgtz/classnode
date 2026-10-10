@@ -7,7 +7,7 @@ import { compareStudentNumbers } from '../services/student-sort.js';
 import { initialModuleRows, isValidModuleKey, isValidModuleState, mergeModuleStates } from '../services/classroom-module-state.js';
 import { abortClassroomStreams, broadcastWebappDemand } from '../socket/index.js';
 import type { WebappUsageRow } from '../socket/index.js';
-import { captureFieldsFromInput, normalizeCaptureConfig } from '../services/webapp-capture.js';
+import { captureFieldsFromInput, DEFAULT_WEBAPP_CAPTURE, normalizeCaptureConfig } from '../services/webapp-capture.js';
 import { loadClassroomWebapps } from './webapps.js';
 import { EMPTY_GROUP_MATERIAL_VIEW, resolveGroupMaterialViews } from '../services/group-material-resolve.js';
 import { studentAgentView } from '../services/agent-purpose.js';
@@ -457,6 +457,7 @@ router.post('/create', async (req, res) => {
         code,
         title: title || null,
         mode,
+        webappThumbnailWidth: DEFAULT_WEBAPP_CAPTURE.width,
         classes: {
           create: uniqueClassIds.map(classId => ({ classId })),
         },
@@ -644,6 +645,7 @@ router.post('/create-advanced', async (req, res) => {
         code: await generateUniqueClassroomCode(tx),
         title: title || null,
         mode: 'advanced',
+        webappThumbnailWidth: DEFAULT_WEBAPP_CAPTURE.width,
           classes: { create: { classId } },
           // ★ 2026-09-29（教师）：「这三个模块在创建后默认是开放」—— 与 `/create` 那处
           // **逐字同源**（同一个 `initialModuleRows()`）。两条创建路径漏种一条的表现是

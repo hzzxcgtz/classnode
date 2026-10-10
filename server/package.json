@@ -11,7 +11,7 @@
     "prisma": true
   },
   "scripts": {
-    "dev": "NODE_ENV=development tsx watch src/index.ts",
+    "dev": "node ../scripts/dev-server.mjs",
     "build": "tsc",
     "test": "pnpm build && node ../scripts/run-tests.mjs server",
     "start": "node dist/index.js",

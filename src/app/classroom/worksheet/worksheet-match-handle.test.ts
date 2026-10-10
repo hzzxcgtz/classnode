@@ -1,17 +1,3 @@
-/**
- * ★ 2026-10-08（教师）：「这部分区域**左右也不要顶格**，留出一定的空白区域，左侧框的右端和
- *   右侧框的左端可以增加一个**连接句柄**（例如小圆），增加连线题的操作识别度。」
- *
- * 🔴 这一条网钉的**不是**"有没有画个圆"，而是**三个容易做错的前提**：
- *   ① 句柄是条目的**子元素**且**有**指针事件 —— 否则按在圆点起拖会掉进 6px 的死区，
- *      而这件事在屏幕上完全看不出来（"圆点看着能拖，拖不动"）；
- *   ② 圆心的 `right/left: -6px` 与 `box-sizing: border-box` 是**一对** ——
- *      少了后者就是 content-box，直径变成 16px，圆心偏 2px，线就不从圆心出发了；
- *   ③ 线的端点仍取 `a.right` / `a.left`（左列右缘 / 右列左缘）—— 圆心要落在那条边上。
- *      哪天有人把测量改成从别处取，圆心与线端点就会分家，而**没有任何报错**。
- *
- * ⚠️ 本机没有 jsdom/浏览器 ⇒「真的居中了没有」验不了，只能钉"那几条声明在不在"。
- */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -93,40 +79,24 @@ test('② 句柄**有**指针事件（写了 pointer-events: none 就会掉进�
   }
 });
 
-test('③ 圆心落在条目连接的那条边上：直径 6px + 偏移 −3px 是一套', () => {
-  const bodies = ruleBodies('.matchHandle');
-  assert.equal(effective(bodies, 'box-sizing'), 'border-box',
-    '少了 border-box ⇒ 一旦将来加回描边，`width` 就不再等于实际直径，圆心会偏');
-  // ★ 2026-10-08 第二批（教师）：「这个圈太大了，要小一点」→ 12px ⇒ 8px；
-  //   「圈还要再小，变成实心的」→ 8px ⇒ 6px。
-  assert.equal(effective(bodies, 'width'), '6px', '直径不是 6px');
-  assert.equal(effective(bodies, 'height'), '6px', '高度不是 6px');
-  // ⚠️ 圆心 = 直径/2 ⇒ −3px。**这两个数是一对**：改一个不改另一个，圆心就不在条目边缘上，
-  //   而线仍然从边缘出发 ⇒ 圆点与线分家，屏幕上像个没对齐的小装饰，且没有任何报错。
-  assert.match(effective(ruleBodies('.matchColumnLeft .matchHandle'), 'right') ?? '', /^-3px$/,
-    '左列句柄的 right 不是 −3px ⇒ 圆心不在条目的右缘上（线的端点在那儿）');
-  assert.match(effective(ruleBodies('.matchColumnRight .matchHandle'), 'left') ?? '', /^-3px$/,
-    '右列句柄的 left 不是 −3px ⇒ 圆心不在条目的左缘上');
-  assert.equal(effective(ruleBodies('.matchItem'), 'position'), 'relative',
-    '.matchItem 不是 relative ⇒ 绝对定位的句柄会相对更外层的祖先摆，位置全错');
+test('③ 半圆凸起朝向另一列，且包含实心圆点', () => {
+  assert.equal(effective(ruleBodies('.matchHandle'), 'width'), '26px');
+  assert.equal(effective(ruleBodies('.matchHandle'), 'height'), '26px');
+  assert.equal(effective(ruleBodies('.matchHandle'), 'box-sizing'), 'border-box');
+  assert.equal(effective(ruleBodies('.matchColumnLeft .matchHandle::before'), 'border-left'), '0');
+  assert.equal(effective(ruleBodies('.matchColumnRight .matchHandle::before'), 'border-right'), '0');
+  assert.equal(effective(ruleBodies('.matchHandle::after'), 'border-radius'), '50%');
+  assert.ok(effective(ruleBodies('.matchHandle::after'), 'background'));
 });
 
-test('③ 句柄是**实心**的（教师：「变成实心的」）', () => {
-  const bodies = ruleBodies('.matchHandle');
-  // 实心 = 用强调色填满。⚠️ 原来是"白底 + 2px 描边"的**空心**环。
-  assert.match(effective(bodies, 'background') ?? '', /var\(--ws-accent\)/,
-    '句柄不是用强调色实心填充 ⇒ 还是空心环');
-  const border = effective(bodies, 'border');
-  assert.ok(border === '0' || border === 'none',
-    `句柄还带着描边（border: ${border}）—— 实心圆不需要描边，且描边会让直径与 width 脱钩`);
-});
-
-test('③ 线的端点仍然取条目的连接那条边（改了这里，圆心与线就会分家且不报错）', () => {
-  const measureAt = BODY.indexOf('const measure = useCallback(');
-  assert.notEqual(measureAt, -1, '找不到 measure');
-  const measure = BODY.slice(measureAt, BODY.indexOf('setLines(next)', measureAt));
-  assert.match(measure, /a\.right - base\.left/, '左列的线不再从左缘取点');
-  assert.match(measure, /b\.left - base\.left/, '右列的线不再从右项左缘取点');
+test('③ 已连接和跟手线共用实际句柄圆心，尺寸改变不会使连线偏离', () => {
+  assert.match(BODY, /querySelector<HTMLElement>\('\[data-match-handle\]'\)/);
+  assert.match(BODY, /rect.left \+ rect.width \/ 2/);
+  assert.match(BODY, /rect.top \+ rect.height \/ 2/);
+  assert.match(BODY, /const a = connectionPoint\(el\)/);
+  assert.match(BODY, /const a = connectionPoint\(leftEl\)/);
+  assert.match(BODY, /const b = connectionPoint\(rightEl\)/);
+  assert.equal((BODY.match(/data-match-handle aria-hidden/g) ?? []).length, 2);
 });
 
 test('④ 拖动源仍是**整条**条目（没被收窄成只给句柄）', () => {

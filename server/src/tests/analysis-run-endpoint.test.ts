@@ -1,3 +1,4 @@
+import systemRoutes from '../routes/system.js';
 import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 /**
  * ★ M7b：`run` 端点的接线。判据在 `analysis-agent.test.ts` 里，这里只管接线。
@@ -90,6 +91,7 @@ async function withServer(prisma: PrismaClient) {
   app.use(express.json({ limit: '10mb' }));
   app.set('prisma', prisma);
   app.use('/api/worksheets', worksheetRoutes);
+  app.use('/api/system', systemRoutes);
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
@@ -207,11 +209,13 @@ test('🔴 成功路径：写回 narrative/agentId/model，且**一个载荷字�
   assert.match(String(body.narrative), /多数人画成了满月/);
   assert.equal(body.agentId, agent.id);
   assert.equal(body.model, 'coze');
+  assert.ok(body.analyzedAt, '成功分析必须返回真实完成时间');
 
   const after = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
   assert.match(String(after.narrative), /多数人画成了满月/, '解读要落库');
   assert.equal(after.agentId, agent.id);
   assert.equal(after.model, 'coze');
+  assert.equal(after.analyzedAt?.toISOString(), body.analyzedAt);
   // 🔴 用户裁定 3：两组字段各自动自己那一半 —— 载荷那一侧**一个字节都不许动**
   assert.deepEqual(after.aggregate, before.aggregate, 'aggregate 不许被这次分析改动');
   assert.equal(after.totalCount, before.totalCount, 'totalCount 不许动');
@@ -232,11 +236,12 @@ test('🔴 模型返回空 ⇒ 502 且**不写库**（已有解读绝不被清�
   t.after(() => srv.close());
   await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
   // 先手工放一段「旧的解读」
-  await p.worksheetQuestionAnalysis.updateMany({ where: { worksheetId: worksheet.id }, data: { narrative: '旧的解读' } });
+  await p.worksheetQuestionAnalysis.updateMany({ where: { worksheetId: worksheet.id }, data: { narrative: '旧的解读', analyzedAt: new Date('2026-10-01T12:00:00Z') } });
 
   const run = await fetch(runUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
   assert.equal(run.status, 502);
   const row = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
+  assert.equal(row.analyzedAt?.toISOString(), '2026-10-01T12:00:00.000Z', '失败不能更改分析时间');
   assert.equal(row.narrative, '旧的解读', '失败时已有解读必须原样保留 —— 清空它是静默的');
 });
 
@@ -315,6 +320,7 @@ test('★ 只补这几个人：只发他们、把分并进去、**不动整体�
   const scoped = await fetch(scopedUrl, { method: 'POST' });
   assert.equal(scoped.status, 200, '补跑不该失败');
   const afterScoped = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
+  assert.equal(afterScoped.analyzedAt?.getTime(), afterFull.analyzedAt?.getTime(), '补分不得更新整体分析时间');
   assert.equal(afterScoped.narrative, firstNarrative, '补跑把「全班整体解读」换成了「只看了这一个同学」——那正是教师担心的那件事');
   const merged = afterScoped.perStudent as { scores: Array<{ studentId: string }>; missing?: string[] };
   assert.equal(merged.scores.length, 2, '补跑要把缺的那个人补上，并保留之前那位');
@@ -898,4 +904,67 @@ test('🔴 真题形状（无 points）：AI 给 5/10 ⇒ 记 5 分、判「部�
   assert.equal(row.score, 5, `分母取成了 points.full（= ${row.score === 1 ? 1 : '?'}）—— 教师配的是 10`);
   assert.equal(row.gradeState, 'partial', '5/10 不是满分 —— 判成 correct 会让报告印「对」、发满额奖励');
   assert.equal(row.isCorrect, false);
+});
+
+test('所有题型独立保存建议与典型问题名单，客观题自动分不被改写，GET 后仍可读取', async (t) => {
+  const db = await openTempDb();
+  const fake = await startFakeCoze('### 整体情况\n部分同学需要巩固。\n### 值得关注的问题\n[相关同学](#classnode-group-g1) 漏选条件。\n### 下一步怎么教\n比较两个条件。\n<classnode-feedback>{"groups":[{"id":"g1","students":["张伟#7"]}],"students":[{"student":"张伟#7","advice":"比较两个条件是否都影响结果。"}]}</classnode-feedback>');
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const agent = await makeAgent(p, 'coze', fake.base);
+  const node = { id: 'q3', type: 'single-choice', prompt: '选一个', inputMode: 'text', data: { options: [{key:'A',text:'甲'},{key:'B',text:'乙'}], correctKeys: ['A'] }, children: [] };
+  const { worksheet, classroom, participants } = await seed(p, { analysisAgentId: agent.id, node });
+  await p.worksheetAnswer.updateMany({ data: { value: { kind: 'options', selected: ['A'] }, score: 1, isCorrect: true, gradeState: 'correct' } });
+  const srv = await withServer(p); t.after(() => srv.close());
+  const generated = await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), {method:'POST'});
+  assert.equal(generated.status, 200, await generated.text());
+  const run = await fetch(runUrl(srv.base, worksheet.id, 'q3', classroom.id), {method:'POST'});
+  assert.equal(run.status, 200);
+  const result = await run.json() as { narrative: string; perStudent: unknown; feedback: {groups:Array<{studentIds:string[]}>;students:Array<{studentId:string;advice:string}>} };
+  assert.equal(result.perStudent, null);
+  assert.ok(!result.narrative.includes('classnode-feedback'));
+  assert.deepEqual(result.feedback.groups[0].studentIds, participants);
+  const reread = await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id));
+  const stored = await reread.json() as typeof result;
+  assert.deepEqual(stored.feedback, result.feedback);
+  const answer = await p.worksheetAnswer.findFirstOrThrow();
+  assert.deepEqual({score:answer.score,gradeState:answer.gradeState,isCorrect:answer.isCorrect}, {score:1,gradeState:'correct',isCorrect:true});
+});
+
+
+test('分析调用计入仪表盘：历史补计、重跑累加、课堂去重，更换智能体保留原计数', async (t) => {
+  const db = await openTempDb();
+  const fake = await startFakeCoze('整体情况：这次作答已完成。');
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const a = await makeAgent(p, 'coze', fake.base);
+  const b = await makeAgent(p, 'coze', fake.base);
+  const { worksheet, classroom } = await seed(p, { analysisAgentId: a.id });
+  const srv = await withServer(p); t.after(() => srv.close());
+  const generated = await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), {method:'POST'});
+  assert.equal(generated.status, 200);
+  await p.worksheetQuestionAnalysis.updateMany({ data:{agentId:a.id,narrative:'旧分析结果'} });
+  async function usage() {
+    const response = await fetch(`${srv.base}/api/system/storage-stats`);
+    assert.equal(response.status, 200, await response.clone().text());
+    return (await response.json() as {agentUsage:Array<{id:string;totalCalls:number;classroomCount:number}>}).agentUsage;
+  }
+  assert.equal((await usage()).find(row=>row.id===a.id)?.totalCalls,1);
+  for (let i=0;i<2;i++) {
+    const run = await fetch(runUrl(srv.base,worksheet.id,'q3',classroom.id),{method:'POST'});
+    assert.equal(run.status,200,await run.text());
+  }
+  let stats = (await usage()).find(row=>row.id===a.id)!;
+  assert.equal(stats.totalCalls,3); assert.equal(stats.classroomCount,1);
+  await p.worksheet.update({where:{id:worksheet.id},data:{settings:{analysisAgentId:b.id}}});
+  const run = await fetch(runUrl(srv.base,worksheet.id,'q3',classroom.id),{method:'POST'});
+  assert.equal(run.status,200,await run.text());
+  const all = await usage();
+  assert.equal(all.find(row=>row.id===a.id)?.totalCalls,3);
+  assert.equal(all.find(row=>row.id===b.id)?.totalCalls,1);
+  assert.equal(all.find(row=>row.id===b.id)?.classroomCount,1);
+  fake.setAnswer('');
+  const failed = await fetch(runUrl(srv.base,worksheet.id,'q3',classroom.id),{method:'POST'});
+  assert.equal(failed.status,502);
+  assert.equal((await usage()).find(row=>row.id===b.id)?.totalCalls,1);
 });

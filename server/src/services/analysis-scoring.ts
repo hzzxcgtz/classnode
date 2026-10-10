@@ -1,5 +1,6 @@
 import { type QuestionNode } from './worksheet-questions.js';
 import { rubricTextOf } from './analysis-question.js';
+import { readAnalysisFeedback } from './analysis-feedback.js';
 
 export const AI_SCORE_MAX = 100;
 export const AI_SCORE_CRITERIA_MAX = 1200;
@@ -304,8 +305,8 @@ export function readStudentAiReferenceScore(
     comment: typeof (item as Record<string, unknown>).reason === 'string'
       ? ((item as Record<string, unknown>).reason as string).trim().slice(0, 200)
       : '',
-    advice: typeof (item as Record<string, unknown>).advice === 'string'
+    advice: readAnalysisFeedback(raw, [studentId])?.students.find(row => row.studentId === studentId)?.advice || (typeof (item as Record<string, unknown>).advice === 'string'
       ? ((item as Record<string, unknown>).advice as string).trim().slice(0, AI_SCORE_ADVICE_MAX)
-      : '',
+      : ''),
   };
 }

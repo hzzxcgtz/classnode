@@ -268,6 +268,27 @@ async function seedAdvancedClassroom(prisma: PrismaClient, code: string) {
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
+test('回读：客观题下发本人的统一个人建议，不泄露其他学生建议和名单', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const worksheet = await seedWorksheet(db.prisma);
+  const { classroom, participant } = await seedClassroom(db.prisma, '9066');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const response = await db.prisma.worksheetResponse.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: participant.id } });
+  await db.prisma.worksheetAnswer.create({ data: { responseId: response.id, questionId: 'q_1', value: { format: 'choice/v1', selected: ['A'] }, status: 'submitted' } });
+  await db.prisma.worksheetQuestionAnalysis.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id, questionId: 'q_1', totalCount: 2, aggregate: [], perStudent: { analysisFeedback: { version: 1, groups: [{ id: 'g1', studentIds: [participant.id, 'other-student'] }], students: [{ studentId: participant.id, advice: '先观察叶片再选择。' }, { studentId: 'other-student', advice: '其他学生专属建议' }] } } } });
+  const token = createStudentToken(classroom.id, participant.id);
+  const res = await server.get(`/api/worksheets/${worksheet.id}/answers?classroomId=${classroom.id}`, bearer(token));
+  assert.equal(res.status, 200);
+  const raw = await res.text();
+  const data = JSON.parse(raw);
+  assert.equal(data.rows[0].aiAdvice, '先观察叶片再选择。');
+  assert.equal(data.rows[0].aiReferenceScore, null);
+  assert.ok(!raw.includes('其他学生专属建议'));
+  assert.ok(!raw.includes('other-student'));
+});
+
 const CHOICE = (selected: string[]) => ({ format: 'choice/v1', selected });
 const FILL = (text: string) => ({ format: 'fill/v1', text });
 
@@ -1243,7 +1264,7 @@ test('刷新：已保存的作答仍在库里，且刷新后仍能读回（value
       // ☆ 2026-09-27：`wrongBlankIndexes`（Codex 那批）与 `correctBlanks`（教师定的窄口）也在这里。
       // ⚠️ 与上面那条键名级红线**不冲突**：红线扫的是 `ANSWER_KEYS` 那些**键名**（`answers`/`correctOrder`…），
       //   而 `correctBlanks` 是另一个键名，且只承载**答错的那几个空**的答案。
-      ['aiReferenceScore', 'correctBlanks', 'gradeState', 'isCorrect', 'questionId', 'score', 'status',
+      ['aiAdvice', 'aiReferenceScore', 'correctBlanks', 'gradeState', 'isCorrect', 'questionId', 'score', 'status',
        'submittedAt', 'value', 'wrongBlankIndexes'],
       `每一行只许有这几个键（多一个就可能是捎带出来的题目数据）：${raw}`,
     );

@@ -20,7 +20,7 @@ import styles from "./guide.module.css";
  *   ① 管理密码写「至少 8 位」—— 实际**不限长度、但非空**（`teacher/layout.tsx:276-281`）。
  *   ② 「导出报表」—— **界面上没有这个按钮**；真实按钮是 `导出学习单与探究空间`
  *      （`history/page.tsx:406`）。
- *   ③ 「屏蔽管理」—— 侧栏与页标题**都叫 `课堂安全`**（`teacher/layout.tsx:38`）。
+ *   ③ 「屏蔽管理」—— 侧栏叫 `安全管理`，页标题为 `智能学伴安全`（`teacher/layout.tsx:38`）。
  *   ④ 数据管理页「查看详情」—— **没有这个入口**，只有 `导出对话` / `导出学习单与探究空间` / `恢复`。
  *   ⑤ 平台能力表里**文心的「流式输出」标成了支持** —— 实际文心带 `非流式` 标签
  *      （`agents/agent-card.tsx:106`：`agent.platform === 'wenxin' && <CapabilityTag>非流式</CapabilityTag>`）。
@@ -76,7 +76,7 @@ const SHOTS = {
   "live-worksheet": { title: "看板上的学习单：答题情况", where: "课堂看板 → 学习单 → 学习单矩阵" },
   "live-analysis": { title: "AI 分析结果", where: "课堂看板 → 学习单 → 按题目查看 → 某题的 AI 分析" },
   "history": { title: "数据管理 · 历史课堂与导出", where: "数据管理" },
-  "shield": { title: "课堂安全", where: "课堂安全" },
+  "shield": { title: "智能学伴安全", where: "安全管理" },
 } as const;
 
 /** 图片路径由 id 推得 —— 全仓只此一处拼这个路径。 */
@@ -666,7 +666,7 @@ export default function GuidePage() {
             <SectionHeading icon="settings" eyebrow="长期使用" title="日常管理：把安全、数据和课堂体验照顾好" intro="下面这些不一定每堂课都用，但它们决定系统能否长期、安心地运行。" />
             <div className={styles.managementGrid}>
               <article><strong>仪表盘</strong><p>一屏汇总系统的资源量与运行状态：智能体连接健康度、课堂运行、学习单与探究空间的使用情况、存储占用与备份状态，以及一栏「需要关注」。它不是课堂实时数据 —— 实时数据在课堂看板上。</p></article>
-              <article><strong>课堂安全</strong><p>三个页签：词库管理（自定义屏蔽词的增删与启停）、拦截记录（按课堂汇总的触发记录）、管控设置（触发多少次后自动黑屏、每位学生每分钟的提问次数上限）。系统词库可以整体暂停。</p></article>
+              <article><strong>安全管理</strong><p>针对学生与智能学伴的对话。对话敏感词用于管理自定义词和系统词库；安全提醒记录按课堂查看触发敏感词的消息；对话管控可设置自动黑屏次数和每分钟的消息发送上限。两项设为 0 时不限制。</p></article>
               <article><strong>头像管理</strong><p>学生头像与班级图标两个库，支持随机生成、SVG 代码或上传图片。学生获得奖励后可从教师头像库选择。学生自己上传的头像单独成区，可在这里管理删除。</p></article>
               <article><strong>数据备份与迁移</strong><p>“数据管理”页的备份卡：<Ui>立即备份</Ui> 生成包含数据库、API 凭据密钥、附件和教学网页的完整备份；旧版备份可能缺少附件或网页。换电脑时先在旧设备备份并下载，再在新设备 <Ui>上传备份</Ui> 后恢复。</p></article>
               <article><strong>版本更新</strong><p>有新版本时侧栏「关于」图标上会出现小红点，「关于」页里可以看更新日志。升级前建议先备份；安装后确认班级、智能体、学习单与历史数据均正常。</p></article>

@@ -130,7 +130,7 @@ test('改版修掉的那 5 处错文案没有悄悄回来', () => {
   const banned: Array<[RegExp, string]> = [
     [/至少\s*8\s*位/, '管理密码已改为不限长度（teacher/layout.tsx:276-281）'],
     [/导出报表/, '界面上没有「导出报表」这个按钮（history/page.tsx:406 是「导出学习单与探究空间」）'],
-    [/屏蔽管理/, '侧栏与页标题都叫「课堂安全」（teacher/layout.tsx:38）'],
+    [/屏蔽管理/, '侧栏叫「安全管理」，页标题为「智能学伴安全」（teacher/layout.tsx:38）'],
     [/智能体管理/, '侧栏叫「AI智能体」（teacher/layout.tsx:31）'],
   ];
   for (const [pattern, why] of banned) {

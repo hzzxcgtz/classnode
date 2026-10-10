@@ -182,3 +182,70 @@
     align-self: flex-end;
   }
 }
+
+.page {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.settingsCard {
+  overflow: hidden;
+  border: 1px solid #dfe7f1;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.settingsHeading { padding: 20px 24px; border-bottom: 1px solid #e7edf4; }
+.settingsHeading h2 { margin: 0; font-size: 1rem; color: #243d52; }
+.settingsHeading p { margin: 6px 0 0; font-size: .875rem; color: #64748b; }
+.settingsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.settingItem { padding: 24px; min-width: 0; }
+.settingItem + .settingItem { border-left: 1px solid #e7edf4; }
+.settingTitle { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.settingTitle label { font-size: .938rem; font-weight: 650; color: #243d52; }
+.settingTitle span { padding: 3px 8px; border-radius: 6px; font-size: .75rem; color: #526c81; background: #edf3f7; }
+.settingItem p { margin: 10px 0 20px; color: #64748b; font-size: .875rem; line-height: 1.7; }
+.numberField { display: flex; align-items: center; gap: 12px; color: #526c81; font-size: .875rem; }
+.numberField input { width: 86px; padding: 10px 12px; text-align: center; font-size: 1.125rem; font-weight: 650; }
+.settingItem small { display: block; margin-top: 10px; color: #64748b; font-size: .813rem; }
+.settingsFooter { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 14px 24px; background: #f8fafc; border-top: 1px solid #e7edf4; }
+.configFeedback { font-size: .813rem; color: #526c81; }
+
+/* 记录区：课堂导航与消息详情并列，避免长列表挤走内容。 */
+.recordsWorkspace { display: grid; grid-template-columns: minmax(230px, 280px) minmax(0, 1fr); gap: 16px; align-items: start; min-width: 0; }
+.recordStatus { grid-column: 1 / -1; }
+.classroomList, .recordDetails { min-width: 0; }
+.classroomList > div:first-child, .recordDetails > div:first-child { padding: 16px 18px !important; background: #fff !important; flex-wrap: wrap; gap: 8px; }
+.classroomList > div:first-child { align-items: baseline !important; }
+.classroomList > div:first-child > span { width: 100%; }
+.classroomList > div:last-child { max-height: 65vh; overflow: auto; }
+.classroomRow { padding: 14px 16px !important; }
+.classroomRow[aria-pressed='true'] { background: var(--primary-tint) !important; box-shadow: inset 3px 0 var(--primary); }
+.classroomRow[aria-pressed='true'] > div:nth-child(2) > div:first-child { color: var(--primary) !important; }
+.recordTable { overflow: auto; max-height: 65vh; min-width: 0; }
+.recordTable table { min-width: 530px; }
+.recordTable th { background: #f8fafc; }
+.recordTable td:nth-child(3) { font-size: .875rem !important; }
+.wordComposerHeader h2, .libraryHeader h2 { font-size: .938rem !important; }
+.wordComposerHeader span { font-size: .813rem !important; color: #64748b !important; }
+.customLibrary { border-top-color: #a7bccd !important; }
+.systemLibrary { border-top-color: #a8c7b7 !important; }
+.wordComposerHeader > svg { background: #edf3f7; stroke: var(--primary); }
+.page button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+
+@media (max-width: 900px) {
+  .recordsWorkspace { grid-template-columns: 1fr; }
+  .classroomList > div:last-child { max-height: 240px; }
+}
+@media (max-width: 640px) {
+  .settingsGrid { grid-template-columns: 1fr; }
+  .settingItem { padding: 20px 16px; }
+  .settingItem + .settingItem { border-left: 0; border-top: 1px solid #e7edf4; }
+  .settingsHeading { padding: 18px 16px; }
+  .settingsFooter { padding: 14px 16px; flex-wrap: wrap; }
+  .recordTable { max-height: none; }
+  .recordDetails > div:first-child > div { flex-wrap: wrap; }
+}

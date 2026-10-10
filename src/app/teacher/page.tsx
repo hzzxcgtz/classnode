@@ -36,7 +36,6 @@ export default function TeacherDashboard() {
   const [endingClassroomId, setEndingClassroomId] = useState<string | null>(null);
   const [lanAccess, setLanAccess] = useState(true);
   const [networkSaving, setNetworkSaving] = useState(false);
-  const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
   const [classroomSearch, setClassroomSearch] = useState("");
   const [classroomStatusFilter, setClassroomStatusFilter] = useState<"all" | "running" | "paused">("all");
   const endingRef = useRef(false);
@@ -156,46 +155,6 @@ export default function TeacherDashboard() {
       setToast({ msg: error instanceof Error ? error.message : '网络模式切换失败', type: 'error' });
     } finally {
       setNetworkSaving(false);
-    }
-  }
-
-  async function toggleQuickPermission(
-    classroom: ActiveClassroom,
-    permission: 'questions' | 'stop' | 'export' | 'followUps',
-  ) {
-    if (permissionBusy) return;
-    const busyKey = `${classroom.id}:${permission}`;
-    setPermissionBusy(busyKey);
-    try {
-      let patch: Partial<ActiveClassroom> = {};
-      let message = '';
-      if (permission === 'questions') {
-        const willEnable = classroom.status === 'paused';
-        if (willEnable) await api.resumeClassroom(classroom.id);
-        else await api.pauseClassroom(classroom.id);
-        patch = { status: willEnable ? 'active' : 'paused' };
-        // ★ 2026-09-25：文案由「已恢复/暂停学生提问」改为课堂。它调的**一直**是
-        // `pauseClassroom`（改 `status`）—— 暂停的是整节课，旧文案是错的。
-        message = willEnable ? '已恢复课堂' : '已暂停课堂';
-      } else if (permission === 'stop') {
-        const result = await api.toggleAllowStop(classroom.id);
-        patch = { allowStudentStop: result.allowStudentStop };
-        message = result.allowStudentStop ? '已允许学生中断回答' : '已禁止学生中断回答';
-      } else if (permission === 'export') {
-        const result = await api.toggleAllowExport(classroom.id);
-        patch = { allowStudentExport: result.allowStudentExport };
-        message = result.allowStudentExport ? '已允许学生导出对话' : '已禁止学生导出对话';
-      } else {
-        const result = await api.toggleAllowFollowUps(classroom.id);
-        patch = { allowFollowUps: result.allowFollowUps };
-        message = result.allowFollowUps ? '已显示追问建议' : '已隐藏追问建议';
-      }
-      setActiveClassrooms(current => current.map(item => item.id === classroom.id ? { ...item, ...patch } : item));
-      setToast({ msg: `${classroom.title || '当前课堂'}：${message}`, type: 'success' });
-    } catch (error) {
-      setToast({ msg: `权限更新失败：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
-    } finally {
-      setPermissionBusy(null);
     }
   }
 
@@ -832,50 +791,6 @@ export default function TeacherDashboard() {
                       agt.name,
                       groupNames,
                     )))}
-                    <span className="active-classroom-permissions" style={{ marginLeft: 'auto' }}>
-                      <span className="active-classroom-permissions-label">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                        </svg>
-                        学生权限
-                      </span>
-                      <span className="active-classroom-permission-group">
-                        {([
-                          { key: 'questions', label: '提问', enabled: cr.status !== 'paused' },
-                          { key: 'stop', label: '中断', enabled: cr.allowStudentStop !== false },
-                          { key: 'export', label: '导出', enabled: cr.allowStudentExport !== false },
-                          { key: 'followUps', label: '追问', enabled: cr.allowFollowUps !== false },
-                        ] as const).map(permission => {
-                          const busy = permissionBusy === `${cr.id}:${permission.key}`;
-                          return (
-                          <button
-                            type="button"
-                            key={permission.key}
-                            className={`active-classroom-permission ${permission.enabled ? 'is-enabled' : 'is-disabled'} ${busy ? 'is-busy' : ''}`}
-                            title={`点击${permission.enabled ? '关闭' : '开启'}${permission.label}`}
-                            aria-pressed={permission.enabled}
-                            aria-busy={busy}
-                            disabled={permissionBusy !== null}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void toggleQuickPermission(cr, permission.key);
-                            }}
-                          >
-                            <span className="active-classroom-permission-icon" aria-hidden="true">
-                              {busy ? (
-                                <span className="active-classroom-permission-spinner" />
-                              ) : permission.enabled ? (
-                                <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 6 2.4 2.4L10 3"/></svg>
-                              ) : (
-                                <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m3 3 6 6M9 3 3 9"/></svg>
-                              )}
-                            </span>
-                            {permission.label}
-                          </button>
-                          );
-                        })}
-                      </span>
-                    </span>
                   </div>
                 );
               })()}

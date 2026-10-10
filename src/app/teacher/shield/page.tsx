@@ -169,7 +169,7 @@ export default function ShieldPage() {
       const enable = customWords.every(word => word.enabled === false);
       await api.batchToggleShieldWords(ids, enable);
       await loadData();
-      setCustomMsg({ type: 'success', text: enable ? '已启用全部自定义屏蔽词' : '已禁用全部自定义屏蔽词' });
+      setCustomMsg({ type: 'success', text: enable ? '已启用全部自定义敏感词' : '已禁用全部自定义敏感词' });
     } catch (error) {
       setCustomMsg({ type: 'error', text: `批量更新失败：${error instanceof Error ? error.message : '请求异常'}` });
     } finally {
@@ -180,13 +180,13 @@ export default function ShieldPage() {
 
   const deleteCustomWords = async () => {
     if (shieldActionRef.current || !customWords.length) return;
-    if (!confirm(`确定删除全部 ${customWords.length} 个自定义屏蔽词？`)) return;
+    if (!confirm(`确定删除全部 ${customWords.length} 个自定义敏感词？`)) return;
     shieldActionRef.current = true;
     setShieldAction('delete');
     try {
       await api.batchDeleteShieldWords(customWords.map(word => word.id));
       await loadData();
-      setCustomMsg({ type: 'success', text: '已删除全部自定义屏蔽词' });
+      setCustomMsg({ type: 'success', text: '已删除全部自定义敏感词' });
     } catch (error) {
       setCustomMsg({ type: 'error', text: `批量删除失败：${error instanceof Error ? error.message : '请求异常'}` });
     } finally {
@@ -197,13 +197,13 @@ export default function ShieldPage() {
 
   const clearWarnings = async () => {
     if (!selectedClassroom || shieldActionRef.current) return;
-    if (!confirm('确认清空该课堂的所有拦截记录？')) return;
+    if (!confirm('确认清空该课堂的所有安全提醒记录？')) return;
     shieldActionRef.current = true;
     setShieldAction('warnings');
     try {
       await api.clearClassroomWarnings(selectedClassroom);
       await Promise.all([loadWarnings(selectedClassroom), loadSummary()]);
-      setRecordMsg({ type: 'success', text: '已清空该课堂的拦截记录' });
+      setRecordMsg({ type: 'success', text: '已清空该课堂的安全提醒记录' });
     } catch (error) {
       setRecordMsg({ type: 'error', text: `清空记录失败：${error instanceof Error ? error.message : '请求异常'}` });
     } finally {
@@ -220,9 +220,9 @@ export default function ShieldPage() {
       const enable = builtinWords.every(word => word.enabled === false);
       await api.batchToggleShieldWords(builtinWords.map(word => word.id), enable);
       await loadData();
-      setBuiltinMsg({ type: 'success', text: enable ? '已启用系统屏蔽词' : '已禁用系统屏蔽词' });
+      setBuiltinMsg({ type: 'success', text: enable ? '已启用系统敏感词' : '已禁用系统敏感词' });
     } catch (error) {
-      setBuiltinMsg({ type: 'error', text: `系统屏蔽词更新失败：${error instanceof Error ? error.message : '请求异常'}` });
+      setBuiltinMsg({ type: 'error', text: `系统敏感词更新失败：${error instanceof Error ? error.message : '请求异常'}` });
     } finally {
       shieldActionRef.current = false;
       setShieldAction(null);
@@ -245,96 +245,50 @@ export default function ShieldPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      <TeacherPageHeader title="课堂安全" description="管理屏蔽词、追踪拦截情况，配置课堂保护规则。" />
+    <div className={styles.page}>
+      <TeacherPageHeader title="智能学伴安全" description="管理学生与智能学伴对话时的敏感词、发送限制和安全提醒。" />
 
       <TeacherPageTabs value={tab} onChange={setTab} items={[
-        { value: 'words', label: '词库管理', badge: words.length },
-        { value: 'records', label: '拦截记录', badge: summary.reduce((total, item) => total + item.warningCount, 0) },
-        { value: 'settings', label: '管控设置' },
+        { value: 'words', label: '对话敏感词', badge: words.length },
+        { value: 'records', label: '安全提醒记录', badge: summary.reduce((total, item) => total + item.warningCount, 0) },
+        { value: 'settings', label: '对话管控' },
       ]} />
 
-      {tab === 'settings' && <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-        {/* 管控设置：自动黑屏 + 提问频率 */}
-        <div style={{
-          background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden',
-        }}>
-          <div style={{
-            padding: '14px 24px', borderBottom: '1px solid #f1f5f9',
-            background: '#fafbff', display: 'flex', alignItems: 'center', gap: 8,
-          }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#956834" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-            <div>
-              <h2 style={{ fontSize: "0.938rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>课堂管控</h2>
-              <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '3px 0 0' }}>设置自动黑屏与提问频率，维持课堂秩序。</p>
+      {tab === 'settings' && <section className={styles.settingsCard}>
+        <div className={styles.settingsHeading}>
+          <h2>对话管控</h2>
+          <p>为学生与智能学伴的交流设置适当的边界。</p>
+        </div>
+        <div className={styles.settingsGrid}>
+          <div className={styles.settingItem}>
+            <div className={styles.settingTitle}><label htmlFor="shield-black-count">自动黑屏</label><span>{autoBlackCount > 0 ? '已开启' : '未开启'}</span></div>
+            <p>学生在课堂中触发对话敏感词达到指定次数后，学生端自动黑屏。</p>
+            <div className={styles.numberField}>
+              <input id="shield-black-count" type="number" className="input" value={autoBlackCount}
+                onChange={e => setAutoBlackCount(parseInt(e.target.value) || 0)} min={0} max={99} aria-describedby="black-count-help" />
+              <span>次后黑屏</span>
             </div>
+            <small id="black-count-help">设为 0 时不自动黑屏。</small>
           </div>
-          <div style={{ padding: '20px 24px', display: 'flex', gap: 32 }}>
-            {/* 自动黑屏 */}
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "0.813rem", fontWeight: 600, color: '#0f172a', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="#956834" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                自动黑屏
-              </div>
-              <p style={{ fontSize: "0.75rem", color: '#94a3b8', margin: '0 0 12px 20px', lineHeight: 1.5 }}>
-                触发屏蔽词达到设定次数后，学生端自动黑屏
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 20 }}>
-                <input type="number" className="input"
-                  value={autoBlackCount}
-                  onChange={e => setAutoBlackCount(parseInt(e.target.value) || 0)}
-                  min={0} max={99}
-                  style={{ width: 72, textAlign: 'center', fontSize: "1rem", fontWeight: 600, padding: '8px 12px' }}
-                />
-                <span style={{ fontSize: "0.813rem", color: '#64748b' }}>次后自动黑屏</span>
-              </div>
+          <div className={styles.settingItem}>
+            <div className={styles.settingTitle}><label htmlFor="shield-rate-limit">对话发送限制</label><span>{rateLimit > 0 ? '已开启' : '不限次数'}</span></div>
+            <p>限制每位学生每分钟向智能学伴发送消息的次数。</p>
+            <div className={styles.numberField}>
+              <input id="shield-rate-limit" type="number" className="input" value={rateLimit}
+                onChange={e => setRateLimit(parseInt(e.target.value) || 0)} min={0} max={99} aria-describedby="rate-limit-help" />
+              <span>次 / 分钟</span>
             </div>
-            {/* 分割线 */}
-            <div style={{ width: 1, background: '#eef2f6', flexShrink: 0 }} />
-            {/* 频率限制 */}
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "0.813rem", fontWeight: 600, color: '#0f172a', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#956834" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                提问频率限制
-              </div>
-              <p style={{ fontSize: "0.75rem", color: '#94a3b8', margin: '0 0 12px 20px', lineHeight: 1.5 }}>
-                限制每位学生每分钟最多向 AI 提问的次数
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 20 }}>
-                <input type="number" className="input"
-                  value={rateLimit}
-                  onChange={e => setRateLimit(parseInt(e.target.value) || 0)}
-                  min={0} max={99}
-                  style={{ width: 72, textAlign: 'center', fontSize: "1rem", fontWeight: 600, padding: '8px 12px' }}
-                />
-                <span style={{ fontSize: "0.813rem", color: '#64748b' }}>次 / 分钟</span>
-              </div>
-            </div>
-          </div>
-          <div style={{
-            padding: '12px 24px', borderTop: '1px solid #f1f5f9',
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10,
-          }}>
-            {configError && <span style={{ fontSize: "0.75rem", color: '#a85d5d', display: 'flex', alignItems: 'center', gap: 3 }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              {configError}
-            </span>}
-            <button className="btn btn-primary" onClick={saveConfig}
-              style={{ fontSize: "0.813rem", display: 'flex', alignItems: 'center', gap: 6, padding: '8px 20px' }}>
-              {configSaved ? (
-                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>已保存</>
-              ) : '保存设置'}
-            </button>
+            <small id="rate-limit-help">设为 0 时不限制发送次数。</small>
           </div>
         </div>
-      </div>}
+        <div className={styles.settingsFooter}>
+          <span className={styles.configFeedback} role="status">{configError || (configSaved ? '设置已保存' : '')}</span>
+          <button className="btn btn-primary" onClick={saveConfig} disabled={shieldAction !== null}>保存设置</button>
+        </div>
+      </section>}
 
       {tab === 'words' && <div className={styles.wordWorkspace} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* 添加屏蔽词 */}
+        {/* 添加敏感词 */}
         <div className={styles.wordComposer} style={{
           background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
           boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden',
@@ -346,11 +300,11 @@ export default function ShieldPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#934e4e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
             </svg>
-            <div><h2 style={{ fontSize: "0.875rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>添加自定义屏蔽词</h2><span style={{ fontSize: "0.688rem", color: '#94a3b8' }}>用逗号或换行分隔，一次添加多个词</span></div>
+            <div><h2 style={{ fontSize: "0.875rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>添加自定义敏感词</h2><span style={{ fontSize: "0.688rem", color: '#94a3b8' }}>用逗号或换行分隔，一次添加多个词</span></div>
           </div>
           <div className={styles.wordComposerBody} style={{ padding: '20px 24px' }}>
             <textarea
-              aria-label="新增自定义屏蔽词"
+              aria-label="新增自定义敏感词"
               className="input"
               value={newWord}
               onChange={e => { setNewWord(e.target.value); setError(''); }}
@@ -394,7 +348,7 @@ export default function ShieldPage() {
         </div>
 
         <div className={styles.libraryGrid} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16, alignItems: 'start' }}>
-        {/* 自定义屏蔽词 */}
+        {/* 自定义敏感词 */}
         <div className={`${styles.libraryPanel} ${styles.customLibrary}`} style={{
           background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
           boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden',
@@ -407,7 +361,7 @@ export default function ShieldPage() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#934e4e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
               </svg>
-              <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>自定义屏蔽词</h2>
+              <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>自定义敏感词</h2>
               <span style={{
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 22,
                 padding: '0 8px', height: 22, borderRadius: 11,
@@ -424,7 +378,7 @@ export default function ShieldPage() {
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: 0, border: 'none', background: 'transparent', fontFamily: 'inherit',
                   }}
-                  title={customWords.some(w => w.enabled !== false) ? '一键禁用所有自定义屏蔽词' : '一键启用所有自定义屏蔽词'}>
+                  title={customWords.some(w => w.enabled !== false) ? '一键禁用所有自定义敏感词' : '一键启用所有自定义敏感词'}>
                   <span style={{
                     position: 'relative', width: 40, height: 22,
                     borderRadius: 11, border: 'none',
@@ -458,7 +412,7 @@ export default function ShieldPage() {
           <WordStatusMessage message={customMsg} />
           {customWords.length === 0 ? (
             <div style={{ padding: '28px 24px', textAlign: 'center', color: '#94a3b8', background: 'linear-gradient(180deg, #fff, #fafcff)' }}>
-              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', marginBottom: 2 }}>暂无自定义屏蔽词</div>
+              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', marginBottom: 2 }}>暂无自定义敏感词</div>
               <div style={{ fontSize: "0.75rem", color: '#94a3b8' }}>在上方输入关键词后保存，即可在这里统一管理</div>
             </div>
           ) : (
@@ -499,7 +453,7 @@ export default function ShieldPage() {
           )}
         </div>
 
-        {/* 系统屏蔽词 */}
+        {/* 系统敏感词 */}
         <div className={`${styles.libraryPanel} ${styles.systemLibrary}`} style={{
           background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
           boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden',
@@ -512,7 +466,7 @@ export default function ShieldPage() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>
               </svg>
-              <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>系统屏蔽词</h2>
+              <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>系统敏感词</h2>
               {builtinWords.length > 0 && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 22,
@@ -551,8 +505,8 @@ export default function ShieldPage() {
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 8 }}>
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>
               </svg>
-              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', marginBottom: 2 }}>系统屏蔽词为空</div>
-              <div style={{ fontSize: "0.75rem", color: '#cbd5e1' }}>如需重新加载系统内置屏蔽词，请联系管理员</div>
+              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', marginBottom: 2 }}>系统敏感词为空</div>
+              <div style={{ fontSize: "0.75rem", color: '#cbd5e1' }}>如需重新加载系统内置敏感词，请联系管理员</div>
             </div>
           ) : (
             <div style={{ padding: '18px 24px' }}>
@@ -566,10 +520,10 @@ export default function ShieldPage() {
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
                 <span>
-                  <strong>{builtinWords.some(w => w.enabled !== false) ? '系统词库正在保护课堂。' : '系统词库已暂停。'}</strong>
+                  <strong>{builtinWords.some(w => w.enabled !== false) ? '系统词库已启用。' : '系统词库已暂停。'}</strong>
                   {' '}{builtinWords.some(w => w.enabled !== false)
-                    ? '学生消息会实时检测不当内容；词库明细不展示，可通过右上角开关统一暂停。'
-                    : '当前不会使用系统屏蔽词检测消息，可通过右上角开关重新启用。'}
+                    ? '检测学生发给智能学伴的消息；可通过上方开关统一暂停。'
+                    : '当前不使用系统词库检测对话消息，可通过上方开关重新启用。'}
                 </span>
               </div>
             </div>
@@ -579,11 +533,11 @@ export default function ShieldPage() {
         </div>
       </div>}
 
-      {tab === 'records' && <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, minHeight: 0 }}>
+      {tab === 'records' && <div className={styles.recordsWorkspace}>
         {recordMsg && <div className={styles.recordStatus}><WordStatusMessage message={recordMsg} /></div>}
 
         {/* 课堂列表 */}
-        <div style={{
+        <div className={styles.classroomList} style={{
           background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
           boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden',
         }}>
@@ -597,22 +551,22 @@ export default function ShieldPage() {
             <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>课堂列表</h2>
             {summary.length > 0 && (
               <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400 }}>
-                — {summary.length} 个课堂有拦截记录
+                — {summary.length} 个课堂有安全提醒记录
               </span>
             )}
           </div>
           {loadingSummary ? (
-            <TeacherLoadingState label="正在加载拦截记录…" />
+            <TeacherLoadingState label="正在加载安全提醒记录…" />
           ) : summary.length === 0 ? (
             <TeacherEmptyState
               icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>}
-              title="暂无拦截记录"
-              description="学生消息触发屏蔽词后，会按课堂汇总在这里。"
+              title="暂无安全提醒记录"
+              description="学生消息触发敏感词后，会按课堂汇总在这里。"
             />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {summary.map(c => (
-                <button key={c.id} onClick={() => loadWarnings(c.id)}
+                <button className={styles.classroomRow} aria-pressed={selectedClassroom === c.id} key={c.id} onClick={() => loadWarnings(c.id)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '14px 24px', cursor: 'pointer', border: 'none', borderBottom: '1px solid #f1f5f9',
@@ -655,8 +609,8 @@ export default function ShieldPage() {
           )}
         </div>
 
-        {/* 拦截详情 */}
-        {selectedClassroom && <div style={{
+        {/* 提醒详情 */}
+        {selectedClassroom && <div className={styles.recordDetails} style={{
           background: 'white', borderRadius: 14, border: '1px solid #e2e8f0',
           boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'hidden', flex: 1, minHeight: 0,
           display: 'flex', flexDirection: 'column',
@@ -669,7 +623,7 @@ export default function ShieldPage() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#934e4e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
-              <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>拦截详情</h2>
+              <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>提醒详情</h2>
               {warnings.length > 0 && (
                 <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400 }}>
                   {warnings.length} 条记录
@@ -692,17 +646,17 @@ export default function ShieldPage() {
           ) : warnings.length === 0 ? (
             <TeacherEmptyState
               icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M16 16s-1.5-2-4-2-4 2-4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>}
-              title="该课堂暂无拦截记录"
-              description="当前课堂没有触发屏蔽词的学生消息。"
+              title="该课堂暂无安全提醒记录"
+              description="当前课堂没有触发敏感词的学生消息。"
             />
           ) : (
-            <div style={{ overflowY: 'auto', flex: 1 }}>
+            <div className={styles.recordTable}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: "0.813rem" }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '2px solid #eef2f6', position: 'sticky', top: 0 }}>
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.75rem", letterSpacing: '0.02em' }}>学生</th>
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.75rem", letterSpacing: '0.02em' }}>时间</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.75rem", letterSpacing: '0.02em' }}>提问内容</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.75rem", letterSpacing: '0.02em' }}>学生发送的消息</th>
                     <th style={{ width: 50 }}></th>
                   </tr>
                 </thead>

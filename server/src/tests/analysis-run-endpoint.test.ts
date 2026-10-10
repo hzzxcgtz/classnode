@@ -954,7 +954,7 @@ test('分析调用计入仪表盘：历史补计、重跑累加、课堂去重�
     const run = await fetch(runUrl(srv.base,worksheet.id,'q3',classroom.id),{method:'POST'});
     assert.equal(run.status,200,await run.text());
   }
-  let stats = (await usage()).find(row=>row.id===a.id)!;
+  const stats = (await usage()).find(row=>row.id===a.id)!;
   assert.equal(stats.totalCalls,3); assert.equal(stats.classroomCount,1);
   await p.worksheet.update({where:{id:worksheet.id},data:{settings:{analysisAgentId:b.id}}});
   const run = await fetch(runUrl(srv.base,worksheet.id,'q3',classroom.id),{method:'POST'});

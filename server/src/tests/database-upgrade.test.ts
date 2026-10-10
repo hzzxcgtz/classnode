@@ -9,6 +9,8 @@ import type { AddressInfo } from 'node:net';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
+import { seedShieldWords } from '../services/seed-shield-words.js';
+import defaultShieldWords from '../services/default-shield-words.js';
 
 process.env.ENCRYPTION_KEY = 't'.repeat(32);
 const { upgradeDatabase } = await import('../services/database-upgrade.js');
@@ -257,6 +259,23 @@ test('active upgrade lock is retained and a mismatched destination is rejected',
   } finally { await f.close(); }
 });
 
+test('default shield seeding preserves custom disabled words and does not refill an initialized library', async () => {
+  const f = await fixture(false);
+  try {
+    const word = defaultShieldWords[0];
+    await f.prisma.shieldWord.create({ data: { word, enabled: false, builtin: false } });
+    const expected = new Set(defaultShieldWords).size;
+    assert.equal(await seedShieldWords(f.prisma), expected - 1);
+    assert.equal(await f.prisma.shieldWord.count(), expected);
+    const preserved = await f.prisma.shieldWord.findUniqueOrThrow({ where: { word } });
+    assert.equal(preserved.enabled, false);
+    assert.equal(preserved.builtin, false);
+    await f.prisma.shieldWord.delete({ where: { word: defaultShieldWords[1] } });
+    assert.equal(await seedShieldWords(f.prisma), 0);
+    assert.equal(await f.prisma.shieldWord.count(), expected - 1);
+  } finally { await f.close(); }
+});
+
 test('actual source server startup upgrades the legacy database before listening', async () => {
   const f = await fixture();
   const probe = http.createServer();
@@ -271,22 +290,27 @@ test('actual source server startup upgrades the legacy database before listening
     return Promise.reject(new Error('External network disabled in startup regression'));};`);
   const child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, path.join(serverRoot, 'dist/index.js')], { cwd: serverRoot, detached: process.platform !== 'win32', env: { ...process.env, http_proxy: '', https_proxy: '', DATABASE_URL: f.url, CLASSNODE_DATA_DIR: f.root, PORT: String(port), CLASSNODE_WEBAPP_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
   const closed = new Promise<void>(resolve => child.once('close', () => resolve()));
+  const started = Date.now();
   let failure: unknown;
   let output = '';
-  child.stdout.on('data', chunk => { output += chunk.toString(); });
-  child.stderr.on('data', chunk => { output += chunk.toString(); });
+  const record = (chunk: Buffer) => { output += `[+${Date.now() - started}ms] ${chunk.toString()}`; };
+  child.stdout.on('data', record);
+  child.stderr.on('data', record);
   try {
     let ready = false;
     const start = Date.now();
-    while (Date.now() - start < 60000) {
+    // The shared Windows runner also executes other database suites concurrently.
+    const startupTimeout = process.platform === 'win32' ? 180000 : 60000;
+    while (Date.now() - start < startupTimeout) {
       if (child.exitCode !== null) throw new Error(output);
-      try { ready = (await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(500) })).status === 200; } catch {}
+      try { ready = (await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(2000) })).status === 200; } catch {}
       if (ready) break;
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    assert.ok(ready, output);
+    assert.ok(ready, `服务未在 ${startupTimeout}ms 内就绪\n${output}`);
     await assertHistory(f.prisma);
     assert.ok(await f.prisma.setting.findUnique({ where: { key: 'safe-database-upgrade-v1' } }));
+    assert.equal(await f.prisma.shieldWord.count({ where: { builtin: true } }), new Set(defaultShieldWords).size);
   } catch (error) {
     failure = error;
     throw error;

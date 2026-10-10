@@ -25,7 +25,7 @@ import avatarRoutes from './routes/avatars.js';
 import systemRoutes from './routes/system.js';
 import upgradeRoutes, { checkForUpdateOnStartup } from './routes/upgrade.js';
 import webappRoutes from './routes/webapps.js';
-import defaultShieldWords from './services/default-shield-words.js';
+import { seedShieldWords } from './services/seed-shield-words.js';
 import { revokeAllTeacherSessions, requireTeacher } from './middleware/auth.js';
 import { installRequestSecurity, isLanRequestAllowed, isTrustedRequestOrigin, requestCorsOptions, type OriginPolicy } from './middleware/request-security.js';
 import { revokeAllStudentSessions, getStudentSession } from './middleware/student-auth.js';
@@ -130,18 +130,9 @@ async function main() {
 
   // 自动填充默认屏蔽词（仅首次启动时，词库为空时跳过）
   try {
-    const builtinCount = await prisma.shieldWord.count({ where: { builtin: true } });
-    if (builtinCount === 0) {
-      for (const word of defaultShieldWords) {
-        const existing = await prisma.shieldWord.findUnique({ where: { word } });
-        if (!existing) {
-          await prisma.shieldWord.create({ data: { word, builtin: true } });
-        }
-      }
-      if (defaultShieldWords.length > 0) {
-        console.log(`[server] Auto-seeded ${defaultShieldWords.length} default shield words`);
-      }
-    }
+    console.log('[server] Initializing default shield words');
+    const seeded = await seedShieldWords(prisma);
+    console.log(`[server] Default shield words ready (${seeded} added)`);
   } catch (e) {
     console.warn('[server] Failed to auto-seed shield words:', e);
   }

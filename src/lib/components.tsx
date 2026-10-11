@@ -286,7 +286,7 @@ export function Pagination({
           ))}
         </select>
       )}
-      <span style={{ fontSize: "0.688rem", color: '#94a3b8', marginLeft: 8, whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: 'var(--pagination-meta-font-size, 0.688rem)', color: '#94a3b8', marginLeft: 8, whiteSpace: 'nowrap' }}>
         共 {total} 条
       </span>
     </div>

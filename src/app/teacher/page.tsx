@@ -575,7 +575,7 @@ export default function TeacherDashboard() {
                             padding: "3px 9px",
                             borderRadius: 8,
                             border: `1px solid ${cfg.border}`,
-                            fontSize: "0.7rem",
+                            fontSize: "0.75rem",
                             fontWeight: 600,
                             verticalAlign: "middle",
                             lineHeight: "16px",
@@ -602,7 +602,7 @@ export default function TeacherDashboard() {
                         borderRadius: 8,
                         background: "#f8fafc",
                         color: "#475569",
-                        fontSize: "0.7rem",
+                        fontSize: "0.875rem",
                         fontWeight: 600,
                         border: "1px solid #e2e8f0",
                         cursor: "pointer",
@@ -679,7 +679,7 @@ export default function TeacherDashboard() {
                       </div>
                       <div
                         style={{
-                          fontSize: "0.688rem",
+                          fontSize: "0.75rem",
                           color: "#94a3b8",
                           marginTop: 1,
                         }}
@@ -729,7 +729,7 @@ export default function TeacherDashboard() {
                     {/* 高级模式下同一类有多份，光看名字不知道为什么有多个 ——
                         把「这一份是谁的」写在旁边（用户要求「认真思考」的那一点）。 */}
                     {groupNames.length > 0 && (
-                      <span style={{ fontSize: "0.625rem", color: "#94a3b8" }}>{groupNames.join("、")}</span>
+                      <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>{groupNames.join("、")}</span>
                     )}
                   </span>
                 );
@@ -740,7 +740,7 @@ export default function TeacherDashboard() {
                     width: 18, height: 18, borderRadius: 4, flexShrink: 0,
                     background, color: "white",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: "0.563rem", fontWeight: 700, overflow: "hidden",
+                    fontSize: "0.75rem", fontWeight: 700, overflow: "hidden",
                   }}>
                     {content}
                   </span>
@@ -749,7 +749,7 @@ export default function TeacherDashboard() {
                 /** 一类材料：一个类名 + 它的全部条目。空类不渲染。 */
                 const section = (label: string, chips: ReactNode[]) => chips.length === 0 ? null : (
                   <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: "0.688rem", color: "#94a3b8", fontWeight: 700, marginRight: 2 }}>{label}</span>
+                    <span style={{ fontSize: "0.75rem", color: "#94a3b8", fontWeight: 700, marginRight: 2 }}>{label}</span>
                     {chips}
                   </span>
                 );
@@ -833,14 +833,14 @@ export default function TeacherDashboard() {
                 <div className="active-classroom-actions">
                 {/* 编辑 + 互动码 */}
                 <button onClick={() => openSettings(cr)} title="修改课堂设置"
-                  style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.75rem", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
+                  style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.875rem", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#475569"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   编辑
                 </button>
                 <button onClick={() => void openQrCode(cr)} disabled={loadingQrClassroomId !== null} title="显示互动码"
-                  style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.75rem", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
+                  style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.875rem", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "var(--primary)"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="17" y="2" width="5" height="5" rx="1"/><rect x="2" y="17" width="5" height="5" rx="1"/><path d="M11 2h2"/><path d="M11 22h2"/><path d="M2 11v2"/><path d="M22 11v2"/><path d="M15 15h2v2h-2z"/><path d="M17 15v-1a2 2 0 0 0-2-2h-1"/><path d="M15 19v1a2 2 0 0 0 2 2h1"/><path d="M19 17h2v2h-2z"/></svg>
@@ -849,7 +849,7 @@ export default function TeacherDashboard() {
 
                 {/* 结束课堂 — 红字轮廓，hover 加强 */}
                 <button onClick={() => void endClassroom(cr)} disabled={endingClassroomId !== null}
-                  style={{ padding: "5px 12px", borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: "transparent", color: "#a85d5d", border: "1px solid #fca5a5", cursor: "pointer", lineHeight: 1, transition: "all 0.15s" }}
+                  style={{ padding: "5px 12px", borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, background: "transparent", color: "#a85d5d", border: "1px solid #fca5a5", cursor: "pointer", lineHeight: 1, transition: "all 0.15s" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "#f8eeee"; e.currentTarget.style.color = "#934e4e"; e.currentTarget.style.borderColor = "#f87171"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#a85d5d"; e.currentTarget.style.borderColor = "#fca5a5"; }}>
                   {endingClassroomId === cr.id ? "结束中..." : "结束课堂"}
@@ -857,7 +857,7 @@ export default function TeacherDashboard() {
 
                 {/* 进入课堂 — 醒目填充按钮 */}
                 <button onClick={() => router.push(`/teacher/classroom?id=${cr.id}`)}
-                  style={{ padding: "7px 18px", borderRadius: 8, fontSize: "0.813rem", fontWeight: 600, background: "linear-gradient(135deg, var(--primary), var(--primary-dark))", color: "white", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, transition: "all 0.15s", boxShadow: "0 2px 8px rgba(var(--primary-focus-rgb), 0.25)" }}
+                  style={{ padding: "7px 18px", borderRadius: 8, fontSize: "0.875rem", fontWeight: 600, background: "linear-gradient(135deg, var(--primary), var(--primary-dark))", color: "white", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, transition: "all 0.15s", boxShadow: "0 2px 8px rgba(var(--primary-focus-rgb), 0.25)" }}
                   /* ★ 2026-09-30（教师）：「鼠标在上方停留颜色不对」。
                      🔴 原先是 `linear-gradient(135deg, var(--primary-dark), #1e40af)` —— 第一个色停是
                      `--primary-dark`（灰蓝），第二个却是 `#1e40af`（**另一个色相**的高饱和蓝）
@@ -1278,7 +1278,7 @@ export default function TeacherDashboard() {
                 </h3>
                 <p
                   style={{
-                    fontSize: "0.75rem",
+                    fontSize: "0.8125rem",
                     color: "#94a3b8",
                     margin: "2px 0 0",
                   }}
@@ -1293,7 +1293,7 @@ export default function TeacherDashboard() {
               <div style={{ marginBottom: 20 }}>
                 <label
                   style={{
-                    fontSize: "0.75rem",
+                    fontSize: "0.875rem",
                     fontWeight: 600,
                     color: "#475569",
                     marginBottom: 6,
@@ -1349,7 +1349,7 @@ export default function TeacherDashboard() {
                   <div>
                     <label
                       style={{
-                        fontSize: "0.75rem",
+                        fontSize: "0.875rem",
                         fontWeight: 600,
                         color: "#475569",
                         marginBottom: 6,
@@ -1374,7 +1374,7 @@ export default function TeacherDashboard() {
                       AI智能体
                       <span
                         style={{
-                          fontSize: "0.688rem",
+                          fontSize: "0.75rem",
                           color: "#94a3b8",
                           fontWeight: 400,
                           marginLeft: 4,
@@ -1445,7 +1445,7 @@ export default function TeacherDashboard() {
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "center",
-                                  fontSize: "0.625rem",
+                                  fontSize: "0.75rem",
                                   fontWeight: 700,
                                 }}
                               >
@@ -1491,7 +1491,7 @@ export default function TeacherDashboard() {
                       小组智能体
                       <span
                         style={{
-                          fontSize: "0.688rem",
+                          fontSize: "0.75rem",
                           color: "#94a3b8",
                           fontWeight: 400,
                           marginLeft: 4,
@@ -1542,7 +1542,7 @@ export default function TeacherDashboard() {
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                fontSize: "0.688rem",
+                                fontSize: "0.75rem",
                                 fontWeight: 700,
                                 flexShrink: 0,
                               }}
@@ -1596,7 +1596,7 @@ export default function TeacherDashboard() {
                                     display: "flex",
                                     alignItems: "center",
                                     justifyContent: "center",
-                                    fontSize: "0.625rem",
+                                    fontSize: "0.75rem",
                                     fontWeight: 700,
                                   }}
                                 >
@@ -1618,7 +1618,7 @@ export default function TeacherDashboard() {
               <div style={{ marginTop: 20 }}>
                 <label
                   style={{
-                    fontSize: "0.75rem",
+                    fontSize: "0.875rem",
                     fontWeight: 600,
                     color: "#475569",
                     marginBottom: 6,
@@ -1643,7 +1643,7 @@ export default function TeacherDashboard() {
                   探究网页
                   <span
                     style={{
-                      fontSize: "0.688rem",
+                      fontSize: "0.75rem",
                       color: "#94a3b8",
                       fontWeight: 400,
                       marginLeft: 4,
@@ -1715,7 +1715,7 @@ export default function TeacherDashboard() {
                             <span>{material.name}</span>
                             {/* 高级模式下同一类不止一个 —— 光看名字不知道为什么有多个。 */}
                             {groupNames.length > 0 && (
-                              <span style={{ fontSize: "0.688rem", color: "#94a3b8" }}>
+                              <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
                                 {groupNames.join("、")}
                               </span>
                             )}
@@ -1761,14 +1761,14 @@ export default function TeacherDashboard() {
               <button
                 onClick={() => setSettingsModalClassroom(null)} disabled={savingSettings}
                 className="btn"
-                style={{ fontSize: "0.813rem" }}
+                style={{ fontSize: "0.875rem" }}
               >
                 取消
               </button>
               <button
                 onClick={() => void handleSaveSettings()} disabled={savingSettings}
                 className="btn btn-primary"
-                style={{ fontSize: "0.813rem" }}
+                style={{ fontSize: "0.875rem" }}
               >
                 {savingSettings ? "保存中..." : "保存设置"}
               </button>

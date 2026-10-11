@@ -170,7 +170,7 @@ export default function AgentsPage() {
               </div>
             )}
           </span>
-          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '4px 12px', flexShrink: 0 }} onClick={() => setShowTokens(true)}>
+          <button type="button" className="btn btn-secondary" style={{ fontSize: "0.875rem", padding: '4px 12px', flexShrink: 0 }} onClick={() => setShowTokens(true)}>
             去处理
           </button>
         </div>
@@ -373,7 +373,7 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
           <h2 id="agent-form-title" style={{ fontSize: "1rem", fontWeight: 700, margin: '0 0 2px' }}>
             {agent ? '编辑智能体' : '接入AI智能体'}
           </h2>
-          <p style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', margin: '0 0 12px' }}>
+          <p style={{ fontSize: "0.8125rem", color: 'var(--text-secondary)', margin: '0 0 12px' }}>
             接入 Coze 低代码、Coze 编程、清言智能体、文心智能体等多种 AI 平台
           </p>
         </div>
@@ -449,21 +449,21 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
               <div className="agent-form-identity" style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
                 <AgentLogoField inputRef={fileRef} preview={logoPreview} onChange={handleLogoChange} onRemove={handleRemoveLogo} />
                 <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>智能体名称 <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <label style={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>智能体名称 <span style={{ color: 'var(--danger)' }}>*</span></label>
                   <input className="input" value={name} onChange={e => { setName(e.target.value); clearError('name'); }} placeholder="例如: AI英语助教"
-                    style={{ fontSize: "0.813rem", padding: '8px 12px', borderColor: fieldErrors.name ? '#a85d5d' : undefined }} />
+                    style={{ fontSize: "0.875rem", padding: '8px 12px', borderColor: fieldErrors.name ? '#a85d5d' : undefined }} />
                   {fieldErrors.name && <FieldError message={fieldErrors.name} />}
                 </div>
               </div>
 
               <div>
-                <label style={{ fontSize: "0.75rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>开场白</label>
+                <label style={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>开场白</label>
                 <textarea
                   className="input"
                   value={greeting}
                   onChange={e => setGreeting(e.target.value)}
                   placeholder={platform === 'coze' ? '自动获取后会填入这里，也可以手动输入' : '手动输入开场白内容'}
-                  style={{ fontSize: "0.813rem", padding: '8px 12px', minHeight: 72, resize: 'vertical', width: '100%' }}
+                  style={{ fontSize: "0.875rem", padding: '8px 12px', minHeight: 72, resize: 'vertical', width: '100%' }}
                 />
               </div>
             </div>
@@ -489,8 +489,8 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
           <div className="agent-form-footer" style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
             <AgentHelpButton platform={platform} purpose={purpose} />
             <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving} style={{ fontSize: "0.813rem", padding: '7px 18px' }}>取消</button>
-            <button type="submit" className="btn btn-primary" disabled={saving} style={{ fontSize: "0.813rem", padding: '7px 20px' }}>
+            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving} style={{ fontSize: "0.875rem", padding: '7px 18px' }}>取消</button>
+            <button type="submit" className="btn btn-primary" disabled={saving} style={{ fontSize: "0.875rem", padding: '7px 20px' }}>
               {saving ? (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}><circle cx="12" cy="12" r="10" strokeDasharray="31.4 31.4" strokeLinecap="round"/></svg>

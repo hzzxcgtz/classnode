@@ -255,7 +255,7 @@ export function QuestionStatsOverlay({
                 <VerdictDonut
                   size={80}
                   centerFontSize="0.9rem"
-                  centerNoteFontSize="0.55rem"
+                  centerNoteFontSize="0.75rem"
                   unit={unit}
                   centerText={stats.accuracy === null ? null : `${stats.accuracy}%`}
                   centerNote={stats.accuracy === null ? '不统计正确率' : '正确率'}

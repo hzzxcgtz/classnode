@@ -385,7 +385,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           <div style={{ marginTop: 16, textAlign: 'center', fontSize: "0.75rem", color: '#9ca3af', lineHeight: 1.6 }}>
             遗忘密码？请在桌面端<strong style={{ color: '#466b8a' }}>「控制面板」</strong>窗口中重置
           </div>
-          <button onClick={() => router.push('/')} style={{ display: 'block', margin: '12px auto 0', background: 'none', border: 'none', color: '#6b7280', fontSize: "0.813rem", cursor: 'pointer' }}>
+          <button onClick={() => router.push('/')} style={{ display: 'block', margin: '12px auto 0', background: 'none', border: 'none', color: '#6b7280', fontSize: "0.875rem", cursor: 'pointer' }}>
             返回学生页面
           </button>
         </div>
@@ -436,7 +436,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   return (
     <div className="teacher-layout" data-sidebar-collapsed={sidebarCollapsed ? 'true' : 'false'}>
       <nav className="teacher-sidebar" style={{
-        width: sidebarCollapsed ? 68 : 220, background: '#ffffff',
+        width: 'var(--teacher-sidebar-current-width)', background: '#ffffff',
         borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column',
         padding: sidebarCollapsed ? '24px 4px' : '24px 12px', position: 'fixed',
@@ -458,7 +458,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                   <span className="teacher-brand-en" style={{ fontSize: "0.75rem", letterSpacing: '0.04em' }}>ClassNode</span>
                   <span className="teacher-version-chip" style={{
-                    fontSize: "0.625rem", fontWeight: 600, padding: '0 5px', lineHeight: '16px',
+                    fontSize: "0.75rem", fontWeight: 600, padding: '0 5px', lineHeight: '16px',
                     borderRadius: 100,
                   }}>v{APP_VERSION}</span>
                 </div>
@@ -497,7 +497,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
         {/* 导航标题 */}
         {!sidebarCollapsed && <div className="teacher-nav-title" style={{
-          fontSize: "0.625rem", fontWeight: 600, color: '#94a3b8',
+          fontSize: "0.75rem", fontWeight: 600, color: '#94a3b8',
           letterSpacing: 0.8, textTransform: 'uppercase',
           marginBottom: 6, paddingLeft: 12,
         }}>
@@ -702,7 +702,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               {!sidebarCollapsed && <span>{loggingOut ? '退出中...' : '退出登录'}</span>}
             </button>
             {!sidebarCollapsed && <div style={{
-              fontSize: "0.688rem", color: '#cbd5e1',
+              fontSize: "0.75rem", color: '#cbd5e1',
               padding: '10px 12px 0',
             }}>
               v{APP_VERSION}
@@ -718,7 +718,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         title={sidebarCollapsed ? '展开侧栏' : '折叠侧栏'}
         style={{
           position: 'fixed',
-          left: sidebarCollapsed ? 68 : 220,
+          left: 'var(--teacher-sidebar-current-width)',
           top: '50%',
           transform: 'translateY(-50%)',
           width: 20,
@@ -746,8 +746,6 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       </button>
 
       <main className="teacher-main" data-page-tone={teacherPageTone(pathname)} style={{
-        marginLeft: sidebarCollapsed ? 68 : 220,
-        maxWidth: sidebarCollapsed ? `min(calc(100vw - 68px), 1464px)` : undefined,
         transition: 'margin-left 0.2s ease',
       }}>
         {children}
@@ -775,7 +773,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             ) : (
               <>
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: "0.813rem", color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>当前密码</label>
+                  <label style={{ fontSize: "0.875rem", color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>当前密码</label>
                   <input type="password" className="input" value={oldPwd}
                     onChange={e => { setOldPwd(e.target.value); clearPwdError('oldPwd'); }}
                     placeholder="输入当前管理密码" autoFocus
@@ -783,7 +781,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   {pwdFieldErrors.oldPwd && <FieldError message={pwdFieldErrors.oldPwd} />}
                 </div>
                 <div style={{ marginBottom: 14 }}>
-                  <label style={{ fontSize: "0.813rem", color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>新密码</label>
+                  <label style={{ fontSize: "0.875rem", color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>新密码</label>
                   <input type="password" className="input" value={newPwd}
                     onChange={e => { setNewPwd(e.target.value); clearPwdError('newPwd'); }}
                     placeholder="新密码"
@@ -791,7 +789,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                   {pwdFieldErrors.newPwd && <FieldError message={pwdFieldErrors.newPwd} />}
                 </div>
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: "0.813rem", color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>确认新密码</label>
+                  <label style={{ fontSize: "0.875rem", color: '#475569', fontWeight: 500, display: 'block', marginBottom: 4 }}>确认新密码</label>
                   <input type="password" className="input" value={confirmPwd}
                     onChange={e => { setConfirmPwd(e.target.value); clearPwdError('confirmPwd'); }}
                     placeholder="再次输入新密码"

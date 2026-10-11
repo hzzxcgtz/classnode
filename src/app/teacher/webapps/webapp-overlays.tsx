@@ -103,10 +103,10 @@ export function WebappPreviewDialog({ webapp, origin, onClose }: { webapp: Webap
         <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg, #f8faff, #f0f4ff)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 id="webapp-preview-title" style={{ margin: 0, fontSize: '0.938rem', fontWeight: 700, wordBreak: 'break-all' }}>{webapp.name}</h3>
-            <div style={{ fontSize: '0.688rem', color: '#64748b', marginTop: 2 }}>学生在课堂里看到的是同一个网页</div>
+            <div style={{ fontSize: "0.75rem", color: '#64748b', marginTop: 2 }}>学生在课堂里看到的是同一个网页</div>
           </div>
-          <button type="button" className="btn btn-secondary" onClick={() => setReloadKey(k => k + 1)} style={{ fontSize: '0.75rem', padding: '5px 12px' }}>重新加载</button>
-          <button type="button" className="btn btn-secondary" onClick={onClose} style={{ fontSize: '0.75rem', padding: '5px 12px' }}>关闭</button>
+          <button type="button" className="btn btn-secondary" onClick={() => setReloadKey(k => k + 1)} style={{ fontSize: "0.875rem", padding: '5px 12px' }}>重新加载</button>
+          <button type="button" className="btn btn-secondary" onClick={onClose} style={{ fontSize: "0.875rem", padding: '5px 12px' }}>关闭</button>
         </div>
         <div style={{ flex: 1, minHeight: 0, background: '#f1f5f9' }}>
           {src ? (

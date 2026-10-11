@@ -35,7 +35,7 @@ interface AgentCredentialsFieldsProps extends AgentCredentialValues {
 const SAVED_SECRET_PLACEHOLDER = '••••••••••••••••••••••••';
 
 const inputStyle = (error?: string) => ({
-  fontSize: '0.813rem', padding: '8px 12px', borderColor: error ? '#a85d5d' : undefined,
+  fontSize: '0.875rem', padding: '8px 12px', borderColor: error ? '#a85d5d' : undefined,
 });
 
 function RequiredField({ label, value, placeholder, hint, savedDisplay = false, error, onChange }: {
@@ -52,7 +52,7 @@ function RequiredField({ label, value, placeholder, hint, savedDisplay = false, 
 
   return (
     <div>
-      <label style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: 4, display: 'block' }}>
+      <label style={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>
         {label} <span style={{ color: 'var(--danger)' }}>*</span>
       </label>
       <input
@@ -72,7 +72,7 @@ function RequiredField({ label, value, placeholder, hint, savedDisplay = false, 
         spellCheck={false}
         style={inputStyle(error)}
       />
-      {hint && !error && <div style={{ color: '#64748b', fontSize: '0.688rem', marginTop: 4 }}>{hint}</div>}
+      {hint && !error && <div style={{ color: '#64748b', fontSize: "0.75rem", marginTop: 4 }}>{hint}</div>}
       {error && <FieldError message={error} />}
     </div>
   );
@@ -133,12 +133,12 @@ export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
           ⚠️ 选了共享凭据时**不再强制填 apiKey**（下方 `validateAgentCredentials` 同源）。 */}
       {platform === 'coze' ? (
         <div style={{ marginBottom: 14 }}>
-          <label style={{ display: 'block', fontSize: '0.813rem', color: '#475569', fontWeight: 500, marginBottom: 4 }}>
+          <label style={{ display: 'block', fontSize: "0.875rem", color: '#475569', fontWeight: 500, marginBottom: 4 }}>
             {apiKeyLabel}
           </label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <select className="input" value={props.credentialId} onChange={(e) => update('credentialId')(e.target.value)}
-              style={{ fontSize: '0.813rem', padding: '8px 12px', flex: 1, minWidth: 0, borderColor: fieldErrors.apiKey ? '#a85d5d' : undefined }}>
+              style={{ fontSize: "0.875rem", padding: '8px 12px', flex: 1, minWidth: 0, borderColor: fieldErrors.apiKey ? '#a85d5d' : undefined }}>
               {/* ★ 2026-09-25（教师）：「我的扣子是我自己在管理里面设置的，要排在最上面，
                   排在最后面的才是『自定义……』」。⇒ 已存的凭据在前，「自定义」垫底。
                   ⚠️ 这不是纯口味：**常用的是上面那几个**，而 `<select>` 默认选中第一项 ——
@@ -148,7 +148,7 @@ export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
               ))}
               <option value="">自定义（只给这一个智能体用）</option>
             </select>
-            <button type="button" className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '6px 12px', flexShrink: 0 }}
+            <button type="button" className="btn btn-secondary" style={{ fontSize: "0.875rem", padding: '6px 12px', flexShrink: 0 }}
               onClick={() => props.onManageTokens?.()}>管理</button>
           </div>
           {props.credentialId ? (

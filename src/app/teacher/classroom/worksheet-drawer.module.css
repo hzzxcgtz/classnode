@@ -73,7 +73,7 @@
   border-radius: 6px;
   background: #f3e7d6;
   color: #855e2f;
-  font-size: .688rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -103,7 +103,7 @@
   background: #fff;
   color: #5d7088;
   cursor: pointer;
-  font-size: .75rem;
+  font-size: 0.875rem;
   padding: 7px 10px;
 }
 
@@ -170,7 +170,7 @@
   display: block;
   margin-top: 6px;
   color: #73849a;
-  font-size: .688rem;
+  font-size: 0.75rem;
   white-space: nowrap;
 }
 
@@ -197,7 +197,7 @@
 .reward small {
   display: block;
   color: #7d6d5b;
-  font-size: .625rem;
+  font-size: 0.75rem;
 }
 
 .reward strong {
@@ -216,7 +216,7 @@
   padding: 8px 16px;
   border-top: 1px solid #e5ebf1;
   color: #6d7e93;
-  font-size: .688rem;
+  font-size: 0.75rem;
 }
 
 .overviewFoot strong {
@@ -243,7 +243,7 @@
   background: #fff;
   color: #60738a;
   cursor: pointer;
-  font-size: .688rem;
+  font-size: 0.875rem;
   padding: 7px 10px;
 }
 
@@ -256,7 +256,7 @@
 .filterHint {
   margin-left: auto;
   color: #8291a3;
-  font-size: .625rem;
+  font-size: 0.75rem;
   white-space: nowrap;
 }
 
@@ -281,7 +281,7 @@
 
 .taskHeader span {
   color: #8392a4;
-  font-size: .625rem;
+  font-size: 0.75rem;
 }
 
 .questionList {
@@ -323,7 +323,7 @@
   background: #e9f0f7;
   color: #536f93;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: .688rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -340,7 +340,7 @@
   margin: 5px 0 0;
   overflow: hidden;
   color: #76879c;
-  font-size: .688rem;
+  font-size: 0.75rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -362,7 +362,7 @@
   gap: 10px;
   margin-bottom: 10px;
   color: #6f8095;
-  font-size: .625rem;
+  font-size: 0.75rem;
 }
 
 .answerPanel {
@@ -376,7 +376,7 @@
   display: block;
   margin-bottom: 8px;
   color: #718298;
-  font-size: .625rem;
+  font-size: 0.75rem;
   font-weight: 650;
 }
 
@@ -391,7 +391,7 @@
 
 .reviewed {
   color: #3f7859;
-  font-size: .688rem;
+  font-size: 0.75rem;
 }
 
 .emptyFilter {
@@ -400,7 +400,7 @@
   border-radius: 12px;
   background: #fff;
   color: #8291a3;
-  font-size: .75rem;
+  font-size: 0.875rem;
   text-align: center;
 }
 
@@ -445,7 +445,7 @@
   display: block;
   margin-top: 4px;
   color: #73849a;
-  font-size: .688rem;
+  font-size: 0.75rem;
 }
 
 .sampleHint {
@@ -459,7 +459,7 @@
   border-radius: 4px 9px 9px 4px;
   background: #edf3f8;
   color: #5c7087;
-  font-size: .688rem;
+  font-size: 0.75rem;
 }
 
 .sampleHint strong {
@@ -510,7 +510,7 @@
   margin: 6px 0 0;
   overflow: hidden;
   color: #728399;
-  font-size: .688rem;
+  font-size: 0.75rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -522,7 +522,7 @@
   border-radius: 5px;
   background: #e7eef6;
   color: #526d90;
-  font-size: .563rem;
+  font-size: 0.75rem;
   vertical-align: 1px;
 }
 
@@ -555,7 +555,7 @@
   display: block;
   margin-top: 4px;
   color: #8795a7;
-  font-size: .594rem;
+  font-size: 0.75rem;
 }
 
 .aiAnalysisState {
@@ -564,7 +564,7 @@
   justify-self: end;
   gap: 5px;
   color: #8795a7;
-  font-size: .594rem;
+  font-size: 0.75rem;
   white-space: nowrap;
 }
 

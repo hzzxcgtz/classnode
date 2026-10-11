@@ -107,7 +107,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
                   : <span style={{ color: FAINT }}>（这个选项还没写内容）</span>}
               </span>
               {option.correct && (
-                <span style={{ marginLeft: 'auto', fontSize: '0.688rem', color: ANSWER, flexShrink: 0 }}>正确答案</span>
+                <span style={{ marginLeft: 'auto', fontSize: "0.75rem", color: ANSWER, flexShrink: 0 }}>正确答案</span>
               )}
             </div>
           ))}
@@ -119,7 +119,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {view.blanks.map((blank, index) => (
             <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: '0.688rem', color: MUTED }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: "0.75rem", color: MUTED }}>
                 <span>{blank.label}</span>
                 {/* 🔴 `accepted` 为空 ⇒ **不画**这一栏。画一个空的会读成「标准答案是空的」，
                     而事实是老师**没填**标准答案（关掉自动评分时这是合法的）。 */}
@@ -162,7 +162,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
           <ol style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 3 }}>
             {view.student.map((text, index) => (
               <li key={index} style={{ display: 'flex', alignItems: 'center', gap: 7, ...answerBox, padding: '4px 8px' }}>
-                <span style={{ width: 16, flexShrink: 0, color: MUTED, fontSize: '0.688rem' }}>{index + 1}</span>
+                <span style={{ width: 16, flexShrink: 0, color: MUTED, fontSize: "0.75rem" }}>{index + 1}</span>
                 <span>{text}</span>
               </li>
             ))}
@@ -170,7 +170,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
           {/* 🔴 正确的顺序**另列一栏**，不逐位标对错：排序的判分带容差（服务端
               `judgeOrder(…, tolerance)`），在客户端复刻一份就是第二份判分实现。 */}
           {view.correct.length > 0 && (
-            <div style={{ fontSize: '0.688rem', color: ANSWER }}>
+            <div style={{ fontSize: "0.75rem", color: ANSWER }}>
               {/* ★ 2026-09-30：正确顺序里是**教师的条目原文** ⇒ 认公式。
                   （⚠️ 上面那个 `<ol>` 里的 `{text}` 是**学生的顺序**，不是这里。） */}
               正确顺序：<PromptText text={view.correct.join(' → ')} placeholder="" />
@@ -242,7 +242,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
         {/* 说明只在**真的需要**时出现（有线可看时才说线是什么）——
             每次都给一段图例是噪声，而教师一天要看几十遍这一屏。 */}
         {(wrong > 0 || view.missed.length > 0) && (
-          <div style={{ fontSize: '0.688rem', color: MUTED }}>
+          <div style={{ fontSize: "0.75rem", color: MUTED }}>
             {wrong > 0 && <span style={{ color: BAD }}>红色虚线是他连错的（{wrong} 条）</span>}
             {wrong > 0 && view.missed.length > 0 && ' · '}
             {view.missed.length > 0 && <span style={{ color: FAINT }}>灰色虚线是正确答案里他漏连的（{view.missed.length} 条）</span>}
@@ -257,7 +257,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {view.zones.map((zone) => (
             <div key={zone.id} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 8px' }}>
-              <div style={{ fontSize: '0.688rem', color: MUTED, marginBottom: 4 }}>
+              <div style={{ fontSize: "0.75rem", color: MUTED, marginBottom: 4 }}>
                 {/* ★ 2026-09-30：框名是教师原文 ⇒ 认公式。 */}
                 <PromptText text={zone.label} placeholder="" />
               </div>

@@ -126,7 +126,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
         <div style={{ padding: '16px 24px 0', background: 'linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%)', borderBottom: '1px solid var(--border)', position: 'relative' }}>
           <button type="button" onClick={onClose} disabled={saving} aria-label="关闭网页表单" style={{ position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>✕</button>
           <h2 id="webapp-form-title" style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 2px' }}>{created ? '上传成功' : editing ? '编辑探究网页' : '添加探究网页'}</h2>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0 0 12px' }}>
+          <p style={{ fontSize: "0.8125rem", color: 'var(--text-secondary)', margin: '0 0 12px' }}>
             {created ? `「${created.name}」已经可以用在课堂里了。` : editing ? '可以改显示名称，也可以改指包里的另一个 HTML 作为入口。' : '上传一个静态网页，课堂上学生就能打开它。'}
           </p>
         </div>
@@ -139,29 +139,29 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
             {deps && <WebappExternalDepsNotice deps={deps} />}
             {created.missingRefs && <WebappMissingRefsNotice refs={created.missingRefs} />}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-primary" onClick={onClose} style={{ fontSize: '0.813rem', padding: '7px 20px' }}>完成</button>
+              <button type="button" className="btn btn-primary" onClick={onClose} style={{ fontSize: "0.875rem", padding: '7px 20px' }}>完成</button>
             </div>
           </div>
         ) : (
         <form onSubmit={handleSubmit} style={{ padding: '18px 24px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
-            <label htmlFor="webapp-name" style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: 4, display: 'block' }}>网页名称 <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <label htmlFor="webapp-name" style={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>网页名称 <span style={{ color: 'var(--danger)' }}>*</span></label>
             <input id="webapp-name" className="input" value={name} onChange={e => { setName(e.target.value); clearError('name'); }} placeholder="如：太阳系模拟实验"
-              style={{ fontSize: '0.813rem', padding: '8px 12px', borderColor: fieldErrors.name ? '#a85d5d' : undefined }} />
+              style={{ fontSize: "0.875rem", padding: '8px 12px', borderColor: fieldErrors.name ? '#a85d5d' : undefined }} />
             {fieldErrors.name && <FieldError message={fieldErrors.name} />}
           </div>
 
           {editing && webapp ? (
             <div>
-              <label htmlFor="webapp-entry" style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: 4, display: 'block' }}>入口页面</label>
+              <label htmlFor="webapp-entry" style={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>入口页面</label>
               {entries.length > 0 ? (
-                <select id="webapp-entry" className="input" value={entryPath} onChange={e => setEntryPath(e.target.value)} style={{ fontSize: '0.813rem', padding: '8px 12px' }}>
+                <select id="webapp-entry" className="input" value={entryPath} onChange={e => setEntryPath(e.target.value)} style={{ fontSize: "0.875rem", padding: '8px 12px' }}>
                   {entries.map(entry => <option key={entry} value={entry}>{entry}</option>)}
                 </select>
               ) : (
-                <input id="webapp-entry" className="input" value={entryPath} onChange={e => setEntryPath(e.target.value)} style={{ fontSize: '0.813rem', padding: '8px 12px' }} />
+                <input id="webapp-entry" className="input" value={entryPath} onChange={e => setEntryPath(e.target.value)} style={{ fontSize: "0.875rem", padding: '8px 12px' }} />
               )}
-              <div style={{ fontSize: '0.688rem', color: '#94a3b8', marginTop: 4 }}>
+              <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginTop: 4 }}>
                 {entriesError
                   ? `${entriesError}（可以先按原入口保存）`
                   : entries.length > 0
@@ -176,7 +176,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
                 <div role="radiogroup" aria-label="上传方式" style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
 {([['html', '单个 HTML 文件（推荐）'], ['archive', '上传压缩包']] as Array<[UploadMode, string]>).map(([value, label]) => (
                     <button key={value} type="button" role="radio" aria-checked={mode === value} onClick={() => { setMode(value); clearError('file'); }}
-                      style={{ flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: '0.813rem', fontWeight: mode === value ? 600 : 400, border: `1.5px solid ${mode === value ? 'var(--primary)' : '#e2e8f0'}`, background: mode === value ? 'var(--primary-tint)' : 'white', color: mode === value ? 'var(--primary-dark)' : '#475569' }}>
+                      style={{ flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: "0.875rem", fontWeight: mode === value ? 600 : 400, border: `1.5px solid ${mode === value ? 'var(--primary)' : '#e2e8f0'}`, background: mode === value ? 'var(--primary-tint)' : 'white', color: mode === value ? 'var(--primary-dark)' : '#475569' }}>
                       {label}
                     </button>
                   ))}
@@ -191,8 +191,8 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
     </div>
     <input type="file" accept=".html,.htm" aria-label="选择网页文件"
       onChange={e => { setPage(e.target.files?.[0] ?? null); clearError('file'); }}
-      style={{ fontSize: '0.75rem' }} />
-    {page && <div style={{ fontSize: '0.688rem', color: '#0369a1', marginTop: 6 }}>已选择：{page.name}</div>}
+      style={{ fontSize: "0.875rem" }} />
+    {page && <div style={{ fontSize: "0.75rem", color: '#0369a1', marginTop: 6 }}>已选择：{page.name}</div>}
   </div>
 ) : (
   <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '12px 14px' }}>
@@ -204,8 +204,8 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
     </div>
     <input type="file" accept=".zip,.rar,.7z" aria-label="选择网页压缩包"
       onChange={e => { setArchive(e.target.files?.[0] ?? null); clearError('file'); }}
-      style={{ fontSize: '0.75rem' }} />
-    {archiveName && <div style={{ fontSize: '0.688rem', color: '#0369a1', marginTop: 6 }}>已选择：{archiveName}</div>}
+      style={{ fontSize: "0.875rem" }} />
+    {archiveName && <div style={{ fontSize: "0.75rem", color: '#0369a1', marginTop: 6 }}>已选择：{archiveName}</div>}
   </div>
 )}
                 {fieldErrors.file && <FieldError message={fieldErrors.file} />}
@@ -215,9 +215,9 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
                   留着这个框只是给教师一个填错的机会。 */}
               {mode === 'archive' && (
                 <div>
-                  <label htmlFor="webapp-entry-hint" style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: 4, display: 'block' }}>入口文件（选填）</label>
+                  <label htmlFor="webapp-entry-hint" style={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>入口文件（选填）</label>
                   <input id="webapp-entry-hint" className="input" value={entryHint} onChange={e => setEntryHint(e.target.value)} placeholder="如 index.html；留空则自动找 index.html"
-                    style={{ fontSize: '0.813rem', padding: '8px 12px' }} />
+                    style={{ fontSize: "0.875rem", padding: '8px 12px' }} />
                 </div>
               )}
             </>
@@ -226,8 +226,8 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
           {fieldErrors.submit && <div role="alert" style={{ fontSize: '0.75rem', color: '#a85d5d' }}>{fieldErrors.submit}</div>}
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving} style={{ fontSize: '0.813rem', padding: '7px 18px' }}>取消</button>
-            <button type="submit" className="btn btn-primary" disabled={saving} style={{ fontSize: '0.813rem', padding: '7px 20px' }}>
+            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving} style={{ fontSize: "0.875rem", padding: '7px 18px' }}>取消</button>
+            <button type="submit" className="btn btn-primary" disabled={saving} style={{ fontSize: "0.875rem", padding: '7px 20px' }}>
               {saving ? '保存中...' : editing ? '保存修改' : '上传网页'}
             </button>
           </div>

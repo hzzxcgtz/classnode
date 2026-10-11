@@ -1,30 +1,30 @@
 .blocks { display: grid; gap: 20px; }
-.heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 10px; color: #3d566f; font-size: .73rem; }
-.heading small { color: #8797a7; font-size: .62rem; font-weight: 400; }
+.heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 10px; color: #3d566f; font-size: 0.75rem; }
+.heading small { color: #8797a7; font-size: 0.75rem; font-weight: 400; }
 .blank { padding: 12px; border: 1px solid #e3eaf1; border-radius: 10px; background: #f8fafc; }
 .shareTrack { display: flex; height: 16px; overflow: hidden; border-radius: 5px; background: #edf1f5; }
 .shareTrack span { min-width: 0; transition: width .45s ease; }
 .answers { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
-.answers li { display: grid; grid-template-columns: 8px minmax(0,1fr) auto 38px; gap: 8px; align-items: baseline; color: #567087; font-size: .73rem; }
+.answers li { display: grid; grid-template-columns: 8px minmax(0,1fr) auto 38px; gap: 8px; align-items: baseline; color: #567087; font-size: 0.75rem; }
 .answers li > span { overflow-wrap: anywhere; }
 .answers i { display: block; width: 8px; height: 8px; border-radius: 2px; }
-.answers strong { font-size: .7rem; font-weight: 600; white-space: nowrap; }
-.answers small { color: #8797a7; font-size: .62rem; text-align: right; }
+.answers strong { font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.answers small { color: #8797a7; font-size: 0.75rem; text-align: right; }
 .plot { height: 180px; width: 100%; }
 .positions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.positions span { border-radius: 5px; padding: 5px 8px; background: #f2f6f9; color: #7d8fa1; font-size: .62rem; }
+.positions span { border-radius: 5px; padding: 5px 8px; background: #f2f6f9; color: #7d8fa1; font-size: 0.75rem; }
 .positions b { color: #405b74; }
 .paths { list-style: none; display: grid; gap: 10px; padding: 0; margin: 0; }
 .paths li { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border: 1px solid #e1e9f0; border-radius: 10px; padding: 10px; background: #f8fafc; }
 .pathSteps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-.pathSteps > span { display: inline-flex; align-items: baseline; gap: 5px; color: #4f6b83; font-size: .7rem; line-height: 1.5; }
+.pathSteps > span { display: inline-flex; align-items: baseline; gap: 5px; color: #4f6b83; font-size: 0.75rem; line-height: 1.5; }
 .pathSteps > span + span::before { content: '→'; color: #8ca1b3; }
-.pathSteps small { display: inline-block; font-size: .6rem; color: #8a9bad; }
-.paths li > strong { display: grid; flex-shrink: 0; gap: 2px; color: #405b74; font-size: .7rem; text-align: right; }
-.paths li > strong > small { font-size: .6rem; font-weight: 400; color: #8a9bad; }
+.pathSteps small { display: inline-block; font-size: 0.75rem; color: #8a9bad; }
+.paths li > strong { display: grid; flex-shrink: 0; gap: 2px; color: #405b74; font-size: 0.75rem; text-align: right; }
+.paths li > strong > small { font-size: 0.75rem; font-weight: 400; color: #8a9bad; }
 .ink { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; color: #506a82; }
 .ink > div:last-child { flex: 1; min-width: 140px; }
 .ink strong { font-size: .85rem; }
 .ink p { font-size: .75rem; }
-.ink small { color: #8a9bad; font-size: .68rem; line-height: 1.6; }
+.ink small { color: #8a9bad; font-size: 0.75rem; line-height: 1.6; }
 @media (prefers-reduced-motion: reduce) { .shareTrack span { transition: none; } }

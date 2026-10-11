@@ -300,7 +300,7 @@ export default function ShieldPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#934e4e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
             </svg>
-            <div><h2 style={{ fontSize: "0.875rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>添加自定义敏感词</h2><span style={{ fontSize: "0.688rem", color: '#94a3b8' }}>用逗号或换行分隔，一次添加多个词</span></div>
+            <div><h2 style={{ fontSize: "0.875rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>添加自定义敏感词</h2><span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>用逗号或换行分隔，一次添加多个词</span></div>
           </div>
           <div className={styles.wordComposerBody} style={{ padding: '20px 24px' }}>
             <textarea
@@ -318,21 +318,21 @@ export default function ShieldPage() {
             />
             <div className={styles.wordComposerFooter} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
               <div style={{
-                fontSize: "0.688rem", color: '#94a3b8',
+                fontSize: "0.75rem", color: '#94a3b8',
                 display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
               }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                 <span>用</span>
                 {['逗号', '分号', '顿号', '空格', '换行'].map((s, i) => (
-                  <code key={i} style={{ background: '#f1f5f9', padding: '0 5px', borderRadius: 3, fontSize: "0.625rem", color: '#64748b' }}>{[' , ', ' ; ', ' 、 ', ' 空格 ', ' 换行 '][i]}</code>
+                  <code key={i} style={{ background: '#f1f5f9', padding: '0 5px', borderRadius: 3, fontSize: "0.75rem", color: '#64748b' }}>{[' , ', ' ; ', ' 、 ', ' 空格 ', ' 换行 '][i]}</code>
                 ))}
-                <span>分隔 · <code style={{ background: '#f1f5f9', padding: '0 5px', borderRadius: 3, fontSize: "0.625rem", color: '#64748b' }}>Ctrl+Enter</code> 保存</span>
+                <span>分隔 · <code style={{ background: '#f1f5f9', padding: '0 5px', borderRadius: 3, fontSize: "0.75rem", color: '#64748b' }}>Ctrl+Enter</code> 保存</span>
                 <span style={{ color: pendingWords.length ? 'var(--primary)' : '#94a3b8', fontWeight: 600 }}>
                   · {pendingCharacterCount} 字 · {pendingWords.length} 个词
                 </span>
               </div>
               <button className="btn btn-primary" onClick={addWords} disabled={saving || !newWord.trim()}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 20px', fontSize: "0.813rem", flexShrink: 0 }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 20px', fontSize: "0.875rem", flexShrink: 0 }}>
                 {addSaved ? (
                   <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>已保存</>
                 ) : '保存添加'}
@@ -367,7 +367,7 @@ export default function ShieldPage() {
                 padding: '0 8px', height: 22, borderRadius: 11,
                 background: customWords.length > 0 ? '#f8eeee' : '#f1f5f9',
                 color: customWords.length > 0 ? '#934e4e' : '#94a3b8',
-                fontSize: "0.688rem", fontWeight: 600,
+                fontSize: "0.75rem", fontWeight: 600,
               }}>
                 {customWords.length}
               </span>
@@ -397,7 +397,7 @@ export default function ShieldPage() {
                 </button>
                 <button onClick={() => void deleteCustomWords()} disabled={shieldAction !== null}
                   style={{
-                    fontSize: "0.75rem", padding: '5px 12px', borderRadius: 6, border: '1px solid #fecaca',
+                    fontSize: "0.875rem", padding: '5px 12px', borderRadius: 6, border: '1px solid #fecaca',
                     background: 'white', cursor: 'pointer', fontFamily: 'inherit', color: '#934e4e',
                     display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.1s',
                   }}
@@ -435,7 +435,7 @@ export default function ShieldPage() {
                         background: 'transparent', cursor: 'pointer', padding: 0,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         color: w.enabled === false ? '#94a3b8' : '#934e4e',
-                        fontSize: "0.813rem", lineHeight: 1, opacity: 0.35,
+                        fontSize: "0.875rem", lineHeight: 1, opacity: 0.35,
                         transition: 'all 0.1s',
                       }}
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; (e.currentTarget as HTMLElement).style.background = w.enabled === false ? '#e2e8f0' : '#fecaca'; }}
@@ -472,7 +472,7 @@ export default function ShieldPage() {
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 22,
                   padding: '0 8px', height: 22, borderRadius: 11,
                   background: 'var(--primary-tint)', color: 'var(--primary)',
-                  fontSize: "0.688rem", fontWeight: 600,
+                  fontSize: "0.75rem", fontWeight: 600,
                 }}>
                   {builtinWords.length}
                 </span>
@@ -588,7 +588,7 @@ export default function ShieldPage() {
                         padding: '0 6px', borderRadius: 3,
                         background: c.status === 'active' ? '#dcfce7' : c.status === 'paused' ? '#f5ecdd' : '#f1f5f9',
                         color: c.status === 'active' ? '#3f7859' : c.status === 'paused' ? '#956834' : '#94a3b8',
-                        fontSize: "0.688rem", fontWeight: 600,
+                        fontSize: "0.75rem", fontWeight: 600,
                       }}>
                         {c.status === 'ended' ? '已结束' : c.status === 'paused' ? '已暂停' : '进行中'}
                       </span>
@@ -631,7 +631,7 @@ export default function ShieldPage() {
               )}
             </div>
             {warnings.length > 0 && <button onClick={() => void clearWarnings()} disabled={shieldAction !== null} style={{
-              fontSize: "0.75rem", padding: '5px 12px', borderRadius: 6, border: '1px solid #fecaca',
+              fontSize: "0.875rem", padding: '5px 12px', borderRadius: 6, border: '1px solid #fecaca',
               background: 'white', color: '#934e4e', cursor: 'pointer', fontFamily: 'inherit',
               display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.1s',
             }}
@@ -654,9 +654,9 @@ export default function ShieldPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: "0.813rem" }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '2px solid #eef2f6', position: 'sticky', top: 0 }}>
-                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.75rem", letterSpacing: '0.02em' }}>学生</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.75rem", letterSpacing: '0.02em' }}>时间</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.75rem", letterSpacing: '0.02em' }}>学生发送的消息</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>学生</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>时间</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>学生发送的消息</th>
                     <th style={{ width: 50 }}></th>
                   </tr>
                 </thead>
@@ -685,17 +685,17 @@ export default function ShieldPage() {
                             width: 26, height: 26, borderRadius: '50%',
                             background: 'var(--primary-tint)', color: 'var(--primary)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: "0.625rem", fontWeight: 700, flexShrink: 0,
+                            fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
                           }}>
                             {(w.studentName || '?')[0]}
                           </div>
                           {w.studentName || '未知'}
                         </div>
                       </td>
-                      <td style={{ padding: '12px 16px', color: '#64748b', whiteSpace: 'nowrap', fontSize: "0.75rem", fontFamily: 'monospace' }}>
+                      <td style={{ padding: '12px 16px', color: '#64748b', whiteSpace: 'nowrap', fontSize: "0.875rem", fontFamily: 'monospace' }}>
                         {new Date(w.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: "0.75rem", color: '#475569', maxWidth: 300, wordBreak: 'break-word', lineHeight: 1.6 }}>
+                      <td style={{ padding: '12px 16px', fontSize: "0.875rem", color: '#475569', maxWidth: 300, wordBreak: 'break-word', lineHeight: 1.6 }}>
                         {parts.map((p: string, j: number) =>
                           j % 2 === 1
                             ? <span key={j} style={{ background: '#fef08a', color: '#92400e', padding: '0 2px', borderRadius: 2, fontWeight: 600 }}>{p}</span>

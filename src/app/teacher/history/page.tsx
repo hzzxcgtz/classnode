@@ -314,22 +314,22 @@ export default function HistoryPage() {
                         <div style={{ fontWeight: 500, color: '#0f172a' }}>
                           {cr.title || '未命名课堂'}
                         </div>
-                        <div style={{ fontSize: "0.688rem", color: '#94a3b8', marginTop: 2 }}>
+                        <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginTop: 2 }}>
                           {cr.classes.map((cc) => cc.class.name).join(', ')}
                         </div>
                       </td>
-                      <td style={{ textAlign: 'center', fontSize: "0.75rem", color: '#475569', whiteSpace: 'nowrap' }}>
+                      <td style={{ textAlign: 'center', fontSize: "0.875rem", color: '#475569', whiteSpace: 'nowrap' }}>
                         <span style={{
                           display: 'inline-block', padding: '2px 8px', borderRadius: 4,
-                          fontSize: "0.688rem", fontWeight: 600,
+                          fontSize: "0.75rem", fontWeight: 600,
                           background: cr.mode === 'advanced' ? '#f5f3ff' : cr.mode === 'group' ? '#faf4eb' : '#f0fdf4',
                           color: cr.mode === 'advanced' ? '#7c3aed' : cr.mode === 'group' ? '#956834' : '#059669',
                         }}>
                           {cr.mode === 'advanced' ? '高级模式' : cr.mode === 'group' ? '分组模式' : '标准模式'}
                         </span>
                       </td>
-                      <td style={{ textAlign: 'center', fontSize: "0.813rem", color: '#475569', whiteSpace: 'nowrap' }}>{startTime.toLocaleString()}</td>
-                      <td style={{ textAlign: 'center', fontSize: "0.813rem", color: '#475569', whiteSpace: 'nowrap' }}>{endTime ? endTime.toLocaleString() : <span style={{ color: '#cbd5e1' }}>-</span>}</td>
+                      <td style={{ textAlign: 'center', fontSize: "0.875rem", color: '#475569', whiteSpace: 'nowrap' }}>{startTime.toLocaleString()}</td>
+                      <td style={{ textAlign: 'center', fontSize: "0.875rem", color: '#475569', whiteSpace: 'nowrap' }}>{endTime ? endTime.toLocaleString() : <span style={{ color: '#cbd5e1' }}>-</span>}</td>
                       <td style={{ textAlign: 'center' }}>
                         {duration !== null ? (
                           <span style={{
@@ -372,10 +372,10 @@ export default function HistoryPage() {
                           · 学习单的分母是**已有作答行数**，不是人数 ⇒ 只能写「已交 N / M 题」。
                           时长文案 `webappDurationText` 由**服务端用 `formatDuration` 算好** ——
                           前端不许另写一份格式化（那是第二份实现）。 */}
-                      <td style={{ textAlign: 'center', fontSize: '0.813rem', color: '#475569' }}>
+                      <td style={{ textAlign: 'center', fontSize: "0.875rem", color: '#475569' }}>
                         {cr.totalRounds > 0 ? `${cr.totalRounds} 轮` : <span style={{ color: '#cbd5e1' }}>-</span>}
                       </td>
-                      <td style={{ textAlign: 'center', fontSize: '0.813rem', color: '#475569' }}>
+                      <td style={{ textAlign: 'center', fontSize: "0.875rem", color: '#475569' }}>
                         {cr.webappUsageCount > 0
                           // 🔴 「累计」二字是承重的：这个时长是 SUM(durationMs)，**按人相加**
                           //    （3 人各 22 分钟 ⇒ 1 小时 6 分，可以比这一节课本身还长）。
@@ -383,7 +383,7 @@ export default function HistoryPage() {
                           ? `${cr.webappUsageCount} ${moduleCountUnit(cr.mode)} · 累计 ${cr.webappDurationText}`
                           : <span style={{ color: '#cbd5e1' }}>无记录</span>}
                       </td>
-                      <td style={{ textAlign: 'center', fontSize: '0.813rem', color: '#475569' }}>
+                      <td style={{ textAlign: 'center', fontSize: "0.875rem", color: '#475569' }}>
                         {cr.worksheetTotal > 0
                           ? `已交 ${cr.worksheetSubmitted} / ${cr.worksheetTotal} 题`
                           : <span style={{ color: '#cbd5e1' }}>无作答</span>}
@@ -392,7 +392,7 @@ export default function HistoryPage() {
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                           <button className="btn btn-secondary"
                             disabled={previewingClassroomId !== null || exporting}
-                            style={{ fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                            style={{ fontSize: "0.875rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                             onClick={() => handlePreview(cr.id)}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
                             {previewingClassroomId === cr.id ? '准备中...' : '导出对话'}
@@ -400,7 +400,7 @@ export default function HistoryPage() {
                           <button className="btn btn-secondary"
                             disabled={exporting}
                             title="导出学习单作答明细（含笔迹）与探究空间使用汇总"
-                            style={{ fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
+                            style={{ fontSize: "0.875rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                             onClick={() => void handleExportWorksheetReport(cr.id, cr.title, cr.code)}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" /><line x1="9" y1="3" x2="9" y2="21" /></svg>
                             导出学习单与探究空间
@@ -408,7 +408,7 @@ export default function HistoryPage() {
                           <button onClick={() => setRestoreTarget(cr.id)} disabled={restoring}
                             title="恢复课堂"
                             style={{
-                              fontSize: "0.688rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4,
+                              fontSize: "0.875rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4,
                               borderRadius: 6, cursor: 'pointer', fontWeight: 500,
                               border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#3f7859',
                             }}>
@@ -440,7 +440,7 @@ export default function HistoryPage() {
               </div>
               <div>
                 <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>数据备份与恢复</h2>
-                <p style={{ color: '#64748b', fontSize: "0.75rem", margin: '2px 0 0' }}>
+                <p style={{ color: '#64748b', fontSize: "0.8125rem", margin: '2px 0 0' }}>
                   新备份包含课堂数据、API 凭据、上传附件和教学网页。旧备份可能缺少附件或网页。
                 </p>
               </div>
@@ -491,9 +491,9 @@ export default function HistoryPage() {
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setRestoreTarget(null)} disabled={restoring}
-                style={{ fontSize: '0.813rem', padding: '7px 16px' }}>取消</button>
+                style={{ fontSize: "0.875rem", padding: '7px 16px' }}>取消</button>
               <button onClick={() => handleRestoreClassroom(restoreTarget)} disabled={restoring}
-                style={{ fontSize: '0.813rem', padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
+                style={{ fontSize: "0.875rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
                   background: restoring ? '#94a3b8' : '#3f7859', color: 'white' }}>
                 {restoring ? '恢复中...' : '确认恢复'}
               </button>
@@ -560,7 +560,7 @@ function ExportPreviewDialog({
           <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600, color: '#0f172a' }}>
             导出对话记录
           </h3>
-          <p style={{ margin: '4px 0 0', fontSize: "0.75rem", color: '#64748b' }}>
+          <p style={{ margin: '4px 0 0', fontSize: "0.8125rem", color: '#64748b' }}>
             选择学生和格式后点击确认导出
           </p>
         </div>
@@ -599,7 +599,7 @@ function ExportPreviewDialog({
                   选择学生（{selectedStudentIds.length}/{students.length}）
                 </span>
                 <label style={{
-                  fontSize: "0.688rem", color: 'var(--primary)', cursor: 'pointer',
+                  fontSize: "0.875rem", color: 'var(--primary)', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', gap: 4,
                 }}>
                   <input type="checkbox" checked={allSelected}
@@ -616,7 +616,7 @@ function ExportPreviewDialog({
                   return (
                     <label key={i} style={{
                       display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
-                      borderRadius: 6, cursor: 'pointer', fontSize: "0.75rem",
+                      borderRadius: 6, cursor: 'pointer', fontSize: "0.875rem",
                       background: selectedStudentIds.includes(sid) ? '#f2f5f8' : '#f8fafc',
                       border: selectedStudentIds.includes(sid) ? '1px solid #bfdbfe' : '1px solid transparent',
                       transition: 'all 0.15s',
@@ -625,7 +625,7 @@ function ExportPreviewDialog({
                         onChange={() => onToggleStudent(sid)}
                         style={{ accentColor: 'var(--primary)' }} />
                       <span style={{ fontWeight: 500, color: '#0f172a', flex: 1 }}>{s.name}</span>
-                      <span style={{ color: '#94a3b8', fontSize: "0.688rem" }}>
+                      <span style={{ color: '#94a3b8', fontSize: "0.75rem" }}>
                         {rounds} 轮 · {msgCount} 条
                       </span>
                     </label>
@@ -649,7 +649,7 @@ function ExportPreviewDialog({
             <div style={{ marginBottom: 12 }}>
               <div style={{
                 display: 'flex', justifyContent: 'space-between',
-                fontSize: "0.688rem", color: '#64748b', marginBottom: 4,
+                fontSize: "0.75rem", color: '#64748b', marginBottom: 4,
               }}>
                 <span>{exportStage || '导出中...'}</span>
                 <span>{exportProgress}%</span>
@@ -671,12 +671,12 @@ function ExportPreviewDialog({
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn btn-secondary"
               onClick={onCancel} disabled={exporting}
-              style={{ fontSize: "0.75rem", padding: '7px 16px' }}>
+              style={{ fontSize: "0.875rem", padding: '7px 16px' }}>
               取消
             </button>
             <button onClick={onConfirm} disabled={exporting || selectedStudentIds.length === 0}
               style={{
-                fontSize: "0.75rem", padding: '7px 18px', borderRadius: 8, border: 'none',
+                fontSize: "0.875rem", padding: '7px 18px', borderRadius: 8, border: 'none',
                 cursor: (exporting || selectedStudentIds.length === 0) ? 'not-allowed' : 'pointer', fontWeight: 500,
                 background: (exporting || selectedStudentIds.length === 0) ? '#94a3b8' : 'var(--primary)',
                 color: 'white',
@@ -845,7 +845,7 @@ function BackupManager() {
         <button onClick={() => fileInputRef.current?.click()} disabled={backupAction !== null}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
-            borderRadius: 8, fontSize: "0.813rem", fontWeight: 500, cursor: 'pointer',
+            borderRadius: 8, fontSize: "0.875rem", fontWeight: 500, cursor: 'pointer',
             border: '1px solid #e2e8f0', background: 'white', color: '#475569',
             opacity: importing ? 0.6 : 1,
           }}>
@@ -858,7 +858,7 @@ function BackupManager() {
         <button onClick={() => setShowResetDialog(true)} disabled={backupAction !== null}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
-            borderRadius: 8, fontSize: "0.813rem", fontWeight: 500, cursor: 'pointer',
+            borderRadius: 8, fontSize: "0.875rem", fontWeight: 500, cursor: 'pointer',
             border: '1px solid #fecaca', background: '#f8eeee', color: '#934e4e',
           }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
@@ -909,12 +909,12 @@ function BackupManager() {
                   <span style={{ fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</span>
                   {b.source === 'imported' ? (
                     <span style={{
-                      fontSize: "0.625rem", fontWeight: 600, padding: '1px 6px', borderRadius: 4,
+                      fontSize: "0.75rem", fontWeight: 600, padding: '1px 6px', borderRadius: 4,
                       background: '#f5ecdd', color: '#92400e', border: '1px solid #fde68a', flexShrink: 0,
                     }}>导入</span>
                   ) : (
                     <span style={{
-                      fontSize: "0.625rem", fontWeight: 600, padding: '1px 6px', borderRadius: 4,
+                      fontSize: "0.75rem", fontWeight: 600, padding: '1px 6px', borderRadius: 4,
                       background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', flexShrink: 0,
                     }}>本机</span>
                   )}
@@ -924,17 +924,17 @@ function BackupManager() {
                     {new Date(b.createdAt).toLocaleString()} · {b.size > 1048576 ? (b.size / 1048576).toFixed(1) + ' MB' : (b.size / 1024).toFixed(1) + ' KB'}
                   </span>
                   <a href={api.getBackupDownloadUrl(b.name)} download
-                    style={{ fontSize: "0.688rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', textDecoration: 'none',
+                    style={{ fontSize: "0.75rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', textDecoration: 'none',
                       border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569' }}>
                     下载
                   </a>
                   <button onClick={() => setRestoreTarget(b.name)} disabled={backupAction !== null}
-                    style={{ fontSize: "0.688rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
+                    style={{ fontSize: "0.875rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
                       border: '1px solid var(--primary-light)', background: '#f2f5f8', color: 'var(--primary)' }}>
                     恢复
                   </button>
                   <button onClick={() => setDeleteTarget(b.name)} disabled={backupAction !== null}
-                    style={{ fontSize: "0.688rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
+                    style={{ fontSize: "0.875rem", padding: '3px 8px', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
                       border: '1px solid #fecaca', background: '#f8eeee', color: '#934e4e' }}>
                     删除
                   </button>
@@ -956,9 +956,9 @@ function BackupManager() {
             </p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}
-                style={{ fontSize: "0.813rem", padding: '7px 16px' }}>取消</button>
+                style={{ fontSize: "0.875rem", padding: '7px 16px' }}>取消</button>
               <button onClick={() => handleDelete(deleteTarget)} disabled={deleting}
-                style={{ fontSize: "0.813rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
+                style={{ fontSize: "0.875rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
                   background: '#934e4e', color: 'white', opacity: deleting ? 0.6 : 1 }}>
                 {deleting ? '删除中...' : '确认删除'}
               </button>
@@ -983,9 +983,9 @@ function BackupManager() {
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setRestoreTarget(null)} disabled={restoring}
-                style={{ fontSize: "0.813rem", padding: '7px 16px' }}>取消</button>
+                style={{ fontSize: "0.875rem", padding: '7px 16px' }}>取消</button>
               <button onClick={() => handleRestore(restoreTarget)} disabled={restoring}
-                style={{ fontSize: "0.813rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
+                style={{ fontSize: "0.875rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
                   background: 'var(--primary)', color: 'white', opacity: restoring ? 0.6 : 1 }}>
                 {restoring ? '恢复中...' : '确认恢复'}
               </button>
@@ -1032,20 +1032,20 @@ function BackupManager() {
             </div>
 
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: '0.75rem', color: '#475569', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontSize: "0.875rem", color: '#475569', display: 'block', marginBottom: 6 }}>
                 请输入 <strong style={{ color: '#934e4e' }}>确认初始化</strong> 以继续：
               </label>
               <input type="text" value={resetConfirmText}
                 onChange={e => setResetConfirmText(e.target.value)}
                 placeholder="输入「确认初始化」"
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.813rem', outline: 'none', boxSizing: 'border-box' }} />
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: "0.875rem", outline: 'none', boxSizing: 'border-box' }} />
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => { setShowResetDialog(false); setResetConfirmText(''); }}
-                disabled={resetting} style={{ fontSize: '0.813rem', padding: '7px 16px' }}>取消</button>
+                disabled={resetting} style={{ fontSize: "0.875rem", padding: '7px 16px' }}>取消</button>
               <button onClick={handleReset}
                 disabled={resetting || resetConfirmText !== '确认初始化'}
-                style={{ fontSize: '0.813rem', padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
+                style={{ fontSize: "0.875rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
                   background: resetConfirmText === '确认初始化' ? '#934e4e' : '#e2e8f0',
                   color: resetConfirmText === '确认初始化' ? 'white' : '#94a3b8',
                   opacity: resetting ? 0.6 : 1 }}>

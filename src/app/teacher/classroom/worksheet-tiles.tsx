@@ -48,8 +48,8 @@ const CELL_STYLE: Record<WorksheetCellStatus, { background: string; border: stri
 function placeholder(label: string, hint: string, compact: boolean) {
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '8px 6px', borderRadius: compact ? 6 : 8, background: '#f9fafb', border: '1px dashed #e2e8f0', textAlign: 'center' }}>
-      <span style={{ fontSize: compact ? '0.688rem' : '0.813rem', fontWeight: 600, color: '#94a3b8' }}>{label}</span>
-      <span style={{ fontSize: '0.625rem', color: '#cbd5e1', lineHeight: 1.4 }}>{hint}</span>
+      <span style={{ fontSize: compact ? "0.75rem" : '0.813rem', fontWeight: 600, color: '#94a3b8' }}>{label}</span>
+      <span style={{ fontSize: "0.75rem", color: '#cbd5e1', lineHeight: 1.4 }}>{hint}</span>
     </div>
   );
 }
@@ -139,7 +139,7 @@ export function WorksheetTileContent({ state, answer, compact }: {
           {/* ★ 2026-10-07（教师）：「文字……不要设置得这么醒目，可以淡雅一些，否则有点喧宾夺主」。
               字重 700 → 600、颜色交给 `stateTone`（日常那一态是灰蓝，只有「停住了 / 交齐了」
               才给彩色 —— 那两种才是真的要教师看一眼的）。 */}
-          <div style={{ fontSize: compact ? '0.688rem' : '0.813rem', fontWeight: 600, color: tone.color, lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div style={{ fontSize: compact ? "0.75rem" : '0.813rem', fontWeight: 600, color: tone.color, lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 5 }}>
             {state.kind === 'all-submitted' && <WorksheetStatusIcon name="completed" size={compact ? 14 : 16} />}
             {state.kind === 'working' && <WorksheetStatusIcon name="drafting" size={compact ? 14 : 16} />}
             {stateLine(state)}
@@ -192,7 +192,7 @@ export function WorksheetTileContent({ state, answer, compact }: {
                   它原来就住在这一行，而这一行在 working / stuck 两态下**没有文字、高度是 0**
                   ⇒ 记号一来整行长高、下面那块预览跟着往下跳。搬走之后这一行只剩标题文字。 */}
               {state.kind === 'all-submitted' && (
-                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.625rem', color: '#64748b', overflow: 'hidden' }}>
+                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, fontSize: "0.75rem", color: '#64748b', overflow: 'hidden' }}>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {answer.heading} · {answer.typeLabel}
                   </span>

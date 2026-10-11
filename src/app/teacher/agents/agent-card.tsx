@@ -21,7 +21,7 @@ interface AgentCardProps {
 }
 
 const actionStyle = (danger = false) => ({
-  fontSize: '0.688rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+  fontSize: "0.75rem", padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
   border: '1px solid #d1d5db', background: 'white', color: danger ? '#a95757' : '#475569',
   display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.6,
 });
@@ -52,7 +52,7 @@ function PurposeChip({ purpose }: { purpose?: string | null }) {
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         minWidth: 18, height: 18, padding: '0 4px', borderRadius: 6,
-        fontSize: 10, fontWeight: 700, lineHeight: 1,
+        fontSize: 12, fontWeight: 700, lineHeight: 1,
         background: meta.bg, color: meta.color, whiteSpace: 'nowrap', flexShrink: 0,
       }}
     >
@@ -183,8 +183,8 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
 }
 
 function CapabilityTag({ children }: { children: React.ReactNode }) { return <span className="agent-management-capability-tag">{children}</span>; }
-function Time({ children }: { children: React.ReactNode }) { return <span style={{ fontSize: '0.688rem', color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>{children}</span>; }
-function Status({ color, label, labelColor, error, onMouseEnter, onMouseLeave }: { color: string; label: string; labelColor?: string; error?: boolean; onMouseEnter?: React.MouseEventHandler<HTMLSpanElement>; onMouseLeave?: () => void }) { return <><span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} /><span onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} style={{ fontSize: '0.688rem', color: labelColor || '#94a3b8', fontWeight: 500, whiteSpace: 'nowrap', cursor: error ? 'help' : undefined, borderBottom: error ? '1px dashed #fca5a5' : undefined }}>{label}</span></>; }
+function Time({ children }: { children: React.ReactNode }) { return <span style={{ fontSize: "0.75rem", color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>{children}</span>; }
+function Status({ color, label, labelColor, error, onMouseEnter, onMouseLeave }: { color: string; label: string; labelColor?: string; error?: boolean; onMouseEnter?: React.MouseEventHandler<HTMLSpanElement>; onMouseLeave?: () => void }) { return <><span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} /><span onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} style={{ fontSize: "0.75rem", color: labelColor || '#94a3b8', fontWeight: 500, whiteSpace: 'nowrap', cursor: error ? 'help' : undefined, borderBottom: error ? '1px dashed #fca5a5' : undefined }}>{label}</span></>; }
 function RefreshIcon({ spinning }: { spinning: boolean }) { return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={spinning ? { animation: 'spin 1s linear infinite' } : undefined}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>; }
 function EditIcon() { return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>; }
 function DeleteIcon() { return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>; }

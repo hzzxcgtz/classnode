@@ -333,7 +333,7 @@ export default function AvatarsPage() {
             <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#956834', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 3, height: 14, borderRadius: 2, background: '#956834', display: 'inline-block' }} />
               学生自定义
-              <span style={{ fontSize: "0.625rem", color: '#94a3b8', fontWeight: 400 }}>（学生自己上传，可在此管理删除）</span>
+              <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400 }}>（学生自己上传，可在此管理删除）</span>
             </div>
             {studentUploadedAvatars.length > 0 ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -342,7 +342,7 @@ export default function AvatarsPage() {
                   onEdit={() => setShowEditor({ mode: 'edit', avatar: av })} onDelete={() => setShowDelete(av)} />)}
               </div>
             ) : (
-              <p style={{ fontSize: "0.75rem", color: '#94a3b8', padding: '8px 0' }}>暂无学生自定义头像</p>
+              <p style={{ fontSize: "0.8125rem", color: '#94a3b8', padding: '8px 0' }}>暂无学生自定义头像</p>
             )}
           </div>
         )}
@@ -386,7 +386,7 @@ export default function AvatarsPage() {
               <button onClick={() => setSelectedForBatch(new Set())}
                 style={{
                   background: 'transparent', border: 'none', color: '#64748b',
-                  fontSize: "0.75rem", cursor: 'pointer', padding: '2px 6px',
+                  fontSize: "0.875rem", cursor: 'pointer', padding: '2px 6px',
                   textDecoration: 'underline', textUnderlineOffset: 2,
                 }}>取消选择</button>
             )}
@@ -394,13 +394,13 @@ export default function AvatarsPage() {
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => { setBatchMode(false); setSelectedForBatch(new Set()); }}
               style={{
-                padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500,
+                padding: '6px 14px', borderRadius: 6, fontSize: "0.875rem", fontWeight: 500,
                 border: '1px solid #cbd5e1', background: 'white', color: '#475569',
                 cursor: 'pointer',
               }}>退出多选</button>
             <button onClick={() => void handleBatchDelete()} disabled={selectedForBatch.size === 0 || avatarAction !== null}
               style={{
-                padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 600,
+                padding: '6px 14px', borderRadius: 6, fontSize: "0.875rem", fontWeight: 600,
                 border: 'none', background: selectedForBatch.size === 0 ? '#f1f5f9' : '#a85d5d',
                 color: selectedForBatch.size === 0 ? '#94a3b8' : 'white',
                 cursor: selectedForBatch.size === 0 || avatarAction ? 'not-allowed' : 'pointer',
@@ -414,7 +414,7 @@ export default function AvatarsPage() {
       ) : avatars.length > 0 && !batchMode ? (
         <div style={{ textAlign: 'center', margin: '20px 0 16px' }}>
           <button onClick={() => setBatchMode(true)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 16px', borderRadius: 6, border: '1px solid #cbd5e1', background: 'white', color: '#64748b', cursor: 'pointer', fontSize: "0.75rem" }}>
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 16px', borderRadius: 6, border: '1px solid #cbd5e1', background: 'white', color: '#64748b', cursor: 'pointer', fontSize: "0.875rem" }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
             批量管理{tab === 'student' ? '头像' : '图标'}
           </button>
@@ -470,7 +470,7 @@ export default function AvatarsPage() {
               </div>
               <div>
                 <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>随机生成{tab === 'student' ? '头像' : '图标'}</h3>
-                <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '2px 0 0' }}>每次生成都不重样，选择满意的导入头像库</p>
+                <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '2px 0 0' }}>每次生成都不重样，选择满意的导入头像库</p>
               </div>
             </div>
 
@@ -527,7 +527,7 @@ export default function AvatarsPage() {
                     <div style={{ marginBottom: 14 }}>
                       <div style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--primary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ width: 3, height: 12, borderRadius: 2, background: 'var(--primary)', display: 'inline-block' }} />
-                        男孩头像 <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: "0.688rem" }}>（{randomPool.slice(0, 10).filter((_, i) => selectedRandom.has(i)).length} 已选）</span>
+                        男孩头像 <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: "0.75rem" }}>（{randomPool.slice(0, 10).filter((_, i) => selectedRandom.has(i)).length} 已选）</span>
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
                         {randomPool.slice(0, 10).map((av, i: number) => (
@@ -548,7 +548,7 @@ export default function AvatarsPage() {
                     <div style={{ marginBottom: 14 }}>
                       <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#e91e63', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ width: 3, height: 12, borderRadius: 2, background: '#e91e63', display: 'inline-block' }} />
-                        女孩头像 <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: "0.688rem" }}>（{randomPool.slice(10, 20).filter((_, i) => selectedRandom.has(i + 10)).length} 已选）</span>
+                        女孩头像 <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: "0.75rem" }}>（{randomPool.slice(10, 20).filter((_, i) => selectedRandom.has(i + 10)).length} 已选）</span>
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
                         {randomPool.slice(10, 20).map((av, i: number) => {
@@ -597,7 +597,7 @@ export default function AvatarsPage() {
                       background: generating ? '#f1f5f9' : 'white',
                       color: generating ? '#94a3b8' : '#475569',
                       cursor: generating ? 'not-allowed' : 'pointer',
-                      fontSize: "0.813rem", fontWeight: 500,
+                      fontSize: "0.875rem", fontWeight: 500,
                       transition: 'all 0.12s',
                     }}
                     onMouseEnter={e => { if (!generating) { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#94a3b8'; }}}
@@ -612,7 +612,7 @@ export default function AvatarsPage() {
                         display: 'inline-flex', alignItems: 'center', gap: 6,
                         padding: '8px 16px', borderRadius: 6, border: '1px solid #059669',
                         background: 'white', color: '#059669', cursor: 'pointer',
-                        fontSize: "0.813rem", fontWeight: 500,
+                        fontSize: "0.875rem", fontWeight: 500,
                         transition: 'all 0.12s',
                       }}
                       onMouseEnter={e => { e.currentTarget.style.background = '#f0fdf4'; }}
@@ -626,7 +626,7 @@ export default function AvatarsPage() {
                         padding: '8px 16px', borderRadius: 6, border: 'none',
                         background: selectedRandom.size === 0 ? '#e2e8f0' : 'var(--primary)',
                         color: selectedRandom.size === 0 ? '#94a3b8' : 'white', cursor: selectedRandom.size === 0 ? 'not-allowed' : 'pointer',
-                        fontSize: "0.813rem", fontWeight: 500,
+                        fontSize: "0.875rem", fontWeight: 500,
                         transition: 'all 0.12s',
                       }}>
                       导入选中 ({selectedRandom.size})
@@ -708,7 +708,7 @@ function AvatarCard({ av, tab, onEdit, onDelete, batchMode, selected, onToggle }
             minWidth: 16, height: 16, borderRadius: 8,
             background: '#1e293b', color: 'white',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: "0.563rem", fontWeight: 700,
+            fontSize: "0.75rem", fontWeight: 700,
             padding: '0 4px',
             boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
         }}>
@@ -717,7 +717,7 @@ function AvatarCard({ av, tab, onEdit, onDelete, batchMode, selected, onToggle }
             <div style={{
               position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
               background: '#1e293b', color: 'white', padding: '4px 8px', borderRadius: 4,
-              fontSize: "0.625rem", whiteSpace: 'nowrap', zIndex: 10, marginBottom: 4,
+              fontSize: "0.75rem", whiteSpace: 'nowrap', zIndex: 10, marginBottom: 4,
               pointerEvents: 'none', maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {usageDetail}
@@ -833,20 +833,20 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
 
           {/* 使用情况 */}
           <div style={{ textAlign: 'left', marginBottom: 12 }}>
-            <p style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 6 }}>使用情况：</p>
+            <p style={{ fontSize: "0.8125rem", fontWeight: 600, color: '#475569', marginBottom: 6 }}>使用情况：</p>
             {!usage ? (
-              <p style={{ fontSize: "0.75rem", color: '#94a3b8' }}>加载中...</p>
+              <p style={{ fontSize: "0.8125rem", color: '#94a3b8' }}>加载中...</p>
             ) : usage.students.length === 0 && usage.classes.length === 0 ? (
-              <p style={{ fontSize: "0.75rem", color: '#94a3b8' }}>暂无使用</p>
+              <p style={{ fontSize: "0.8125rem", color: '#94a3b8' }}>暂无使用</p>
             ) : (
               <div style={{ maxHeight: 160, overflow: 'auto', overscrollBehavior: 'contain' }}>
                 {usage.students.length > 0 && (
                   <div style={{ marginBottom: 4 }}>
-                    <p style={{ fontSize: "0.688rem", color: '#94a3b8', marginBottom: 2 }}>学生（{usage.students.length}）：</p>
+                    <p style={{ fontSize: "0.8125rem", color: '#94a3b8', marginBottom: 2 }}>学生（{usage.students.length}）：</p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {usage.students.map((s, i: number) => (
                         <span key={i} style={{
-                          padding: '3px 6px', borderRadius: 4, fontSize: "0.688rem",
+                          padding: '3px 6px', borderRadius: 4, fontSize: "0.75rem",
                           background: '#f1f5f9', color: '#475569', display: 'inline-flex', alignItems: 'center', gap: 2,
                         }}>
                           {s.class?.name ? (
@@ -859,11 +859,11 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                 )}
                 {usage.classes.length > 0 && (
                   <div>
-                    <p style={{ fontSize: "0.688rem", color: '#94a3b8', marginBottom: 2 }}>班级（{usage.classes.length}）：</p>
+                    <p style={{ fontSize: "0.8125rem", color: '#94a3b8', marginBottom: 2 }}>班级（{usage.classes.length}）：</p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {usage.classes.map((c, i: number) => (
                         <span key={i} style={{
-                          padding: '3px 8px', borderRadius: 4, fontSize: "0.688rem",
+                          padding: '3px 8px', borderRadius: 4, fontSize: "0.75rem",
                           background: '#f0fdf4', color: '#059669',
                         }}>
                           {c.name}
@@ -878,10 +878,10 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
 
           {!isImage && (
             <div style={{ textAlign: 'left', marginBottom: 16 }}>
-              <p style={{ fontSize: "0.75rem", color: '#94a3b8', marginBottom: 4 }}>SVG 代码：</p>
+              <p style={{ fontSize: "0.8125rem", color: '#94a3b8', marginBottom: 4 }}>SVG 代码：</p>
               <pre style={{
                 background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12,
-                fontSize: "0.625rem", fontFamily: 'monospace', lineHeight: 1.5, maxHeight: 160, overflow: 'auto', overscrollBehavior: 'contain',
+                fontSize: "0.75rem", fontFamily: 'monospace', lineHeight: 1.5, maxHeight: 160, overflow: 'auto', overscrollBehavior: 'contain',
                 whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: '#334155',
               }}>{avatar.svgContent}</pre>
             </div>
@@ -908,7 +908,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
           </div>
           <div>
             <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>{mode === 'create' ? '新增' : '编辑'}{category === 'student' ? '头像' : '图标'}</h2>
-            <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '2px 0 0' }}>
+            <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '2px 0 0' }}>
               {mode === 'create' ? '支持 SVG 代码或上传图片' : '修改头像信息'}
             </p>
           </div>
@@ -918,14 +918,14 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
           <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid #e2e8f0' }}>
             <button onClick={() => setInputMode('svg')}
               style={{
-                padding: '8px 16px', fontSize: "0.813rem", fontWeight: inputMode === 'svg' ? 600 : 400,
+                padding: '8px 16px', fontSize: "0.875rem", fontWeight: inputMode === 'svg' ? 600 : 400,
                 color: inputMode === 'svg' ? 'var(--primary)' : '#64748b', background: 'transparent', border: 'none',
                 cursor: 'pointer', borderBottom: `2px solid ${inputMode === 'svg' ? 'var(--primary)' : 'transparent'}`,
                 marginBottom: -2,
               }}>SVG 代码</button>
             <button onClick={() => setInputMode('image')}
               style={{
-                padding: '8px 16px', fontSize: "0.813rem", fontWeight: inputMode === 'image' ? 600 : 400,
+                padding: '8px 16px', fontSize: "0.875rem", fontWeight: inputMode === 'image' ? 600 : 400,
                 color: inputMode === 'image' ? 'var(--primary)' : '#64748b', background: 'transparent', border: 'none',
                 cursor: 'pointer', borderBottom: `2px solid ${inputMode === 'image' ? 'var(--primary)' : 'transparent'}`,
                 marginBottom: -2,
@@ -935,13 +935,13 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
 
         {category === 'student' && (
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>性别倾向</label>
+            <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 4, display: 'block' }}>性别倾向</label>
             <div style={{ display: 'flex', gap: 8 }}>
               {([{ value: 'boy', label: '男孩' }, { value: 'girl', label: '女孩' }, { value: 'neutral', label: '通用' }] as const).map(g => (
                 <button key={g.value}
                   onClick={() => setGender(g.value)}
                   style={{
-                    padding: '6px 16px', borderRadius: 8, fontSize: "0.75rem", fontWeight: 500,
+                    padding: '6px 16px', borderRadius: 8, fontSize: "0.875rem", fontWeight: 500,
                     background: gender === g.value ? (g.value === 'boy' ? 'var(--primary-tint)' : g.value === 'girl' ? '#fce4ec' : '#f5f5f4') : 'white',
                     color: gender === g.value ? (g.value === 'boy' ? 'var(--primary)' : g.value === 'girl' ? '#e91e63' : '#78716c') : '#64748b',
                     border: `1px solid ${gender === g.value ? (g.value === 'boy' ? '#bfdbfe' : g.value === 'girl' ? '#f8bbd0' : '#d6d3d1') : '#e2e8f0'}`,
@@ -957,15 +957,15 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
         {inputMode === 'svg' ? (
           <>
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>SVG 代码 *</label>
+              <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 4, display: 'block' }}>SVG 代码 *</label>
               <textarea className="input" value={svgContent} onChange={e => setSvgContent(e.target.value)}
-                rows={6} style={{ fontFamily: 'monospace', fontSize: "0.688rem", resize: 'vertical' }}
+                rows={6} style={{ fontFamily: 'monospace', fontSize: "0.875rem", resize: 'vertical' }}
                 placeholder={'<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">\n  ...\n</svg>'} />
-              <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginTop: 4 }}>{'需要包含 viewBox="0 0 40 40" 的完整 SVG 代码'}</p>
+              <p style={{ fontSize: "0.8125rem", color: '#94a3b8', marginTop: 4 }}>{'需要包含 viewBox="0 0 40 40" 的完整 SVG 代码'}</p>
             </div>
             <div style={{ marginBottom: 16 }}>
               <button className="btn btn-secondary" onClick={handlePreview}
-                style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}>
+                style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 4 }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                 </svg>
@@ -1008,7 +1008,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                   <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
                 </svg>
                 <p style={{ fontSize: "0.813rem", fontWeight: 600, color: '#475569', margin: '0 0 4px' }}>点击上传头像图片</p>
-                <p style={{ fontSize: "0.688rem", color: '#94a3b8', margin: 0 }}>支持 JPG、PNG、WebP 格式</p>
+                <p style={{ fontSize: "0.8125rem", color: '#94a3b8', margin: 0 }}>支持 JPG、PNG、WebP 格式</p>
               </div>
             ) : !imagePreview && mode !== 'create' && avatar?.svgContent ? (
               <div style={{ textAlign: 'center' }}>
@@ -1017,13 +1017,13 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                   borderRadius: '50%', overflow: 'hidden', border: '2px solid #e2e8f0',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }} dangerouslySetInnerHTML={{ __html: fixSvgUrl(avatar.svgContent).replace('<svg', '<svg width="80" height="80" preserveAspectRatio="xMidYMid meet"') }} />
-                <p style={{ fontSize: "0.75rem", color: '#94a3b8', marginBottom: 8 }}>当前{category === 'student' ? '头像' : '图标'}</p>
+                <p style={{ fontSize: "0.8125rem", color: '#94a3b8', marginBottom: 8 }}>当前{category === 'student' ? '头像' : '图标'}</p>
                 <button onClick={() => fileInputRef.current?.click()}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4,
                     padding: '6px 14px', borderRadius: 6,
                     border: '1px solid #cbd5e1', background: 'white',
-                    color: '#475569', cursor: 'pointer', fontSize: "0.75rem",
+                    color: '#475569', cursor: 'pointer', fontSize: "0.875rem",
                   }}
                   onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'white'; }}>
@@ -1039,9 +1039,9 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                   </div>
                 </div>
                 {uploadingImg ? (
-                  <p style={{ fontSize: "0.75rem", color: '#94a3b8' }}>上传中...</p>
+                  <p style={{ fontSize: "0.8125rem", color: '#94a3b8' }}>上传中...</p>
                 ) : uploadSvg ? (
-                  <p style={{ fontSize: "0.75rem", color: '#10b981', fontWeight: 600 }}>✅ 上传成功</p>
+                  <p style={{ fontSize: "0.8125rem", color: '#10b981', fontWeight: 600 }}>✅ 上传成功</p>
                 ) : null}
                 <button onClick={() => {
                   if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
@@ -1049,7 +1049,7 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                   setImagePreview(null);
                   setUploadSvg(null);
                 }}
-                  style={{ background: 'transparent', border: 'none', color: '#a85d5d', fontSize: "0.75rem", cursor: 'pointer', marginTop: 4 }}>
+                  style={{ background: 'transparent', border: 'none', color: '#a85d5d', fontSize: "0.875rem", cursor: 'pointer', marginTop: 4 }}>
                   重新选择
                 </button>
               </div>
@@ -1060,20 +1060,20 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
         {/* 使用情况（编辑模式也显示） */}
         {mode === 'edit' && avatar && (
           <div style={{ textAlign: 'left', marginBottom: 16, padding: '12px 14px', background: '#f8fafc', borderRadius: 8 }}>
-            <p style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 6 }}>使用情况：</p>
+            <p style={{ fontSize: "0.8125rem", fontWeight: 600, color: '#475569', marginBottom: 6 }}>使用情况：</p>
             {!usage ? (
-              <p style={{ fontSize: "0.75rem", color: '#94a3b8' }}>加载中...</p>
+              <p style={{ fontSize: "0.8125rem", color: '#94a3b8' }}>加载中...</p>
             ) : usage.students.length === 0 && usage.classes.length === 0 ? (
-              <p style={{ fontSize: "0.75rem", color: '#94a3b8' }}>暂无使用</p>
+              <p style={{ fontSize: "0.8125rem", color: '#94a3b8' }}>暂无使用</p>
             ) : (
               <div style={{ maxHeight: 120, overflow: 'auto', overscrollBehavior: 'contain' }}>
                 {usage.students.length > 0 && (
                   <div style={{ marginBottom: 4 }}>
-                    <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginBottom: 2 }}>学生（{usage.students.length}）：</p>
+                    <p style={{ fontSize: "0.8125rem", color: '#94a3b8', marginBottom: 2 }}>学生（{usage.students.length}）：</p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                       {usage.students.map((s, i: number) => (
                         <span key={i} style={{
-                          padding: '2px 6px', borderRadius: 4, fontSize: "0.625rem",
+                          padding: '2px 6px', borderRadius: 4, fontSize: "0.75rem",
                           background: 'white', color: '#475569', display: 'inline-flex', alignItems: 'center', gap: 2,
                         }}>
                           {s.class?.name ? (
@@ -1086,11 +1086,11 @@ function AvatarEditorModal({ mode, avatar, category, onClose, onSaved, setToast 
                 )}
                 {usage.classes.length > 0 && (
                   <div>
-                    <p style={{ fontSize: "0.625rem", color: '#94a3b8', marginBottom: 2 }}>班级（{usage.classes.length}）：</p>
+                    <p style={{ fontSize: "0.8125rem", color: '#94a3b8', marginBottom: 2 }}>班级（{usage.classes.length}）：</p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                       {usage.classes.map((c, i: number) => (
                         <span key={i} style={{
-                          padding: '2px 8px', borderRadius: 4, fontSize: "0.625rem",
+                          padding: '2px 8px', borderRadius: 4, fontSize: "0.75rem",
                           background: 'white', color: '#059669',
                         }}>
                           {c.name}

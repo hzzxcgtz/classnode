@@ -60,7 +60,7 @@ const FAINT = '#94a3b8';
  * 留着一个恒为真的开关，下一个人会以为它还有用。
  */
 const chipStyle = (color: string): React.CSSProperties => ({
-  fontSize: '0.625rem', lineHeight: 1.25, padding: '1px 5px', borderRadius: 5,
+  fontSize: "0.75rem", lineHeight: 1.25, padding: '1px 5px', borderRadius: 5,
   border: `1px solid ${color}`,
   background: 'white',
   color: '#0f172a', whiteSpace: 'nowrap', maxWidth: '100%',
@@ -68,7 +68,7 @@ const chipStyle = (color: string): React.CSSProperties => ({
 });
 
 function Line({ children, color = MUTED }: { children: React.ReactNode; color?: string }) {
-  return <div style={{ fontSize: '0.625rem', color, lineHeight: 1.35 }}>{children}</div>;
+  return <div style={{ fontSize: "0.75rem", color, lineHeight: 1.35 }}>{children}</div>;
 }
 
 export function TileAnswerBody({ answer }: { answer: TileAnswer }) {
@@ -100,7 +100,7 @@ function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.Rea
     case 'text':
       return (
         <div style={{
-          fontSize: '0.625rem', color: '#0f172a', lineHeight: 1.3, wordBreak: 'break-word',
+          fontSize: "0.75rem", color: '#0f172a', lineHeight: 1.3, wordBreak: 'break-word',
           // 🔴 `pre-wrap`：学生**自己敲的换行要看得见**（★ 2026-09-29 教师：「学生在输入问答题
           // 的答案时，已经手工换行了，但是在监控面板里没有看到换行」）。
           // 默认的 `white-space: normal` 会把 `\n` **折叠成一个空格** ⇒ 学生分成三段的答案
@@ -203,7 +203,7 @@ function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.Rea
           {view.links.length === 0
             ? <Line color={FAINT}>还没连</Line>
             : view.links.map((link, index) => (
-              <div key={index} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.625rem', color: '#0f172a' }}>
+              <div key={index} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: "0.75rem", color: '#0f172a' }}>
                 <span style={{ flex: '1 1 0', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {/* ★ 2026-09-30：连线**左项**是教师原文 ⇒ 认公式
                       （`textOrId` 在文本为空时会回落成 id，那也照样能过）。 */}

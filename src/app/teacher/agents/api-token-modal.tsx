@@ -138,22 +138,22 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
                 </div>
                 {/* ⚠️ 「0 个智能体在用」也照实说：它决定了这份凭据**能不能删**，
                     而留空会让人以为「还没查」。 */}
-                <div style={{ fontSize: '0.688rem', color: row.agentCount > 0 ? '#64748b' : '#cbd5e1', marginTop: 3 }}>
+                <div style={{ fontSize: "0.75rem", color: row.agentCount > 0 ? '#64748b' : '#cbd5e1', marginTop: 3 }}>
                   {row.agentCount > 0 ? `${row.agentCount} 个智能体在用` : '还没有智能体用它'}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                <button type="button" className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => startEdit(row)}>改</button>
+                <button type="button" className="btn btn-secondary" style={{ fontSize: "0.875rem", padding: '3px 10px' }} onClick={() => startEdit(row)}>改</button>
                 {confirming === row.id ? (
                   <>
                     <button type="button" className="btn btn-secondary" disabled={busy}
-                      style={{ fontSize: '0.75rem', padding: '3px 10px', color: '#a85d5d', borderColor: '#fecaca' }}
+                      style={{ fontSize: "0.875rem", padding: '3px 10px', color: '#a85d5d', borderColor: '#fecaca' }}
                       onClick={() => void remove(row)}>{busy ? '处理中…' : '确定删除'}</button>
-                    <button type="button" className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => setConfirming(null)}>取消</button>
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: "0.875rem", padding: '3px 10px' }} onClick={() => setConfirming(null)}>取消</button>
                   </>
                 ) : (
                   <button type="button" className="btn btn-secondary"
-                    style={{ fontSize: '0.75rem', padding: '3px 10px', color: '#a85d5d' }}
+                    style={{ fontSize: "0.875rem", padding: '3px 10px', color: '#a85d5d' }}
                     onClick={() => setConfirming(row.id)}>删</button>
                 )}
               </div>
@@ -165,7 +165,7 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
           <button type="button" onClick={startCreate} style={{
             width: '100%', marginTop: 4, padding: '11px', borderRadius: 12, cursor: 'pointer',
             border: '1px dashed #cbd5e1', background: '#fff', color: 'var(--primary)',
-            fontSize: '0.813rem', fontWeight: 600, fontFamily: 'inherit',
+            fontSize: "0.875rem", fontWeight: 600, fontFamily: 'inherit',
           }}>
             + 新建一份
           </button>
@@ -175,22 +175,22 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
               {editingId === '' ? '新建一份' : `修改「${editingRow?.label ?? ''}」`}
             </div>
 
-            <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: 4 }}>备注（这是谁的账号）</label>
+            <label style={{ display: 'block', fontSize: "0.875rem", color: '#475569', marginBottom: 4 }}>备注（这是谁的账号）</label>
             <input className="input" value={label} onChange={(e) => setLabel(e.target.value)}
-              placeholder="例如：张老师的号" style={{ fontSize: '0.813rem', marginBottom: 10 }} />
+              placeholder="例如：张老师的号" style={{ fontSize: "0.875rem", marginBottom: 10 }} />
 
-            <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: 4 }}>
+            <label style={{ display: 'block', fontSize: "0.875rem", color: '#475569', marginBottom: 4 }}>
               扣子访问令牌 {editingId !== '' && <span style={{ color: '#94a3b8' }}>（留空 = 不改）</span>}
             </label>
             <input className="input" value={token} onChange={(e) => setToken(e.target.value)}
               placeholder={editingId === '' ? '在扣子平台获取，以 pat_ 开头' : '留空则沿用原来的'}
-              style={{ fontSize: '0.813rem', marginBottom: 10, fontFamily: 'monospace' }} autoComplete="off" />
+              style={{ fontSize: "0.875rem", marginBottom: 10, fontFamily: 'monospace' }} autoComplete="off" />
 
-            <label style={{ display: 'block', fontSize: '0.75rem', color: '#475569', marginBottom: 4 }}>
+            <label style={{ display: 'block', fontSize: "0.875rem", color: '#475569', marginBottom: 4 }}>
               有效期 <span style={{ color: '#94a3b8' }}>（扣子目前最长 30 天；默认已填好，按实际改）</span>
             </label>
             <input type="date" className="input" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)}
-              style={{ fontSize: '0.813rem', marginBottom: 12 }} />
+              style={{ fontSize: "0.875rem", marginBottom: 12 }} />
 
             {/* 🔴 影响面提示：一份被多个智能体用着的凭据，改它就是同时改那几个的钥匙。 */}
             {editingRow && editingRow.agentCount > 0 && token.trim() !== '' && (
@@ -232,7 +232,7 @@ export function ExpiryChip({ level, text }: { level: ReturnType<typeof tokenExpi
     expired: { bg: '#f8eeee', fg: '#b91c1c', border: '#fecaca' },
   }[level];
   return (
-    <span style={{ fontSize: '0.688rem', fontWeight: 600, padding: '1px 7px', borderRadius: 6, background: tone.bg, color: tone.fg, border: `1px solid ${tone.border}`, whiteSpace: 'nowrap' }}>
+    <span style={{ fontSize: "0.75rem", fontWeight: 600, padding: '1px 7px', borderRadius: 6, background: tone.bg, color: tone.fg, border: `1px solid ${tone.border}`, whiteSpace: 'nowrap' }}>
       {text}
     </span>
   );

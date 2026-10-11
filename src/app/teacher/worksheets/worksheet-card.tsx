@@ -17,7 +17,7 @@ interface WorksheetCardProps {
 }
 
 const actionStyle = (danger = false) => ({
-  fontSize: '0.688rem', padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+  fontSize: "0.75rem", padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
   border: '1px solid #d1d5db', background: 'white', color: danger ? '#a85d5d' : '#475569',
   display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.6,
 });

@@ -1,12 +1,12 @@
 .group { position: relative; display: inline; }
-.trigger { display: inline-flex; align-items: center; gap: 4px; vertical-align: baseline; margin: 0 5px; border: 1px solid #d4e2ed; border-radius: 6px; padding: 1px 7px; background: #eaf2f8; color: #426a8c; font: inherit; font-size: .82em; line-height: 1.6; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.trigger { display: inline-flex; align-items: center; gap: 4px; vertical-align: baseline; margin: 0 5px; border: 1px solid #d4e2ed; border-radius: 6px; padding: 1px 7px; background: #eaf2f8; color: #426a8c; font: inherit; font-size: max(12px, .82em); line-height: 1.6; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .trigger svg { flex: none; align-self: center; }
 .trigger:hover { background: #dceaf4; border-color: #acc6da; }
 .trigger:focus-visible { outline: 2px solid #7996b1; outline-offset: 2px; border-radius: 3px; }
 .tooltip { position: fixed; z-index: 99999; box-sizing: border-box; max-height: calc(100vh - 24px); overflow: auto; padding: 10px 12px; border: 1px solid #ccdce9; border-radius: 9px; background: #fff; box-shadow: 0 6px 20px rgb(35 55 75 / 15%); color: #3d536a; font-family: inherit; font-size: .76rem; line-height: 1.65; white-space: normal; }
-.tooltip strong { display: block; margin-bottom: 3px; font-size: .7rem; color: #71859a; }
+.tooltip strong { display: block; margin-bottom: 3px; font-size: 0.75rem; color: #71859a; }
 .tooltip span { overflow-wrap: anywhere; }
-.unverified { color: #8a7356; font-size: .85em; }
+.unverified { color: #8a7356; font-size: max(12px, .85em); }
 
 .studentList { display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .studentLink { border: 0; border-radius: 4px; padding: 3px 6px; background: #eaf2f8; color: #426a8c; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }

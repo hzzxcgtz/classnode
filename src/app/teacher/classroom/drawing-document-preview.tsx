@@ -261,7 +261,7 @@ function MindPreview({ data, backgroundUrl }: PreviewProps & { data: Record<stri
     <div style={{ minHeight: 180, padding: 16, overflow: 'auto', background: backgroundUrl ? `#fff url(${backgroundUrl}) center/100% 100% no-repeat` : '#fff', color: '#334b66', fontSize: 13 }} role="img" aria-label="学生的思维导图作答（近似预览）">
       {/* 🔴 这行字是这一支存在的理由的一半 —— 别为了「干净」删掉它：
           没有它，教师会把一张只有层级、没有布局与配色的图当成学生画的那张。 */}
-      <div style={{ display: 'inline-block', marginBottom: 8, padding: '2px 7px', borderRadius: 5, background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', fontSize: 11 }}>
+      <div style={{ display: 'inline-block', marginBottom: 8, padding: '2px 7px', borderRadius: 5, background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', fontSize: 12 }}>
         近似预览（快照还没到）—— 布局与配色请以快照为准
       </div>
       {root

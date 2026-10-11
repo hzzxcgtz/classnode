@@ -163,7 +163,7 @@ export function WorksheetDrawer({
         <div className={styles.header}>
           {canGoBack && (
             <button type="button" onClick={back} aria-label="返回上一层"
-              className="btn btn-ghost" style={{ fontSize: '0.688rem', padding: '4px 8px', flexShrink: 0 }}>
+              className="btn btn-ghost" style={{ fontSize: "0.875rem", padding: '4px 8px', flexShrink: 0 }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
               返回
             </button>
@@ -706,14 +706,14 @@ export function ParticipantAnswers({
                           <div className={styles.actionRow}>
                             <button type="button" className="btn btn-ghost" disabled={reviewBusy === busyKey}
                               onClick={() => onReview(worksheet.id, participantId, node.id)}
-                              style={{ fontSize: '0.688rem', padding: '4px 9px' }}>
+                              style={{ fontSize: "0.875rem", padding: '4px 9px' }}>
                               {reviewBusy === busyKey ? '标记中…' : outcome.reviewed ? '再看一次' : '标记已查看'}
                             </button>
                             {outcome.reviewed && <span className={styles.reviewed}>已看</span>}
                             <button type="button" className="btn btn-ghost"
                               onClick={() => onClearQuestion(worksheet.id, participantId, node.id)}
                               title="清除这一题的作答（不可撤销）"
-                              style={{ fontSize: '0.688rem', padding: '4px 9px', marginLeft: 'auto', color: '#a85d5d' }}>
+                              style={{ fontSize: "0.875rem", padding: '4px 9px', marginLeft: 'auto', color: '#a85d5d' }}>
                               清除这一题
                             </button>
                           </div>

@@ -444,7 +444,7 @@ export default function ClassesPage() {
               </div>
               <div>
                 <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>创建班级</h2>
-                <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '2px 0 0' }}>输入新班级名称</p>
+                <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '2px 0 0' }}>输入新班级名称</p>
               </div>
             </div>
             <input className="input" value={newClassName} onChange={e => setNewClassName(e.target.value)}
@@ -453,7 +453,7 @@ export default function ClassesPage() {
             {/* 班级图标选择 */}
             {classIconList.length > 0 && (
               <div style={{ marginTop: 16 }}>
-                <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 6, display: 'block' }}>班级图标（可选）</label>
+                <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 6, display: 'block' }}>班级图标（可选）</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {classIconList.map(icon => (
                     <div key={icon.id}
@@ -568,7 +568,7 @@ export default function ClassesPage() {
                     </svg>
                     {cr.title}
                     <span style={{
-                      fontSize: "0.688rem", padding: '1px 6px', borderRadius: 4,
+                      fontSize: "0.75rem", padding: '1px 6px', borderRadius: 4,
                       background: cr.status === 'active' ? '#dcfce7' : cr.status === 'paused' ? '#f5ecdd' : '#f1f5f9',
                       color: cr.status === 'active' ? '#3f7859' : cr.status === 'paused' ? '#956834' : '#94a3b8',
                       marginLeft: 'auto',
@@ -667,30 +667,30 @@ export default function ClassesPage() {
                       <button onClick={() => setSelectedStudentIds(new Set())}
                         style={{
                           background: 'transparent', border: 'none', color: '#64748b',
-                          fontSize: "0.75rem", cursor: 'pointer', padding: '2px 6px',
+                          fontSize: "0.875rem", cursor: 'pointer', padding: '2px 6px',
                           textDecoration: 'underline', textUnderlineOffset: 2,
                         }}>取消选择</button>
                       <div style={{ flex: 1 }} />
                       <span style={{ color: '#94a3b8', fontSize: "0.75rem", fontWeight: 500, marginRight: 6 }}>批量操作 →</span>
-                      <button onClick={() => setBatchEditModal({ type: 'tag' })} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: 'var(--primary)', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => setBatchEditModal({ type: 'tag' })} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, background: 'white', color: 'var(--primary)', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         修改标签
                       </button>
                       {/* ★ 2026-10-09：批量那一栏也是**两个动作**（与行内那颗 × 同一套语义）。
                           「移出班级」用中性色（可逆），「彻底删除」才用危险色。 */}
-                      <button onClick={() => void runBatchStudentAction('remove')} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#475569', border: '1px solid #cbd5e1', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => void runBatchStudentAction('remove')} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, background: 'white', color: '#475569', border: '1px solid #cbd5e1', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="11" x2="23" y2="11"/></svg>
                         {batchAction === 'remove' ? '移出中...' : '移出班级'}
                       </button>
-                      <button onClick={() => void runBatchStudentAction('delete')} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#a85d5d', border: '1px solid #fca5a5', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => void runBatchStudentAction('delete')} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, background: 'white', color: '#a85d5d', border: '1px solid #fca5a5', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         {batchAction === 'delete' ? '删除中...' : '彻底删除'}
                       </button>
-                      <button onClick={() => void handleBatchClearAvatars()} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#956834', border: '1px solid #fcd34d', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => void handleBatchClearAvatars()} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, background: 'white', color: '#956834', border: '1px solid #fcd34d', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         {batchAction === 'avatars' ? '清除中...' : '清除头像'}
                       </button>
-                      <button onClick={() => setBatchEditGenderModal(true)} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: 'white', color: '#8b5cf6', border: '1px solid #c4b5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => setBatchEditGenderModal(true)} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, background: 'white', color: '#8b5cf6', border: '1px solid #c4b5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M17 8l2 2 4-4"/></svg>
                         设置性别
                       </button>
@@ -722,7 +722,7 @@ export default function ClassesPage() {
                         </select>
                       </div>
                       <div className="classes-primary-actions">
-                        <button className="btn btn-secondary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
+                        <button className="btn btn-secondary" style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 4 }}
                           onClick={() => setAddStudentMode(addStudentMode === 'form' ? null : 'form')}>
                           {addStudentMode === 'form' ? (
                             <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>收起添加</>
@@ -730,13 +730,13 @@ export default function ClassesPage() {
                             <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>逐个添加</>
                           )}
                         </button>
-                        <button className="btn btn-primary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
+                        <button className="btn btn-primary" style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 4 }}
                           onClick={() => setAddStudentMode(addStudentMode === 'paste' ? null : 'paste')}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
                           粘贴名单
                         </button>
                         {students.some(s => !s.avatarId) && (
-                          <button className="btn btn-secondary" style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}
+                          <button className="btn btn-secondary" style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 4 }}
                             onClick={async () => {
                               if (!await askConfirmation({
                                 title: '自动分配学生头像？',
@@ -806,7 +806,7 @@ export default function ClassesPage() {
                     <div className="student-table-scroll" ref={studentTableRef} style={{position: 'relative', userSelect: 'none'}} onMouseDown={handleStudentTableMouseDown}><table>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
-                          <th style={{ width: 40, textAlign: 'center', padding: '10px 8px', fontSize: "0.75rem", borderBottom: '2px solid #e2e8f0' }}>
+                          <th style={{ width: 40, textAlign: 'center', padding: '10px 8px', fontSize: "0.8125rem", borderBottom: '2px solid #e2e8f0' }}>
                             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', width: '100%' }}>
                               <input type="checkbox"
                                 checked={currentPageFullySelected}
@@ -826,7 +826,7 @@ export default function ClassesPage() {
                           <th onClick={() => handleSort('studentNo')}
                             style={{
                               width: 70, textAlign: 'center', cursor: 'pointer', userSelect: 'none',
-                              padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
+                              padding: '10px 12px', fontSize: "0.8125rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
                             onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
@@ -838,7 +838,7 @@ export default function ClassesPage() {
                           <th onClick={() => handleSort('name')}
                             style={{
                               cursor: 'pointer', userSelect: 'none',
-                              padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
+                              padding: '10px 12px', fontSize: "0.8125rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
                             onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
@@ -850,7 +850,7 @@ export default function ClassesPage() {
                           <th onClick={() => handleSort('gender')}
                             style={{
                               width: 70, textAlign: 'center', cursor: 'pointer', userSelect: 'none',
-                              padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
+                              padding: '10px 12px', fontSize: "0.8125rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
                             onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
@@ -862,7 +862,7 @@ export default function ClassesPage() {
                           <th onClick={() => handleSort('group')}
                             style={{
                               cursor: 'pointer', userSelect: 'none',
-                              padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
+                              padding: '10px 12px', fontSize: "0.8125rem", fontWeight: 600, color: '#475569',
                               borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                             }}
                             onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
@@ -873,12 +873,12 @@ export default function ClassesPage() {
                           </th>
                           <th style={{
                             width: 100, textAlign: 'center',
-                            padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
+                            padding: '10px 12px', fontSize: "0.8125rem", fontWeight: 600, color: '#475569',
                             borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                           }}>标签</th>
                           <th style={{
                             width: 140, textAlign: 'center',
-                            padding: '10px 12px', fontSize: "0.75rem", fontWeight: 600, color: '#475569',
+                            padding: '10px 12px', fontSize: "0.8125rem", fontWeight: 600, color: '#475569',
                             borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                           }}>操作</th>
                         </tr>
@@ -894,7 +894,7 @@ export default function ClassesPage() {
                                   style={{ width: 15, height: 15, cursor: 'pointer' }} />
                               </label>
                             </td>
-                            <td style={{ textAlign: 'center', color: s.studentNo ? 'var(--primary)' : '#cbd5e1', fontSize: "0.813rem", fontWeight: 600, fontFamily: 'monospace' }}>
+                            <td style={{ textAlign: 'center', color: s.studentNo ? 'var(--primary)' : '#cbd5e1', fontSize: "0.875rem", fontWeight: 600, fontFamily: 'monospace' }}>
                               {s.studentNo || '-'}
                             </td>
                             <td onClick={() => { setSelectedStudentIds(prev => { const next = new Set(prev); if (next.has(s.id)) next.delete(s.id); else next.add(s.id); return next; }); }} style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
@@ -920,13 +920,13 @@ export default function ClassesPage() {
                               </div>
                               {s.name}
                               {s.avatarChangeTokens > 0 && (
-                                <span title="可换头像次数" style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 4, padding: '0 4px', borderRadius: 4, background: '#faf4eb', color: '#956834', fontSize: "0.625rem", fontWeight: 700 }}>
+                                <span title="可换头像次数" style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 4, padding: '0 4px', borderRadius: 4, background: '#faf4eb', color: '#956834', fontSize: "0.75rem", fontWeight: 700 }}>
                                   <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                                   {s.avatarChangeTokens}
                                 </span>
                               )}
                             </td>
-                            <td style={{ textAlign: 'center', fontSize: "0.813rem", fontWeight: 500 }}>
+                            <td style={{ textAlign: 'center', fontSize: "0.875rem", fontWeight: 500 }}>
                               {s.gender === 'boy' ? <span style={{ color: '#475569' }}>男</span> : s.gender === 'girl' ? <span style={{ color: '#475569' }}>女</span> : <span style={{ color: '#e2e8f0' }}>-</span>}
                             </td>
                             <td>
@@ -1159,13 +1159,13 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
       <div style={{ width: 180 }}>
-        <label style={{ fontSize: "0.688rem", color: '#64748b', marginBottom: 3, display: 'block' }}>姓名 *</label>
+        <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 3, display: 'block' }}>姓名 *</label>
         <input className="input" value={name} onChange={e => setName(e.target.value)}
-          placeholder="学生姓名" style={{ fontSize: "0.813rem" }}
+          placeholder="学生姓名" style={{ fontSize: "0.875rem" }}
           onKeyDown={e => e.key === 'Enter' && handleAdd()} autoFocus />
       </div>
       <div>
-        <label style={{ fontSize: "0.688rem", color: '#64748b', marginBottom: 3, display: 'block' }}>性别</label>
+        <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 3, display: 'block' }}>性别</label>
         <div style={{ display: 'flex', gap: 2, alignItems: 'center', height: 38 }}>
           {[
             { value: '', label: '未知' },
@@ -1177,7 +1177,7 @@ function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClos
               padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
               background: gender === g.value ? (g.value === 'boy' ? 'var(--primary-tint)' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
               color: gender === g.value ? (g.value === 'boy' ? 'var(--primary)' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
-              fontSize: "0.813rem", fontWeight: gender === g.value ? 600 : 400,
+              fontSize: "0.875rem", fontWeight: gender === g.value ? 600 : 400,
             }}>
               <input type="radio" name="gender" value={g.value}
                 checked={gender === g.value}
@@ -1247,7 +1247,7 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
         </div>
         <div>
           <div style={{ fontSize: "0.813rem", fontWeight: 600, color: '#0f172a' }}>粘贴名单</div>
-          <div style={{ fontSize: "0.688rem", color: '#64748b' }}>每行一个姓名，可附带性别（用空格、逗号分隔），如：张三 男</div>
+          <div style={{ fontSize: "0.75rem", color: '#64748b' }}>每行一个姓名，可附带性别（用空格、逗号分隔），如：张三 男</div>
         </div>
       </div>
 
@@ -1257,7 +1257,7 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
         onChange={e => setText(e.target.value)}
         placeholder={`张三 男\n李四 女\n王五\n赵六 女`}
         style={{
-          height: 100, resize: 'vertical', fontSize: "0.813rem",
+          height: 100, resize: 'vertical', fontSize: "0.875rem",
           fontFamily: 'monospace', lineHeight: 1.7,
         }}
       />
@@ -1273,9 +1273,9 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
           )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost" onClick={onClose} style={{ fontSize: "0.75rem" }}>取消</button>
+          <button className="btn btn-ghost" onClick={onClose} style={{ fontSize: "0.875rem" }}>取消</button>
           <button className="btn btn-primary" onClick={handleSubmit} disabled={saving || parsed.length === 0}
-            style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}>
+            style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 4 }}>
             {saving ? '创建中...' : (
               <>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -1341,24 +1341,24 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
           )}
           <div>
             <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>编辑学生</h2>
-            <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '2px 0 0' }}>修改学生信息</p>
+            <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '2px 0 0' }}>修改学生信息</p>
           </div>
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>学号</label>
+          <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 4, display: 'block' }}>学号</label>
           <input className="input" value={studentNo} onChange={e => setStudentNo(e.target.value)}
             placeholder="不填则自动生成" />
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>姓名 *</label>
+          <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 4, display: 'block' }}>姓名 *</label>
           <input className="input" value={name} onChange={e => setName(e.target.value)}
             placeholder="学生姓名" onKeyDown={e => e.key === 'Enter' && handleSave()} autoFocus />
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>性别</label>
+          <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 4, display: 'block' }}>性别</label>
           <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             {[
               { value: '', label: '未知' },
@@ -1370,7 +1370,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
                 padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
                 background: gender === g.value ? (g.value === 'boy' ? 'var(--primary-tint)' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
                 color: gender === g.value ? (g.value === 'boy' ? 'var(--primary)' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
-                fontSize: "0.813rem", fontWeight: gender === g.value ? 600 : 400,
+                fontSize: "0.875rem", fontWeight: gender === g.value ? 600 : 400,
               }}>
                 <input type="radio" name="edit-gender" value={g.value}
                   checked={gender === g.value}
@@ -1385,7 +1385,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
         {/* 学生头像选择 */}
         {avatars.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 6, display: 'block' }}>头像</label>
+            <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 6, display: 'block' }}>头像</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 140, overflowY: 'auto', overscrollBehavior: 'contain', padding: '4px 0' }}>
               <div key="none"
                 onClick={() => setAvatarId(null)}
@@ -1413,7 +1413,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
         )}
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>标签</label>
+          <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 4, display: 'block' }}>标签</label>
           <input className="input" value={tag} onChange={e => setTag(e.target.value)}
             placeholder="如：组长、课代表" />
         </div>
@@ -1458,17 +1458,17 @@ function BatchEditTagModal({ classId, studentIds, studentNames, onClose, onSaved
           </div>
           <div>
             <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>批量修改标签</h2>
-            <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '2px 0 0' }}>
+            <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '2px 0 0' }}>
               已选中 {studentIds.length} 名学生：{studentNames.join('、')}
             </p>
           </div>
         </div>
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 4, display: 'block' }}>标签</label>
+          <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 4, display: 'block' }}>标签</label>
           <input className="input" value={tag} onChange={e => setTag(e.target.value)}
             placeholder="输入标签，如：组长、课代表"
             onKeyDown={e => e.key === 'Enter' && handleSave()} autoFocus />
-          <p style={{ fontSize: "0.688rem", color: '#94a3b8', marginTop: 6, lineHeight: 1.5 }}>
+          <p style={{ fontSize: "0.8125rem", color: '#94a3b8', marginTop: 6, lineHeight: 1.5 }}>
             留空则清空选中学生的标签。
           </p>
         </div>
@@ -1518,7 +1518,7 @@ function BatchEditGenderModal({ classId, studentIds, studentNames, onClose, onSa
           <p style={{ fontSize: "0.813rem", color: '#64748b', margin: 0 }}>
             已选中 <strong style={{ color: '#0f172a' }}>{studentIds.length}</strong> 名学生
           </p>
-          <div style={{ fontSize: "0.688rem", color: '#94a3b8', marginTop: 4, maxHeight: 28, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginTop: 4, maxHeight: 28, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {studentNames.join('、')}
           </div>
         </div>
@@ -1542,7 +1542,7 @@ function BatchEditGenderModal({ classId, studentIds, studentNames, onClose, onSa
                 <div style={{ fontSize: "0.875rem", fontWeight: 600, color: gender === g.value ? g.color : '#64748b' }}>
                   {g.label}
                 </div>
-                <div style={{ fontSize: "0.688rem", color: gender === g.value ? g.color : '#94a3b8', marginTop: 2 }}>
+                <div style={{ fontSize: "0.75rem", color: gender === g.value ? g.color : '#94a3b8', marginTop: 2 }}>
                   {g.desc}
                 </div>
               </button>
@@ -1583,7 +1583,7 @@ function StudentAvatarPickerModal({ classId, studentId, currentAvatarId, avatars
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>选择头像</h3>
-        <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '0 0 16px' }}>点击头像选中，确认后更换</p>
+        <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '0 0 16px' }}>点击头像选中，确认后更换</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16, maxHeight: 300, overflowY: 'auto', overscrollBehavior: 'contain', padding: '4px 0' }}>
           <div key="none" onClick={() => setSelected(null)}
             style={{
@@ -1637,7 +1637,7 @@ function ClassIconPickerModal({ classId, currentAvatarId, onClose, onSaved, setT
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>选择班级图标</h3>
-        <p style={{ fontSize: "0.75rem", color: '#64748b', margin: '0 0 16px' }}>点击图标选中，确认后更新</p>
+        <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '0 0 16px' }}>点击图标选中，确认后更新</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, maxHeight: 300, overflowY: 'auto', overscrollBehavior: 'contain' }}>
           <div key="none" onClick={() => setSelected(null)}
             style={{
@@ -1909,15 +1909,15 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
         padding: '10px 14px', background: '#f8fafc', borderRadius: 8,
       }}>
         <input className="input" value={newGroupName} onChange={e => setNewGroupName(e.target.value)}
-          placeholder="新分组名称，回车添加" style={{ width: 200, fontSize: "0.813rem" }}
+          placeholder="新分组名称，回车添加" style={{ width: 200, fontSize: "0.875rem" }}
           onKeyDown={e => e.key === 'Enter' && handleCreateGroup()} />
         <button className="btn btn-primary" onClick={handleCreateGroup}
-          style={{ fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           添加分组
         </button>
         {groups.length > 0 && (
-          <span style={{ fontSize: "0.688rem", color: '#94a3b8', marginLeft: 'auto' }}>
+          <span style={{ fontSize: "0.75rem", color: '#94a3b8', marginLeft: 'auto' }}>
             共 {groups.length} 组，{students.length} 人
           </span>
         )}
@@ -1962,7 +1962,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                       <input className="input" defaultValue={g.name} autoFocus
                         onBlur={e => { setEditingName(null); if (e.target.value !== g.name) handleRenameGroup(g.id, e.target.value); }}
                         onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingName(null); }}
-                        style={{ width: 160, fontSize: "0.813rem", fontWeight: 600 }}
+                        style={{ width: 160, fontSize: "0.875rem", fontWeight: 600 }}
                       />
                     ) : (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
@@ -1983,7 +1983,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                       <button onClick={() => handleRemoveAllStudents(g.id)}
                         style={{
                           background: 'transparent', border: 'none', cursor: 'pointer',
-                          fontSize: "0.75rem", color: '#94a3b8', padding: '4px 6px', borderRadius: 4,
+                          fontSize: "0.875rem", color: '#94a3b8', padding: '4px 6px', borderRadius: 4,
                           display: 'flex', alignItems: 'center', gap: 3,
                           transition: 'all 0.1s',
                         }}
@@ -1997,7 +1997,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                     <button onClick={() => handleDeleteGroup(g.id)}
                       style={{
                         background: 'transparent', border: 'none', cursor: 'pointer',
-                        fontSize: "0.75rem", color: '#94a3b8', padding: '4px 6px', borderRadius: 4,
+                        fontSize: "0.875rem", color: '#94a3b8', padding: '4px 6px', borderRadius: 4,
                         display: 'flex', alignItems: 'center', gap: 3,
                         transition: 'all 0.1s',
                       }}
@@ -2049,14 +2049,14 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                             width: 22, height: 22, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
                             background: color.badge, color: 'white',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: "0.625rem", fontWeight: 700,
+                            fontSize: "0.75rem", fontWeight: 700,
                           }}>
                             {s.avatarId && studentAvatars[s.avatarId] ? (
                               <div style={{ width: 22, height: 22 }} dangerouslySetInnerHTML={{ __html: studentAvatars[s.avatarId].replace('<svg', '<svg width="22" height="22"') }} />
                             ) : s.name[0]}
                           </div>
                           {s.name}
-                          {s.studentNo && <span style={{ fontSize: "0.625rem", color: color.badge, opacity: 0.6, fontFamily: 'monospace', marginLeft: 1 }}>#{s.studentNo}</span>}
+                          {s.studentNo && <span style={{ fontSize: "0.75rem", color: color.badge, opacity: 0.6, fontFamily: 'monospace', marginLeft: 1 }}>#{s.studentNo}</span>}
                         </div>
                       ))
                     ) : (
@@ -2081,17 +2081,17 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
           <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
             未分配学生
-            <span style={{ fontSize: "0.688rem", color: '#94a3b8', fontWeight: 400 }}>{unassigned.length} 人</span>
+            <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400 }}>{unassigned.length} 人</span>
             {unassigned.length > 0 && selectedUnassigned.size > 0 ? (
               <>
-                <span style={{ fontSize: "0.688rem", color: 'var(--primary)', fontWeight: 600 }}>
+                <span style={{ fontSize: "0.75rem", color: 'var(--primary)', fontWeight: 600 }}>
                   已选 {selectedUnassigned.size} 人
                 </span>
-                <span style={{ fontSize: "0.688rem", color: '#cbd5e1' }}>·</span>
+                <span style={{ fontSize: "0.75rem", color: '#cbd5e1' }}>·</span>
                 <button onClick={() => setSelectedUnassigned(new Set())}
                   style={{
                     background: 'transparent', border: 'none', cursor: 'pointer',
-                    fontSize: "0.688rem", color: '#94a3b8', padding: 0,
+                    fontSize: "0.875rem", color: '#94a3b8', padding: 0,
                     textDecoration: 'underline', textUnderlineOffset: 2,
                   }}
                   onMouseEnter={e => e.currentTarget.style.color = '#64748b'}
@@ -2100,11 +2100,11 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                 </button>
               </>
             ) : unassigned.length > 0 ? (
-              <span style={{ fontSize: "0.688rem", color: '#cbd5e1', fontWeight: 400 }}>
+              <span style={{ fontSize: "0.75rem", color: '#cbd5e1', fontWeight: 400 }}>
                 （点击可多选，然后拖拽到分组中）
               </span>
             ) : (
-              <span style={{ fontSize: "0.688rem", color: '#cbd5e1', fontWeight: 400 }}>
+              <span style={{ fontSize: "0.75rem", color: '#cbd5e1', fontWeight: 400 }}>
                 （从小组中拖出学生可取消分组）
               </span>
             )}
@@ -2179,14 +2179,14 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                   background: isSelected ? 'var(--primary-light)' : '#f1f5f9',
                   color: isSelected ? 'var(--primary)' : '#64748b',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: "0.625rem", fontWeight: 700,
+                  fontSize: "0.75rem", fontWeight: 700,
                 }}>
                   {s.avatarId && studentAvatars[s.avatarId] ? (
                     <div style={{ width: 22, height: 22 }} dangerouslySetInnerHTML={{ __html: studentAvatars[s.avatarId].replace('<svg', '<svg width="22" height="22"') }} />
                   ) : s.name[0]}
                 </div>
                 {s.name}
-                {s.studentNo && <span style={{ fontSize: "0.625rem", color: '#94a3b8', fontFamily: 'monospace' }}>#{s.studentNo}</span>}
+                {s.studentNo && <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontFamily: 'monospace' }}>#{s.studentNo}</span>}
               </div>
             );
           }) : (

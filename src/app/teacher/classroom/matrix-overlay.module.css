@@ -32,7 +32,7 @@
 .titleBlock p {
   margin: 2px 0 0;
   color: #7a8ba0;
-  font-size: .7rem;
+  font-size: 0.75rem;
 }
 
 .viewTabs {
@@ -54,7 +54,7 @@
   background: transparent;
   color: #66798f;
   cursor: pointer;
-  font-size: .72rem;
+  font-size: 0.875rem;
   font-weight: 600;
   padding: 6px 11px;
 }
@@ -72,7 +72,7 @@
   background: #fff;
   color: #52667e;
   cursor: pointer;
-  font-size: .75rem;
+  font-size: 0.875rem;
   padding: 7px 13px;
 }
 
@@ -124,7 +124,7 @@
   overflow: hidden;
   margin: 0;
   color: #72849a;
-  font-size: .7rem;
+  font-size: 0.75rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -156,7 +156,7 @@
   padding: 0 9px;
   border-right: 1px solid #d7e1eb;
   color: #718297;
-  font-size: .62rem;
+  font-size: 0.75rem;
   white-space: nowrap;
 }
 
@@ -185,12 +185,12 @@
 
 .focusStrip strong {
   color: #314963;
-  font-size: .72rem;
+  font-size: 0.75rem;
 }
 
 .focusStrip span {
   color: #65798f;
-  font-size: .66rem;
+  font-size: 0.75rem;
 }
 
 .focusAction {
@@ -200,7 +200,7 @@
   background: #fff;
   color: #4b6685;
   cursor: pointer;
-  font-size: .65rem;
+  font-size: 0.75rem;
   padding: 4px 8px;
   white-space: nowrap;
 }
@@ -219,7 +219,7 @@
   outline: none;
   background: #fff;
   color: #33475f;
-  font-size: .7rem;
+  font-size: 0.875rem;
   padding: 6px 10px;
 }
 
@@ -231,7 +231,7 @@
   background: #fff;
   color: #62758c;
   cursor: pointer;
-  font-size: .65rem;
+  font-size: 0.875rem;
   padding: 5px 8px;
   white-space: nowrap;
 }
@@ -248,7 +248,7 @@
   gap: 10px;
   margin-left: auto;
   color: #74869a;
-  font-size: .62rem;
+  font-size: 0.75rem;
 }
 
 .legendItem { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
@@ -297,7 +297,7 @@
   border-bottom: 1px solid #dce5ee;
   background: #edf2f7;
   color: #566b82;
-  font-size: .62rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-align: center;
 }
@@ -330,12 +330,12 @@
 
 .questionHeadButton strong,
 .questionHeadButton span { display: block; }
-.questionHeadButton strong { font-size: .72rem; }
+.questionHeadButton strong { font-size: 0.875rem; }
 .questionHeadButton span {
   overflow: hidden;
   margin-top: 1px;
   color: #7a8a9d;
-  font-size: .56rem;
+  font-size: 0.875rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -364,7 +364,7 @@
   background: transparent;
   color: #344a62;
   cursor: pointer;
-  font-size: .7rem;
+  font-size: 0.875rem;
   font-weight: 700;
   text-align: left;
 }
@@ -389,9 +389,9 @@
 }
 
 .aggregateCell button strong,
-.matrixFooterCell button strong { color: #344b65; font-size: .72rem; }
+.matrixFooterCell button strong { color: #344b65; font-size: 0.875rem; }
 .aggregateCell button span,
-.matrixFooterCell button span { color: #8492a3; font-size: .55rem; }
+.matrixFooterCell button span { color: #8492a3; font-size: 0.875rem; }
 
 .matrixFooterLabel,
 .matrixFooterCell,
@@ -409,7 +409,7 @@
   z-index: 5;
   padding: 0 12px;
   color: #536a82;
-  font-size: .68rem;
+  font-size: 0.75rem;
   text-align: left;
 }
 
@@ -431,7 +431,7 @@
   max-width: 48px;
   padding: 0 4px;
   color: #60758b;
-  font-size: .61rem;
+  font-size: 0.75rem;
   text-align: center;
 }
 
@@ -466,7 +466,7 @@
 .sidebarHeading {
   padding: 6px 8px 10px;
   color: #718398;
-  font-size: .65rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -487,7 +487,7 @@
 
 .workspaceSidebar > button[data-active='true'] { background: #e8f0f7; color: #294a69; }
 .workspaceSidebar strong { font-size: .75rem; }
-.workspaceSidebar span { color: #8492a3; font-size: .6rem; }
+.workspaceSidebar span { color: #8492a3; font-size: 0.75rem; }
 
 .workspacePanel {
   padding: 18px 20px 22px;
@@ -519,7 +519,7 @@
   padding: 4px 8px 7px;
   overflow: hidden;
   color: #718398;
-  font-size: .62rem;
+  font-size: 0.75rem;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -566,14 +566,14 @@
 }
 
 .questionNavTitle { gap: 3px; }
-.questionNavTitle strong { overflow: hidden; font-size: .73rem; text-overflow: ellipsis; white-space: nowrap; }
-.questionNavTitle small { color: #8292a4; font-size: .59rem; }
+.questionNavTitle strong { overflow: hidden; font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
+.questionNavTitle small { color: #8292a4; font-size: 0.75rem; }
 .questionNavMeta { align-items: flex-end; gap: 3px; text-align: right; }
-.questionNavMeta small { color: #8292a4; font-size: .57rem; white-space: nowrap; }
-.questionNavMeta strong { color: #5e7288; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .64rem; }
+.questionNavMeta small { color: #8292a4; font-size: 0.75rem; white-space: nowrap; }
+.questionNavMeta strong { color: #5e7288; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; }
 .questionNavMeta strong[data-tone='good'] { color: #3f7859; }
 .questionNavMeta strong[data-tone='warning'] { color: #946534; }
-.sidebarEmpty { padding: 20px 8px; color: #8a99aa; font-size: .68rem; text-align: center; }
+.sidebarEmpty { padding: 20px 8px; color: #8a99aa; font-size: 0.75rem; text-align: center; }
 
 .worksheetPicker {
   display: flex;
@@ -615,7 +615,7 @@
   min-width: 176px;
   padding: 0 14px;
   color: #718399;
-  font-size: .64rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-align: left;
 }
@@ -626,7 +626,7 @@
   max-width: 30px;
   padding: 6px 2px;
   color: #62758b;
-  font-size: .6rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-align: center;
 }
@@ -640,7 +640,7 @@
   border-radius: 50%;
   background: #e4ebf3;
   color: #506b8b;
-  font-size: .62rem;
+  font-size: 0.75rem;
   overflow: hidden;
   border: 1px solid #d4e0eb;
 }
@@ -657,7 +657,7 @@
 .participantName {
   display: block;
   overflow: hidden;
-  font-size: .56rem;
+  font-size: 0.75rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -670,7 +670,7 @@
   max-width: 48px;
   padding: 0 4px;
   color: #718399;
-  font-size: .64rem;
+  font-size: 0.75rem;
 }
 
 .groupHead,
@@ -686,7 +686,7 @@
   z-index: 3;
   padding: 8px 13px;
   color: #445a73;
-  font-size: .69rem;
+  font-size: 0.75rem;
   text-align: left;
 }
 
@@ -722,14 +722,14 @@
   text-align: left;
 }
 
-.questionLabel { color: #273b52; font-size: .7rem; font-weight: 750; }
-.typeLabel { margin-left: 6px; color: #8291a3; font-size: .61rem; font-weight: 500; }
+.questionLabel { color: #273b52; font-size: 0.75rem; font-weight: 750; }
+.typeLabel { margin-left: 6px; color: #8291a3; font-size: 0.75rem; font-weight: 500; }
 .prompt {
   display: -webkit-box;
   overflow: hidden;
   margin-top: 4px;
   color: #65768a;
-  font-size: .65rem;
+  font-size: 0.75rem;
   font-weight: 500;
   line-height: 1.45;
   white-space: normal;
@@ -748,7 +748,7 @@
   background: #fff;
   color: #526b88;
   cursor: pointer;
-  font-size: .58rem;
+  font-size: 0.875rem;
   padding: 2px 6px;
 }
 
@@ -813,13 +813,13 @@
   background: #fff;
   color: #5e7187;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: .65rem;
+  font-size: 0.75rem;
   text-align: center;
 }
 
 .aggregateCell[data-stuck='true'] { background: #fffaf4; color: #8c6331; }
-.noMatches { padding: 28px; color: #7a8ca1; font-size: .7rem; text-align: center; }
-.uncovered { color: #896238; font-size: .7rem; }
+.noMatches { padding: 28px; color: #7a8ca1; font-size: 0.75rem; text-align: center; }
+.uncovered { color: #896238; font-size: 0.75rem; }
 
 @media (max-width: 800px) {
   .topbar { min-height: 62px; padding: 0 16px; }
@@ -853,7 +853,7 @@
 .questionNavRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 8px; margin-bottom: 4px; padding: 8px 10px; border: 1px solid transparent; border-radius: 10px; }
 .questionNavRow .questionNavSelect { margin-bottom: 0; border: 0; }
 .questionNavAnalysis { display: flex; grid-column: 2; grid-row: 1; justify-content: flex-end; }
-.questionNavAnalysis .analysisButton { min-height: 27px; padding: 4px 9px; font-size: .65rem; border-radius: 6px; }
+.questionNavAnalysis .analysisButton { min-height: 27px; padding: 4px 9px; font-size: 0.875rem; border-radius: 6px; }
 
 .questionNavAnalysis .analysisButton[data-state='ready'] { color: #466c5b; border-color: #cdded4; background: #f4f8f5; }
 .questionNavAnalysis .analysisButton:focus { outline: 2px solid #7996b1; outline-offset: 2px; }
@@ -870,16 +870,16 @@
 
 /* 学生横向排列，题目行与左侧选择卡片使用相同的视觉语言。 */
 .participantHeadButton { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; border: 0; padding: 2px 0; background: transparent; color: #425b73; cursor: pointer; }
-.participantVerticalName { writing-mode: vertical-rl; text-orientation: upright; max-height: 64px; overflow: hidden; font-size: .63rem; line-height: 1.3; letter-spacing: 1px; }
+.participantVerticalName { writing-mode: vertical-rl; text-orientation: upright; max-height: 64px; overflow: hidden; font-size: 0.75rem; line-height: 1.3; letter-spacing: 1px; }
 .participantHead, .aggregateHead { height: auto; }
 .participantHead { vertical-align: top; }
 .matrixQuestionCorner { width: 120px; min-width: 120px; max-width: 120px; padding: 0 6px; position: sticky; top: 0; background: #edf2f7; border-bottom: 1px solid #dce5ee; }
 .matrixQuestionHead { position: sticky; left: 0; z-index: 3; width: 120px; min-width: 120px; max-width: 120px; padding: 6px; background: #fff; border-right: 1px solid #dce5ee; border-bottom: 1px solid #e8edf3; text-align: left; }
 .matrixQuestionHead .questionHeadButton { text-align: left; margin-bottom: 4px; }
 .matrixQuestionHead .questionHeadButton strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; line-height: 1.4; }
-.matrixQuestionMeta { display: flex; align-items: center; justify-content: space-between; gap: 4px; color: #7a8a9d; font-size: .56rem; }
+.matrixQuestionMeta { display: flex; align-items: center; justify-content: space-between; gap: 4px; color: #7a8a9d; font-size: 0.75rem; }
 .matrixQuestionMeta > span { white-space: nowrap; }
-.matrixQuestionMeta .analysisButton { padding: 2px 4px; font-size: .56rem; white-space: nowrap; }
+.matrixQuestionMeta .analysisButton { padding: 2px 4px; font-size: 0.875rem; white-space: nowrap; }
 .matrixFooterTotal { overflow-wrap: anywhere; }
 .matrixQuestionHead[data-stuck='true'] { background: #fff8ed; }
 .workspaceSidebar > button { border: 1px solid transparent; padding: 10px 12px; border-radius: 10px; }

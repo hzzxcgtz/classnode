@@ -36,7 +36,7 @@ export function AgentLogoField({ inputRef, preview, onChange, onRemove }: AgentL
           width: 20, height: 20, borderRadius: '50%',
           background: 'var(--primary)', color: 'white', border: '2px solid white',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', fontSize: "0.75rem", lineHeight: 1,
+          cursor: 'pointer', fontSize: "0.875rem", lineHeight: 1,
           padding: 0, boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
         }} title="上传头像" aria-label="上传智能体头像">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -47,7 +47,7 @@ export function AgentLogoField({ inputRef, preview, onChange, onRemove }: AgentL
             width: 18, height: 18, borderRadius: '50%',
             background: '#a85d5d', color: 'white', border: '2px solid white',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', fontSize: "0.563rem", lineHeight: 1,
+            cursor: 'pointer', fontSize: "0.875rem", lineHeight: 1,
             padding: 0, boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
           }} title="移除头像" aria-label="移除智能体头像">
             ✕

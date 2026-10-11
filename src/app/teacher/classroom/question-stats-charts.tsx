@@ -120,7 +120,7 @@ export function CountBars({
  * 而 recharts 的 label 在圆里居中要调一堆参数、还不跟着字号走。
  */
 export function VerdictDonut({
-  data, centerText, centerNote, size = 148, centerFontSize = '1.5rem', centerNoteFontSize = '0.688rem', unit: unitFallback = '',
+  data, centerText, centerNote, size = 148, centerFontSize = '1.5rem', centerNoteFontSize = "0.75rem", unit: unitFallback = '',
 }: {
   data: Array<{ name: string; value: number; color: string }>;
   /** 环中心那一行大字（正确率 / 已交率）。`null` ⇒ 画「—」。 */
@@ -170,7 +170,7 @@ export function VerdictDonut({
  */
 export function HeatLegend({ max, unit }: { max: number; unit: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.688rem', color: CHART.faint }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.75rem", color: CHART.faint }}>
       <span>少</span>
       {[0.1, 0.28, 0.46, 0.64].map((alpha) => (
         <span key={alpha} style={{ width: 14, height: 14, borderRadius: 4, background: `rgba(var(--primary-focus-rgb), ${alpha})` }} />

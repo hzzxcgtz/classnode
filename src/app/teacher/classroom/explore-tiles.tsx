@@ -28,7 +28,7 @@ export function ExploreTile({ name, state, online, captureEnabled, compact = fal
   compact?: boolean;
 }) {
   const caption = tileCaption(online, captureEnabled, state?.presence ?? null, state?.captureBlocked ?? false);
-  const small = compact ? '0.625rem' : '0.75rem';
+  const small = '0.75rem';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 3 : 6, flex: 1, minHeight: 0 }}>
       <div style={{ ...shotBoxStyle, flex: 1, minHeight: 0 }}>
@@ -37,7 +37,7 @@ export function ExploreTile({ name, state, online, captureEnabled, compact = fal
         ) : (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, color: '#94a3b8', fontSize: small, textAlign: 'center', padding: 4 }}>
             <span>{caption.label}</span>
-            {caption.detail ? <span style={{ fontSize: '0.688rem', color: '#cbd5e1' }}>{caption.detail}</span> : null}
+            {caption.detail ? <span style={{ fontSize: "0.75rem", color: '#cbd5e1' }}>{caption.detail}</span> : null}
           </div>
         )}
       </div>
@@ -84,12 +84,12 @@ export function ExploreMemberStrip({ members, states, statuses, captureEnabled, 
               {state?.dataUrl ? (
                 <img src={state.dataUrl} alt={`${member.student.name} 的探究网页缩略图`} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
               ) : (
-                <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', color: '#94a3b8' }}>
+                <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.75rem", color: '#94a3b8' }}>
                   {caption.label}
                 </span>
               )}
             </span>
-            <span style={{ fontSize: '0.625rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.student.name}</span>
+            <span style={{ fontSize: "0.75rem", color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.student.name}</span>
           </button>
         );
       })}
@@ -154,7 +154,7 @@ export function ExploreDetailPanel({ student, state, online, webapps, captureEna
               {state?.dataUrl ? `最新画面 ${timeLabel(state.at)} · 共 ${state.frameCount} 帧` : '还没有收到画面'}
             </div>
           </div>
-          <button type="button" className="btn btn-secondary" onClick={onClose} style={{ fontSize: '0.75rem', padding: '4px 10px' }}>关闭</button>
+          <button type="button" className="btn btn-secondary" onClick={onClose} style={{ fontSize: "0.875rem", padding: '4px 10px' }}>关闭</button>
         </div>
         {state?.dataUrl && (
           <div style={{ borderBottom: '1px solid var(--border)', background: '#f1f5f9' }}>
@@ -192,7 +192,7 @@ export function ExploreDetailPanel({ student, state, online, webapps, captureEna
                   // 固定成覆盖值」——教师点它只是想看看，不该因此改掉课堂设置。
                   onClick={() => { if (!selected) onSelectDetailInterval(ms); }}
                   style={{
-                    minHeight: 30, padding: '4px 12px', borderRadius: 999, fontSize: '0.813rem',
+                    minHeight: 30, padding: '4px 12px', borderRadius: 999, fontSize: "0.875rem",
                     border: `1px solid ${selected ? 'var(--primary)' : '#e2e8f0'}`,
                     background: selected ? 'var(--primary)' : 'white',
                     color: selected ? 'white' : '#475569',

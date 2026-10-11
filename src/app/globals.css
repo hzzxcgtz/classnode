@@ -99,6 +99,8 @@ html, body {
 
 /* Teacher Layout */
 .teacher-layout {
+  --teacher-sidebar-current-width: var(--teacher-sidebar-width);
+  --pagination-meta-font-size: 0.75rem;
   display: flex;
   min-height: 100vh;
   width: 100%;
@@ -127,8 +129,12 @@ html, body {
   color: var(--cn-text);
 }
 
+.teacher-layout[data-sidebar-collapsed="true"] {
+  --teacher-sidebar-current-width: var(--teacher-sidebar-collapsed-width);
+}
+
 .teacher-sidebar {
-  width: var(--teacher-sidebar-width);
+  width: var(--teacher-sidebar-current-width);
   background: var(--card);
   border-right: 1px solid var(--border);
   display: flex;
@@ -144,10 +150,11 @@ html, body {
 
 .teacher-main {
   flex: 1;
-  width: 100%;
-  margin-left: var(--teacher-sidebar-width);
+  width: calc(100% - var(--teacher-sidebar-current-width));
+  min-width: 0;
+  margin-left: var(--teacher-sidebar-current-width);
   padding: clamp(24px, 2.5vw, 48px);
-  max-width: min(calc(100vw - var(--teacher-sidebar-width)), 1484px);
+  max-width: none;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -231,7 +238,7 @@ html, body {
   color: var(--text-secondary);
   cursor: pointer;
   font: inherit;
-  font-size: .813rem;
+  font-size: 0.875rem;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -250,7 +257,7 @@ html, body {
   border-radius: 999px;
   background: #e2e8f0;
   color: #64748b;
-  font-size: .688rem;
+  font-size: 0.75rem;
   line-height: 18px;
 }
 
@@ -520,13 +527,13 @@ html, body {
 
 .agent-form-step-heading small {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 0.75rem;
 }
 
 .agent-coze-fetch-button {
   width: 100%;
   min-height: 34px;
-  font-size: 12px;
+  font-size: 0.875rem;
 }
 
 .agent-coze-fetch-button:disabled {
@@ -610,7 +617,7 @@ html, body {
 
 .agent-platform-selector-heading a {
   color: #6366f1;
-  font-size: 11px;
+  font-size: 0.75rem;
   font-weight: 500;
   text-decoration: none;
 }
@@ -681,7 +688,7 @@ html, body {
 
 .agent-platform-tabs small {
   color: #94a3b8;
-  font-size: 9px;
+  font-size: 0.75rem;
 }
 
 .agent-form-section {
@@ -962,7 +969,7 @@ html, body {
 
 .dashboard-kpi-label {
   color: var(--cn-text-muted);
-  font-size: .75rem;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
@@ -995,7 +1002,7 @@ html, body {
 .dashboard-kpi-note {
   margin-top: 10px;
   color: var(--cn-text-muted);
-  font-size: .688rem;
+  font-size: 0.75rem;
   line-height: 1.45;
 }
 
@@ -1037,7 +1044,7 @@ html, body {
 .dashboard-section-card-header p {
   margin: 2px 0 0;
   color: var(--cn-text-muted);
-  font-size: .688rem;
+  font-size: 0.75rem;
   line-height: 1.35;
 }
 
@@ -1062,7 +1069,7 @@ html, body {
   border-radius: 8px;
   background: #fff;
   color: var(--cn-primary);
-  font-size: .688rem;
+  font-size: 0.75rem;
   font-weight: 650;
   text-decoration: none;
   white-space: nowrap;
@@ -1110,7 +1117,7 @@ html, body {
 .dashboard-mini-stat span {
   margin-top: 3px;
   color: var(--cn-text-muted);
-  font-size: .625rem;
+  font-size: 0.75rem;
 }
 
 .dashboard-mini-stat.tone-green { border-color: #cfe8d9; background: #f1f9f4; }
@@ -1139,7 +1146,7 @@ html, body {
 .dashboard-system-list h3 {
   margin: 0 0 8px;
   color: #52677a;
-  font-size: .688rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -1158,7 +1165,7 @@ html, body {
 .dashboard-gauge strong,
 .dashboard-gauge span { display: block; }
 .dashboard-gauge strong { font-size: 1.25rem; line-height: 1; }
-.dashboard-gauge span { margin-top: 4px; color: var(--cn-text-muted); font-size: .625rem; }
+.dashboard-gauge span { margin-top: 4px; color: var(--cn-text-muted); font-size: 0.75rem; }
 
 .dashboard-donut-row {
   display: flex;
@@ -1182,7 +1189,7 @@ html, body {
   align-items: center;
   gap: 5px;
   color: var(--cn-text-muted);
-  font-size: .625rem;
+  font-size: 0.75rem;
 }
 
 .dashboard-chart-legend i { width: 7px; height: 7px; border-radius: 50%; }
@@ -1195,7 +1202,7 @@ html, body {
   background: #27394a;
   box-shadow: 0 7px 18px rgba(24, 43, 59, .18);
   color: #f4f7f9;
-  font-size: .688rem;
+  font-size: 0.75rem;
 }
 
 .dashboard-table-wrap {
@@ -1207,7 +1214,7 @@ html, body {
 .dashboard-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: .688rem;
+  font-size: 0.75rem;
 }
 
 .dashboard-table th,
@@ -1221,14 +1228,14 @@ html, body {
 .dashboard-table th {
   background: #f7f9fa;
   color: #718294;
-  font-size: .625rem;
+  font-size: 0.8125rem;
   font-weight: 650;
 }
 
 .dashboard-table tbody tr:last-child td { border-bottom: 0; }
 .dashboard-table td { color: #5a6e80; font-variant-numeric: tabular-nums; }
 .dashboard-table td:not(:first-child), .dashboard-table th:not(:first-child) { text-align: center; }
-.dashboard-table small { display: block; margin-top: 2px; color: #99a6b1; font-size: .563rem; }
+.dashboard-table small { display: block; margin-top: 2px; color: #99a6b1; font-size: 0.75rem; }
 .dashboard-primary-cell { display: block; max-width: 180px; overflow: hidden; color: #273c50; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-code-cell { display: inline-block; max-width: 130px; overflow: hidden; color: #64788a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }
 
@@ -1238,7 +1245,7 @@ html, body {
   align-items: center;
   padding: 0 7px;
   border-radius: 6px;
-  font-size: .625rem;
+  font-size: 0.75rem;
   font-weight: 650;
 }
 
@@ -1250,7 +1257,7 @@ html, body {
 .dashboard-section-note {
   margin: 10px 1px 0;
   color: var(--cn-text-muted);
-  font-size: .688rem;
+  font-size: 0.75rem;
   line-height: 1.55;
 }
 
@@ -1261,7 +1268,7 @@ html, body {
   justify-content: center;
   padding: 14px;
   color: #8b9aa7;
-  font-size: .688rem;
+  font-size: 0.75rem;
   line-height: 1.5;
   text-align: center;
 }
@@ -1294,7 +1301,7 @@ html, body {
   padding: 8px 0;
   border-bottom: 1px solid #edf1f4;
   color: var(--cn-text-muted);
-  font-size: .688rem;
+  font-size: 0.75rem;
 }
 
 .dashboard-system-list-items > div:last-child { border-bottom: 0; }
@@ -1309,8 +1316,8 @@ html, body {
 
 .dashboard-attention-list strong,
 .dashboard-attention-list span { display: block; }
-.dashboard-attention-list strong { color: #405569; font-size: .688rem; }
-.dashboard-attention-list span { margin-top: 2px; color: var(--cn-text-muted); font-size: .625rem; line-height: 1.4; }
+.dashboard-attention-list strong { color: #405569; font-size: 0.75rem; }
+.dashboard-attention-list span { margin-top: 2px; color: var(--cn-text-muted); font-size: 0.75rem; line-height: 1.4; }
 .dashboard-attention-list .tone-error { border-left-color: var(--dashboard-red); background: #faf3f3; }
 .dashboard-attention-list .tone-warning { border-left-color: var(--dashboard-amber); background: #fbf7f0; }
 .dashboard-attention-list .tone-ok { border-left-color: var(--dashboard-green); background: #f3f8f5; }
@@ -1563,7 +1570,7 @@ html, body {
   border-radius: 9px;
   background: #334155;
   color: #f8fafc;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   line-height: 1.5;
   white-space: normal;
   word-break: break-all;
@@ -1618,7 +1625,7 @@ html, body {
 .teacher-confirm-heading p {
   margin: 0;
   color: #718096;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   line-height: 1.45;
 }
 
@@ -1828,18 +1835,7 @@ tr:hover td {
   color: #956834;
 }
 
-/* 教师端基础可读性：历史页面中大量 10–12px 辅助信息统一抬升一档。 */
-.teacher-main [style*="font-size: 0.625rem"] {
-  font-size: 0.75rem !important;
-}
-
-.teacher-main [style*="font-size: 0.688rem"] {
-  font-size: 0.75rem !important;
-}
-
-.teacher-main [style*="font-size: 0.75rem"] {
-  font-size: 0.8125rem !important;
-}
+/* 教师端字号直接按文字角色定义，避免按内联 style 字符串覆盖字号。 */
 
 /* #94a3b8 在白底小字号下对比度不足，正文辅助信息统一使用更清晰的灰色。 */
 .teacher-main p[style*="rgb(148, 163, 184)"],
@@ -1935,7 +1931,7 @@ tr:hover td {
   display: flex;
   align-items: center;
   white-space: nowrap;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
@@ -2022,7 +2018,7 @@ tr:hover td {
 
 .classes-switcher-copy small {
   color: #718096;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
 }
 
 .classes-workspace {
@@ -2081,7 +2077,7 @@ tr:hover td {
   display: block;
   margin-bottom: 2px;
   color: #718096;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
 }
 
 .classes-current-heading h2 {
@@ -2123,7 +2119,7 @@ tr:hover td {
 
 .classes-current-stats span {
   color: #718096;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
 }
 
 .classes-current-stats-secondary {
@@ -2176,7 +2172,7 @@ tr:hover td {
   text-align: left;
   cursor: pointer;
   font: inherit;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 
 .classes-settings-menu button:hover {
@@ -2251,7 +2247,7 @@ tr:hover td {
   background: transparent;
   color: #0f172a;
   font: inherit;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
 }
 
 .classes-search-box button {
@@ -2274,7 +2270,7 @@ tr:hover td {
   background: #fff;
   color: #475569;
   font: inherit;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
 }
 
 .classes-filter-summary {
@@ -2284,7 +2280,7 @@ tr:hover td {
   border-bottom: 1px solid #eef2f6;
   background: #f8fafc;
   color: #64748b;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2551,7 +2547,7 @@ tr:hover td {
   background: transparent;
   color: #0f172a;
   font: inherit;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
 }
 
 .active-classroom-search > button {
@@ -2582,7 +2578,7 @@ tr:hover td {
   background: transparent;
   color: #64748b;
   font: inherit;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
@@ -2595,7 +2591,7 @@ tr:hover td {
 
 .active-classroom-filter-tabs span {
   color: inherit;
-  font-size: 0.688rem;
+  font-size: 0.875rem;
 }
 
 .active-classroom-filter-empty {
@@ -2618,7 +2614,7 @@ tr:hover td {
 .active-classroom-filter-empty span {
   margin-bottom: 6px;
   color: #64748b;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
 }
 
 .active-classroom-card-header {
@@ -2646,7 +2642,7 @@ tr:hover td {
   align-items: center;
   gap: 5px;
   color: #64748b;
-  font-size: 0.688rem;
+  font-size: 0.875rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -2674,7 +2670,7 @@ tr:hover td {
   background: transparent;
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
@@ -2834,7 +2830,7 @@ tr:hover td {
   background: transparent;
   color: #0f172a;
   font: inherit;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
 }
 
 .agent-management-search button {
@@ -2856,7 +2852,7 @@ tr:hover td {
   background: #fff;
   color: #475569;
   font: inherit;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
@@ -2882,7 +2878,7 @@ tr:hover td {
   align-items: center;
   gap: 5px;
   font: inherit;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 600;
   white-space: nowrap;
   transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
@@ -2931,7 +2927,7 @@ tr:hover td {
 .agent-management-filter-empty span {
   margin-bottom: 6px;
   color: #64748b;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
 }
 
 .agent-management-grid {
@@ -3027,7 +3023,7 @@ tr:hover td {
   color: var(--agent-platform-color);
   display: inline-flex;
   align-items: center;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-weight: 650;
   line-height: 1.35;
 }
@@ -3041,7 +3037,7 @@ tr:hover td {
   color: #7b8799;
   display: inline-flex;
   align-items: center;
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.35;
 }
@@ -3166,7 +3162,7 @@ tr:hover td {
 
 .agent-management-card-helper {
   color: #8491a4;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   line-height: 1.45;
 }
 
@@ -3279,7 +3275,7 @@ tr:hover td {
   background: transparent;
   color: #0f172a;
   font: inherit;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
 }
 
 .webapp-management-search button {
@@ -3301,7 +3297,7 @@ tr:hover td {
   background: #fff;
   color: #475569;
   font: inherit;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
@@ -3368,7 +3364,7 @@ tr:hover td {
   display: block;
   margin-top: 2px;
   color: #798c87;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   line-height: 1.45;
 }
 
@@ -3401,7 +3397,7 @@ tr:hover td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.4;
 }
@@ -3502,7 +3498,7 @@ tr:hover td {
   background: transparent;
   color: #0f172a;
   font: inherit;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
 }
 
 .worksheet-management-search button {
@@ -3571,7 +3567,7 @@ tr:hover td {
   display: block;
   margin-top: 2px;
   color: #7f8ca1;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   line-height: 1.45;
 }
 
@@ -3611,7 +3607,7 @@ tr:hover td {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.4;
 }
@@ -3991,7 +3987,7 @@ tr:hover td {
 
 .worksheet-editor-task-desc-details > summary em {
   color: #94a3b8;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-style: normal;
   font-weight: 500;
 }
@@ -4304,7 +4300,7 @@ tr:hover td {
   border-radius: 6px;
   background: #fff;
   color: #475569;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -4399,7 +4395,7 @@ tr:hover td {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   color: #7a8b9c;
 }
 
@@ -4556,7 +4552,7 @@ tr:hover td {
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: #64748b;
 }
@@ -4765,7 +4761,7 @@ tr:hover td {
 .worksheet-editor-blank-hint {
   display: block;
   margin-top: 4px;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   line-height: 1.5;
   color: #94a3b8;
 }
@@ -4882,7 +4878,7 @@ tr:hover td {
 }
 
 .worksheet-editor-fill-score-input { display: inline-flex; align-items: center; gap: 6px; }
-.worksheet-editor-fill-score-input b { color: #526985; font-size: .75rem; font-weight: 600; white-space: nowrap; }
+.worksheet-editor-fill-score-input b { color: #526985; font-size: 0.875rem; font-weight: 600; white-space: nowrap; }
 .worksheet-editor-fill-score-input input { width: 58px; min-height: 32px; border: 1px solid #cbd8e8; border-radius: 7px; padding: 4px 7px; color: #233854; background: #fff; }
 .worksheet-editor-fill-score-summary { margin: 0; padding: 10px 12px; border-left: 3px solid #5a7da5; background: #f2f6fb; color: #526985; font-size: .813rem; }
 
@@ -4911,13 +4907,13 @@ tr:hover td {
   flex: 0 0 auto;
   min-width: 56px;
   color: #475569;
-  font-size: 0.78rem;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
 .worksheet-editor-flat-row > .worksheet-editor-flat-note {
   color: #6a7e93;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
 }
 
 .worksheet-editor-flat-row .worksheet-editor-points-control { flex: 0 0 auto; }
@@ -4975,7 +4971,7 @@ tr:hover td {
   border-radius: 5px;
   background: transparent;
   color: #64748b;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 600;
   transition: background-color .12s ease-out, color .12s ease-out, box-shadow .12s ease-out;
 }
@@ -5045,7 +5041,7 @@ tr:hover td {
 }
 
 .worksheet-editor-paste-source textarea {
-  font-size: 0.813rem;
+  font-size: 0.875rem;
   line-height: 1.7;
   resize: vertical;
 }
@@ -5093,7 +5089,7 @@ tr:hover td {
 .worksheet-editor-paste-block-head {
   display: block;
   margin-bottom: 5px;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: .02em;
   color: #94a3b8;
@@ -5355,7 +5351,7 @@ tr:hover td {
 .worksheet-editor-points-label {
   flex-shrink: 0;
   color: #94a3b8;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 
 .worksheet-editor-points-field {
@@ -5371,7 +5367,7 @@ tr:hover td {
 .worksheet-editor-points-field .input {
   width: 64px;
   padding: 4px 8px;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
   text-align: center;
 }
 
@@ -5399,7 +5395,7 @@ tr:hover td {
   width: auto;
   max-width: 240px;
   padding: 4px 8px;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 
 /* 加题弹窗 / 设置弹窗。与 C1 那两个弹窗一样是 `.modal-overlay` 的兄弟节点，
@@ -6347,11 +6343,11 @@ tr:hover td {
   gap: 2px;
 }
 
-.worksheet-editor-note-label strong { color: #172033; font-size: 0.813rem; }
+.worksheet-editor-note-label strong { color: #172033; font-size: 0.875rem; }
 
 .worksheet-editor-note-label em {
   color: #64748b;
-  font-size: 0.688rem;
+  font-size: 0.875rem;
   font-style: normal;
   line-height: 1.45;
 }
@@ -6410,7 +6406,7 @@ tr:hover td {
   display: block;
   margin: 0 8px 1px;
   color: #64748b;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   line-height: 1.2;
 }
 
@@ -6489,7 +6485,7 @@ tr:hover td {
   border-radius: 6px;
   background: #f1f5f9;
   color: #64748b;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 
@@ -6556,14 +6552,14 @@ tr:hover td {
 
 .worksheet-editor-outline-task-select strong {
   color: #1e293b;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
 .worksheet-editor-outline-task-select em {
   margin-top: 2px;
   color: #94a3b8;
-  font-size: 0.688rem;
+  font-size: 0.875rem;
 }
 
 .worksheet-editor-outline-chevron {
@@ -6652,7 +6648,7 @@ tr:hover td {
   align-items: center;
   gap: 4px;
   color: #64748b;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 
@@ -6810,7 +6806,7 @@ tr:hover td {
 
 .worksheet-editor-question-heading-copy > span {
   color: #94a3b8;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.04em;
 }
@@ -6838,7 +6834,7 @@ tr:hover td {
   border-radius: 999px;
   background: #f8fafc;
   color: #64748b;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -6905,7 +6901,7 @@ tr:hover td {
   border-radius: 6px;
   background: var(--primary-light);
   color: var(--primary-dark);
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -6938,7 +6934,7 @@ tr:hover td {
 .worksheet-editor-block-head p {
   margin: 2px 0 0;
   color: #64748b;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   line-height: 1.55;
 }
 
@@ -6975,7 +6971,7 @@ tr:hover td {
 .worksheet-editor-drawing-heading p {
   margin: 3px 0 0;
   color: #6a7d93;
-  font-size: .7rem;
+  font-size: 0.75rem;
   line-height: 1.5;
 }
 
@@ -6986,7 +6982,7 @@ tr:hover td {
   border-radius: 999px;
   background: #f8fbff;
   color: #466384;
-  font-size: .68rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -7019,9 +7015,9 @@ tr:hover td {
 .worksheet-editor-drawing-extension span,
 .worksheet-editor-drawing-background > span:last-child { display: grid; gap: 3px; min-width: 0; }
 .worksheet-editor-drawing-extension strong,
-.worksheet-editor-drawing-background strong { color: #263b53; font-size: .74rem; line-height: 1.35; }
+.worksheet-editor-drawing-background strong { color: #263b53; font-size: 0.75rem; line-height: 1.35; }
 .worksheet-editor-drawing-extension small,
-.worksheet-editor-drawing-background small { color: #74869a; font-size: .67rem; font-weight: 500; line-height: 1.45; }
+.worksheet-editor-drawing-background small { color: #74869a; font-size: 0.75rem; font-weight: 500; line-height: 1.45; }
 
 .worksheet-editor-drawing-backgrounds {
   display: grid;
@@ -7094,7 +7090,7 @@ tr:hover td {
   align-content: start;
   gap: 6px;
   color: #40566f;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
@@ -7116,7 +7112,7 @@ tr:hover td {
   min-height: 76px;
   padding: 9px 11px;
   resize: vertical;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
   font-weight: 400;
   line-height: 1.6;
 }
@@ -7127,7 +7123,7 @@ tr:hover td {
   grid-column: 1 / -1;
   margin: -2px 0 0;
   color: #6a7e93;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
 }
 
 /* ★ 2026-10-05（教师）：「加减按钮也太小了吧」→ 第一版做完是「太难看了」。
@@ -7272,7 +7268,7 @@ tr:hover td {
   border-radius: 6px;
   background: #f1f5f9;
   color: #64748b;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -7319,7 +7315,7 @@ tr:hover td {
   border-radius: 6px;
   background: #eef4f8;
   color: #50677d;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 650;
 }
 
@@ -7371,7 +7367,7 @@ tr:hover td {
 .worksheet-editor-question-section.is-prompt .worksheet-editor-ai-scoring-fields textarea {
   min-height: 76px;
   padding: 9px 11px;
-  font-size: 0.813rem;
+  font-size: 0.875rem;
   font-weight: 400;
   line-height: 1.6;
 }
@@ -7419,7 +7415,7 @@ tr:hover td {
   background: #fff;
   color: #475569;
   font: inherit;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -7610,7 +7606,7 @@ tr:hover td {
 .worksheet-editor-math-effect-label {
   display: block;
   margin-bottom: 6px;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-secondary);
 }
@@ -7640,7 +7636,7 @@ tr:hover td {
 }
 .worksheet-editor-math-group { display: grid; gap: 6px; }
 .worksheet-editor-math-group-label {
-  font-size: 0.688rem;
+  font-size: 0.875rem;
   color: #94a3b8;
   letter-spacing: 0.02em;
 }
@@ -7706,7 +7702,7 @@ tr:hover td {
 .worksheet-editor-format-hint {
   /* ⚠️ 它在框**下面**（原来夹在工具条与正文中间 —— 那是「割裂感」的一部分）。 */
   margin: 6px 0 0;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   line-height: 1.5;
   color: #94a3b8;
 }
@@ -7917,7 +7913,7 @@ tr:hover td {
   background: rgba(255, 255, 255, 0.94);
   color: #b91c1c;
   font: inherit;
-  font-size: 0.688rem;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
@@ -7988,7 +7984,7 @@ tr:hover td {
   background: #fff;
   color: #64748b;
   font: inherit;
-  font-size: 0.688rem;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
@@ -8003,7 +7999,7 @@ tr:hover td {
   width: max-content;
   max-width: 180px;
   color: #b91c1c;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
 }
 
 .worksheet-editor-answer-disabled,
@@ -8039,7 +8035,7 @@ tr:hover td {
 
 .worksheet-editor-blank-empty span,
 .worksheet-editor-compact-note {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   line-height: 1.5;
 }
 
@@ -8059,7 +8055,7 @@ tr:hover td {
   border-left: 3px solid #d9a441;
   background: #fdf8ec;
   color: #8a6d1f;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   line-height: 1.5;
 }
 
@@ -8199,7 +8195,7 @@ tr:hover td {
 .worksheet-editor-scoring-options em {
   margin-top: 2px;
   color: #64748b;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-style: normal;
   line-height: 1.45;
 }
@@ -8207,7 +8203,7 @@ tr:hover td {
 .worksheet-editor-scoring-method > p {
   margin: 9px 0 0;
   color: #64748b;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   line-height: 1.55;
 }
 
@@ -8308,7 +8304,7 @@ tr:hover td {
 .worksheet-editor-points-field em {
   margin-top: 2px;
   color: #94a3b8;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-style: normal;
   line-height: 1.4;
 }
@@ -8342,7 +8338,7 @@ tr:hover td {
   display: block;
   margin: 9px 0 0;
   color: #64748b;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   line-height: 1.5;
 }
 
@@ -8379,7 +8375,7 @@ tr:hover td {
 .worksheet-editor-tolerance em {
   margin-top: 2px;
   color: #94a3b8;
-  font-size: 0.688rem;
+  font-size: 0.75rem;
   font-style: normal;
   line-height: 1.4;
 }
@@ -8389,7 +8385,7 @@ tr:hover td {
   width: auto;
   max-width: 250px;
   padding: 6px 8px;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 
 .worksheet-editor-canvas .worksheet-editor-question .worksheet-editor-drag-handle,
@@ -8760,6 +8756,10 @@ tr:hover td {
 }
 
 @media (max-width: 1100px) {
+  .teacher-layout {
+    --teacher-sidebar-current-width: var(--teacher-sidebar-collapsed-width);
+  }
+
   .teacher-sidebar {
     width: var(--teacher-sidebar-collapsed-width) !important;
     padding: 20px 4px !important;
@@ -8800,8 +8800,6 @@ tr:hover td {
   }
 
   .teacher-main {
-    margin-left: var(--teacher-sidebar-collapsed-width) !important;
-    max-width: calc(100vw - var(--teacher-sidebar-collapsed-width)) !important;
     padding: 24px !important;
   }
 
@@ -9172,7 +9170,7 @@ tr:hover td {
 }
 
 .worksheet-editor-table-empty strong { color: #1e293b; font-size: 0.813rem; }
-.worksheet-editor-table-empty span { color: #64748b; font-size: 0.72rem; }
+.worksheet-editor-table-empty span { color: #64748b; font-size: 0.75rem; }
 
 .worksheet-editor-table-tools {
   display: flex;
@@ -9186,7 +9184,7 @@ tr:hover td {
   align-items: center;
   gap: 5px;
   color: #475569;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   cursor: pointer;
 }
 
@@ -9237,7 +9235,7 @@ tr:hover td {
   cursor: pointer;
 }
 
-.worksheet-editor-table-count { margin-left: auto; color: #64748b; font-size: 0.72rem; }
+.worksheet-editor-table-count { margin-left: auto; color: #64748b; font-size: 0.75rem; }
 .worksheet-editor-table-count em { color: #b45309; font-style: normal; }
 
 /* `border-collapse: separate` + 每格自己那条下边框：相邻格子的边框不会叠成两条粗线，
@@ -9267,7 +9265,7 @@ tr:hover td {
   width: 100%;
   min-height: 32px;
   padding: 5px 8px;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 
 .worksheet-editor-table-op {
@@ -9280,7 +9278,7 @@ tr:hover td {
   border: none;
   background: none;
   color: #94a3b8;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   line-height: 1;
   padding: 4px 6px;
   cursor: pointer;
@@ -9291,7 +9289,7 @@ tr:hover td {
 
 .worksheet-editor-table-paste summary {
   color: var(--primary);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   cursor: pointer;
 }
 
@@ -9300,7 +9298,7 @@ tr:hover td {
 .worksheet-editor-table-note {
   margin: 6px 0 0;
   color: #b45309;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   line-height: 1.6;
 }
 
@@ -9583,6 +9581,17 @@ tr:hover td {
   background: var(--primary-soft);
 }
 
+/* 仅在教师端补齐共享组件与创建页的辅助文字下限。 */
+.teacher-layout .required-field-mark,
+.teacher-layout .recommended-mode-tag,
+.teacher-layout .worksheet-background-copy em,
+.teacher-layout .worksheet-background-portrait-row em,
+.teacher-layout .related-classrooms-chip,
+.teacher-layout .related-classroom-mode,
+.teacher-layout .related-classroom-status {
+  font-size: 0.75rem;
+}
+
 /* 主要管理页面共享同一浅蓝灰标题面，不再用页面身份色制造跳色。 */
 .teacher-main[data-page-tone='worksheet'] .worksheet-management-card-header {
   background: #f8fafb;
@@ -9673,7 +9682,7 @@ tr:hover td {
   background: #fff;
   color: #263b53;
   font: inherit;
-  font-size: .74rem;
+  font-size: 0.75rem;
   font-weight: 650;
   line-height: 1.3;
   cursor: pointer;
@@ -9704,7 +9713,7 @@ tr:hover td {
   min-height: 0;
   padding: 5px 14px;
   border-radius: 999px;
-  font-size: .74rem;
+  font-size: 0.75rem;
 }
 .worksheet-editor-drawing-tools > .worksheet-editor-drawing-tool {
   border: 0;
@@ -9741,7 +9750,7 @@ tr:hover td {
 .worksheet-editor-drawing-note {
   margin: 0;
   color: #6a7d93;
-  font-size: .7rem;
+  font-size: 0.75rem;
   line-height: 1.55;
 }
 /* 底稿开关 */
@@ -9750,7 +9759,7 @@ tr:hover td {
   align-items: center;
   gap: 6px;
   color: #466384;
-  font-size: .72rem;
+  font-size: 0.75rem;
   font-weight: 650;
   cursor: pointer;
   white-space: nowrap;

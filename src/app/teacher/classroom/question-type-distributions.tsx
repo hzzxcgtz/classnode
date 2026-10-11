@@ -40,8 +40,8 @@ export function OrderDistribution({ positions, orders, total, unit }: { position
     <div><div className={styles.heading}><strong>各位置命中率</strong><small>以已交 {total} {unit}为基数</small></div>
       <div className={styles.plot} role="img" aria-label={data.map(item=>`${item.label}排对${item.hits}${unit}，${item.rate}%`).join('；')}>
         <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{top:16,right:16,bottom:4,left:0}}>
-          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fontSize:11,fill:CHART.muted}} />
-          <YAxis domain={[0,100]} ticks={[0,50,100]} width={36} axisLine={false} tickLine={false} tick={{fontSize:10,fill:CHART.faint}} tickFormatter={value=>`${value}%`} />
+          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fontSize:12,fill:CHART.muted}} />
+          <YAxis domain={[0,100]} ticks={[0,50,100]} width={36} axisLine={false} tickLine={false} tick={{fontSize:12,fill:CHART.faint}} tickFormatter={value=>`${value}%`} />
           <Tooltip formatter={(value)=>[`${value}%`,'位置命中率']} />
           <Line type="linear" dataKey="rate" stroke="#648ba9" strokeWidth={2} dot={{r:5,fill:'#648ba9',stroke:'#fff',strokeWidth:2}} isAnimationActive={animate} animationDuration={600} />
         </LineChart></ResponsiveContainer>
@@ -62,8 +62,8 @@ export function TextDistribution({ lengths, unit }: { lengths: readonly Count[];
   return <div><div className={styles.heading}><strong>文字长度分布</strong><small>字数反映作答长度，不代表答案质量</small></div>
     <div className={styles.plot} role="img" aria-label={lengths.map(item=>`${item.label}：${item.count}${unit}`).join('；')}>
       <ResponsiveContainer width="100%" height="100%"><BarChart data={lengths} margin={{top:12,right:8,bottom:4,left:0}}>
-        <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fontSize:10,fill:CHART.muted}} interval={0} />
-        <YAxis allowDecimals={false} width={30} axisLine={false} tickLine={false} tick={{fontSize:10,fill:CHART.faint}} />
+        <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fontSize:12,fill:CHART.muted}} interval={0} />
+        <YAxis allowDecimals={false} width={30} axisLine={false} tickLine={false} tick={{fontSize:12,fill:CHART.faint}} />
         <Tooltip formatter={value=>[`${value} ${unit}`,'作答数量']} />
         <Bar dataKey="count" fill="#789ab5" radius={[5,5,0,0]} maxBarSize={44} isAnimationActive={animate} animationDuration={600} />
       </BarChart></ResponsiveContainer>
@@ -74,7 +74,7 @@ export function TextDistribution({ lengths, unit }: { lengths: readonly Count[];
 
 export function InkDistribution({ drawn,total,unit }: {drawn:number;total:number;unit:string}) {
   return <div className={styles.ink}>
-    <VerdictDonut size={140} centerFontSize="1.05rem" centerNoteFontSize=".65rem" centerText={`${drawn}/${total}`} centerNote="已交笔迹" unit={unit} data={[{name:'已交笔迹',value:drawn,color:'#648ba9'},{name:'尚未提交',value:Math.max(0,total-drawn),color:'#e1e8ef'}]} />
+    <VerdictDonut size={140} centerFontSize="1.05rem" centerNoteFontSize="0.75rem" centerText={`${drawn}/${total}`} centerNote="已交笔迹" unit={unit} data={[{name:'已交笔迹',value:drawn,color:'#648ba9'},{name:'尚未提交',value:Math.max(0,total-drawn),color:'#e1e8ef'}]} />
     <div><strong>{drawn} {unit}已提交作品</strong><p>其余 {Math.max(0,total-drawn)} {unit}尚未提交。</p><small>图形、数学作图和导图的内容质量，请结合实际作品与 AI 分析查看。</small></div>
   </div>;
 }

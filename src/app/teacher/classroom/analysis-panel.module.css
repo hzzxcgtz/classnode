@@ -92,7 +92,7 @@
   border-radius: 999px;
   background: #fbf7ee;
   color: #876521;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -120,7 +120,7 @@
 .scoreValue { color: #315f8c; }
 .scoreReason { display: grid; gap: 4px; color: #63778d; line-height: 1.5; }
 .scoreAdvice { margin-top: 6px; padding: 10px 12px; border-radius: 8px; background: #f1f6fa; }
-.scoreAdvice > strong { color: #486b8c; font-size: .7rem; font-weight: 600; }
+.scoreAdvice > strong { color: #486b8c; font-size: 0.75rem; font-weight: 600; }
 .scoreAdvice p { margin: 5px 0 0; color: #526a83; white-space: pre-wrap; }
 
 .payloadText { white-space: pre-wrap; }
@@ -213,7 +213,7 @@
   border-radius: 8px;
   padding: 8px 13px;
   background: #edf4fa;
-  font-size: .78rem;
+  font-size: 0.875rem;
   color: #315f8c;
   cursor: pointer;
   font-weight: 650;
@@ -284,14 +284,14 @@
 .scoreCell {
   margin-left: 8px;
   color: #94a3b8;
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 500;
 }
 /* 那句「怎么用」的说明：安静的旁注，不抢评分的注意力。 */
 .scoreCheckHint {
   padding: 8px 16px 0;
   color: #7b8ea3;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   line-height: 1.6;
 }
 

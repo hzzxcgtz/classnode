@@ -64,7 +64,7 @@ export function AgentRelatedClassroomsDialog({ agentName, purpose, classrooms, w
             {worksheets.map((worksheet) => (
               <li key={worksheet.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '9px 0', borderBottom: '1px solid #f1f5f9' }}>
                 <span style={{ fontSize: '0.813rem', color: '#334155', wordBreak: 'break-all' }}>{worksheet.title || '未命名学习单'}</span>
-                <a href={`/teacher/worksheets/edit/?id=${worksheet.id}`} style={{ fontSize: '0.688rem', color: '#3f6fa8', flex: '0 0 auto', textDecoration: 'none' }}>打开学习单</a>
+                <a href={`/teacher/worksheets/edit/?id=${worksheet.id}`} style={{ fontSize: "0.75rem", color: '#3f6fa8', flex: '0 0 auto', textDecoration: 'none' }}>打开学习单</a>
               </li>
             ))}
           </ul>

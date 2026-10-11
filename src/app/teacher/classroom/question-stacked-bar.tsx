@@ -61,7 +61,7 @@ export function StackedBar({ stats, compact = false, legendOnly = false }: { sta
         })}
       </div>}
       {!compact && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: '0.688rem', color: MUTED }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: "0.75rem", color: MUTED }}>
           {SEGMENTS.map((segment) => (
             <span key={segment.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
               <span aria-hidden style={{ width: 8, height: 8, borderRadius: 2, background: segment.color, display: 'inline-block' }} />

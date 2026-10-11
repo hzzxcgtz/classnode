@@ -103,13 +103,13 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
   // 容器窄于 150 时它撑破网格而不是让位。`minWidth: 0` 把宽度决定权交回轨道。
   return (
     <div style={{ position: 'relative', minWidth: 0 }}>
-      <div style={{ fontSize: '0.688rem', color: '#94a3b8', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginBottom: 4 }}>{label}</div>
       <button type="button" onClick={onToggle} aria-expanded={open}
         aria-label={`${label}：${currentLabel}`}
         style={{
           width: '100%', fontFamily: 'inherit',
           display: 'flex', alignItems: 'center', gap: 6,
-          padding: '6px 10px', borderRadius: 6, fontSize: '0.813rem',
+          padding: '6px 10px', borderRadius: 6, fontSize: "0.875rem",
           border: '1px solid #e2e8f0', cursor: 'pointer',
           background: 'white', minHeight: 32,
         }}>
@@ -122,7 +122,7 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
                 width: 20, height: 20, borderRadius: 4,
                 background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))',
                 color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.625rem', fontWeight: 700, flexShrink: 0,
+                fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
               }}>{selected.name[0] || '?'}</div>
             )}
             <span style={{ color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.name}</span>
@@ -158,7 +158,7 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
             style={{
               width: '100%', border: 0, borderBottom: '1px solid #f1f5f9', fontFamily: 'inherit', textAlign: 'left',
               display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer',
-              fontSize: '0.813rem', background: value === null ? 'var(--primary-tint)' : 'white',
+              fontSize: "0.875rem", background: value === null ? 'var(--primary-tint)' : 'white',
             }}>
             <span style={{ width: 20, height: 20, borderRadius: 4, background: '#e2e8f0', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
@@ -182,14 +182,14 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
                 style={{
                   width: '100%', border: 0, fontFamily: 'inherit', textAlign: 'left',
                   display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 12px', cursor: 'pointer', fontSize: '0.813rem',
+                  padding: '8px 12px', cursor: 'pointer', fontSize: "0.875rem",
                   background: value === option.id ? 'var(--primary-tint)' : 'white',
                   transition: 'background 0.1s',
                 }}>
                 {logoUrl ? (
                   <img src={logoUrl} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
                 ) : (
-                  <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 700 }}>{option.name[0]}</div>
+                  <div style={{ width: 20, height: 20, borderRadius: 4, background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.75rem", fontWeight: 700 }}>{option.name[0]}</div>
                 )}
                 <span>{option.name}</span>
                 {value === option.id && (
@@ -542,7 +542,7 @@ export default function NewClassroomPage() {
   ) : null;
 
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto' }}>
+    <div style={{ width: '100%', minWidth: 0, maxWidth: 760, margin: '0 auto' }}>
       <TeacherPageHeader title="创建新课堂" description="选好模式与班级，再从 AI 智能体 / 探究网页 / 学习单里挑至少一项，即可发起课堂。" />
 
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: 24 }}>
@@ -562,7 +562,7 @@ export default function NewClassroomPage() {
           background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
           padding: '12px 16px', marginBottom: 12,
         }}>
-          <label htmlFor="classroom-title" style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+          <label htmlFor="classroom-title" style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
             课堂标题
             <span className="required-field-mark">必填</span>
@@ -705,11 +705,11 @@ export default function NewClassroomPage() {
                       </div>
                     </div>
                     {isDisabled ? (
-                      <span style={{ fontSize: "0.625rem", padding: '1px 8px', borderRadius: 8, background: '#f5ecdd', color: '#b45309', fontWeight: 500, flexShrink: 0 }}>仅限标准模式</span>
+                      <span style={{ fontSize: "0.75rem", padding: '1px 8px', borderRadius: 8, background: '#f5ecdd', color: '#b45309', fontWeight: 500, flexShrink: 0 }}>仅限标准模式</span>
                     ) : hasGroups ? (
-                      <span style={{ fontSize: "0.625rem", padding: '1px 8px', borderRadius: 8, background: '#f5f3ff', color: '#7c3aed', fontWeight: 500, flexShrink: 0 }}>已分组</span>
+                      <span style={{ fontSize: "0.75rem", padding: '1px 8px', borderRadius: 8, background: '#f5f3ff', color: '#7c3aed', fontWeight: 500, flexShrink: 0 }}>已分组</span>
                     ) : (
-                      <span style={{ fontSize: "0.625rem", padding: '1px 8px', borderRadius: 8, background: '#f1f5f9', color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>无分组</span>
+                      <span style={{ fontSize: "0.75rem", padding: '1px 8px', borderRadius: 8, background: '#f1f5f9', color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>无分组</span>
                     )}
                   </button>
                 );
@@ -774,7 +774,7 @@ export default function NewClassroomPage() {
                       {i + 1}
                     </div>
                     <div style={{ fontSize: "0.875rem", fontWeight: 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>{g.name}</div>
-                    <div style={{ fontSize: "0.688rem", color: '#94a3b8', flexShrink: 0 }}>{(g.studentIds?.length || 0)} 名学生</div>
+                    <div style={{ fontSize: "0.75rem", color: '#94a3b8', flexShrink: 0 }}>{(g.studentIds?.length || 0)} 名学生</div>
                   </div>
                   {/* 第二行：三件套**等宽三列**的网格。
                       ⚠️ 为什么不是「三个下拉并排塞进一条 flex」：三个下拉各需 ≥150px + 两个 8px 间隙
@@ -886,7 +886,7 @@ export default function NewClassroomPage() {
               选择AI智能体
               {/* 三件套（AI 智能体 / 探究网页 / 学习单）每一项都是选填，至少一项即可 ——
                   这里从前写的是「必填」，与实际规则不符：只挂一个探究网页也能建课堂。 */}
-              <span style={{ fontSize: "0.688rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 三件套任选其一</span>
+              <span style={{ fontSize: "0.75rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 三件套任选其一</span>
             </div>
             <GroupMaterialPicker
               label="AI 智能体"
@@ -927,7 +927,7 @@ export default function NewClassroomPage() {
           <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>
             关联探究网页
-            <span style={{ fontSize: "0.688rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 只能选一个 · 三件套任选其一</span>
+            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 只能选一个 · 三件套任选其一</span>
           </div>
           <div style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 12 }}>
             学生在「探究空间」里会打开这个网页。<strong style={{ fontWeight: 600 }}>一个课堂只关联一个网页</strong>；
@@ -991,7 +991,7 @@ export default function NewClassroomPage() {
           <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>
             关联学习单
-            <span style={{ fontSize: "0.688rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 只能选一份 · 三件套任选其一</span>
+            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 只能选一份 · 三件套任选其一</span>
           </div>
           {/* ★ 2026-09-25：三句话收成一句 —— 教师说「整个页面高度有点大」，
               而「只关联一份」已经由**下拉是单选的**这件事本身说清楚了。 */}

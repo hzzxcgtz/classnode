@@ -11,7 +11,7 @@ export function AgentHelpButton({ platform, purpose }: { platform: string; purpo
         padding: '10px 24px', borderRadius: 10,
         background: 'linear-gradient(135deg, var(--primary-tint) 0%, var(--primary-light) 100%)',
         color: '#4338ca', border: '1.5px dashed #a5b4fc',
-        cursor: 'pointer', fontSize: '0.813rem', fontWeight: 600,
+        cursor: 'pointer', fontSize: "0.875rem", fontWeight: 600,
         fontFamily: 'inherit', transition: 'all 0.15s',
         boxShadow: '0 2px 8px rgba(99,102,241,0.08)',
       }}

@@ -71,7 +71,7 @@ export function AgentPurposeSelector({ purpose, onChange }: {
                 border: `1px solid ${selected ? 'var(--primary)' : '#cbd5e1'}`,
                 background: selected ? '#f2f5f8' : '#fff',
                 color: selected ? 'var(--primary-dark)' : '#475569',
-                borderRadius: 999, padding: '5px 12px', fontSize: '0.813rem',
+                borderRadius: 999, padding: '5px 12px', fontSize: "0.875rem",
                 fontWeight: selected ? 600 : 500, fontFamily: 'inherit',
               }}
             >

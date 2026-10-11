@@ -116,7 +116,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
           ⇒ 每个选项**只留名字**（原来每张卡都顶着两行说明，一屏就满了），
             选中的那一项**在下面用一行说明**（信息没丢，只是不再重复 N 遍）。
         */}
-        <div className="worksheet-editor-drawing-tools" role="radiogroup" aria-label="作图工具">
+        <div className="worksheet-editor-drawing-tools teacher-page-tabs is-connected" role="radiogroup" aria-label="作图工具">
           {DRAWING_TOOL_OPTIONS.map(option => {
             const checked = tool === option.value;
             return (
@@ -125,7 +125,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
                 type="button"
                 role="radio"
                 aria-checked={checked}
-                className="worksheet-editor-drawing-tool"
+                className={`worksheet-editor-drawing-tool${checked ? ' is-active' : ''}`}
                 data-checked={checked ? '1' : '0'}
                 disabled={uploading}
                 onClick={() => selectTool(option.value)}

@@ -248,7 +248,8 @@ export default function ShieldPage() {
     <div className={styles.page}>
       <TeacherPageHeader title="智能学伴安全" description="管理学生与智能学伴对话时的敏感词、发送限制和安全提醒。" />
 
-      <TeacherPageTabs value={tab} onChange={setTab} items={[
+      <div className={styles.workspace}>
+      <TeacherPageTabs variant="connected" value={tab} onChange={setTab} items={[
         { value: 'words', label: '对话敏感词', badge: words.length },
         { value: 'records', label: '安全提醒记录', badge: summary.reduce((total, item) => total + item.warningCount, 0) },
         { value: 'settings', label: '对话管控' },
@@ -300,7 +301,7 @@ export default function ShieldPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#934e4e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
             </svg>
-            <div><h2 style={{ fontSize: "0.875rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>添加自定义敏感词</h2><span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>用逗号或换行分隔，一次添加多个词</span></div>
+            <div><h2 style={{ fontSize: "0.875rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>添加自定义敏感词</h2><span style={{ fontSize: "0.75rem", color: 'var(--text-muted)' }}>用逗号或换行分隔，一次添加多个词</span></div>
           </div>
           <div className={styles.wordComposerBody} style={{ padding: '20px 24px' }}>
             <textarea
@@ -318,16 +319,16 @@ export default function ShieldPage() {
             />
             <div className={styles.wordComposerFooter} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
               <div style={{
-                fontSize: "0.75rem", color: '#94a3b8',
+                fontSize: "0.75rem", color: 'var(--text-muted)',
                 display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
               }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                 <span>用</span>
                 {['逗号', '分号', '顿号', '空格', '换行'].map((s, i) => (
-                  <code key={i} style={{ background: '#f1f5f9', padding: '0 5px', borderRadius: 3, fontSize: "0.75rem", color: '#64748b' }}>{[' , ', ' ; ', ' 、 ', ' 空格 ', ' 换行 '][i]}</code>
+                  <code key={i} style={{ background: '#f1f5f9', padding: '0 5px', borderRadius: 3, fontSize: "0.75rem", color: 'var(--text-secondary)' }}>{[' , ', ' ; ', ' 、 ', ' 空格 ', ' 换行 '][i]}</code>
                 ))}
-                <span>分隔 · <code style={{ background: '#f1f5f9', padding: '0 5px', borderRadius: 3, fontSize: "0.75rem", color: '#64748b' }}>Ctrl+Enter</code> 保存</span>
-                <span style={{ color: pendingWords.length ? 'var(--primary)' : '#94a3b8', fontWeight: 600 }}>
+                <span>分隔 · <code style={{ background: '#f1f5f9', padding: '0 5px', borderRadius: 3, fontSize: "0.75rem", color: 'var(--text-secondary)' }}>Ctrl+Enter</code> 保存</span>
+                <span style={{ color: pendingWords.length ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600 }}>
                   · {pendingCharacterCount} 字 · {pendingWords.length} 个词
                 </span>
               </div>
@@ -366,7 +367,7 @@ export default function ShieldPage() {
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 22,
                 padding: '0 8px', height: 22, borderRadius: 11,
                 background: customWords.length > 0 ? '#f8eeee' : '#f1f5f9',
-                color: customWords.length > 0 ? '#934e4e' : '#94a3b8',
+                color: customWords.length > 0 ? '#934e4e' : 'var(--text-muted)',
                 fontSize: "0.75rem", fontWeight: 600,
               }}>
                 {customWords.length}
@@ -374,7 +375,7 @@ export default function ShieldPage() {
             </div>
             {customWords.length > 0 && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <button onClick={() => void toggleCustomWords()} disabled={shieldAction !== null}
+                <button role="switch" aria-checked={customWords.some(w => w.enabled !== false)} aria-label="启用自定义敏感词" onClick={() => void toggleCustomWords()} disabled={shieldAction !== null}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: 0, border: 'none', background: 'transparent', fontFamily: 'inherit',
                   }}
@@ -382,7 +383,7 @@ export default function ShieldPage() {
                   <span style={{
                     position: 'relative', width: 40, height: 22,
                     borderRadius: 11, border: 'none',
-                    background: customWords.some(w => w.enabled !== false) ? '#3f7859' : '#d1d5db',
+                    background: customWords.some(w => w.enabled !== false) ? 'var(--primary)' : '#64748B',
                     transition: 'background 0.2s', display: 'inline-block', flexShrink: 0,
                   }}>
                     <span style={{
@@ -393,7 +394,7 @@ export default function ShieldPage() {
                       transition: 'left 0.2s',
                     }} />
                   </span>
-                  <span style={{ fontSize: "0.75rem", color: '#64748b' }}>{customWords.some(w => w.enabled !== false) ? '全部禁用' : '全部启用'}</span>
+                  <span style={{ fontSize: "0.75rem", color: 'var(--text-secondary)' }}>{customWords.some(w => w.enabled !== false) ? '全部禁用' : '全部启用'}</span>
                 </button>
                 <button onClick={() => void deleteCustomWords()} disabled={shieldAction !== null}
                   style={{
@@ -411,9 +412,9 @@ export default function ShieldPage() {
           </div>
           <WordStatusMessage message={customMsg} />
           {customWords.length === 0 ? (
-            <div style={{ padding: '28px 24px', textAlign: 'center', color: '#94a3b8', background: 'linear-gradient(180deg, #fff, #fafcff)' }}>
-              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', marginBottom: 2 }}>暂无自定义敏感词</div>
-              <div style={{ fontSize: "0.75rem", color: '#94a3b8' }}>在上方输入关键词后保存，即可在这里统一管理</div>
+            <div style={{ padding: '28px 24px', textAlign: 'center', color: 'var(--text-muted)', background: 'linear-gradient(180deg, #fff, #fafcff)' }}>
+              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>暂无自定义敏感词</div>
+              <div style={{ fontSize: "0.75rem", color: 'var(--text-muted)' }}>在上方输入关键词后保存，即可在这里统一管理</div>
             </div>
           ) : (
             <div style={{ padding: '16px 20px 18px' }}>
@@ -423,7 +424,7 @@ export default function ShieldPage() {
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     padding: '5px 6px 5px 12px', borderRadius: 8,
                     background: w.enabled === false ? '#f1f5f9' : '#f8eeee',
-                    color: w.enabled === false ? '#94a3b8' : '#991b1b',
+                    color: w.enabled === false ? 'var(--text-muted)' : '#991b1b',
                     fontSize: "0.813rem", fontWeight: 500, lineHeight: 1.4,
                     border: `1px solid ${w.enabled === false ? '#e2e8f0' : '#fecaca'}`,
                     transition: 'all 0.1s',
@@ -434,7 +435,7 @@ export default function ShieldPage() {
                         width: 18, height: 18, border: 'none', borderRadius: 4,
                         background: 'transparent', cursor: 'pointer', padding: 0,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: w.enabled === false ? '#94a3b8' : '#934e4e',
+                        color: w.enabled === false ? 'var(--text-muted)' : '#934e4e',
                         fontSize: "0.875rem", lineHeight: 1, opacity: 0.35,
                         transition: 'all 0.1s',
                       }}
@@ -478,14 +479,14 @@ export default function ShieldPage() {
                 </span>
               )}
             </div>
-            <button onClick={() => void toggleBuiltinWords()} disabled={shieldAction !== null}
+            <button role="switch" aria-checked={builtinWords.some(w => w.enabled !== false)} aria-label="启用系统敏感词" onClick={() => void toggleBuiltinWords()} disabled={shieldAction !== null}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: 0, border: 'none', background: 'transparent', fontFamily: 'inherit',
               }}>
               <span style={{
                 position: 'relative', width: 40, height: 22,
                 borderRadius: 11, border: 'none', display: 'inline-block', flexShrink: 0,
-                background: builtinWords.some(w => w.enabled !== false) ? '#3f7859' : '#d1d5db',
+                background: builtinWords.some(w => w.enabled !== false) ? 'var(--primary)' : '#64748B',
                 transition: 'background 0.2s',
               }}>
                 <span style={{
@@ -496,17 +497,17 @@ export default function ShieldPage() {
                   transition: 'left 0.2s',
                 }} />
               </span>
-              <span style={{ fontSize: "0.75rem", color: '#64748b' }}>{builtinWords.some(w => w.enabled !== false) ? '全部禁用' : '全部启用'}</span>
+              <span style={{ fontSize: "0.75rem", color: 'var(--text-secondary)' }}>{builtinWords.some(w => w.enabled !== false) ? '全部禁用' : '全部启用'}</span>
             </button>
           </div>
           <WordStatusMessage message={builtinMsg} />
           {builtinWords.length === 0 ? (
-            <div style={{ padding: '40px 24px', textAlign: 'center', color: '#94a3b8' }}>
+            <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-muted)' }}>
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 8 }}>
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>
               </svg>
-              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', marginBottom: 2 }}>系统敏感词为空</div>
-              <div style={{ fontSize: "0.75rem", color: '#cbd5e1' }}>如需重新加载系统内置敏感词，请联系管理员</div>
+              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>系统敏感词为空</div>
+              <div style={{ fontSize: "0.75rem", color: 'var(--text-muted, #64748b)' }}>如需重新加载系统内置敏感词，请联系管理员</div>
             </div>
           ) : (
             <div style={{ padding: '18px 24px' }}>
@@ -550,7 +551,7 @@ export default function ShieldPage() {
             </svg>
             <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>课堂列表</h2>
             {summary.length > 0 && (
-              <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400 }}>
+              <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)', fontWeight: 400 }}>
                 — {summary.length} 个课堂有安全提醒记录
               </span>
             )}
@@ -582,12 +583,12 @@ export default function ShieldPage() {
                   }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: "0.875rem", fontWeight: 600, color: selectedClassroom === c.id ? '#1e40af' : '#0f172a' }}>{c.title || '未命名课堂'}</div>
-                    <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginTop: 2, display: 'flex', gap: 10 }}>
+                    <div style={{ fontSize: "0.75rem", color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 10 }}>
                       <span>{c.className}</span>
                       <span style={{
                         padding: '0 6px', borderRadius: 3,
                         background: c.status === 'active' ? '#dcfce7' : c.status === 'paused' ? '#f5ecdd' : '#f1f5f9',
-                        color: c.status === 'active' ? '#3f7859' : c.status === 'paused' ? '#956834' : '#94a3b8',
+                        color: c.status === 'active' ? '#3f7859' : c.status === 'paused' ? '#956834' : 'var(--text-muted)',
                         fontSize: "0.75rem", fontWeight: 600,
                       }}>
                         {c.status === 'ended' ? '已结束' : c.status === 'paused' ? '已暂停' : '进行中'}
@@ -598,7 +599,7 @@ export default function ShieldPage() {
                     fontSize: "0.813rem", fontWeight: 700,
                     padding: '2px 12px', borderRadius: 8,
                     background: c.warningCount > 0 ? '#f8eeee' : '#f1f5f9',
-                    color: c.warningCount > 0 ? '#934e4e' : '#94a3b8',
+                    color: c.warningCount > 0 ? '#934e4e' : 'var(--text-muted)',
                     flexShrink: 0,
                   }}>
                     {c.warningCount} 次
@@ -625,7 +626,7 @@ export default function ShieldPage() {
               </svg>
               <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>提醒详情</h2>
               {warnings.length > 0 && (
-                <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400 }}>
+                <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)', fontWeight: 400 }}>
                   {warnings.length} 条记录
                 </span>
               )}
@@ -654,9 +655,9 @@ export default function ShieldPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: "0.813rem" }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '2px solid #eef2f6', position: 'sticky', top: 0 }}>
-                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>学生</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>时间</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>学生发送的消息</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>学生</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>时间</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>学生发送的消息</th>
                     <th style={{ width: 50 }}></th>
                   </tr>
                 </thead>
@@ -692,7 +693,7 @@ export default function ShieldPage() {
                           {w.studentName || '未知'}
                         </div>
                       </td>
-                      <td style={{ padding: '12px 16px', color: '#64748b', whiteSpace: 'nowrap', fontSize: "0.875rem", fontFamily: 'monospace' }}>
+                      <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontSize: "0.875rem", fontFamily: 'monospace' }}>
                         {new Date(w.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                       </td>
                       <td style={{ padding: '12px 16px', fontSize: "0.875rem", color: '#475569', maxWidth: 300, wordBreak: 'break-word', lineHeight: 1.6 }}>
@@ -705,7 +706,7 @@ export default function ShieldPage() {
                       <td style={{ padding: '8px 16px', textAlign: 'right' }}>
                         <button onClick={() => void deleteWarning(w.id)} disabled={shieldAction !== null} style={{
                           width: 30, height: 30, borderRadius: 6, border: 'none',
-                          background: 'transparent', cursor: 'pointer', color: '#cbd5e1',
+                          background: 'transparent', cursor: 'pointer', color: 'var(--text-muted, #64748b)',
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'all 0.1s',
                         }}
@@ -729,6 +730,7 @@ export default function ShieldPage() {
 
       </div>}
 
+      </div>
     </div>
   );
 };

@@ -72,7 +72,7 @@ function RequiredField({ label, value, placeholder, hint, savedDisplay = false, 
         spellCheck={false}
         style={inputStyle(error)}
       />
-      {hint && !error && <div style={{ color: '#64748b', fontSize: "0.75rem", marginTop: 4 }}>{hint}</div>}
+      {hint && !error && <div style={{ color: 'var(--text-secondary, #475569)', fontSize: "0.75rem", marginTop: 4 }}>{hint}</div>}
       {error && <FieldError message={error} />}
     </div>
   );
@@ -92,9 +92,6 @@ function PlatformNotice({ children }: { children: React.ReactNode }) {
 }
 
 export function AgentPlatformNotice({ platform }: { platform: AgentPlatform }) {
-  if (platform === 'coze' || platform === 'coze-agent') {
-    return <PlatformNotice>扣子平台每天 0 点重置免费点数，当天至少登录一次即可正常使用。</PlatformNotice>;
-  }
   if (platform === 'wenxin') {
     return <PlatformNotice>文心智能体暂不支持流式输出，需等待完整回复，体验上稍有延迟。受 API 功能限制，不支持图片理解。</PlatformNotice>;
   }
@@ -134,10 +131,10 @@ export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
       {platform === 'coze' ? (
         <div style={{ marginBottom: 14 }}>
           <label style={{ display: 'block', fontSize: "0.875rem", color: '#475569', fontWeight: 500, marginBottom: 4 }}>
-            {apiKeyLabel}
+            选择个人访问令牌
           </label>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <select className="input" value={props.credentialId} onChange={(e) => update('credentialId')(e.target.value)}
+          <div className="agent-credential-selection-row" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select className="input" aria-label="选择个人访问令牌" value={props.credentialId} onChange={(e) => update('credentialId')(e.target.value)}
               style={{ fontSize: "0.875rem", padding: '8px 12px', flex: 1, minWidth: 0, borderColor: fieldErrors.apiKey ? '#a85d5d' : undefined }}>
               {/* ★ 2026-09-25（教师）：「我的扣子是我自己在管理里面设置的，要排在最上面，
                   排在最后面的才是『自定义……』」。⇒ 已存的凭据在前，「自定义」垫底。
@@ -148,16 +145,16 @@ export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
               ))}
               <option value="">自定义（只给这一个智能体用）</option>
             </select>
-            <button type="button" className="btn btn-secondary" style={{ fontSize: "0.875rem", padding: '6px 12px', flexShrink: 0 }}
+            <button type="button" className="btn btn-secondary" style={{ fontSize: "0.875rem", padding: '8px 12px', flexShrink: 0 }}
               onClick={() => props.onManageTokens?.()}>管理</button>
           </div>
           {props.credentialId ? (
-            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 4 }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #475569)', marginTop: 4 }}>
               这一份由多个智能体共用，换令牌只需在「访问令牌」里改一次。
             </div>
           ) : (
             <div style={{ marginTop: 10 }}>
-              <RequiredField label="访问令牌" value={props.apiKey} placeholder={apiKeyPlaceholder} hint={editing ? '当前显示的是脱敏旧值；点击输入框后可粘贴新值并直接替换' : undefined} savedDisplay={editing} error={fieldErrors.apiKey} onChange={update('apiKey')} />
+              <RequiredField label="设置个人访问信息" value={props.apiKey} placeholder={apiKeyPlaceholder} hint={editing ? '当前显示的是脱敏旧值；点击输入框后可粘贴新值并直接替换' : undefined} savedDisplay={editing} error={fieldErrors.apiKey} onChange={update('apiKey')} />
             </div>
           )}
         </div>

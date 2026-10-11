@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { AgentSummary } from '@/lib/types';
+import type { AgentSummary, PlatformTokenSummary } from '@/lib/types';
 import type { AgentPlatform } from './agent-platforms';
 import type { AgentCredentialValues } from './credentials-fields';
 
@@ -7,14 +7,16 @@ function readExtra(agent: AgentSummary | null): { projectId?: string; hasApiSecr
   try { return agent?.extra ? JSON.parse(agent.extra) : {}; } catch { return {}; }
 }
 
-export function useAgentFormFields(agent: AgentSummary | null) {
+export function useAgentFormFields(agent: AgentSummary | null, tokens: PlatformTokenSummary[] = []) {
   const initialPlatform = (agent?.platform as AgentPlatform) || 'coze';
   const extra = readExtra(agent);
   const [name, setName] = useState(agent?.name || '');
   const [platform, setPlatformState] = useState<AgentPlatform>(initialPlatform);
   const [apiKey, setApiKey] = useState('');
   // ★ 2026-09-25：选中的共享 Token（`''` = 自带）。
-  const [credentialId, setCredentialId] = useState(agent?.credentialId || '');
+  const [selectedCredentialId, setCredentialId] = useState<string | undefined>(agent ? agent.credentialId || '' : undefined);
+  // undefined 表示尚未选择，令牌异步加载后也能默认选中；空字符串表示明确选了自定义。
+  const credentialId = selectedCredentialId ?? (platform === 'coze' ? tokens.find(token => token.platform === 'coze')?.id || '' : '');
   const [apiUrl, setApiUrl] = useState(agent?.apiUrl || '');
   const [botId, setBotId] = useState(agent?.botId || '');
   const [projectId, setProjectId] = useState(extra.projectId || '');
@@ -23,8 +25,8 @@ export function useAgentFormFields(agent: AgentSummary | null) {
   const [purpose, setPurpose] = useState<string>(agent?.purpose || 'tutoring');
   const [apiSecret, setApiSecret] = useState('');
   const [greeting, setGreeting] = useState(agent?.greeting || '');
-  const initialDrafts: Record<AgentPlatform, AgentCredentialValues & { name: string; greeting: string }> = {
-    coze: { name: '', greeting: '', credentialId: '', apiKey: '', apiUrl: '', botId: '', projectId: '', apiSecret: '' },
+  const initialDrafts: Record<AgentPlatform, Omit<AgentCredentialValues, 'credentialId'> & { name: string; greeting: string; credentialId: string | undefined }> = {
+    coze: { name: '', greeting: '', credentialId: undefined, apiKey: '', apiUrl: '', botId: '', projectId: '', apiSecret: '' },
     'coze-agent': { name: '', greeting: '', credentialId: '', apiKey: '', apiUrl: '', botId: '', projectId: '', apiSecret: '' },
     zhipuai: { name: '', greeting: '', credentialId: '', apiKey: '', apiUrl: '', botId: '', projectId: '', apiSecret: '' },
     wenxin: { name: '', greeting: '', credentialId: '', apiKey: '', apiUrl: '', botId: '', projectId: '', apiSecret: '' },
@@ -41,7 +43,7 @@ export function useAgentFormFields(agent: AgentSummary | null) {
 
   const setPlatform = (next: AgentPlatform) => {
     if (next === platform) return;
-    draftsRef.current[platform] = { name, greeting, credentialId, apiKey, apiUrl, botId, projectId, apiSecret };
+    draftsRef.current[platform] = { name, greeting, credentialId: selectedCredentialId, apiKey, apiUrl, botId, projectId, apiSecret };
     const nextDraft = draftsRef.current[next];
     setPlatformState(next);
     setName(nextDraft.name);

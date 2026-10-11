@@ -60,7 +60,7 @@
 .version {
   padding: 1px 10px;
   border-radius: 6px;
-  color: #94a3b8;
+  color: var(--text-muted, #64748b);
   background: #f1f4f9;
   font-size: .813rem;
   font-weight: 500;
@@ -68,7 +68,7 @@
 
 .heroContent > p {
   margin: 4px 0 0;
-  color: #64748b;
+  color: var(--text-secondary, #475569);
   font-size: .938rem;
   line-height: 1.5;
 }
@@ -174,7 +174,7 @@
 }
 
 .signature small {
-  color: #94a3b8;
+  color: var(--text-muted, #64748b);
   font-size: 0.75rem;
 }
 
@@ -215,7 +215,7 @@
   align-items: center;
   padding: 14px 20px;
   border: 0;
-  color: #64748b;
+  color: var(--text-secondary, #475569);
   background: #f8fafc;
   cursor: pointer;
   transition: background .12s;
@@ -234,7 +234,7 @@
 }
 
 .logToggle small {
-  color: #94a3b8;
+  color: var(--text-muted, #64748b);
   font-size: .75rem;
 }
 
@@ -246,7 +246,7 @@
 .chevron,
 .chevronOpen {
   flex-shrink: 0;
-  color: #64748b;
+  color: var(--text-secondary, #475569);
   transition: transform .2s;
 }
 
@@ -290,7 +290,7 @@
 }
 
 .logVersion time {
-  color: #94a3b8;
+  color: var(--text-muted, #64748b);
   font-size: 0.75rem;
   font-weight: 400;
 }
@@ -320,12 +320,12 @@
 }
 
 .logItem > span {
-  color: #64748b;
+  color: var(--text-secondary, #475569);
 }
 
 .logEmpty {
   margin: 8px 0;
-  color: #94a3b8;
+  color: var(--text-muted, #64748b);
   font-size: .813rem;
   text-align: center;
 }
@@ -337,7 +337,7 @@
   padding: 8px;
   border: 1px dashed #d1d5db;
   border-radius: 8px;
-  color: #64748b;
+  color: var(--text-secondary, #475569);
   background: transparent;
   cursor: pointer;
   font-size: 0.875rem;
@@ -351,7 +351,7 @@
 .footer {
   padding: 24px 0 16px;
   border-top: 1px solid #eef2f6;
-  color: #64748b;
+  color: var(--text-secondary, #475569);
   text-align: center;
 }
 
@@ -362,7 +362,7 @@
 
 .footer > p {
   margin: 4px 0 0;
-  color: #94a3b8;
+  color: var(--text-muted, #64748b);
   font-size: .813rem;
 }
 
@@ -401,7 +401,7 @@
 }
 
 .footer small {
-  color: #94a3b8;
+  color: var(--text-muted, #64748b);
   font-size: .813rem;
 }
 
@@ -469,4 +469,10 @@
     padding: 10px 15px 14px;
   }
 
+}
+
+/* 与教师端主要卡片保持一致的边界与层级。 */
+.sectionCard {
+  border-color: var(--card-border);
+  box-shadow: var(--card-shadow);
 }

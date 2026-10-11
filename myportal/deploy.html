@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>安装部署指南 · 支点课堂 ClassNode - AI编程技术分享</title>
-<meta name="description" content="支点课堂（ClassNode）本地部署指南：安装包一键安装，或源码部署（Node.js + PM2 一键脚本）。无需云服务器，几分钟内完成。" />
+<meta name="description" content="支点课堂（ClassNode）本地部署指南：安装包一键安装，或源码部署（Node.js 24 + pnpm）。无需云服务器，支持局域网课堂与本地数据备份。" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect x=%223%22 y=%223%22 width=%2226%22 height=%2226%22 rx=%228%22 fill=%22%23E07A3C%22/><path d=%22M11 10.5h10M11 16h7M11 21.5h10%22 stroke=%22%23fff%22 stroke-width=%222.2%22 stroke-linecap=%22round%22/></svg>" />
 <link rel="stylesheet" href="css/style.css" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
@@ -29,7 +29,7 @@
   <div class="container">
     <span class="eyebrow"><span class="dot"></span> 本地部署指南</span>
     <h1 class="guide-title">把支点课堂<br><span class="grad">装进你的电脑</span></h1>
-    <p class="guide-sub">无需云服务器。无论你习惯用安装包还是手动源码部署，都能在几分钟内完成。</p>
+    <p class="guide-sub">无需云服务器。无论你习惯用安装包还是手动源码部署，都可以在教师电脑上运行，学生用浏览器参与。</p>
     <div class="guide-jump" style="margin-top:32px;">
       <a href="#install-pkg" class="btn btn-ghost btn-sm">方式一：安装包</a>
       <a href="#source-deploy" class="btn btn-ghost btn-sm">方式二：源码部署</a>
@@ -52,7 +52,7 @@
     </div>
 
     <div class="guide-note fade-in">
-      <strong>💡 提示：</strong>统信 UOS 等 Linux 系统没有现成的安装包，<strong>请下载源码包</strong>，然后按下方「源码部署」中的 <strong>PM2 一键安装</strong>方式完成部署（<code>sudo bash install.sh</code>）。
+      <strong>💡 提示：</strong>统信 UOS 等 Linux 系统没有现成的安装包，<strong>请下载源码包</strong>，然后按下方「源码部署」步骤安装 Node.js 与 pnpm、构建并启动服务。
     </div>
 
     <div class="guide-card fade-in">
@@ -64,16 +64,16 @@
         <table class="platform-table">
           <thead><tr><th>平台</th><th>安装包</th></tr></thead>
           <tbody>
-            <tr><td>macOS Apple Silicon</td><td><code>ClassNode_2.0.0_macos_apple-silicon.dmg</code></td></tr>
-            <tr><td>macOS Intel</td><td><code>ClassNode_2.0.0_macos_intel.dmg</code></td></tr>
-            <tr><td>Windows（64 位）</td><td><code>ClassNode_2.0.0_windows_x64.msi</code></td></tr>
-            <tr><td>Windows（ARM64）</td><td><code>ClassNode_2.0.0_windows_arm64.msi</code></td></tr>
-            <tr><td>Linux</td><td><code>classnode-2.0.0.tar.gz</code> 或 <code>classnode-2.0.0.zip</code>（源码包）</td></tr>
+            <tr><td>macOS Apple Silicon</td><td><code>ClassNode_2.0.1_macos_apple-silicon.dmg</code></td></tr>
+            <tr><td>macOS Intel</td><td><code>ClassNode_2.0.1_macos_intel.dmg</code></td></tr>
+            <tr><td>Windows（64 位）</td><td><code>ClassNode_2.0.1_windows_x64.msi</code></td></tr>
+            <tr><td>Windows（ARM64）</td><td><code>ClassNode_2.0.1_windows_arm64.msi</code></td></tr>
+            <tr><td>Linux</td><td><code>classnode-2.0.1.tar.gz</code> 或 <code>classnode-2.0.1.zip</code>（源码包）</td></tr>
           </tbody>
         </table>
       </div>
       <div class="guide-info teal">
-        <strong>💡 提示：</strong>安装或更新版本后<strong>首次启动</strong>时，程序会自动同步数据库结构，可能会有 <strong>10–30 秒</strong> 的短暂延迟，请耐心等待，后续启动将恢复正常速度。
+        <strong>💡 提示：</strong>安装或更新版本后<strong>首次启动</strong>时，程序会自动同步数据库结构，启动耗时会随电脑和数据量变化，请等待服务启动后再打开教师端。更新前建议先在「数据管理」中备份。
       </div>
     </div>
 
@@ -129,6 +129,9 @@ source ~/.bashrc</code></pre>
         <div class="guide-code-label">终端</div>
         <pre><code class="language-bash">npm config set registry https://registry.npmmirror.com
 
+# 安装与项目一致的 pnpm 版本
+npm install -g pnpm@11.3.0
+
 # 检查是否切换成功
 npm config get registry
 # 预期输出: https://registry.npmmirror.com/</code></pre>
@@ -144,49 +147,30 @@ npm config get registry
       <p class="guide-text">
         从
         <a href="https://gitcode.com/weixin_41523975/classnode/releases" target="_blank" rel="noopener noreferrer">Release 页面</a>
-        或 <a href="classnode.html#download">下载渠道</a> 下载源码压缩包（如 <code>classnode-2.0.0.tar.gz</code> 或 <code>classnode-2.0.0.zip</code>），解压后进入目录。
+        或 <a href="classnode.html#download">下载渠道</a> 下载源码压缩包（如 <code>classnode-2.0.1.tar.gz</code> 或 <code>classnode-2.0.1.zip</code>），解压后进入目录。
       </p>
-      <p class="guide-text" style="font-weight:700;color:var(--text-primary);margin-top:20px;">🐧 Linux 推荐方式（PM2 进程管理）：</p>
+      <p class="guide-text" style="margin-top:20px;">在解压后的项目目录执行：</p>
       <div class="guide-code-block">
-        <div class="guide-code-label">终端</div>
-        <pre><code class="language-bash"># 解压
-tar -xzf classnode-2.0.0.tar.gz
-cd classnode-2.0.0
+        <div class="guide-code-label">终端 · macOS / Linux</div>
+        <pre><code class="language-bash">tar -xzf classnode-2.0.1.tar.gz
+cd classnode-2.0.1
 
-# 一键安装（默认安装到 /opt/classnode）
-sudo bash install.sh</code></pre>
-      </div>
-      <p class="guide-text" style="margin-top:14px;">
-        安装脚本会自动完成：检测环境 → 安装依赖 → 构建项目 → 初始化数据库 → 配置 PM2 开机自启。<br />
-        <strong>版本升级</strong>时同样运行 <code>sudo bash install.sh</code>，脚本自动备份和恢复数据。
-      </p>
-      <p class="guide-text" style="font-weight:700;color:var(--text-primary);margin-top:24px;">管理命令：</p>
-      <div class="guide-code-block">
-        <div class="guide-code-label">终端</div>
-        <pre><code class="language-bash">pm2 status              # 查看运行状态
-pm2 logs classnode      # 查看日志
-pm2 restart classnode   # 重启服务
-pm2 stop classnode      # 停止服务</code></pre>
-      </div>
-      <p class="guide-text" style="margin-top:24px;">💡 也可以手动启动（不依赖 PM2）：</p>
-      <div class="guide-code-block" style="margin-bottom:16px;">
-        <div class="guide-code-label">终端</div>
-        <pre><code class="language-bash"># 进入项目目录
-cd classnode-2.0.0
-
-# 安装依赖并构建
-npm install -g pnpm
+# 安装依赖、生成数据库客户端
 pnpm install
-pnpm build
-pnpm build:server
+pnpm db:generate
 
-# 初始化数据库并启动
-cd server && npx prisma db push && cd ..
-node start.js</code></pre>
+# 构建前后端，并组装静态页面
+pnpm build:all
+
+# 启动生产服务（保持终端打开）
+pnpm start</code></pre>
       </div>
+      <p class="guide-text">要求 Node.js ≥ 24。Windows 源码部署可在解压后用 PowerShell 执行同样的 pnpm 命令；安装包用户无需安装这些开发工具。</p>
       <div class="guide-info teal">
-        <strong>💡 提示：</strong>首次启动会自动安装依赖、初始化数据库并构建（约 1–5 分钟，需联网）。版本升级后首次启动也会因数据库更新而略有延迟，属正常现象。
+        <strong>首次部署：</strong>安装依赖需要联网。<code>pnpm start</code> 运行已构建的服务，不会自动构建项目；启动时自动同步数据库结构。退出终端会结束前台服务，需要长期运行时可另行配置系统服务或进程管理器。
       </div>
+      <p class="guide-text" style="margin-top:20px;"><strong>源码升级：</strong>先在旧版本「数据管理」中下载备份；停止旧服务，部署新版本，再从页面上传并恢复备份。不要直接用新源码覆盖唯一的数据副本。</p>
+
     </div>
 
     <div class="guide-next fade-in">
@@ -206,17 +190,18 @@ node start.js</code></pre>
 
     <div class="guide-card fade-in" style="margin-bottom:32px;">
       <ul class="guide-list">
-        <li>管理端：<strong>管理电脑</strong> 打开浏览器访问 <code>http://localhost:3001/teacher</code></li>
-        <li>参与端：<strong>局域网内任意设备</strong>（平板、手机、其他电脑）访问 <code>http://管理电脑IP:3001/classroom</code></li>
+        <li>管理端：<strong>管理电脑</strong> 打开浏览器访问 <code>http://localhost:3001/teacher/</code></li>
+        <li>参与端：<strong>局域网内任意设备</strong>（平板、手机、其他电脑）访问 <code>http://管理电脑IP:3001/classroom/</code></li>
       </ul>
       <div class="guide-note">
-        <strong>💡 提示：</strong>参与端通过局域网访问，只需将 <code>localhost</code> 替换为管理电脑的局域网 IP 地址即可（如 <code>http://192.168.1.100:3001/classroom</code>）。<br />
-        参与端<strong>无需安装任何软件</strong>，也<strong>无需互联网连接</strong>，打开浏览器就能用。
+        <strong>💡 提示：</strong>参与端通过局域网访问，只需将 <code>localhost</code> 替换为管理电脑的局域网 IP 地址即可（如 <code>http://192.168.1.100:3001/classroom/</code>）。<br />
+        学生设备<strong>无需安装客户端或直接连接 AI 平台</strong>。教师电脑与学生设备须在可互通的局域网内；调用外部 AI 时，教师电脑仍须联网。
       </div>
+      <div class="guide-note"><strong>第一次开课：</strong>设置教师密码 → 建立班级与学生 → 制作学习单、上传探究网页或接入智能体 → 创建课堂并投屏发码。三件套任选其一即可开始；分组与高级模式需先建立小组。接入教程和提示词模板可在「AI 智能体」页打开。</div>
       <div class="guide-note warn">
-        <strong>💡 客户端连不上？</strong>Windows 系统默认的安全策略有时会误拦截网络。若客户端连接失败，多半是管理机的 <strong>3001</strong> 端口被防火墙阻挡。请在管理电脑上尝试：<br />
+        <strong>💡 客户端连不上？</strong>Windows 系统默认的安全策略有时会误拦截网络。若客户端连接失败，请先确认教师端显示局域网访问已开放、设备处于同一网络，以及防火墙允许课堂服务。默认课堂端口为 <strong>3001</strong>；探究网页另用 <strong>3002</strong>。请在管理电脑上尝试：<br />
         <strong>方式一：</strong>打开「Windows 安全中心 → 防火墙和网络保护 → 允许应用通过防火墙」，勾选 <strong>支点课堂（ClassNode）</strong>（或 <strong>Node.js</strong>）的专用与公用网络（若无，点「允许其他应用」手动添加）。<br />
-        <strong>方式二：</strong>进同页面的「高级设置 → 入站规则 → 新建规则」，按提示勾选：端口 → TCP → 输入 <code>3001</code> → 允许连接。
+        <strong>方式二：</strong>进同页面的「高级设置 → 入站规则 → 新建规则」，按提示勾选：端口 → TCP → 输入 <code>3001,3002</code> → 允许连接（请按学校网络管理要求设置）。
       </div>
     </div>
   </div>

@@ -200,17 +200,17 @@
 
 .settingsHeading { padding: 20px 24px; border-bottom: 1px solid #e7edf4; }
 .settingsHeading h2 { margin: 0; font-size: 1rem; color: #243d52; }
-.settingsHeading p { margin: 6px 0 0; font-size: .875rem; color: #64748b; }
+.settingsHeading p { margin: 6px 0 0; font-size: .875rem; color: var(--text-secondary, #475569); }
 .settingsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .settingItem { padding: 24px; min-width: 0; }
 .settingItem + .settingItem { border-left: 1px solid #e7edf4; }
 .settingTitle { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .settingTitle label { font-size: .938rem; font-weight: 650; color: #243d52; }
 .settingTitle span { padding: 3px 8px; border-radius: 6px; font-size: .75rem; color: #526c81; background: #edf3f7; }
-.settingItem p { margin: 10px 0 20px; color: #64748b; font-size: .875rem; line-height: 1.7; }
+.settingItem p { margin: 10px 0 20px; color: var(--text-secondary, #475569); font-size: .875rem; line-height: 1.7; }
 .numberField { display: flex; align-items: center; gap: 12px; color: #526c81; font-size: .875rem; }
 .numberField input { width: 86px; padding: 10px 12px; text-align: center; font-size: 1.125rem; font-weight: 650; }
-.settingItem small { display: block; margin-top: 10px; color: #64748b; font-size: .813rem; }
+.settingItem small { display: block; margin-top: 10px; color: var(--text-secondary, #475569); font-size: .813rem; }
 .settingsFooter { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 14px 24px; background: #f8fafc; border-top: 1px solid #e7edf4; }
 .configFeedback { font-size: .813rem; color: #526c81; }
 
@@ -249,3 +249,31 @@
   .recordTable { max-height: none; }
   .recordDetails > div:first-child > div { flex-wrap: wrap; }
 }
+
+/* 与教师端主要卡片保持一致的边界与层级。 */
+.settingsCard, .wordWorkspace {
+  border-color: var(--card-border);
+  box-shadow: var(--card-shadow);
+}
+
+/* 与班级管理相同的连接式标签和教师端控件层级。 */
+.workspace { border: 1px solid #CDD5E0; border-radius: 14px; background: white; box-shadow: var(--card-shadow); overflow: hidden; }
+.workspace :global(.teacher-page-tabs.is-connected) { padding-top: 16px; }
+.workspace :global(.teacher-page-tabs.is-connected > button.is-active) { position: relative; font-weight: 700; color: #0F172A; }
+.workspace :global(.teacher-page-tabs.is-connected > button.is-active)::before { content: ''; position: absolute; top: -1px; left: 7px; right: 7px; height: 3px; border-radius: 2px; background: #475569; }
+.workspace :global(.teacher-page-tabs.is-connected > button.is-active .teacher-page-tabs-badge) { background: #475569; color: white; }
+.workspace :global(.teacher-page-tabs.is-connected > button:not(.is-active)) { background: #DCE2EA; }
+.workspace :global(.teacher-page-tabs.is-connected > button:not(.is-active)):hover { background: #CDD6E2; }
+.workspace .wordWorkspace, .workspace .settingsCard { border: 0; border-radius: 0; box-shadow: none; }
+.workspace .recordsWorkspace { padding: 20px; }
+.workspace .wordComposerBody textarea { background: white; border-color: #AEBCCD; }
+.workspace .libraryGrid { background: #EDF1F6; border-color: #CDD5E0; }
+.workspace .libraryPanel { border-color: #CDD5E0 !important; box-shadow: none !important; }
+.workspace .customLibrary { border-top-color: #B5C6D9 !important; }
+.workspace .systemLibrary { border-top-color: #B5C6D9 !important; }
+.workspace .libraryHeader { background: #EDF2F8 !important; border-bottom-color: #CDD5E0 !important; }
+.workspace .systemNoticeEnabled { background: #EAF0F7 !important; border-color: #C0CDDD !important; color: #334155 !important; }
+.workspace .systemNoticePaused { background: #E8EDF3 !important; border-color: #CDD5E0 !important; color: #475569 !important; }
+.workspace .wordStatusEnabled { background: #EAF0F7; border-color: #C0CDDD; color: #365F91; }
+.workspace .wordStatus { font-size: .8125rem; }
+@media (max-width: 600px) { .workspace :global(.teacher-page-tabs.is-connected) { padding-left: 12px; padding-right: 12px; } .workspace .recordsWorkspace { padding: 14px; } }

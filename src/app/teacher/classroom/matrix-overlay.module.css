@@ -17,8 +17,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 56px;
-  padding: 0 24px;
+  min-height: 76px;
+  padding: 12px 24px;
+  gap: 16px;
   border-bottom: 1px solid #dbe4ed;
   background: #fff;
 }
@@ -26,13 +27,15 @@
 .titleBlock h2 {
   margin: 0;
   color: #26384f;
-  font-size: 1.05rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .titleBlock p {
   margin: 2px 0 0;
-  color: #7a8ba0;
-  font-size: 0.75rem;
+  color: #64748B;
+  font-size: 0.8125rem;
 }
 
 .viewTabs {
@@ -389,9 +392,9 @@
 }
 
 .aggregateCell button strong,
-.matrixFooterCell button strong { color: #344b65; font-size: 0.875rem; }
+.matrixFooterCell button strong { color: #344b65; font-size: 0.75rem; }
 .aggregateCell button span,
-.matrixFooterCell button span { color: #8492a3; font-size: 0.875rem; }
+.matrixFooterCell button span { color: #64748B; font-size: 0.6875rem; white-space: nowrap; }
 
 .matrixFooterLabel,
 .matrixFooterCell,

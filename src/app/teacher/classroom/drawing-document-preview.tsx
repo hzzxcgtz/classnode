@@ -266,7 +266,7 @@ function MindPreview({ data, backgroundUrl }: PreviewProps & { data: Record<stri
       </div>
       {root
         ? <ul style={{ margin: 0, paddingLeft: 22 }}><MindBranch node={root} /></ul>
-        : <div style={{ color: '#94a3b8' }}>这份作答的结构也还没拿到，稍后会自己更新。</div>}
+        : <div style={{ color: 'var(--text-muted, #64748b)' }}>这份作答的结构也还没拿到，稍后会自己更新。</div>}
     </div>
   );
 }

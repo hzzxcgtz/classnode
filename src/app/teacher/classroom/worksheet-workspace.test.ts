@@ -64,7 +64,7 @@ test('学习单入口与查看步骤记录浏览器历史，后退恢复上一�
 });
 
 test('Escape 与关闭按钮共用同一个返回课堂动作', () => {
-  assert.match(page, /if \(!worksheetWorkspace && !worksheetDrawer\) return;[\s\S]*?if \(event\.key !== 'Escape'\) return;[\s\S]*?closeWorksheetLayer\(\)/);
+  assert.match(page, /if \(!worksheetWorkspace && !worksheetDrawer\) return;[\s\S]*?if \(event\.key !== 'Escape' \|\| fullscreenImg\) return;[\s\S]*?closeWorksheetLayer\(\)/);
   assert.match(page, /<WorksheetDrawer[\s\S]*?onClose=\{closeWorksheetLayer\}/);
   assert.match(page, /<MatrixOverlay[\s\S]*?onClose=\{closeWorksheetLayer\}/);
 });

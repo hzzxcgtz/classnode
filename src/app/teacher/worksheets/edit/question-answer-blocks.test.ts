@@ -314,7 +314,7 @@ test('★ 2026-10-06（教师）：判断题的正确答案块摆在**题干后�
   const live = stripImports(stripComments(CARD));
   // ⚠️ 判据用**这一块的标题**，不要用 `node.type === 'true-false'`：那个条件在卡片靠上处
   //    （摘要/只读预览那条路）也出现过，第一次出现的位置比题干还早 ⇒ 拿它当判据会假红。
-  const stem = live.search(/<h4><EditorIcon[^>]*\/>题干<\/h4>/);
+  const stem = live.search(/<h4><EditorIcon[^>]*\/>题干(?:\{node\.type === 'drawing' && <span className="drawing-required">\*<\/span>\})?<\/h4>/);
   const answer = live.search(/<h4><EditorIcon[^>]*\/>正确答案<\/h4>/);
   assert.ok(stem !== -1 && answer !== -1, '题干或判断题的正确答案块不见了');
   assert.ok(answer > stem, '判断题的正确答案没有排在题干之后');

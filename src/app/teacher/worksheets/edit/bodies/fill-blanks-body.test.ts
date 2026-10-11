@@ -108,7 +108,7 @@ test('★ 逐空设置是**两行**：作答方式 → 答案，分值带学习�
   assert.ok(modeAt >= 0 && answerAt > modeAt, '两行的渲染顺序不对');
   assert.ok(scoreAt > answerAt, '分值输入必须挨着答案行，不能另起一行');
   assert.match(bodySrc, /pointsUnit === '分' \? '分值' : '奖励数量'/, '分数档与图标奖励档没有使用合适的名称');
-  assert.match(bodySrc, /<b>\{pointsUnit\}<\/b>/, '分值输入框后没有显示「分 / 座奖杯」等单位');
+  assert.match(bodySrc, /<EditorRewardUnit style=\{rewardStyle\} unit=\{pointsUnit\} \/>/, '分值输入框后应跟随学习单奖励类型显示图标或分数单位');
 });
 
 test('★ 只剩一排胶囊：作答方式（分段胶囊）；评分方式那一排连同它的样式一起删了', () => {

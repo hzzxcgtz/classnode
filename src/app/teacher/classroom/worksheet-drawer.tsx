@@ -192,12 +192,12 @@ export function WorksheetDrawer({
               ⇒ 有数据就画数据（刷新静默进行，中间不经过「空」那一帧），
                 没有数据才轮到「读到了没有」这两句。 */}
           {!board && loading && (
-            <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>正在读取作答…</div>
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem' }}>正在读取作答…</div>
           )}
           {!board && !loading && (
             // 读失败 / 还没到：**如实说**，不要画一个像是「全班都没作答」的空列表
             // （那正是本任务要修的那类假象）。
-            <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem', lineHeight: 1.7 }}>
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem', lineHeight: 1.7 }}>
               还没有读到这一堂课的作答。<br />请确认服务正在运行，或稍后再打开一次。
             </div>
           )}
@@ -276,7 +276,7 @@ function findParticipant(board: WorksheetBoard | null, participantId: string) {
 function WorksheetList({ board, onOpen }: { board: WorksheetBoard; onOpen: (worksheetId: string) => void }) {
   if (board.worksheets.length === 0) {
     return (
-      <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem', lineHeight: 1.7 }}>
+      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem', lineHeight: 1.7 }}>
         这一堂课还没有配学习单。
       </div>
     );
@@ -295,11 +295,11 @@ function WorksheetList({ board, onOpen }: { board: WorksheetBoard; onOpen: (work
               <div style={{ fontWeight: 600, fontSize: '0.875rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 《{worksheet.title}》
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #475569)', marginTop: 2 }}>
                 {worksheet.participants.length} {unit}在用
               </div>
             </div>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted, #64748b)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
           </button>
         );
       })}
@@ -323,14 +323,14 @@ export function QuestionList({
   if (!worksheet) return null;
   if (!nodes) {
     return (
-      <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>
+      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem' }}>
         学习单内容还没加载到。
       </div>
     );
   }
   const { items } = indexQuestions(nodes);
   if (items.length === 0) {
-    return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>这份学习单还没有题目。</div>;
+    return <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem' }}>这份学习单还没有题目。</div>;
   }
 
   const details = items.map((item) => {
@@ -518,7 +518,7 @@ export function QuestionAnswers({
                 ) : outcome?.ink ? (
                   <InkPreview value={outcome.ink} node={node ?? undefined} />
                 ) : (
-                  outcome?.answerText ?? <span style={{ color: '#94a3b8' }}>未作答</span>
+                  outcome?.answerText ?? <span style={{ color: 'var(--text-muted, #64748b)' }}>未作答</span>
                 )}
               </div>
             </div>
@@ -557,16 +557,16 @@ export function ParticipantAnswers({
 
   const found = findParticipant(board, participantId);
   if (!found) {
-    return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>这一格（参与者）此刻没有配学习单。</div>;
+    return <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem' }}>这一格（参与者）此刻没有配学习单。</div>;
   }
   const { worksheet, participant } = found;
   const nodes = nodesByWorksheet[worksheet.id] ?? null;
   if (!nodes) {
-    return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>学习单内容还没加载到。</div>;
+    return <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem' }}>学习单内容还没加载到。</div>;
   }
   const { items } = indexQuestions(nodes);
   if (items.length === 0) {
-    return <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>这份学习单还没有题目。</div>;
+    return <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem' }}>这份学习单还没有题目。</div>;
   }
 
   // ── 全貌（第 2 条）────────────────────────────────────────────────
@@ -765,7 +765,7 @@ function OverviewRow({
               ? <RewardIcon kind={rewardScale.style} state={overview.reward > 0 ? 'earned' : 'empty'} size={34} />
               : <span style={{ color: '#aab5c2' }}>?</span>}
           </div>
-          <div><small>本学习单奖励</small><strong>{overview.rewardText ?? '暂未读取'}</strong></div>
+          <div><small>本学习单奖励</small><strong>{rewardScale && rewardScale.style !== 'points' ? `×${overview.reward}` : overview.rewardText ?? '暂未读取'}</strong></div>
         </div>
       </div>
       <div className={styles.overviewFoot}>

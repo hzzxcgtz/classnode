@@ -83,11 +83,11 @@ export function AgentPurposeSelector({ purpose, onChange }: {
       </div>
 
       {purpose === 'analysis' && <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', minWidth: 0 }}>
-        提示词参考：AI 智能体页顶部“提示词模板库”
+        提示词参考：AI 智能体页顶部“提示词模板”
       </span>}
 
       {/* 右端那一句是**两个选项共用**的提示，所以留在外面（放进任一枚胶囊都会偏心）。 */}
-      <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: 'auto', minWidth: 0 }}>
+      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', marginLeft: 'auto', minWidth: 0 }}>
         分析型不会出现在学生的学伴列表里
       </span>
     </div>

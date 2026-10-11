@@ -7,7 +7,6 @@ import { api } from '@/lib/api';
 import { tokenExpiryView } from '@/lib/platform-token-expiry';
 import { agentPurposeOf, type AgentPurpose } from '@/lib/agent-purpose';
 import { ApiTokenModal, ExpiryChip } from './api-token-modal';
-import { AgentHelpButton } from './help-button';
 import { AgentLogoField } from './logo-field';
 import { AgentPlatformSelector } from './platform-selector';
 import { AgentPurposeSelector } from './purpose-selector';
@@ -90,11 +89,15 @@ export default function AgentsPage() {
   const expiringTokens = tokens
     .map((row) => ({ row, expiry: tokenExpiryView(row.expiresAt, new Date()) }))
     .filter(({ expiry }) => expiry.level === 'soon' || expiry.level === 'urgent' || expiry.level === 'expired');
+  const tokenAlerts = expiringTokens.filter(({ expiry }) => expiry.days !== null && expiry.days < 5);
+  const tokenAlertText = tokenAlerts.map(({ row, expiry }) => `${row.label}：${expiry.text}`).join('；');
 
   const normalizedAgentSearch = agentSearch.trim().toLocaleLowerCase('zh-CN');
+  const availablePlatforms = AGENT_PLATFORMS.filter(platform => agents.some(agent => agent.platform === platform.value));
+  const visiblePlatformFilter = availablePlatforms.some(platform => platform.value === platformFilter) ? platformFilter : 'all';
   const filteredAgents = agents.filter(agent => {
     const matchesSearch = !normalizedAgentSearch || agent.name.toLocaleLowerCase('zh-CN').includes(normalizedAgentSearch);
-    const matchesPlatform = platformFilter === 'all' || agent.platform === platformFilter;
+    const matchesPlatform = visiblePlatformFilter === 'all' || agent.platform === visiblePlatformFilter;
     /**
      * ⚠️ 判据是 `agentPurposeOf`（`@/lib/agent-purpose`），**不是** `agent.purpose === purposeFilter`：
      * 老行的 `purpose` 是 `null` / 缺字段，直接比会把它们从**任何一个**选项里漏掉 ——
@@ -112,20 +115,36 @@ export default function AgentsPage() {
   const pagedAgents = filteredAgents.slice((agentPage - 1) * agentPageSize, agentPage * agentPageSize);
   const agentSummary = {
     enabled: agents.filter(agent => agent.enabled !== false).length,
-    healthy: agents.filter(agent => agent.enabled !== false && agent.lastCheckOk === true).length,
+    pending: agents.filter(agent => agent.enabled !== false && !agent.lastCheckAt).length,
     error: agents.filter(agent => agent.enabled !== false && Boolean(agent.lastCheckAt) && agent.lastCheckOk === false).length,
   };
 
   return (
-    <div>
+    <div className="agent-management-page">
       <TeacherPageHeader title="AI 智能体" description="接入并管理课堂使用的 AI 智能体。" actions={
         <>
-          <a className="btn btn-secondary" href="/teacher/agents/templates/">提示词模板库</a>
+          {!loading && agents.length > 0 && (
+            <div role="status" className={`agent-management-header-status is-${agentSummary.error > 0 ? 'error' : agentSummary.pending > 0 ? 'pending' : agentSummary.enabled === 0 ? 'disabled' : 'healthy'}`}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" />
+              </svg>
+              {agentSummary.error > 0 ? `${agentSummary.error} 个智能体需要检查连接` : agentSummary.pending > 0 ? `${agentSummary.pending} 个已启用智能体尚未检测` : agentSummary.enabled === 0 ? '当前没有启用的智能体' : '已启用的智能体连接正常'}
+            </div>
+          )}
+          <a className="btn btn-secondary" href="/help/agents/" target="_blank" rel="noopener noreferrer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 3h6a3 3 0 0 1 3 3v15a4 4 0 0 0-4-2H4z" /><path d="M13 6a3 3 0 0 1 3-3h4v16h-3a4 4 0 0 0-4 2" /></svg>
+            接入教程
+          </a>
+          <a className="btn btn-secondary" href="/teacher/agents/templates/">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h5" /></svg>
+            提示词模板
+          </a>
           {/* ★ 2026-09-25：与「接入智能体」并排。⚠️ 在**没有 token 时也显示** ——
               它就是教师第一次该去的地方（Coze 低代码的智能体要选一份 Token）。 */}
-          <button className="btn btn-secondary" onClick={() => setShowTokens(true)}>
+          <button className="btn btn-secondary agent-token-management-button" onClick={() => setShowTokens(true)} title={tokenAlertText || undefined} aria-label={tokenAlerts.length ? `扣子访问令牌，${tokenAlerts.length} 份令牌即将到期或已过期。${tokenAlertText}` : '扣子访问令牌'}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3" /></svg>
             扣子访问令牌
+            {tokenAlerts.length > 0 && <span className={`agent-token-alert-badge${tokenAlerts.some(({ expiry }) => expiry.level === 'urgent' || expiry.level === 'expired') ? ' is-urgent' : ''}`} aria-hidden="true">{tokenAlerts.length}</span>}
           </button>
           <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
@@ -197,26 +216,6 @@ export default function AgentsPage() {
 
       {!loading && agents.length > 0 && (
         <>
-          <div className="agent-management-overview" aria-label="智能体状态概览">
-            <div className="agent-management-overview-item">
-              <strong>{agents.length}</strong><span>全部智能体</span>
-            </div>
-            <div className="agent-management-overview-item">
-              <strong>{agentSummary.enabled}</strong><span>当前启用</span>
-            </div>
-            <div className="agent-management-overview-item tone-green">
-              <strong>{agentSummary.healthy}</strong><span>连接健康</span>
-            </div>
-            <div className={`agent-management-overview-item${agentSummary.error > 0 ? ' tone-red' : ''}`}>
-              <strong>{agentSummary.error}</strong><span>连接异常</span>
-            </div>
-            <div className="agent-management-overview-note">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" />
-              </svg>
-              {agentSummary.error > 0 ? `${agentSummary.error} 个智能体需要检查连接` : '已启用的智能体连接正常'}
-            </div>
-          </div>
           <div className="agent-management-filters teacher-list-toolbar">
             <label className="agent-management-search">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -224,9 +223,9 @@ export default function AgentsPage() {
               {agentSearch && <button type="button" onClick={() => { setAgentSearch(''); setAgentPage(1); }} aria-label="清空智能体搜索">×</button>}
             </label>
             <div className="agent-platform-filter-tabs" role="group" aria-label="按平台筛选智能体">
-              <button type="button" className={platformFilter === 'all' ? 'is-active' : ''} aria-pressed={platformFilter === 'all'} onClick={() => { setPlatformFilter('all'); setAgentPage(1); }}>全部</button>
-              {AGENT_PLATFORMS.map(platform => (
-                <button key={platform.value} type="button" className={platformFilter === platform.value ? 'is-active' : ''} aria-pressed={platformFilter === platform.value} onClick={() => { setPlatformFilter(platform.value); setAgentPage(1); }}>
+              <button type="button" className={visiblePlatformFilter === 'all' ? 'is-active' : ''} aria-pressed={visiblePlatformFilter === 'all'} onClick={() => { setPlatformFilter('all'); setAgentPage(1); }}>全部</button>
+              {availablePlatforms.map(platform => (
+                <button key={platform.value} type="button" className={visiblePlatformFilter === platform.value ? 'is-active' : ''} aria-pressed={visiblePlatformFilter === platform.value} onClick={() => { setPlatformFilter(platform.value); setAgentPage(1); }}>
                   <span aria-hidden="true" style={{ background: platform.color }} />
                   {platform.label}
                 </button>
@@ -316,7 +315,7 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const fields = useAgentFormFields(agent);
+  const fields = useAgentFormFields(agent, tokens);
   const { name, setName, platform, setPlatform, credentialId, apiKey, apiUrl, botId, projectId, apiSecret, greeting, setGreeting,
     purpose, setPurpose,
     updateCredential,
@@ -361,13 +360,13 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
             position: 'absolute', top: 12, right: 12,
             width: 28, height: 28, borderRadius: 6,
             border: 'none', background: 'transparent',
-            color: '#94a3b8', cursor: 'pointer',
+            color: 'var(--text-muted)', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: "1rem", lineHeight: 1,
             transition: 'all 0.12s',
           }}
             onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#475569'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}>
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
             ✕
           </button>
           <h2 id="agent-form-title" style={{ fontSize: "1rem", fontWeight: 700, margin: '0 0 2px' }}>
@@ -469,7 +468,7 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
             </div>
           </div>
 
-          {(platform === 'coze' || platform === 'coze-agent' || platform === 'wenxin') && (
+          {platform === 'wenxin' && (
             <div className="agent-form-platform-notice">
               <AgentPlatformNotice platform={platform} />
             </div>
@@ -486,8 +485,7 @@ function AgentForm({ agent, tokens, onManageTokens, onClose, onSaved }: {
             </div>
           )}
 
-          <div className="agent-form-footer" style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
-            <AgentHelpButton platform={platform} purpose={purpose} />
+          <div className="agent-form-footer" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
             <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving} style={{ fontSize: "0.875rem", padding: '7px 18px' }}>取消</button>
             <button type="submit" className="btn btn-primary" disabled={saving} style={{ fontSize: "0.875rem", padding: '7px 20px' }}>

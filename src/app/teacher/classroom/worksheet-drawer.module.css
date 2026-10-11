@@ -71,7 +71,7 @@
   flex: 0 0 auto;
   padding: 3px 7px;
   border-radius: 6px;
-  background: #f3e7d6;
+  background: transparent;
   color: #855e2f;
   font-size: 0.75rem;
   font-weight: 700;
@@ -191,7 +191,7 @@
   height: 44px;
   place-items: center;
   border-radius: 13px;
-  background: #f3e7d6;
+  background: transparent;
 }
 
 .reward small {
@@ -527,7 +527,7 @@
 }
 
 .analysisTag[data-tone='warning'] {
-  background: #f3e7d6;
+  background: transparent;
   color: #875e2c;
 }
 

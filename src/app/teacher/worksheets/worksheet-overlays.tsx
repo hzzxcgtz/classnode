@@ -63,7 +63,7 @@ export function WorksheetDeleteBlockedDialog({ worksheet, usage, duplicating, on
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#a85d5d" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
       </div>
       <h3 id="worksheet-delete-blocked-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>无法删除学习单</h3>
-      <p style={{ fontSize: '0.813rem', color: '#64748b', margin: 0, wordBreak: 'break-all' }}>「{worksheet.title}」还在被使用，所以这次删除会被拦下。下面说清楚拦住它的是什么。</p>
+      <p style={{ fontSize: '0.813rem', color: 'var(--text-secondary, #475569)', margin: 0, wordBreak: 'break-all' }}>「{worksheet.title}」还在被使用，所以这次删除会被拦下。下面说清楚拦住它的是什么。</p>
     </div>
 
     <div style={boxStyle}>
@@ -92,7 +92,7 @@ export function WorksheetDeleteBlockedDialog({ worksheet, usage, duplicating, on
       <div style={{ fontSize: '0.813rem', color: '#475569', lineHeight: 1.7 }}>
         若只是想改内容，请直接编辑；若想要一份新的，请用「复制一份」。
       </div>
-      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 4, lineHeight: 1.6 }}>
+      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', marginTop: 4, lineHeight: 1.6 }}>
         复制出来的是一份全新的学习单：内容一模一样，但不会带着这里的课堂关联和作答。
       </div>
     </div>
@@ -126,7 +126,7 @@ export function WorksheetUsageDialog({ worksheet, usage, onClose }: {
 
   return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content teacher-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-usage-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 460, maxWidth: '90vw', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
     <h3 id="worksheet-usage-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px', wordBreak: 'break-all' }}>「{worksheet.title}」的引用情况</h3>
-    <p style={{ fontSize: '0.813rem', color: '#64748b', margin: '0 0 16px', lineHeight: 1.7 }}>
+    <p style={{ fontSize: '0.813rem', color: 'var(--text-secondary, #475569)', margin: '0 0 16px', lineHeight: 1.7 }}>
       学习单可以被整堂课选中，也可以被高级模式下的某个小组单独选中；学生提交的作答会留在它上面。
     </p>
     <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '4px 14px', marginBottom: 20 }}>

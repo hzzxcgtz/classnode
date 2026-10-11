@@ -4,6 +4,8 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { EditorRewardUnit } from './editor-reward-unit';
+import type { RewardStyle } from '@/lib/worksheet-reward';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 // ★ 2026-09-26（spec 第 4 步）：题干的**所见即所得**编辑器（contenteditable）。
 // 它单独一个文件是因为里面全是**本机验不了的** DOM 原语（光标 / 选区 / 重建），
@@ -182,7 +184,7 @@ function HeadSwitch({ checked, onChange, label, title, text }: {
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ heading, label, expanded, focusedMode = false, onToggle, taskId, onDragStart, node, inheritedPoints, pointsUnit, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onNotice, onRemove }: {
+export function QuestionCard({ heading, label, expanded, focusedMode = false, onToggle, taskId, onDragStart, node, inheritedPoints, pointsUnit, rewardStyle, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onNotice, onRemove }: {
   /**
    * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
    * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
@@ -221,6 +223,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
    * 而「哪一档配哪个量词」是一个能被 `node --test` 钉住的判据。
    */
   pointsUnit: string;
+  rewardStyle?: RewardStyle;
   /** 这一题那两格里**还没进 reducer** 的文本（`useWorksheetEditor` 持有，见 `PointsRow`）。 */
   rejectedPointInput: RejectedPointInput | undefined;
   /**
@@ -412,16 +415,17 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
     //    总分就是 0 —— 那时说「逐空评分 · 最高 0 分」是一句让人以为界面坏了的话。
     //    判分侧这时**根本不出分**（`grade()` 里 `auto.length === 0` 直接回 null），
     //    与「仅统计作答」逐字对应，所以走它。
-    ? (gradedOn && fillTotals.total > 0 ? `逐空评分 · 最高 ${fillTotals.total} ${pointsUnit}` : '仅统计作答')
+    ? (gradedOn && fillTotals.total > 0 ? `逐空评分 · 最高 ${fillTotals.total}` : '仅统计作答')
     : aiScoringEnabled
-    ? `AI 评分 · 最高 ${aiScoringMaxScore} ${pointsUnit}`
+    ? `AI 评分 · 最高 ${aiScoringMaxScore}`
     : isGradedQuestionType(node.type)
-      ? (gradedOn ? `自动评分 · 最高 ${maximumPoints} ${pointsUnit}` : '仅统计作答')
+      ? (gradedOn ? `自动评分 · 最高 ${maximumPoints}` : '仅统计作答')
       : '教师查看';
 
   return (
     <section
       className={`worksheet-editor-question${focusedMode ? ' is-focused' : ''}`}
+      data-question-type={node.type}
       data-expanded={expanded ? '1' : '0'}
       /* ★ 2026-09-26（spec 第 3 步）：↑/↓ 在题间跳时靠它定位（见 `page.tsx` 的那段 effect）。 */
       data-question-id={node.id}
@@ -466,17 +470,17 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             「这是第几题 · 什么题型 · 多少分」这三件**题面里没有**的事。
             ⚠️ 别再把题干挪回来：重复一次不会报错，只会让人以为有两道一样的题。
           */}
-          <span className="worksheet-editor-question-index">{badgeLabel}</span>
+          <span className="worksheet-editor-question-index">{focusedMode && node.type === 'drawing' ? `第 ${badgeLabel} 题` : badgeLabel}</span>
           {focusedMode ? (
             <span className="worksheet-editor-question-heading-copy">
-              <span>编辑题目</span>
+              {node.type !== 'drawing' && <span>编辑题目</span>}
               <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(node.type)}</span>{typeLabel}</strong>
             </span>
           ) : (
             <span className="worksheet-editor-question-type"><span className="worksheet-editor-type-glyph">{questionTypeIcon(node.type)}</span>{typeLabel}</span>
           )}
           <span className={`worksheet-editor-grade-status${gradedOn ? ' is-on' : ' is-manual'}`}>
-            {gradingStatus}
+            {gradingStatus}{gradingStatus.includes('最高') && <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />}
           </span>
         </button>
         {/* ⚠️ `stopPropagation`：这一块在折叠时也挂在可点的 `<section>` 里，
@@ -555,13 +559,13 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           <span>必填</span>
         </div>
 
-        <div className="worksheet-editor-block">
+        <div className={`worksheet-editor-block${(node.type === 'drawing' || node.type === 'short-answer') ? ' drawing-prompt-block' : ''}`}>
           <div className="worksheet-editor-block-head">
             <div>
               {/* ⚠️ 这个「题干」标题是**新的层级**要的：以前它在卡片头部下面，与
                   「题目内容 / 写清学生需要完成什么」是同一句话说两次，所以当时删掉了。
                   现在「题目内容」是容器的名字、块要有自己的名字，它不再重复。 */}
-              <h4><EditorIcon kind="prompt" />题干</h4>
+              <h4><EditorIcon kind="prompt" />题干{node.type === 'drawing' && <span className="drawing-required">*</span>}</h4>
             </div>
           </div>
           <PromptEditor
@@ -612,11 +616,14 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
               )}
             </div>
 
+            <div className={(node.type === 'drawing' || node.type === 'short-answer') ? 'drawing-answer-settings' : undefined}>
+            {(node.type === 'drawing' || node.type === 'short-answer') && <h3 className="drawing-zone-heading"><EditorIcon kind="answer" />作答设置</h3>}
             {showInputModeRow && <InputModeRow node={node} onInputModeChange={onInputModeChange} />}
 
             {node.type === 'drawing' && (
               <DrawingSettings node={node} onDataChange={onDataChange} onNotice={onNotice} />
             )}
+            </div>
 
             {/* 题型 → 作答体。这里保持与学生端题型数据结构一一对应。
                 🔴 本页是按 `node.type === '…'` 逐个分派的（不是 `Record`），少写一支的后果是
@@ -644,6 +651,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                 onDataChange={onDataChange}
                 fullPoints={shownPoints.full}
                 pointsUnit={pointsUnit}
+                rewardStyle={rewardStyle}
               />
             )}
 
@@ -665,6 +673,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
             {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
 
+            <div className={(node.type === 'drawing' || node.type === 'short-answer') ? 'drawing-evaluation-settings' : undefined}>
+            {(node.type === 'drawing' || node.type === 'short-answer') && <h3 className="drawing-zone-heading"><EditorIcon kind="grading" />评价设置</h3>}
             {(node.type === 'short-answer' || node.type === 'drawing') && (
               // ★ 2026-09-30（教师）：「主观题也需要设置参考答案，但是可以选择不本地评分。」
               // + 澄清：「主观题**不需要评分**」。
@@ -734,7 +744,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                             ⇒ 现在两处**同名**，而且名字跟着学习单的奖励形式走：
                               分数档叫「分值」，图标 / 奖杯那一档叫「奖励数量」——
                               同一个字段，量词要对得上后面那个单位（「3 座奖杯」不是「分值 3 座奖杯」）。 */}
-                        {pointsUnit === '分' ? '分值' : '奖励数量'}（{pointsUnit}）
+                        {pointsUnit === '分' ? '分值' : '奖励数量'} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />
                       </label>
                       <div className="worksheet-editor-ai-scoring-stepper">
                         <button
@@ -885,6 +895,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                 )}
               </div>
             )}
+            </div>
           </div>
         )}
 
@@ -925,7 +936,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
               {/* ⚠️ 徽章里**不写「自动评分」** —— 卡片标题就是它（原来那句
                   `gradingStatus`（「自动评分 · 最高 1 颗星星」）是给**折叠态那一行**用的，
                   那里没有标题，所以不能直接搬过来）。 */}
-              {gradedOn && <span className="worksheet-editor-points-badge">本题满分 {explicitFillScoring ? fillTotals.total : maximumPoints} {pointsUnit}</span>}
+              {gradedOn && <span className="worksheet-editor-points-badge">本题满分 {explicitFillScoring ? fillTotals.total : maximumPoints} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>}
               <HeadSwitch
                 checked={gradedOn}
                 onChange={onAutoGradeChange}
@@ -972,6 +983,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             <div className="worksheet-editor-block">
               <FillScoringMethodRow node={node} onDataChange={onDataChange} />
               <FillPointsRow
+                rewardStyle={rewardStyle}
                 node={node}
                 inheritedPoints={inheritedPoints}
                 pointsUnit={pointsUnit}
@@ -1003,6 +1015,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
               node={node}
               inheritedPoints={inheritedPoints}
               pointsUnit={pointsUnit}
+              rewardStyle={rewardStyle}
               rejectedInput={rejectedPointInput}
               onPointsInputChange={onPointsInputChange}
               onPointsChange={onPointsChange}
@@ -1148,10 +1161,11 @@ function FillScoringMethodRow({ node, onDataChange }: {
 }
 
 /** **选择填空**的**得分规则**：那一格分值（口径跟着「评分方式」走）。同上，只服务选择填空。 */
-function FillPointsRow({ node, inheritedPoints, pointsUnit, onPointsChange }: {
+function FillPointsRow({ node, inheritedPoints, pointsUnit, rewardStyle, onPointsChange }: {
   node: WorksheetQuestionNode;
   inheritedPoints: { full: number; half: number };
   pointsUnit: string;
+  rewardStyle?: RewardStyle;
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
 }) {
   /* ⚠️ 这一行不再看「得分方式」：口径解释搬到了上面那一行（跟着选中的档显示），
@@ -1179,7 +1193,7 @@ function FillPointsRow({ node, inheritedPoints, pointsUnit, onPointsChange }: {
           aria-label="这一题的分值"
           onChange={event => setValue(event.target.value)}
         />
-        <b>{pointsUnit}</b>
+        <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />
       </span>
     </div>
   );
@@ -1211,13 +1225,14 @@ function FillPointsRow({ node, inheritedPoints, pointsUnit, onPointsChange }: {
  * （2026-09-24 审查实机复现的「界面在说假话」）。它带**签名**，
  * `node.points` 一变（撤销 / 恢复草稿 / 换题）就自动失效。
  */
-function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, onPointsInputChange, onPointsChange }: {
+function PointsRow({ heading, node, inheritedPoints, pointsUnit, rewardStyle, rejectedInput, onPointsInputChange, onPointsChange }: {
   /** 两级题号 —— 只用于两个输入框的 `aria-label`（读屏要能说清是哪一题的分值）。 */
   heading: string;
   node: WorksheetQuestionNode;
   inheritedPoints: { full: number; half: number };
   /** 见 `QuestionCard` 上那一条（量词跟着学习单的奖励档走）。 */
   pointsUnit: string;
+  rewardStyle?: RewardStyle;
   /** 屏幕上还没进 reducer 的那两格文本（父层持有，因为 `save()` 要看得见它）。 */
   rejectedInput: RejectedPointInput | undefined;
   onPointsInputChange: (input: RejectedPointInput | null) => void;
@@ -1311,7 +1326,7 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, 
               commit('full', event.target.value);
             }}
             />
-            <b>{pointsUnit}</b>
+            <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />
           </span>
         </label>
         {showHalf && <label className="worksheet-editor-points-field">
@@ -1332,7 +1347,7 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rejectedInput, 
               aria-label={`${heading} 部分给分`}
               onChange={event => commit('half', event.target.value)}
             />
-            <b>{pointsUnit}</b>
+            <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />
           </span>
         </label>}
       </div>
@@ -1451,7 +1466,7 @@ function InputModeRow({ node, onInputModeChange }: {
     <>
       <div className="worksheet-editor-inline-actions worksheet-editor-input-modes" role="radiogroup" aria-label="作答方式">
         {!drawing && (
-          <label className="worksheet-editor-option-correct">
+          <label className={`worksheet-editor-option-correct${drawing && (!handwriting && !photo) ? ' is-selected' : ''}`}>
             <input
               type="radio"
               name={`worksheet-inputmode-${node.id}`}
@@ -1461,7 +1476,7 @@ function InputModeRow({ node, onInputModeChange }: {
             <span><EditorIcon kind="keyboard" />键盘输入</span>
           </label>
         )}
-        <label className="worksheet-editor-option-correct">
+        <label className={`worksheet-editor-option-correct${drawing && (handwriting) ? ' is-selected' : ''}`}>
           <input
             type="radio"
             name={`worksheet-inputmode-${node.id}`}
@@ -1472,7 +1487,7 @@ function InputModeRow({ node, onInputModeChange }: {
               同一个字段两个词 ⇒ 统一成「手写」。 */}
           <span><EditorIcon kind="handwriting" />{drawing ? '画板绘制' : '手写'}</span>
         </label>
-        <label className="worksheet-editor-option-correct">
+        <label className={`worksheet-editor-option-correct${drawing && (photo) ? ' is-selected' : ''}`}>
           <input
             type="radio"
             name={`worksheet-inputmode-${node.id}`}

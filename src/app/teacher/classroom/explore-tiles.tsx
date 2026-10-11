@@ -35,15 +35,15 @@ export function ExploreTile({ name, state, online, captureEnabled, compact = fal
         {state?.dataUrl ? (
           <img src={state.dataUrl} alt={`${name} 的探究网页缩略图`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', display: 'block' }} />
         ) : (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, color: '#94a3b8', fontSize: small, textAlign: 'center', padding: 4 }}>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, color: 'var(--text-muted, #64748b)', fontSize: small, textAlign: 'center', padding: 4 }}>
             <span>{caption.label}</span>
-            {caption.detail ? <span style={{ fontSize: "0.75rem", color: '#cbd5e1' }}>{caption.detail}</span> : null}
+            {caption.detail ? <span style={{ fontSize: "0.75rem", color: 'var(--text-muted, #64748b)' }}>{caption.detail}</span> : null}
           </div>
         )}
       </div>
       {/* 有画面时以画面为准（画面本身就是最强的证据），没有画面时才用文字档。
           这里**没有**「点击 X · 输入 Y · 上报 Z」那一行，也不该有。 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: small, color: '#64748b', whiteSpace: 'nowrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: small, color: 'var(--text-secondary, #475569)', whiteSpace: 'nowrap' }}>
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {state?.dataUrl ? `最新画面 ${timeLabel(state.at)}` : caption.label}
         </span>
@@ -84,12 +84,12 @@ export function ExploreMemberStrip({ members, states, statuses, captureEnabled, 
               {state?.dataUrl ? (
                 <img src={state.dataUrl} alt={`${member.student.name} 的探究网页缩略图`} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
               ) : (
-                <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.75rem", color: '#94a3b8' }}>
+                <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.75rem", color: 'var(--text-muted, #64748b)' }}>
                   {caption.label}
                 </span>
               )}
             </span>
-            <span style={{ fontSize: "0.75rem", color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.student.name}</span>
+            <span style={{ fontSize: "0.75rem", color: 'var(--text-secondary, #475569)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.student.name}</span>
           </button>
         );
       })}
@@ -161,7 +161,7 @@ export function ExploreDetailPanel({ student, state, online, webapps, captureEna
             <img src={state.dataUrl} alt={`${student.student.name} 的探究网页画面`} style={{ width: '100%', display: 'block' }} />
           </div>
         )}
-        <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', color: '#64748b', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', color: 'var(--text-secondary, #475569)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <span>{webappName}</span>
           {/* 与格子**同一套文案**（同一个 tileCaption）——两处不一致会让教师以为
               自己看到的是两个学生的状态。 */}
@@ -176,11 +176,11 @@ export function ExploreDetailPanel({ student, state, online, webapps, captureEna
             学生（`socket/index.ts:780`），所以调到 1 秒也只有一台设备在每秒截一张。
             ⚠️ 因此这个控件**不能**写在没有学生的公共设置里：同一屏下别的人的格子照旧按基准跑。 */}
         <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #475569)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span>刷新周期</span>
-            <span style={{ color: '#94a3b8' }}>他的设备多久截一张（只影响这一个学生）</span>
+            <span style={{ color: 'var(--text-muted, #64748b)' }}>他的设备多久截一张（只影响这一个学生）</span>
             {detailIsDerived && (
-              <span style={{ color: '#94a3b8' }}>· 当前跟随基准自动推算</span>
+              <span style={{ color: 'var(--text-muted, #64748b)' }}>· 当前跟随基准自动推算</span>
             )}
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -207,7 +207,7 @@ export function ExploreDetailPanel({ student, state, online, webapps, captureEna
           </div>
         </div>
         <div className="preview-scroll" style={{ flex: 1, minHeight: 0, padding: '10px 16px' }}>
-          <div style={{ padding: '30px 0', textAlign: 'center', color: '#94a3b8', fontSize: '0.813rem' }}>
+          <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem' }}>
             {state?.dataUrl
               ? '这里只呈现定时快照（就是上面那张画面），以及「有没有在用、滚到哪儿」这两项状态。点击与输入不做记录。'
               : '还没有收到画面。学生打开探究网页后，画面会每隔几秒更新一次。'}

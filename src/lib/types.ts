@@ -234,8 +234,12 @@ export interface WebappSummary {
   createdAt: string;
   updatedAt: string;
   /**
-   * 被多少个课堂关联。管理页的概览条（已关联 / 未关联）、「按关联状态筛选」与
-   * 卡片左边那条色条都读它。
+   * 管理列表中实际托管的文件数量，包含 HTML 与配套资源。
+   * 旧服务端未提供时保留默认样式。
+   */
+  fileCount?: number;
+  /**
+   * 被多少个课堂关联，供卡片上的引用状态使用。
    *
    * ⚠️ 与 `AgentSummary.classroomCount` 不同，这里是**必填**：网页只有一个来源
    * （`GET /api/webapps`），而这个类型不被任何别的端点复用，没有「某些构造点不填」

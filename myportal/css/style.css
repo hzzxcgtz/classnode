@@ -664,3 +664,14 @@ pre[class*="language-"] { background: transparent !important; margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Current product screenshots remain inspectable at their original size. */
+.showcase-image-link { display: block; cursor: zoom-in; }
+.showcase-image-link:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+@media (max-width: 480px) {
+  .nav-logo-tagline { display: none; }
+  .nav-logo .logo-mark { width: 36px; height: 36px; }
+  .nav-logo-name { font-size: 16px; }
+  .nav-right { gap: 8px; flex-shrink: 0; }
+  .nav-right .btn { padding: 8px 12px; }
+}

@@ -24,7 +24,7 @@ const actionStyle = (danger = false) => ({
  * 自己的目录里的相对路径，不是地址；把它渲染成 `<a href>` 或补上托管源都会让「托管服务的
  * 地址」出现在界面上，而那是本模块刻意只在服务端拼的东西（规格 §5.3）。
  *
- * 探究网页采用「柔和标题区 + 白色内容区」。灰绿色只表示探究网页这一类资产，
+ * 探究网页采用「柔和标题区 + 白色内容区」，头部按单文件 / 多文件区分，
  * 引用状态改用带文字的按钮明确表达，避免让一条颜色同时承担类别与状态两种含义。
  */
 export function WebappCard({ webapp, deleting, onPreview, onEdit, onDelete, onShowRelatedClassrooms }: WebappCardProps) {
@@ -32,9 +32,11 @@ export function WebappCard({ webapp, deleting, onPreview, onEdit, onDelete, onSh
     month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
   });
   const used = webapp.classroomCount > 0;
+  const fileKind = webapp.fileCount === 1 ? 'single' : (webapp.fileCount ?? 0) > 1 ? 'multiple' : 'unknown';
+  const fileKindLabel = fileKind === 'single' ? '单文件' : fileKind === 'multiple' ? '多文件' : '';
 
   return (
-    <div className={used ? 'card webapp-management-card' : 'card webapp-management-card is-unused'}>
+    <div className={used ? 'card webapp-management-card' : 'card webapp-management-card is-unused'} data-file-kind={fileKind}>
       <div className="webapp-management-card-header">
         <div className="webapp-management-card-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -44,7 +46,7 @@ export function WebappCard({ webapp, deleting, onPreview, onEdit, onDelete, onSh
         </div>
         <div className="webapp-management-card-heading">
           <div className="webapp-management-card-title">{webapp.name}</div>
-          <span className="webapp-management-card-created">上传于 {createdAt}</span>
+          <span className="webapp-management-card-created">上传于 {createdAt}{fileKindLabel && ` · ${fileKindLabel}`}</span>
         </div>
       </div>
 

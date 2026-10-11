@@ -85,7 +85,7 @@ function PermissionMenuItem({ label, enabled, busy, onToggle }: {
         <span style={{ width: 16, height: 16, borderRadius: '50%', background: 'white', boxShadow: '0 1px 3px rgba(15,23,42,.2)' }} />
       </span>
       <span style={{ flex: 1 }}>{busy ? '更新中...' : label}</span>
-      <span style={{ color: enabled ? '#3f7859' : '#94a3b8', fontSize: '0.75rem' }}>{enabled ? '已开启' : '已关闭'}</span>
+      <span style={{ color: enabled ? '#3f7859' : 'var(--text-muted)', fontSize: '0.75rem' }}>{enabled ? '已开启' : '已关闭'}</span>
     </button>
   );
 }
@@ -228,7 +228,7 @@ function CaptureOption({ label, hint, selected, busy, disabled, onSelect }: {
       disabled={disabled} onClick={onSelect}
       style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, minHeight: 34, padding: '4px 2px', border: `1px solid ${selected ? 'var(--primary)' : '#e2e8f0'}`, borderRadius: 8, background: selected ? '#f2f5f8' : 'white', color: selected ? 'var(--primary-dark)' : '#475569', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: "0.875rem", fontWeight: selected ? 700 : 500, whiteSpace: 'nowrap', opacity: busy ? 0.6 : 1 }}>
       <span>{busy ? '...' : label}</span>
-      {hint && <span style={{ fontSize: "0.75rem", fontWeight: 400, color: selected ? 'var(--primary)' : '#94a3b8' }}>{hint}</span>}
+      {hint && <span style={{ fontSize: "0.75rem", fontWeight: 400, color: selected ? 'var(--primary)' : 'var(--text-muted)' }}>{hint}</span>}
     </button>
   );
 }
@@ -290,11 +290,11 @@ function SettingsDialog({ open, title, subtitle, dialogRef, maxWidth = 560, onCl
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '16px 20px', borderBottom: '1px solid #e2e8f0', borderTopLeftRadius: 14, borderTopRightRadius: 14, background: 'linear-gradient(135deg, #f8faff, #f0f4ff)' }}>
           <h3 style={{ margin: 0, flex: 1, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>{title}</h3>
           <button type="button" aria-label={`关闭${title}设置窗口`} onClick={onClose}
-            style={{ width: 28, height: 28, border: 0, borderRadius: 8, background: 'transparent', color: '#64748b', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>✕</button>
+            style={{ width: 28, height: 28, border: 0, borderRadius: 8, background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>✕</button>
         </div>
         <div style={{ padding: '6px 12px 10px' }}>
           {subtitle && (
-            <div style={{ padding: '10px 10px 4px', fontSize: '0.75rem', color: '#64748b', lineHeight: 1.6 }}>{subtitle}</div>
+            <div style={{ padding: '10px 10px 4px', fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>{subtitle}</div>
           )}
           {children}
         </div>
@@ -412,7 +412,7 @@ function ModuleStateMenu({ modules, busy, neverConfigured, onSelect }: {
           <div key={moduleKey} role="group" aria-label={MODULE_LABELS[moduleKey]} style={{ padding: '4px 10px 10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: '0.813rem', color: '#334155' }}>
               <span style={{ flex: 1 }}>{MODULE_LABELS[moduleKey]}</span>
-              {moduleBusy && <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>更新中...</span>}
+              {moduleBusy && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>更新中...</span>}
             </div>
             <div style={{ display: 'flex', gap: 4 }}>
               {MODULE_STATES.map((state) => (
@@ -481,13 +481,13 @@ function ModuleCountChip({ label, value, unit, hint, muted = false, tone = 'defa
   selected: boolean;
   onSelect: () => void;
 }) {
-  const idleColor = muted ? '#94a3b8' : tone === 'attention' ? '#934e4e' : '#475569';
+  const idleColor = muted ? 'var(--text-muted)' : tone === 'attention' ? '#934e4e' : '#475569';
   const numberColor = muted ? '#cbd5e1' : tone === 'attention' ? '#934e4e' : 'var(--primary-dark)';
   return (
     <button type="button" aria-pressed={selected} title={hint} onClick={onSelect}
       style={{
         display: 'inline-flex', alignItems: 'baseline', gap: 5, whiteSpace: 'nowrap',
-        minHeight: 32, padding: '4px 11px', borderRadius: 999, cursor: 'pointer',
+        minHeight: 34, padding: '5px 11px', borderRadius: 8, cursor: 'pointer',
         border: `1px solid ${selected ? 'var(--primary)' : tone === 'attention' ? '#fecaca' : '#e2e8f0'}`,
         background: selected ? 'var(--primary)' : tone === 'attention' ? '#f8eeee' : 'white',
         color: selected ? 'white' : idleColor,
@@ -496,7 +496,7 @@ function ModuleCountChip({ label, value, unit, hint, muted = false, tone = 'defa
       <span>{label}</span>
       <span style={{ fontSize: '1rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: selected ? 'white' : numberColor }}>{value}</span>
       {unit && (
-        <span style={{ fontSize: "0.75rem", fontWeight: 500, color: selected ? 'rgba(255,255,255,.85)' : '#94a3b8' }}>
+        <span style={{ fontSize: "0.75rem", fontWeight: 500, color: selected ? 'rgba(255,255,255,.85)' : 'var(--text-muted)' }}>
           {unit}
         </span>
       )}
@@ -559,7 +559,7 @@ const MODULE_INITIALS: Record<ModuleId, { char: string; color: string; bg: strin
 };
 
 /** 「首页」那一档：不在任何模块里，但**也不是不知道**（与 `unknown` 是两回事）。 */
-const HOME_INITIAL = { char: '首', color: '#94a3b8', bg: '#f1f5f9' };
+const HOME_INITIAL = { char: '首', color: 'var(--text-muted)', bg: '#f1f5f9' };
 
 /**
  * 一个格子的「他此刻在哪一件套」。
@@ -629,7 +629,7 @@ type ClassroomPermissionEvent = { allow: boolean };
 
 export default function ClassroomBoard() {
   return (
-    <Suspense fallback={<div style={{textAlign:'center',padding:60,color:'#94a3b8',fontSize:14}}>加载中...</div>}>
+    <Suspense fallback={<div style={{textAlign:'center',padding:60,color:'var(--text-muted)',fontSize:14}}>加载中...</div>}>
       <ClassroomBoardContent />
     </Suspense>
   );
@@ -1838,7 +1838,7 @@ function ClassroomBoardContent() {
   });
 
   if (!classroom) {
-    return <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8', fontSize: "0.875rem" }}>加载中...</div>;
+    return <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)', fontSize: "0.875rem" }}>加载中...</div>;
   }
 
   // ⊘ ★ 2026-09-29：这里原来还有 `statusValues` 与四个数（`onlineCount` / `thinkingCount` /
@@ -2379,7 +2379,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             padding: compact ? '5px 8px' : '10px 14px', borderRadius: compact ? 6 : 8,
             background: '#f8fafc',
             border: '1px solid #eef2f6',
-            fontSize: compact ? "0.75rem" : '0.75rem', lineHeight: compact ? 1.4 : 1.6, color: '#64748b',
+            fontSize: compact ? "0.75rem" : '0.75rem', lineHeight: compact ? 1.4 : 1.6, color: 'var(--text-secondary)',
             wordBreak: 'break-word',
           }}>
             <span style={{ fontWeight: 600, color: '#3f7859', marginRight: compact ? 3 : 4 }}>AI:</span>
@@ -2388,7 +2388,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         )}
       </>
     ) : (
-      <div style={{ padding: compact ? '6px 10px' : '10px 14px', borderRadius: compact ? 6 : 8, background: '#f9fafb', fontSize: compact ? "0.75rem" : '0.75rem', color: '#cbd5e1', textAlign: 'center' }}>
+      <div style={{ padding: compact ? '6px 10px' : '10px 14px', borderRadius: compact ? 6 : 8, background: '#f9fafb', fontSize: compact ? "0.75rem" : '0.75rem', color: 'var(--text-muted, #64748b)', textAlign: 'center' }}>
         暂无对话
       </div>
     );
@@ -2396,8 +2396,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
     /** 「这一格没有可显示的内容」的统一长相（学习单 / 首页 / 状态未知三处共用）。 */
     const placeholder = (label: string, hint: string) => (
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '8px 6px', borderRadius: compact ? 6 : 8, background: '#f9fafb', border: '1px dashed #e2e8f0', textAlign: 'center' }}>
-        <span style={{ fontSize: compact ? "0.75rem" : '0.813rem', fontWeight: 600, color: '#94a3b8' }}>{label}</span>
-        <span style={{ fontSize: "0.75rem", color: '#cbd5e1', lineHeight: 1.4 }}>{hint}</span>
+        <span style={{ fontSize: compact ? "0.75rem" : '0.813rem', fontWeight: 600, color: 'var(--text-muted)' }}>{label}</span>
+        <span style={{ fontSize: "0.75rem", color: 'var(--text-muted, #64748b)', lineHeight: 1.4 }}>{hint}</span>
       </div>
     );
 
@@ -2497,7 +2497,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               {members.map((member) => (
                 <div key={member.id} style={{ display: 'flex', gap: 6, fontSize: "0.75rem", lineHeight: 1.4 }}>
                   <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#334155' }}>{member.student.name}</span>
-                  <span style={{ marginLeft: 'auto', color: '#64748b', whiteSpace: 'nowrap' }}>{moduleLabelOf(resolveTileModule(member.id))}</span>
+                  <span style={{ marginLeft: 'auto', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{moduleLabelOf(resolveTileModule(member.id))}</span>
                 </div>
               ))}
             </div>
@@ -2521,7 +2521,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           style={{
             flexShrink: 0, padding: compact ? '2px 6px' : '3px 8px', borderRadius: compact ? 4 : 6,
             background: '#f8fafc', border: '1px solid #eef2f6',
-            fontSize: "0.75rem", color: '#64748b', lineHeight: 1.4,
+            fontSize: "0.75rem", color: 'var(--text-secondary)', lineHeight: 1.4,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
           {locationNote}
@@ -2568,10 +2568,10 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             style={{
               background: 'transparent', border: 'none', cursor: 'pointer',
               padding: '6px 8px', borderRadius: 8, marginTop: 2, flexShrink: 0,
-              color: '#64748b', transition: 'all 0.12s',
+              color: 'var(--text-secondary)', transition: 'all 0.12s',
             }}
             onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; }}>
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
           </button>
           <div>
@@ -2585,9 +2585,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             }}>
               {classroom.mode === 'advanced' ? '高级模式' : classroom.mode === 'group' ? '分组模式' : '标准模式'}
             </span>
-            <span className={`tag ${classroom.status === 'paused' ? 'tag-yellow' : classroom.status === 'active' ? 'tag-green' : 'tag-gray'}`}>
-              {classroom.status === 'paused' ? '已暂停' : classroom.status === 'active' ? '进行中' : '已结束'}
-            </span>
+
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
             <div style={{
@@ -2599,12 +2597,12 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               互动码 <strong style={{ fontSize: "1rem", letterSpacing: 3, fontFamily: 'monospace' }}>{teacherCode}</strong>
             </div>
             {classroom.classes?.length > 0 && (
-              <span style={{ fontSize: "0.75rem", color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
                 {classroom.classes.map((cc) => cc.class.name).join('、')}
               </span>
             )}
-            <span style={{ fontSize: "0.813rem", color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: "0.813rem", color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
               {classroomStudentCount} 名学生
             </span>
@@ -2676,7 +2674,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       )}
       <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0 }}>
         <div ref={gridRef} style={{ flex: 1, overflow: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div className="student-board-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
             <div>
               {/* ⊘ 2026-09-30（教师）：「这些字不要了」—— 原来这一行下面还有一句
                   「点击学生卡片查看完整对话，使用筛选快速定位课堂状态」。
@@ -2684,7 +2682,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   标题下面多一行小字只会占地方；而那两句话本身在第一次用的时候就懂了。 */}
               <h2 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>学生互动面板</h2>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div className="student-board-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               {/* ★ 2026-09-29（教师选「乙」）：这一行的控件由**判据表**驱动 ——
                   「在不在 / 叫什么 / 禁不禁用 / 分到哪一组」全来自 `header-controls.ts`
                   （25 条用例），这里只做两件本文件才有的事：把 id 接到 handler、配图标。
@@ -2702,10 +2700,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               {headerControlGroups(header.controls).map((group) => (
                 <div
                   key={group[0].id}
+                  className="student-board-action-group"
                   style={{
                     display: 'flex', alignItems: 'center', gap: 4,
                     padding: '3px 4px', borderRadius: 12,
-                    background: group[0].kind === 'state' ? '#eaf2f8' : group[0].kind === 'global' ? '#f2eff8' : '#edf5ef',
+                    background: 'transparent',
                   }}
                 >
                   {group.map((control) => {
@@ -2789,12 +2788,13 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             </div>
           </div>
 
+          <div className="student-board-view-controls">
           {/* 看板模式开关（P2.3）。⚠️ **独立一行**，与筛选行同处（就在格子正上方）：
               它是「这一屏答的是哪个问题」的总开关，藏在某个菜单里等于没有。
               显不显示由 `header.showsHeader` 给（全屏时整块头部一起藏掉）。 */}
           {header.showsHeader && (
-            <div aria-label="看板模式" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>看板模式</span>
+            <div className="student-board-mode" aria-label="看板模式" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>看板模式</span>
               {/* ★ 2026-09-29（头部重构）：**那句常显的解释搬进了悬浮说明**。
                   「每格显示该学生此刻在用的模块；还没收到状态的学生显示「…」」原来是
                   紧跟在这两个按钮后面的一行灰字 —— 而它是**读一次就够**的知识
@@ -2808,7 +2808,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 selected={boardMode === 'assign'} onSelect={() => setBoardMode('assign')} />
               {boardMode === 'assign' && (
                 <>
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: 4 }}>全班显示</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 4 }}>全班显示</span>
                   {(['worksheet', 'explore', 'companion'] as ModuleId[]).map((moduleId) => (
                     <SegmentedButton key={moduleId}
                       label={MODULE_ID_LABELS[moduleId]}
@@ -2840,7 +2840,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               它不进任何格子，`需关注 / 离线` 会**小于** `全部`。合并前两个「全部」分处两行、
               看不出来，现在同一行上会显形。那是数据本身的问题（一个没有组的参与者），
               不是这一行算错 —— 别在这里加个减法把它抹平。 */}
-          <div aria-label="学生筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
+          <div className="student-board-filters" aria-label="学生筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
             {/* ── 左段：状态。分母 = **参与者总数**（含离线）。 ──
                 全部 —— 合并后**只剩这一个**，而且它是**重置**：点它会把两组筛选一起清回 `all`。
                 ⚠️ 上面那段窄缝说的就是它与「需关注 / 离线」可能不等。 */}
@@ -2886,7 +2886,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               <>
                 {/* 段标签 = **把分母写在段首**。三个模块格是它的一个划分（不含首页 / 未定，
                     那部分由紧跟着的 `unplaced` 那句话兜住）。 */}
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                   此刻在线 <span style={{ color: 'var(--primary-dark)' }}>{onlineParticipants}</span> {moduleCountUnitSuffix}
                 </span>
                 <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} unit={moduleCountUnitSuffix}
@@ -2902,10 +2902,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                     ⚠️ 它是**灰字不是按钮** —— 一个点下去只看「在首页和不知道在哪的人」的
                     筛选器没有用处（那正是 2026-09-25 圈掉那两格的理由）。 */}
                 {unplaced && (
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>· {unplaced}</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>· {unplaced}</span>
                 )}
               </>
             )}
+          </div>
           </div>
           {/* `data-webapp-monitor` 三个属性是给**离线 E2E 探针**用的锚点
               （`.superpowers/sdd/…/dom-shot-e2e` 下那几个 verify 脚本按选择器取本块 innerText）。
@@ -2925,15 +2926,15 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   background: '#f1f5f9', margin: '0 auto 12px',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
                   </svg>
                 </div>
                 <div style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>暂无学生加入</div>
-                <div style={{ fontSize: "0.813rem", color: '#94a3b8' }}>学生通过互动码 <strong style={{ color: 'var(--primary)', fontFamily: 'monospace', fontSize: "0.938rem", letterSpacing: 2 }}>{teacherCode}</strong> 加入后，将在此处显示</div>
+                <div style={{ fontSize: "0.813rem", color: 'var(--text-muted)' }}>学生通过互动码 <strong style={{ color: 'var(--primary)', fontFamily: 'monospace', fontSize: "0.938rem", letterSpacing: 2 }}>{teacherCode}</strong> 加入后，将在此处显示</div>
               </div>
             ) : displayCards.length === 0 ? (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '44px 20px', background: 'white', borderRadius: 14, border: '1px dashed #cbd5e1', color: '#64748b' }}>
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '44px 20px', background: 'white', borderRadius: 14, border: '1px dashed #cbd5e1', color: 'var(--text-secondary)' }}>
                 <div style={{ fontWeight: 700, color: '#334155', marginBottom: 4 }}>当前筛选下没有学生</div>
                 {/* 🔴 两组筛选都要清掉。只清状态那一组的话，教师点完「查看全部学生」仍然
                     看不到人（模块那一组还卡着），而按钮的字面意思正是「全部学生」。 */}
@@ -3031,7 +3032,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                 {item.group?.name || '(未命名)'}
                               </span>
                             ) : (
-                              <>{student.name}{student.studentNo && <span style={{ fontSize: "0.75rem", fontWeight: 500, color: '#94a3b8', marginLeft: 4 }}>#{student.studentNo}</span>}</>
+                              <>{student.name}{student.studentNo && <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)', marginLeft: 4 }}>#{student.studentNo}</span>}</>
                             )}
                           </span>
                           {!isGroup && (classroom.mode === 'advanced' || classroom.mode === 'group') && cs.group && (
@@ -3068,7 +3069,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                     {showClear && (
                                       <button title={clearBusy ? '正在清除，请稍候' : '清除对话'} disabled={clearBusy !== null}
                                         onClick={(e) => { e.stopPropagation(); handleClearGroupMessages(item.members, item.group?.name || '该小组'); }}
-                                        style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
+                                        style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: 'var(--text-secondary)', padding: 0 }}>
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                                       </button>
                                     )}
@@ -3099,7 +3100,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                 {showClear && (
                                   <button title={clearBusy ? '正在清除，请稍候' : '清除对话'} disabled={clearBusy !== null}
                                     onClick={(e) => { e.stopPropagation(); handleClearMessages(sid, student.name); }}
-                                    style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
+                                    style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: 'var(--text-secondary)', padding: 0 }}>
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                                   </button>
                                 )}
@@ -3111,7 +3112,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                 {showWorksheetClear && (
                                   <button title="清除这个学生在这份学习单上的全部作答"
                                     onClick={(e) => { e.stopPropagation(); void clearWorksheetDataFor(cs.id, student.name, null); }}
-                                    style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
+                                    style={{ width: 20, height: 20, border: 'none', borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: 'var(--text-secondary)', padding: 0 }}>
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>
                                   </button>
                                 )}
@@ -3141,8 +3142,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                               ? item.members.some((m) => deepThinkingStatuses[m.id])
                               : deepThinkingStatuses[sid];
                             const bg = isDeep ? '#f5f3ff' : status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#faf4eb' : '#f1f5f9';
-                            const dotColor = isDeep ? '#7c3aed' : status === 'online' ? '#10b981' : status === 'thinking' ? '#956834' : '#94a3b8';
-                            const textColor = isDeep ? '#7c3aed' : status === 'online' ? '#10b981' : status === 'thinking' ? '#956834' : '#94a3b8';
+                            const dotColor = isDeep ? '#7c3aed' : status === 'online' ? '#10b981' : status === 'thinking' ? '#956834' : 'var(--text-muted)';
+                            const textColor = isDeep ? '#7c3aed' : status === 'online' ? '#10b981' : status === 'thinking' ? '#956834' : 'var(--text-muted)';
                             const label = isDeep ? '深度思考' : status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线';
                             return (
                               <div title="当前状态" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 500, background: bg, color: textColor, whiteSpace: 'nowrap' }}>
@@ -3263,7 +3264,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       {selectedGroup ? selectedGroup.name : selectedStudent.name}
                       {selectedGroup && groupMembersMap[selectedGroup.id] && (
                         <span style={{
-                          fontSize: "0.75rem", fontWeight: 500, color: '#94a3b8', marginLeft: 2,
+                          fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)', marginLeft: 2,
                         }}>
                           {groupMembersMap[selectedGroup.id].length} 人
                         </span>
@@ -3291,7 +3292,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
 
             {allRis.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 20px', borderBottom: '1px solid #eef2f6', background: '#fafbff' }}>
-                <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>投屏选择</span>
+                <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)' }}>投屏选择</span>
                 <button onClick={() => setSelectedRounds(allRis.every(ri => selectedRounds.includes(ri)) ? [] : [...allRis])}
                   style={{ fontSize: "0.875rem", color: 'var(--primary)', cursor: 'pointer', border: 'none', background: 'transparent', padding: 0, fontWeight: 500 }}>
                   {allRis.every(ri => selectedRounds.includes(ri)) ? '取消全选' : `全选 (${allRis.length - selectedRounds.length} / ${allRis.length})`}
@@ -3339,7 +3340,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                         style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid', borderColor: msgChecked[i] ? 'var(--primary)' : '#d1d5db', background: msgChecked[i] ? 'var(--primary)' : 'transparent', cursor: msgRounds[i] != null ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .12s', flexShrink: 0, opacity: msgRounds[i] != null ? 1 : 0 }}>
                         {msgChecked[i] && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                       </div>
-                      <div style={{ fontSize: "0.75rem", fontWeight: 600, color: m.role === 'user' ? 'var(--primary)' : '#64748b' }}>
+                      <div style={{ fontSize: "0.75rem", fontWeight: 600, color: m.role === 'user' ? 'var(--primary)' : 'var(--text-secondary)' }}>
                         {m.role === 'user' ? selectedStudent.name : 'AI'}
                       </div>
                     </div>
@@ -3365,7 +3366,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                     <div style={{ fontSize: "0.875rem", lineHeight: 1.6, wordBreak: 'break-word', color: '#1a1a2e' }}>
                       <Markdown>{m.fileUrls?.length ? stripImages(m.content) : m.content}</Markdown>
                     </div>
-                    <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginTop: 6, display: 'flex', gap: 8 }}>
+                    <div style={{ fontSize: "0.75rem", color: 'var(--text-muted)', marginTop: 6, display: 'flex', gap: 8 }}>
                       <span>{new Date(m.createdAt).toLocaleTimeString()}</span>
 
                     </div>
@@ -3518,12 +3519,12 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               <div style={{ fontSize: "1.25rem", fontWeight: 700, color: '#0f172a', letterSpacing: 1 }}>
                 {classroom?.title || '课堂'} · 学习展示
               </div>
-              <div style={{ fontSize: "0.813rem", color: '#94a3b8' }}>
+              <div style={{ fontSize: "0.813rem", color: 'var(--text-muted)' }}>
                 {selectedStudent?.name || ''} · {projMsgs.filter((m) => m.role === 'user').length} 轮对话
               </div>
             </div>
             <button onClick={() => setShowFullscreen(false)}
-              style={{ padding: '8px 20px', border: '1px solid #e2e8f0', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: "0.875rem", color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+              style={{ padding: '8px 20px', border: '1px solid #e2e8f0', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: "0.875rem", color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
               退出投屏
             </button>
@@ -3535,7 +3536,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             maxWidth: 1100, width: '100%', margin: '0 auto',
           }}>
             {messages.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 100, color: '#94a3b8', fontSize: "1.375rem" }}>
+              <div style={{ textAlign: 'center', padding: 100, color: 'var(--text-muted)', fontSize: "1.375rem" }}>
                 暂无对话记录
               </div>
             ) : (
@@ -3625,7 +3626,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           {/* 底部水印 */}
           <div style={{
             textAlign: 'center', padding: '12px 0',
-            fontSize: "0.813rem", color: '#cbd5e1',
+            fontSize: "0.813rem", color: 'var(--text-muted, #64748b)',
             borderTop: '1px solid #f1f5f9',
           }}>
             支点课堂 · 投屏展示
@@ -3681,7 +3682,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   已筛「{moduleLabelOf(effectiveModuleFilter)}」
                 </span>
               )}
-              <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>
+              <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)' }}>
                 {displayCards.length}{displayCards.length !== allDisplayCards.length ? ` / ${allDisplayCards.length}` : ''} {groupCards ? '个小组' : '名学生'}
               </span>
             </div>
@@ -3698,7 +3699,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           <div ref={fsContentRef} style={{ flex: 1, overflow: 'hidden', padding: '12px 20px', display: 'flex', flexDirection: 'column' }}>
             {/* 布局控制栏 */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>
+              <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)' }}>
                 {displayCards.length}{displayCards.length !== allDisplayCards.length ? ` / ${allDisplayCards.length}` : ''} {groupCards ? '个小组' : '名学生'} · {fsCols} 列（{Math.ceil(displayCards.length / fsCols)} 行）
               </span>
               <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -3706,7 +3707,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   style={{ padding: '2px 8px', borderRadius: 4, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: "0.875rem", color: '#475569', lineHeight: 1 }}>
                   −
                 </button>
-                <span style={{ fontSize: "0.75rem", color: '#64748b', padding: '0 6px', minWidth: 30, textAlign: 'center' }}>
+                <span style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', padding: '0 6px', minWidth: 30, textAlign: 'center' }}>
                   {fsCols}列
                 </span>
                 <button onClick={() => setFsCols(c => Math.min(8, c + 1))}
@@ -3721,11 +3722,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               alignContent: 'stretch',
             }}>
               {allDisplayCards.length === 0 ? (
-                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 80, color: '#94a3b8' }}>
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 80, color: 'var(--text-muted)' }}>
                   {groupCards ? '暂未分组' : '暂无学生加入'}
                 </div>
               ) : displayCards.length === 0 ? (
-                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 80, color: '#64748b' }}>
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 80, color: 'var(--text-secondary)' }}>
                   没有符合条件的学生
                 </div>
               ) : (
@@ -3819,7 +3820,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                   {item.group?.name || '(未命名)'}
                                 </span>
                               ) : (
-                                <>{student.name}{student.studentNo && <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8', marginLeft: 3 }}>#{student.studentNo}</span>}</>
+                                <>{student.name}{student.studentNo && <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', marginLeft: 3 }}>#{student.studentNo}</span>}</>
                               )}
                             </span>
                             <div style={{ marginLeft: 'auto', display: 'flex', gap: compact ? 2 : 3, flexShrink: 0 }}>
@@ -3841,7 +3842,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                       {showClear && (
                                         <button title={clearBusy ? '正在清除，请稍候' : '清除对话'} disabled={clearBusy !== null}
                                           onClick={(e) => { e.stopPropagation(); handleClearGroupMessages(item.members, item.group?.name || '该小组'); }}
-                                          style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
+                                          style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: 'var(--text-secondary)', padding: 0 }}>
                                           <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                                         </button>
                                       )}
@@ -3865,7 +3866,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                   {showClear && (
                                     <button title={clearBusy ? '正在清除，请稍候' : '清除对话'} disabled={clearBusy !== null}
                                       onClick={(e) => { e.stopPropagation(); handleClearMessages(sid, student.name); }}
-                                      style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
+                                      style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: 'var(--text-secondary)', padding: 0 }}>
                                       <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                                     </button>
                                   )}
@@ -3874,7 +3875,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                   {showWorksheetClear && (
                                     <button title="清除这个学生在这份学习单上的全部作答"
                                       onClick={(e) => { e.stopPropagation(); void clearWorksheetDataFor(cs.id, student.name, null); }}
-                                      style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#64748b', padding: 0 }}>
+                                      style={{ width: compact ? 16 : 18, height: compact ? 16 : 18, border: 'none', borderRadius: compact ? 2 : 3, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: 'var(--text-secondary)', padding: 0 }}>
                                       <svg width={compact ? 9 : 11} height={compact ? 9 : 11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>
                                     </button>
                                   )}
@@ -3900,8 +3901,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                 黑屏
                               </div>
                             )}
-                            <div title="当前状态" style={{ display: 'inline-flex', alignItems: 'center', gap: compact ? 2 : 3, padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: 12, fontWeight: 500, background: status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#faf4eb' : '#f1f5f9', color: status === 'online' ? '#10b981' : status === 'thinking' ? '#956834' : '#94a3b8', whiteSpace: 'nowrap' }}>
-                              <span style={{ width: compact ? 4 : 5, height: compact ? 4 : 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#956834' : '#94a3b8', display: 'inline-block' }} />
+                            <div title="当前状态" style={{ display: 'inline-flex', alignItems: 'center', gap: compact ? 2 : 3, padding: compact ? '0 5px' : '1px 7px', borderRadius: compact ? 4 : 6, fontSize: 12, fontWeight: 500, background: status === 'online' ? '#ecfdf5' : status === 'thinking' ? '#faf4eb' : '#f1f5f9', color: status === 'online' ? '#10b981' : status === 'thinking' ? '#956834' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                              <span style={{ width: compact ? 4 : 5, height: compact ? 4 : 5, borderRadius: '50%', background: status === 'online' ? '#10b981' : status === 'thinking' ? '#956834' : 'var(--text-muted)', display: 'inline-block' }} />
                               {status === 'online' ? '在线' : status === 'thinking' ? '思考' : '离线'}
                             </div>
                             <ModuleInitialChip module={tileModule} compact />
@@ -4023,7 +4024,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: '0 0 4px' }}>
                 {notifyState.groupId ? `发通知给「${notifyState.studentName || notifyState.groupId}」` : notifyState.studentId ? `发消息给 ${notifyState.studentName || notifyState.studentId}` : '发通知给全班'}
               </h3>
-              <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '0 0 14px' }}>
+              <p style={{ fontSize: "0.8125rem", color: 'var(--text-secondary)', margin: '0 0 14px' }}>
                 {notifyState.groupId ? '消息将出现在该组每位成员的对话页下方' : notifyState.studentId ? '消息将出现在该学生对话页下方' : '消息将出现在全班学生的对话页下方'}
               </p>
               {notifySent ? (
@@ -4053,7 +4054,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                     autoFocus
                   />
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-                    <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>Enter 发送 · Shift+Enter 换行</span>
+                    <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)' }}>Enter 发送 · Shift+Enter 换行</span>
                     <div style={{ display: 'flex', gap: 8 }}>
                     <button className="btn btn-secondary" onClick={() => setNotifyState({ show: false })} style={{ fontSize: "0.875rem", padding: '7px 18px' }}>取消</button>
                     <button className="btn btn-primary" onClick={sendNotification} disabled={!notifyText.trim() || notifySent}
@@ -4083,7 +4084,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         onClose={() => setSettingsDialog(null)}>
                 <div role="group" aria-label="探究空间画面">
                   <div style={{ padding: '6px 10px 4px', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>探究空间画面</div>
-                  <div style={{ padding: '0 10px 6px', fontSize: "0.75rem", color: '#94a3b8', lineHeight: 1.5 }}>
+                  <div style={{ padding: '0 10px 6px', fontSize: "0.75rem", color: 'var(--text-muted)', lineHeight: 1.5 }}>
                     采集学生探究网页的画面。设备跑不动时可以整个关掉。
                   </div>
                   <PermissionMenuItem label="显示学生网页画面"
@@ -4104,7 +4105,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   <div style={{ opacity: captureEnabled ? 1 : 0.45, cursor: captureEnabled ? 'default' : 'not-allowed' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 10px 4px', fontSize: '0.75rem', color: '#334155' }}>
                       <span style={{ flex: 1 }}>分辨率</span>
-                      {captureWidthBusy && <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>更新中...</span>}
+                      {captureWidthBusy && <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)' }}>更新中...</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 4, padding: '0 10px 6px' }}>
                       {WEBAPP_WIDTH_OPTIONS.map((option) => {
@@ -4120,12 +4121,12 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                         );
                       })}
                     </div>
-                    <div style={{ padding: '0 10px 8px', fontSize: "0.75rem", color: '#94a3b8', lineHeight: 1.5 }}>
+                    <div style={{ padding: '0 10px 8px', fontSize: "0.75rem", color: 'var(--text-muted)', lineHeight: 1.5 }}>
                       小字是每帧的实测体积，越大越清楚、传输也越重。
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 10px 4px', fontSize: '0.75rem', color: '#334155' }}>
                       <span style={{ flex: 1 }}>更新频率</span>
-                      {captureIntervalBusy && <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>更新中...</span>}
+                      {captureIntervalBusy && <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)' }}>更新中...</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 4, padding: '0 10px 4px' }}>
                       {WEBAPP_INTERVAL_OPTIONS.map((option) => {
@@ -4484,7 +4485,7 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
           </div>
           <button type="button" aria-label="展开统计面板" onClick={() => setCollapsed(false)}
             style={{ border: 0, background: 'transparent', padding: 2, cursor: 'pointer', display: 'inline-flex' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="18 15 12 9 6 15" />
             </svg>
           </button>
@@ -4515,7 +4516,7 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           {tabs}
-          <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400 }}>
+          <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)', fontWeight: 400 }}>
             {allMessages.length} 条消息 · {participantCount} 人参与
           </span>
         </div>
@@ -4524,7 +4525,7 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
             onClick={(e) => { e.stopPropagation(); loadAnalytics(); }}
             style={{
               background: '#f1f5f9', border: 'none', borderRadius: 6,
-              padding: '4px 10px', fontSize: "0.875rem", color: '#64748b',
+              padding: '4px 10px', fontSize: "0.875rem", color: 'var(--text-secondary)',
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
             }}
           >
@@ -4538,7 +4539,7 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
           <button type="button" aria-label="收起统计面板" aria-expanded
             onClick={() => setCollapsed(true)}
             style={{ border: 0, background: 'transparent', padding: 2, cursor: 'pointer', display: 'inline-flex' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
@@ -4557,14 +4558,14 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
           `}</style>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, paddingTop: 20 }}>
-            <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
                 display: 'inline-block', width: 8, height: 8, borderRadius: 2,
                 background: 'linear-gradient(135deg, #6366f1, #a78bfa)',
               }} />
               高频词云
               {words.length > 0 && (
-                <span style={{ fontSize: "0.75rem", fontWeight: 400, color: '#94a3b8', textTransform: 'none' }}>
+                <span style={{ fontSize: "0.75rem", fontWeight: 400, color: 'var(--text-muted)', textTransform: 'none' }}>
                   {words.length} 个热词
                 </span>
               )}
@@ -4576,7 +4577,7 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
                     padding: '3px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
                     fontSize: "0.875rem", fontWeight: cloudSource === key ? 600 : 400,
                     background: cloudSource === key ? 'var(--primary-tint)' : 'transparent',
-                    color: cloudSource === key ? 'var(--primary)' : '#94a3b8',
+                    color: cloudSource === key ? 'var(--primary)' : 'var(--text-muted)',
                     transition: 'all 0.12s',
                   }}>
                   {label}
@@ -4587,7 +4588,7 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
           {words.length === 0 ? (
             <div style={{
               flex: 1, minHeight: 200,
-              fontSize: "0.813rem", color: '#cbd5e1', textAlign: 'center',
+              fontSize: "0.813rem", color: 'var(--text-muted, #64748b)', textAlign: 'center',
               padding: 50, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, justifyContent: 'center',
             }}>
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
@@ -4623,19 +4624,19 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
         <div style={{ alignSelf: 'start', width: '100%', minWidth: 0 }}>
           {/* 活跃学生排名 */}
           <div style={{ padding: '16px 20px' }}>
-            <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <div style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
               活跃学生 TOP 10
             </div>
             <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {topStudents.list.length === 0 ? (
-                <div style={{ fontSize: "0.813rem", color: '#cbd5e1', textAlign: 'center', padding: 16 }}>暂无数据</div>
+                <div style={{ fontSize: "0.813rem", color: 'var(--text-muted, #64748b)', textAlign: 'center', padding: 16 }}>暂无数据</div>
               ) : (
                 topStudents.list.map((s, i) => (
                   <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{
                       width: 18, height: 18, borderRadius: 4,
                       background: i < 3 ? ['#f5ecdd', '#e5e7eb', '#fed7aa'][i] : '#f1f5f9',
-                      color: i < 3 ? ['#92400e', '#475569', '#9a3412'][i] : '#94a3b8',
+                      color: i < 3 ? ['#92400e', '#475569', '#9a3412'][i] : 'var(--text-muted)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
                     }}>
@@ -4652,12 +4653,12 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
                         width: `${(s.count / topStudents.maxCount) * 100}%`,
                         height: '100%', borderRadius: 3,
                         background: i < 3
-                          ? ['#956834', '#94a3b8', '#f97316'][i]
+                          ? ['#956834', 'var(--text-muted)', '#f97316'][i]
                           : '#a5b4fc',
                         transition: 'width 0.3s',
                       }} />
                     </div>
-                    <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap', minWidth: 40, textAlign: 'right' }}>
+                    <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap', minWidth: 40, textAlign: 'right' }}>
                       {s.count} 轮
                     </span>
                   </div>

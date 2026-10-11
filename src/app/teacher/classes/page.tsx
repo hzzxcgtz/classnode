@@ -14,7 +14,7 @@ type StudentSortField = 'studentNo' | 'name' | 'gender' | 'group';
 function SortIcon({ field, sortField, sortDir }: { field: StudentSortField; sortField: StudentSortField; sortDir: 'asc' | 'desc' }) {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-      stroke={sortField === field ? 'var(--primary)' : '#cbd5e1'}
+      stroke={sortField === field ? 'var(--primary)' : 'var(--classes-text-muted)'}
       strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
       {sortField === field && sortDir === 'asc'
         ? <polyline points="18 15 12 9 6 15" />
@@ -61,6 +61,29 @@ export default function ClassesPage() {
   const [studentAvatars, setStudentAvatars] = useState<Record<string, string>>({});
   const [classIconPicker, setClassIconPicker] = useState<string | null>(null);
   const [showClassSettings, setShowClassSettings] = useState(false);
+  const classSettingsRef = useRef<HTMLDivElement>(null);
+  const classSettingsButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!showClassSettings) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !classSettingsRef.current?.contains(event.target)) {
+        setShowClassSettings(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowClassSettings(false);
+        classSettingsButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [showClassSettings]);
   const [studentAvatarPicker, setStudentAvatarPicker] = useState<{ studentId: string; currentAvatarId?: number } | null>(null);
   const [allStudentAvatars, setAllStudentAvatars] = useState<AvatarSummary[]>([]);
   const [studentMarqueeRect, setStudentMarqueeRect] = useState<{left: number; top: number; width: number; height: number} | null>(null);
@@ -444,7 +467,7 @@ export default function ClassesPage() {
               </div>
               <div>
                 <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>创建班级</h2>
-                <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '2px 0 0' }}>输入新班级名称</p>
+                <p style={{ fontSize: "0.8125rem", color: 'var(--classes-text-secondary)', margin: '2px 0 0' }}>输入新班级名称</p>
               </div>
             </div>
             <input className="input" value={newClassName} onChange={e => setNewClassName(e.target.value)}
@@ -453,7 +476,7 @@ export default function ClassesPage() {
             {/* 班级图标选择 */}
             {classIconList.length > 0 && (
               <div style={{ marginTop: 16 }}>
-                <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 6, display: 'block' }}>班级图标（可选）</label>
+                <label style={{ fontSize: "0.875rem", color: 'var(--classes-text-secondary)', marginBottom: 6, display: 'block' }}>班级图标（可选）</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {classIconList.map(icon => (
                     <div key={icon.id}
@@ -547,7 +570,7 @@ export default function ClassesPage() {
                   </svg>
                 </div>
                 <h3 style={{ fontSize: "1.063rem", fontWeight: 700, margin: '0 0 4px' }}>无法删除班级</h3>
-                <p style={{ fontSize: "0.813rem", color: '#64748b', margin: 0 }}>
+                <p style={{ fontSize: "0.813rem", color: 'var(--classes-text-secondary)', margin: 0 }}>
                   该班级正在被以下课堂使用中，请先删除关联的课堂后再试。
                 </p>
               </div>
@@ -567,12 +590,7 @@ export default function ClassesPage() {
                       <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" />
                     </svg>
                     {cr.title}
-                    <span style={{
-                      fontSize: "0.75rem", padding: '1px 6px', borderRadius: 4,
-                      background: cr.status === 'active' ? '#dcfce7' : cr.status === 'paused' ? '#f5ecdd' : '#f1f5f9',
-                      color: cr.status === 'active' ? '#3f7859' : cr.status === 'paused' ? '#956834' : '#94a3b8',
-                      marginLeft: 'auto',
-                    }}>
+                    <span className={`teacher-state is-${cr.status === 'active' ? 'healthy' : cr.status === 'paused' ? 'warning' : 'muted'}`} style={{ marginLeft: 'auto' }}>
                       {cr.status === 'active' ? '进行中' : cr.status === 'paused' ? '已暂停' : '已结束'}
                     </span>
                   </div>
@@ -625,14 +643,14 @@ export default function ClassesPage() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
                     更换图标
                   </button>
-                  <div className="classes-settings-wrap">
-                    <button type="button" className="btn btn-secondary" aria-expanded={showClassSettings}
+                  <div className="classes-settings-wrap" ref={classSettingsRef}>
+                    <button ref={classSettingsButtonRef} type="button" className="btn btn-secondary" aria-expanded={showClassSettings} aria-controls="class-settings-options"
                       onClick={() => setShowClassSettings(previous => !previous)}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.1A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3V9.6h.1A1.7 1.7 0 0 0 4.6 8.5a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.5 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.08.38.3.73.6 1 .3.27.68.4 1.1.4h.1v4h-.1a1.7 1.7 0 0 0-1.7.6Z"/></svg>
                       班级设置
                     </button>
                     {showClassSettings && (
-                      <div className="classes-settings-menu">
+                      <div id="class-settings-options" className="classes-settings-menu">
                         <button type="button" onClick={() => { setEditingClassName(selectedClass); setShowClassSettings(false); }}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                           重命名班级
@@ -649,7 +667,7 @@ export default function ClassesPage() {
               </div>
 
               <div className="classes-workspace-tabs">
-                <TeacherPageTabs value={tabMode} onChange={setTabMode} items={[
+                <TeacherPageTabs variant="connected" value={tabMode} onChange={setTabMode} items={[
                   { value: 'students', label: '学生列表', badge: students.length, icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg> },
                   { value: 'groups', label: '分组管理', badge: classGroups.length, icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg> },
                 ]} />
@@ -657,7 +675,7 @@ export default function ClassesPage() {
 
               {/* 学生列表模式下的操作按钮 / 批量操作栏 */}
               {tabMode === 'students' && (
-                <div className="classes-action-bar teacher-list-toolbar" style={{ display: 'flex', gap: 8, padding: '10px 20px 14px', alignItems: 'center' }}>
+                <div className="classes-action-bar teacher-list-toolbar">
                   {selectedStudentIds.size > 0 ? (
                     <>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -666,12 +684,12 @@ export default function ClassesPage() {
                       </span>
                       <button onClick={() => setSelectedStudentIds(new Set())}
                         style={{
-                          background: 'transparent', border: 'none', color: '#64748b',
+                          background: 'transparent', border: 'none', color: 'var(--classes-text-secondary)',
                           fontSize: "0.875rem", cursor: 'pointer', padding: '2px 6px',
                           textDecoration: 'underline', textUnderlineOffset: 2,
                         }}>取消选择</button>
                       <div style={{ flex: 1 }} />
-                      <span style={{ color: '#94a3b8', fontSize: "0.75rem", fontWeight: 500, marginRight: 6 }}>批量操作 →</span>
+                      <span style={{ color: 'var(--classes-text-muted)', fontSize: "0.75rem", fontWeight: 500, marginRight: 6 }}>批量操作 →</span>
                       <button onClick={() => setBatchEditModal({ type: 'tag' })} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, background: 'white', color: 'var(--primary)', border: '1px solid #bfdbfe', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         修改标签
@@ -682,11 +700,11 @@ export default function ClassesPage() {
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="11" x2="23" y2="11"/></svg>
                         {batchAction === 'remove' ? '移出中...' : '移出班级'}
                       </button>
-                      <button onClick={() => void runBatchStudentAction('delete')} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, background: 'white', color: '#a85d5d', border: '1px solid #fca5a5', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => void runBatchStudentAction('delete')} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, background: 'white', color: '#994646', border: '1px solid #fca5a5', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         {batchAction === 'delete' ? '删除中...' : '彻底删除'}
                       </button>
-                      <button onClick={() => void handleBatchClearAvatars()} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, background: 'white', color: '#956834', border: '1px solid #fcd34d', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <button onClick={() => void handleBatchClearAvatars()} disabled={batchAction !== null} style={{ padding: '8px 20px', borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, background: 'white', color: '#805620', border: '1px solid #fcd34d', cursor: batchAction ? 'not-allowed' : 'pointer', opacity: batchAction ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         {batchAction === 'avatars' ? '清除中...' : '清除头像'}
                       </button>
@@ -723,12 +741,8 @@ export default function ClassesPage() {
                       </div>
                       <div className="classes-primary-actions">
                         <button className="btn btn-secondary" style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 4 }}
-                          onClick={() => setAddStudentMode(addStudentMode === 'form' ? null : 'form')}>
-                          {addStudentMode === 'form' ? (
-                            <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>收起添加</>
-                          ) : (
-                            <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>逐个添加</>
-                          )}
+                          onClick={() => setAddStudentMode('form')}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>逐个添加
                         </button>
                         <button className="btn btn-primary" style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 4 }}
                           onClick={() => setAddStudentMode(addStudentMode === 'paste' ? null : 'paste')}>
@@ -761,27 +775,17 @@ export default function ClassesPage() {
 
               {/* 添加学生区域 */}
               {addStudentMode === 'form' && (
-                <div style={{
-                  padding: '14px 20px', background: '#f8fafc',
-                  borderBottom: '1px solid #eef2f6',
-                }}>
-                  <AddStudentForm classId={selectedClass} onClose={() => setAddStudentMode(null)}
-                    onAdded={() => { loadStudents(); loadClasses(); }} />
-                </div>
+                <AddStudentForm classId={selectedClass} onClose={() => setAddStudentMode(null)}
+                  onAdded={() => { loadStudents(); loadClasses(); }} setToast={setToast} />
               )}
               {addStudentMode === 'paste' && (
-                <div style={{
-                  padding: '14px 20px', background: '#f8fafc',
-                  borderBottom: '1px solid #eef2f6',
-                }}>
-                  <PasteStudentNames classId={selectedClass} onClose={() => setAddStudentMode(null)}
-                    onAdded={() => { setAddStudentMode(null); loadStudents(); loadClasses(); }} setToast={setToast} />
-                </div>
+                <PasteStudentNames classId={selectedClass} onClose={() => setAddStudentMode(null)}
+                  onAdded={() => { setAddStudentMode(null); loadStudents(); loadClasses(); }} setToast={setToast} />
               )}
 
               {/* 内容区域 */}
               {tabMode === 'students' ? (
-                <div style={{ padding: 0 }}>
+                <div className="classes-student-content" style={{ padding: 0 }}>
                   {(studentSearch || studentGroupFilter !== 'all') && students.length > 0 && (
                     <div className="classes-filter-summary">
                       <span>找到 <strong>{sortedStudents.length}</strong> 名学生</span>
@@ -894,7 +898,7 @@ export default function ClassesPage() {
                                   style={{ width: 15, height: 15, cursor: 'pointer' }} />
                               </label>
                             </td>
-                            <td style={{ textAlign: 'center', color: s.studentNo ? 'var(--primary)' : '#cbd5e1', fontSize: "0.875rem", fontWeight: 600, fontFamily: 'monospace' }}>
+                            <td style={{ textAlign: 'center', color: s.studentNo ? 'var(--primary)' : 'var(--classes-text-muted)', fontSize: "0.875rem", fontWeight: 600, fontFamily: 'monospace' }}>
                               {s.studentNo || '-'}
                             </td>
                             <td onClick={() => { setSelectedStudentIds(prev => { const next = new Set(prev); if (next.has(s.id)) next.delete(s.id); else next.add(s.id); return next; }); }} style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
@@ -915,24 +919,24 @@ export default function ClassesPage() {
                                   </div>
                                 )}
                                 <div style={{ position: 'absolute', right: -3, bottom: -3, background: '#fff', borderRadius: '50%', width: 12, height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0' }}>
-                                  <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                  <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="var(--classes-text-muted)" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                 </div>
                               </div>
                               {s.name}
                               {s.avatarChangeTokens > 0 && (
-                                <span title="可换头像次数" style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 4, padding: '0 4px', borderRadius: 4, background: '#faf4eb', color: '#956834', fontSize: "0.75rem", fontWeight: 700 }}>
+                                <span title="可换头像次数" style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 4, padding: '0 4px', borderRadius: 4, background: '#faf4eb', color: '#805620', fontSize: "0.75rem", fontWeight: 700 }}>
                                   <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                                   {s.avatarChangeTokens}
                                 </span>
                               )}
                             </td>
                             <td style={{ textAlign: 'center', fontSize: "0.875rem", fontWeight: 500 }}>
-                              {s.gender === 'boy' ? <span style={{ color: '#475569' }}>男</span> : s.gender === 'girl' ? <span style={{ color: '#475569' }}>女</span> : <span style={{ color: '#e2e8f0' }}>-</span>}
+                              {s.gender === 'boy' ? <span style={{ color: '#475569' }}>男</span> : s.gender === 'girl' ? <span style={{ color: '#475569' }}>女</span> : <span style={{ color: 'var(--classes-text-muted)' }}>-</span>}
                             </td>
                             <td>
                               {(() => {
                                 const groupName = studentGroupMap.get(s.id);
-                                if (!groupName) return <span style={{ color: '#e2e8f0', fontSize: "0.75rem" }}>-</span>;
+                                if (!groupName) return <span style={{ color: 'var(--classes-text-muted)', fontSize: "0.75rem" }}>-</span>;
                                 const ci = groupColorMap.get(groupName) ?? 0;
                                 const color = GROUP_COLORS[ci % GROUP_COLORS.length];
                                 return (
@@ -957,7 +961,7 @@ export default function ClassesPage() {
                                   {s.tag}
                                 </span>
                               ) : (
-                                <span style={{ color: '#e2e8f0', fontSize: "0.75rem" }}>-</span>
+                                <span style={{ color: 'var(--classes-text-muted)', fontSize: "0.75rem" }}>-</span>
                               )}
                             </td>
                             <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
@@ -966,10 +970,10 @@ export default function ClassesPage() {
                                 style={{
                                   background: 'transparent', border: 'none', cursor: 'pointer',
                                   padding: '4px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center',
-                                  color: '#94a3b8',
+                                  color: 'var(--classes-text-muted)',
                                 }}
-                                onMouseEnter={e => { e.currentTarget.style.color = '#a85d5d'; e.currentTarget.style.background = '#f8eeee'; }}
-                                onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}>
+                                onMouseEnter={e => { e.currentTarget.style.color = '#994646'; e.currentTarget.style.background = '#f8eeee'; }}
+                                onMouseLeave={e => { e.currentTarget.style.color = 'var(--classes-text-muted)'; e.currentTarget.style.background = 'transparent'; }}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="17" y1="9" x2="22" y2="14"/><line x1="22" y1="9" x2="17" y2="14"/></svg>
                               </button>
                               <button title="奖励一次头像更换权限（学生可在对话页自行兑换）"
@@ -992,7 +996,7 @@ export default function ClassesPage() {
                                 style={{
                                   background: 'transparent', border: 'none', cursor: 'pointer',
                                   padding: '4px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center',
-                                  color: '#956834',
+                                  color: '#805620',
                                 }}
                                 onMouseEnter={e => { e.currentTarget.style.background = '#faf4eb'; }}
                                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
@@ -1017,7 +1021,7 @@ export default function ClassesPage() {
                                 style={{
                                   background: 'transparent', border: 'none', cursor: 'pointer',
                                   padding: '4px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center',
-                                  color: '#64748b',
+                                  color: 'var(--classes-text-secondary)',
                                 }}
                                 onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
                                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
@@ -1028,7 +1032,7 @@ export default function ClassesPage() {
                                 style={{
                                   background: 'transparent', border: 'none', cursor: 'pointer',
                                   padding: '4px 6px', borderRadius: 6, display: 'inline-flex', alignItems: 'center',
-                                  color: '#a85d5d',
+                                  color: '#994646',
                                 }}
                                 onMouseEnter={e => { e.currentTarget.style.background = '#f8eeee'; }}
                                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
@@ -1130,12 +1134,12 @@ export default function ClassesPage() {
                 background: '#f1f5f9', margin: '0 auto 12px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--classes-text-muted)" strokeWidth="1.5" strokeLinecap="round">
                   <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
               </div>
               <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>选择一个班级</p>
-              <p style={{ fontSize: "0.813rem", color: '#94a3b8', margin: 0 }}>从上方选择班级后即可管理学生名单</p>
+              <p style={{ fontSize: "0.813rem", color: 'var(--classes-text-muted)', margin: 0 }}>从上方选择班级后即可管理学生名单</p>
             </div>
           ))}
         </div>
@@ -1145,58 +1149,88 @@ export default function ClassesPage() {
   );
 }
 
-function AddStudentForm({ classId, onClose, onAdded }: { classId: string; onClose: () => void; onAdded: () => void }) {
+function AddStudentForm({ classId, onClose, onAdded, setToast }: {
+  classId: string; onClose: () => void; onAdded: () => void;
+  setToast: (t: { msg: string; type: 'success' | 'error' } | null) => void;
+}) {
   const [name, setName] = useState('');
   const [gender, setGender] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [addedCount, setAddedCount] = useState(0);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const savingRef = useRef(false);
+
+  useEffect(() => {
+    const trigger = document.activeElement;
+    nameRef.current?.focus();
+    return () => { if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus(); };
+  }, []);
+
+  useEffect(() => { if (!saving) nameRef.current?.focus(); }, [saving]);
 
   const handleAdd = async () => {
-    if (!name) return;
-    await api.addStudent(classId, { name, gender: gender || undefined });
-    setName('');
-    onAdded();
+    if (!name.trim() || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await api.addStudent(classId, { name: name.trim(), gender: gender || undefined });
+      setName('');
+      setAddedCount(count => count + 1);
+      onAdded();
+    } catch (error: unknown) {
+      setToast({ msg: '添加失败: ' + (error instanceof Error ? error.message : '请求异常'), type: 'error' });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   return (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-      <div style={{ width: 180 }}>
-        <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 3, display: 'block' }}>姓名 *</label>
-        <input className="input" value={name} onChange={e => setName(e.target.value)}
-          placeholder="学生姓名" style={{ fontSize: "0.875rem" }}
-          onKeyDown={e => e.key === 'Enter' && handleAdd()} autoFocus />
-      </div>
-      <div>
-        <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 3, display: 'block' }}>性别</label>
-        <div style={{ display: 'flex', gap: 2, alignItems: 'center', height: 38 }}>
-          {[
-            { value: '', label: '未知' },
-            { value: 'boy', label: '男孩' },
-            { value: 'girl', label: '女孩' },
-          ].map(g => (
-            <label key={g.value} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 3,
-              padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
-              background: gender === g.value ? (g.value === 'boy' ? 'var(--primary-tint)' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
-              color: gender === g.value ? (g.value === 'boy' ? 'var(--primary)' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
-              fontSize: "0.875rem", fontWeight: gender === g.value ? 600 : 400,
-            }}>
-              <input type="radio" name="gender" value={g.value}
-                checked={gender === g.value}
-                onChange={e => setGender(e.target.value)}
-                style={{ width: 14, height: 14, margin: 0, cursor: 'pointer' }} />
-              {g.label}
-            </label>
-          ))}
+    <div className="modal-overlay" onClick={() => { if (!savingRef.current) onClose(); }}>
+      <div className="modal-content teacher-dialog" style={{ maxWidth: 440, padding: 24 }}
+        role="dialog" aria-modal="true" aria-labelledby="add-student-title"
+        onClick={e => e.stopPropagation()}
+        onKeyDown={e => {
+          if (e.key === 'Escape') { e.stopPropagation(); if (!savingRef.current) onClose(); }
+          if (e.key === 'Tab') {
+            const controls = e.currentTarget.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled)');
+            const first = controls[0]; const last = controls[controls.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+          }
+        }}>
+        <h3 id="add-student-title" style={{ fontSize: '1rem', fontWeight: 600, color: '#0f172a', margin: '0 0 6px' }}>逐个添加学生</h3>
+        <p style={{ fontSize: '0.875rem', color: 'var(--classes-text-secondary)', margin: '0 0 20px' }}>添加后可继续输入下一名学生，按回车即可添加。</p>
+        <label htmlFor="add-student-name" style={{ fontSize: '0.875rem', color: '#475569', marginBottom: 6, display: 'block' }}>姓名 *</label>
+        <input id="add-student-name" ref={nameRef} className="input" value={name} disabled={saving}
+          onChange={e => setName(e.target.value)} placeholder="学生姓名" style={{ fontSize: '0.875rem' }}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void handleAdd(); } }} />
+        <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: '16px 0 0' }}>
+          <legend style={{ fontSize: '0.875rem', color: '#475569', marginBottom: 6 }}>性别</legend>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {[{ value: '', label: '未知' }, { value: 'boy', label: '男孩' }, { value: 'girl', label: '女孩' }].map(g => (
+              <label key={g.value} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 6,
+                cursor: saving ? 'default' : 'pointer',
+                background: gender === g.value ? 'var(--primary-tint)' : 'transparent',
+                color: gender === g.value ? 'var(--primary)' : '#475569',
+                fontSize: '0.875rem', fontWeight: gender === g.value ? 600 : 400,
+              }}>
+                <input type="radio" name="add-student-gender" value={g.value} checked={gender === g.value}
+                  onChange={e => setGender(e.target.value)} style={{ width: 14, height: 14, margin: 0, accentColor: 'var(--primary)' }} />
+                {g.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 24 }}>
+          <span role="status" style={{ fontSize: '0.875rem', color: '#475569' }}>{addedCount > 0 ? `已添加 ${addedCount} 名学生` : ''}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost" onClick={onClose} disabled={saving}>取消</button>
+            <button className="btn btn-primary" onClick={handleAdd} disabled={saving || !name.trim()}>{saving ? '添加中...' : '添加'}</button>
+          </div>
         </div>
       </div>
-      <button className="btn btn-primary" onClick={handleAdd}
-        style={{ height: 38, display: 'flex', alignItems: 'center', gap: 4 }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-        添加
-      </button>
-      <button className="btn btn-ghost" onClick={onClose} style={{ height: 38, display: 'flex', alignItems: 'center', gap: 4 }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-        完成
-      </button>
     </div>
   );
 }
@@ -1215,11 +1249,18 @@ function parseNameGender(line: string): { name: string; gender?: string } {
 function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: string; onClose: () => void; onAdded: () => void; setToast: (t: { msg: string; type: 'success' | 'error' } | null) => void }) {
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const trigger = document.activeElement;
+    textareaRef.current?.focus();
+    return () => { if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus(); };
+  }, []);
 
   const parsed = text.split('\n').map(s => s.trim()).filter(Boolean).map(parseNameGender);
 
   const handleSubmit = async () => {
-    if (parsed.length === 0) return;
+    if (saving || parsed.length === 0) return;
     setSaving(true);
     try {
       await api.batchCreateStudentsFromNames(classId, parsed);
@@ -1231,7 +1272,18 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
   };
 
   return (
-    <div>
+    <div className="modal-overlay" onClick={() => { if (!saving) onClose(); }}>
+      <div className="modal-content teacher-dialog classes-paste-dialog" role="dialog" aria-modal="true" aria-labelledby="paste-students-title"
+        onClick={e => e.stopPropagation()}
+        onKeyDown={e => {
+          if (e.key === 'Escape') { e.stopPropagation(); if (!saving) onClose(); }
+          if (e.key === 'Tab') {
+            const controls = e.currentTarget.querySelectorAll<HTMLElement>('textarea:not(:disabled), button:not(:disabled)');
+            const first = controls[0]; const last = controls[controls.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+          }
+        }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         marginBottom: 10,
@@ -1246,34 +1298,37 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
           </svg>
         </div>
         <div>
-          <div style={{ fontSize: "0.813rem", fontWeight: 600, color: '#0f172a' }}>粘贴名单</div>
-          <div style={{ fontSize: "0.75rem", color: '#64748b' }}>每行一个姓名，可附带性别（用空格、逗号分隔），如：张三 男</div>
+          <h3 id="paste-students-title" style={{ fontSize: "1rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>粘贴名单</h3>
+          <div style={{ fontSize: "0.75rem", color: 'var(--classes-text-secondary)' }}>每行一个姓名，可附带性别（用空格、逗号分隔），如：张三 男</div>
         </div>
       </div>
 
       <textarea
         className="input"
+        ref={textareaRef}
+        aria-label="学生名单"
+        disabled={saving}
         value={text}
         onChange={e => setText(e.target.value)}
         placeholder={`张三 男\n李四 女\n王五\n赵六 女`}
         style={{
-          height: 100, resize: 'vertical', fontSize: "0.875rem",
+          height: 150, resize: 'vertical', fontSize: "0.875rem",
           fontFamily: 'monospace', lineHeight: 1.7,
         }}
       />
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 16 }}>
         <div style={{
-          fontSize: "0.75rem", color: parsed.length > 0 ? 'var(--primary)' : '#94a3b8',
+          fontSize: "0.75rem", color: parsed.length > 0 ? 'var(--primary)' : 'var(--classes-text-muted)',
           fontWeight: parsed.length > 0 ? 600 : 400,
         }}>
           共识别 {parsed.length} 名学生
           {parsed.filter(p => p.gender).length > 0 && (
-            <span style={{ color: '#64748b', fontWeight: 400 }}>（{parsed.filter(p => p.gender === 'boy').length} 男，{parsed.filter(p => p.gender === 'girl').length} 女）</span>
+            <span style={{ color: 'var(--classes-text-secondary)', fontWeight: 400 }}>（{parsed.filter(p => p.gender === 'boy').length} 男，{parsed.filter(p => p.gender === 'girl').length} 女）</span>
           )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost" onClick={onClose} style={{ fontSize: "0.875rem" }}>取消</button>
+          <button className="btn btn-ghost" onClick={onClose} disabled={saving} style={{ fontSize: "0.875rem" }}>取消</button>
           <button className="btn btn-primary" onClick={handleSubmit} disabled={saving || parsed.length === 0}
             style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 4 }}>
             {saving ? '创建中...' : (
@@ -1284,6 +1339,7 @@ function PasteStudentNames({ classId, onClose, onAdded, setToast }: { classId: s
             )}
           </button>
         </div>
+      </div>
       </div>
     </div>
   );
@@ -1341,24 +1397,24 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
           )}
           <div>
             <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>编辑学生</h2>
-            <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '2px 0 0' }}>修改学生信息</p>
+            <p style={{ fontSize: "0.8125rem", color: 'var(--classes-text-secondary)', margin: '2px 0 0' }}>修改学生信息</p>
           </div>
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 4, display: 'block' }}>学号</label>
+          <label style={{ fontSize: "0.875rem", color: 'var(--classes-text-secondary)', marginBottom: 4, display: 'block' }}>学号</label>
           <input className="input" value={studentNo} onChange={e => setStudentNo(e.target.value)}
             placeholder="不填则自动生成" />
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 4, display: 'block' }}>姓名 *</label>
+          <label style={{ fontSize: "0.875rem", color: 'var(--classes-text-secondary)', marginBottom: 4, display: 'block' }}>姓名 *</label>
           <input className="input" value={name} onChange={e => setName(e.target.value)}
             placeholder="学生姓名" onKeyDown={e => e.key === 'Enter' && handleSave()} autoFocus />
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 4, display: 'block' }}>性别</label>
+          <label style={{ fontSize: "0.875rem", color: 'var(--classes-text-secondary)', marginBottom: 4, display: 'block' }}>性别</label>
           <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             {[
               { value: '', label: '未知' },
@@ -1369,7 +1425,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
                 display: 'inline-flex', alignItems: 'center', gap: 3,
                 padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
                 background: gender === g.value ? (g.value === 'boy' ? 'var(--primary-tint)' : g.value === 'girl' ? '#fce4ec' : '#f1f5f9') : 'transparent',
-                color: gender === g.value ? (g.value === 'boy' ? 'var(--primary)' : g.value === 'girl' ? '#e91e63' : '#475569') : '#94a3b8',
+                color: gender === g.value ? (g.value === 'boy' ? 'var(--primary)' : g.value === 'girl' ? '#e91e63' : '#475569') : 'var(--classes-text-muted)',
                 fontSize: "0.875rem", fontWeight: gender === g.value ? 600 : 400,
               }}>
                 <input type="radio" name="edit-gender" value={g.value}
@@ -1385,7 +1441,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
         {/* 学生头像选择 */}
         {avatars.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 6, display: 'block' }}>头像</label>
+            <label style={{ fontSize: "0.875rem", color: 'var(--classes-text-secondary)', marginBottom: 6, display: 'block' }}>头像</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 140, overflowY: 'auto', overscrollBehavior: 'contain', padding: '4px 0' }}>
               <div key="none"
                 onClick={() => setAvatarId(null)}
@@ -1393,7 +1449,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
                   width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
                   border: `2px solid ${!avatarId ? 'var(--primary)' : '#e2e8f0'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: '#f1f5f9', fontSize: "0.75rem", color: '#94a3b8', flexShrink: 0,
+                  background: '#f1f5f9', fontSize: "0.75rem", color: 'var(--classes-text-muted)', flexShrink: 0,
                 }} title="清除头像">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </div>
@@ -1413,7 +1469,7 @@ function EditStudentModal({ student, studentAvatars, classId, onClose, onSaved, 
         )}
 
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 4, display: 'block' }}>标签</label>
+          <label style={{ fontSize: "0.875rem", color: 'var(--classes-text-secondary)', marginBottom: 4, display: 'block' }}>标签</label>
           <input className="input" value={tag} onChange={e => setTag(e.target.value)}
             placeholder="如：组长、课代表" />
         </div>
@@ -1458,17 +1514,17 @@ function BatchEditTagModal({ classId, studentIds, studentNames, onClose, onSaved
           </div>
           <div>
             <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0 }}>批量修改标签</h2>
-            <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '2px 0 0' }}>
+            <p style={{ fontSize: "0.8125rem", color: 'var(--classes-text-secondary)', margin: '2px 0 0' }}>
               已选中 {studentIds.length} 名学生：{studentNames.join('、')}
             </p>
           </div>
         </div>
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: "0.875rem", color: '#64748b', marginBottom: 4, display: 'block' }}>标签</label>
+          <label style={{ fontSize: "0.875rem", color: 'var(--classes-text-secondary)', marginBottom: 4, display: 'block' }}>标签</label>
           <input className="input" value={tag} onChange={e => setTag(e.target.value)}
             placeholder="输入标签，如：组长、课代表"
             onKeyDown={e => e.key === 'Enter' && handleSave()} autoFocus />
-          <p style={{ fontSize: "0.8125rem", color: '#94a3b8', marginTop: 6, lineHeight: 1.5 }}>
+          <p style={{ fontSize: "0.8125rem", color: 'var(--classes-text-muted)', marginTop: 6, lineHeight: 1.5 }}>
             留空则清空选中学生的标签。
           </p>
         </div>
@@ -1515,10 +1571,10 @@ function BatchEditGenderModal({ classId, studentIds, studentNames, onClose, onSa
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
           </div>
           <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>批量设置性别</h2>
-          <p style={{ fontSize: "0.813rem", color: '#64748b', margin: 0 }}>
+          <p style={{ fontSize: "0.813rem", color: 'var(--classes-text-secondary)', margin: 0 }}>
             已选中 <strong style={{ color: '#0f172a' }}>{studentIds.length}</strong> 名学生
           </p>
-          <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginTop: 4, maxHeight: 28, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: "0.75rem", color: 'var(--classes-text-muted)', marginTop: 4, maxHeight: 28, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {studentNames.join('、')}
           </div>
         </div>
@@ -1536,13 +1592,13 @@ function BatchEditGenderModal({ classId, studentIds, studentNames, onClose, onSa
                   cursor: 'pointer', transition: 'all 0.12s',
                   textAlign: 'center',
                 }}>
-                <div style={{ fontSize: "1.5rem", fontWeight: 700, color: gender === g.value ? g.color : '#94a3b8', marginBottom: 4 }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 700, color: gender === g.value ? g.color : 'var(--classes-text-muted)', marginBottom: 4 }}>
                   {g.icon}
                 </div>
-                <div style={{ fontSize: "0.875rem", fontWeight: 600, color: gender === g.value ? g.color : '#64748b' }}>
+                <div style={{ fontSize: "0.875rem", fontWeight: 600, color: gender === g.value ? g.color : 'var(--classes-text-secondary)' }}>
                   {g.label}
                 </div>
-                <div style={{ fontSize: "0.75rem", color: gender === g.value ? g.color : '#94a3b8', marginTop: 2 }}>
+                <div style={{ fontSize: "0.75rem", color: gender === g.value ? g.color : 'var(--classes-text-muted)', marginTop: 2 }}>
                   {g.desc}
                 </div>
               </button>
@@ -1583,7 +1639,7 @@ function StudentAvatarPickerModal({ classId, studentId, currentAvatarId, avatars
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>选择头像</h3>
-        <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '0 0 16px' }}>点击头像选中，确认后更换</p>
+        <p style={{ fontSize: "0.8125rem", color: 'var(--classes-text-secondary)', margin: '0 0 16px' }}>点击头像选中，确认后更换</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16, maxHeight: 300, overflowY: 'auto', overscrollBehavior: 'contain', padding: '4px 0' }}>
           <div key="none" onClick={() => setSelected(null)}
             style={{
@@ -1591,7 +1647,7 @@ function StudentAvatarPickerModal({ classId, studentId, currentAvatarId, avatars
               border: `2px solid ${!selected ? 'var(--primary)' : '#e2e8f0'}`,
               background: '#f1f5f9', flexShrink: 0,
             }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--classes-text-muted)" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </div>
           {avatars.map(av => (
             <div key={av.id} onClick={() => setSelected(selected === av.id ? null : av.id)}
@@ -1637,7 +1693,7 @@ function ClassIconPickerModal({ classId, currentAvatarId, onClose, onSaved, setT
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content teacher-dialog" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 24 }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 600, margin: '0 0 4px' }}>选择班级图标</h3>
-        <p style={{ fontSize: "0.8125rem", color: '#64748b', margin: '0 0 16px' }}>点击图标选中，确认后更新</p>
+        <p style={{ fontSize: "0.8125rem", color: 'var(--classes-text-secondary)', margin: '0 0 16px' }}>点击图标选中，确认后更新</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, maxHeight: 300, overflowY: 'auto', overscrollBehavior: 'contain' }}>
           <div key="none" onClick={() => setSelected(null)}
             style={{
@@ -1645,7 +1701,7 @@ function ClassIconPickerModal({ classId, currentAvatarId, onClose, onSaved, setT
               border: `2px solid ${!selected ? 'var(--primary)' : '#e2e8f0'}`,
               background: '#f1f5f9', flexShrink: 0,
             }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--classes-text-muted)" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </div>
           {icons.map(icon => (
             <div key={icon.id} onClick={() => setSelected(selected === icon.id ? null : icon.id)}
@@ -1902,14 +1958,11 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      {/* 添加分组 - 紧凑放在顶部 */}
-      <div style={{
-        display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16,
-        padding: '10px 14px', background: '#f8fafc', borderRadius: 8,
-      }}>
+    <div className="classes-group-workspace">
+      {/* 与学生列表共用操作栏样式。 */}
+      <div className="classes-action-bar classes-group-toolbar">
         <input className="input" value={newGroupName} onChange={e => setNewGroupName(e.target.value)}
-          placeholder="新分组名称，回车添加" style={{ width: 200, fontSize: "0.875rem" }}
+          placeholder="新分组名称，回车添加" style={{ fontSize: "0.875rem" }}
           onKeyDown={e => e.key === 'Enter' && handleCreateGroup()} />
         <button className="btn btn-primary" onClick={handleCreateGroup}
           style={{ fontSize: "0.875rem", display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
@@ -1917,12 +1970,13 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
           添加分组
         </button>
         {groups.length > 0 && (
-          <span style={{ fontSize: "0.75rem", color: '#94a3b8', marginLeft: 'auto' }}>
+          <span style={{ fontSize: "0.75rem", color: 'var(--classes-text-muted)', marginLeft: 'auto' }}>
             共 {groups.length} 组，{students.length} 人
           </span>
         )}
       </div>
 
+      <div className="classes-group-content">
       {/* 分组列表 — 网格布局，每行2列 */}
       {groups.length > 0 && (
         <div style={{
@@ -1970,9 +2024,9 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                         <span style={{ fontSize: "0.875rem", fontWeight: 600, color: color.text }}>{g.name}</span>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                           strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-                          style={{ flexShrink: 0, stroke: '#cbd5e1', transition: 'stroke 0.12s' }}
+                          style={{ flexShrink: 0, stroke: 'var(--classes-text-muted)', transition: 'stroke 0.12s' }}
                           onMouseEnter={e => e.currentTarget.style.stroke = color.badge}
-                          onMouseLeave={e => e.currentTarget.style.stroke = '#cbd5e1'}>
+                          onMouseLeave={e => e.currentTarget.style.stroke = 'var(--classes-text-muted)'}>
                           <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                           <path d="M14 6l4 4" />
                         </svg>
@@ -1983,12 +2037,12 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                       <button onClick={() => handleRemoveAllStudents(g.id)}
                         style={{
                           background: 'transparent', border: 'none', cursor: 'pointer',
-                          fontSize: "0.875rem", color: '#94a3b8', padding: '4px 6px', borderRadius: 4,
+                          fontSize: "0.875rem", color: 'var(--classes-text-muted)', padding: '4px 6px', borderRadius: 4,
                           display: 'flex', alignItems: 'center', gap: 3,
                           transition: 'all 0.1s',
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.color = '#956834'; e.currentTarget.style.background = '#faf4eb'; }}
-                        onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}
+                        onMouseEnter={e => { e.currentTarget.style.color = '#805620'; e.currentTarget.style.background = '#faf4eb'; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = 'var(--classes-text-muted)'; e.currentTarget.style.background = 'transparent'; }}
                         title="全部移除">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                         移除
@@ -1997,12 +2051,12 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                     <button onClick={() => handleDeleteGroup(g.id)}
                       style={{
                         background: 'transparent', border: 'none', cursor: 'pointer',
-                        fontSize: "0.875rem", color: '#94a3b8', padding: '4px 6px', borderRadius: 4,
+                        fontSize: "0.875rem", color: 'var(--classes-text-muted)', padding: '4px 6px', borderRadius: 4,
                         display: 'flex', alignItems: 'center', gap: 3,
                         transition: 'all 0.1s',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#a85d5d'; e.currentTarget.style.background = '#f8eeee'; }}
-                      onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}>
+                      onMouseEnter={e => { e.currentTarget.style.color = '#994646'; e.currentTarget.style.background = '#f8eeee'; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = 'var(--classes-text-muted)'; e.currentTarget.style.background = 'transparent'; }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                       删除
                     </button>
@@ -2056,12 +2110,12 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                             ) : s.name[0]}
                           </div>
                           {s.name}
-                          {s.studentNo && <span style={{ fontSize: "0.75rem", color: color.badge, opacity: 0.6, fontFamily: 'monospace', marginLeft: 1 }}>#{s.studentNo}</span>}
+                          {s.studentNo && <span style={{ fontSize: "0.75rem", color: color.text, fontFamily: 'monospace', marginLeft: 1 }}>#{s.studentNo}</span>}
                         </div>
                       ))
                     ) : (
                       <div style={{
-                        fontSize: "0.75rem", color: '#94a3b8', padding: '8px 0',
+                        fontSize: "0.75rem", color: 'var(--classes-text-muted)', padding: '8px 0',
                         width: '100%', textAlign: 'center',
                         border: '1px dashed #e2e8f0', borderRadius: 8,
                       }}>
@@ -2081,30 +2135,30 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
           <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#475569', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
             未分配学生
-            <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400 }}>{unassigned.length} 人</span>
+            <span style={{ fontSize: "0.75rem", color: 'var(--classes-text-muted)', fontWeight: 400 }}>{unassigned.length} 人</span>
             {unassigned.length > 0 && selectedUnassigned.size > 0 ? (
               <>
                 <span style={{ fontSize: "0.75rem", color: 'var(--primary)', fontWeight: 600 }}>
                   已选 {selectedUnassigned.size} 人
                 </span>
-                <span style={{ fontSize: "0.75rem", color: '#cbd5e1' }}>·</span>
+                <span style={{ fontSize: "0.75rem", color: 'var(--classes-text-muted)' }}>·</span>
                 <button onClick={() => setSelectedUnassigned(new Set())}
                   style={{
                     background: 'transparent', border: 'none', cursor: 'pointer',
-                    fontSize: "0.875rem", color: '#94a3b8', padding: 0,
+                    fontSize: "0.875rem", color: 'var(--classes-text-muted)', padding: 0,
                     textDecoration: 'underline', textUnderlineOffset: 2,
                   }}
-                  onMouseEnter={e => e.currentTarget.style.color = '#64748b'}
-                  onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}>
+                  onMouseEnter={e => e.currentTarget.style.color = 'var(--classes-text-secondary)'}
+                  onMouseLeave={e => e.currentTarget.style.color = 'var(--classes-text-muted)'}>
                   取消选择
                 </button>
               </>
             ) : unassigned.length > 0 ? (
-              <span style={{ fontSize: "0.75rem", color: '#cbd5e1', fontWeight: 400 }}>
+              <span style={{ fontSize: "0.75rem", color: 'var(--classes-text-muted)', fontWeight: 400 }}>
                 （点击可多选，然后拖拽到分组中）
               </span>
             ) : (
-              <span style={{ fontSize: "0.75rem", color: '#cbd5e1', fontWeight: 400 }}>
+              <span style={{ fontSize: "0.75rem", color: 'var(--classes-text-muted)', fontWeight: 400 }}>
                 （从小组中拖出学生可取消分组）
               </span>
             )}
@@ -2166,7 +2220,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                 <div style={{
                   width: 16, height: 16, borderRadius: 4,
                   background: isSelected ? 'var(--primary)' : '#f1f5f9',
-                  border: `1.5px solid ${isSelected ? 'var(--primary)' : '#cbd5e1'}`,
+                  border: `1.5px solid ${isSelected ? 'var(--primary)' : 'var(--classes-text-muted)'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0, transition: 'all 0.1s',
                 }}>
@@ -2177,7 +2231,7 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                 <div style={{
                   width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
                   background: isSelected ? 'var(--primary-light)' : '#f1f5f9',
-                  color: isSelected ? 'var(--primary)' : '#64748b',
+                  color: isSelected ? 'var(--primary)' : 'var(--classes-text-secondary)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: "0.75rem", fontWeight: 700,
                 }}>
@@ -2186,16 +2240,16 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
                   ) : s.name[0]}
                 </div>
                 {s.name}
-                {s.studentNo && <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontFamily: 'monospace' }}>#{s.studentNo}</span>}
+                {s.studentNo && <span style={{ fontSize: "0.75rem", color: 'var(--classes-text-muted)', fontFamily: 'monospace' }}>#{s.studentNo}</span>}
               </div>
             );
           }) : (
             <div style={{
               width: '100%', textAlign: 'center',
-              color: '#94a3b8', fontSize: "0.75rem",
+              color: 'var(--classes-text-muted)', fontSize: "0.75rem",
               padding: '6px 0', lineHeight: '28px',
             }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ marginRight: 4, verticalAlign: 'middle', opacity: 0.5 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ marginRight: 4, verticalAlign: 'middle' }}>
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
               </svg>
               从小组中拖出学生到此区域即可取消分组
@@ -2206,21 +2260,22 @@ function GroupManagement({ classId, students, studentAvatars, onChanged }: {
 
       {/* 空状态 */}
       {groups.length === 0 && unassigned.length === 0 && students.length > 0 && (
-        <div style={{ textAlign: 'center', padding: '48px 20px', color: '#94a3b8' }}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 10, opacity: 0.5 }}>
+        <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--classes-text-muted)' }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 10 }}>
             <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
           </svg>
-          <p style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', margin: '0 0 4px' }}>暂未设置分组</p>
+          <p style={{ fontSize: "0.875rem", fontWeight: 600, color: 'var(--classes-text-secondary)', margin: '0 0 4px' }}>暂未设置分组</p>
           <p style={{ fontSize: "0.813rem", margin: '0 0 16px' }}>{'在上方输入分组名称后点击“添加分组”'}</p>
         </div>
       )}
 
       {students.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '48px 20px', color: '#94a3b8' }}>
-          <p style={{ fontSize: "0.875rem", fontWeight: 600, color: '#64748b', margin: '0 0 4px' }}>暂无学生</p>
+        <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--classes-text-muted)' }}>
+          <p style={{ fontSize: "0.875rem", fontWeight: 600, color: 'var(--classes-text-secondary)', margin: '0 0 4px' }}>暂无学生</p>
           <p style={{ fontSize: "0.813rem", margin: 0 }}>请先在「学生列表」中添加学生</p>
         </div>
       )}
+      </div>
       {confirmationDialog}
     </div>
   );

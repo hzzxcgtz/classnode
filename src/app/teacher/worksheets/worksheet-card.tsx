@@ -22,6 +22,20 @@ const actionStyle = (danger = false) => ({
   display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.6,
 });
 
+const gradeNames = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const gradePatterns = gradeNames.map((name, index) => {
+  const grade = index + 1;
+  const middleSchoolAlias = grade >= 7 ? `|初\\s*[${gradeNames[grade - 7]}${grade - 6}]` : '';
+  return new RegExp(`(?:^|[^0-9一二三四五六七八九十])(?:[${name}${grade}]\\s*年级${middleSchoolAlias})`);
+});
+
+function getGradeTone(title: string) {
+  const normalizedTitle = title.normalize('NFKC');
+  const grades = gradePatterns.flatMap((pattern, index) => pattern.test(normalizedTitle) ? [index + 1] : []);
+  // 对应名称算同一年级；未注明或跨年级的学习单使用默认色。
+  return grades.length === 1 ? String(grades[0]) : 'default';
+}
+
 /**
  * 一张学习单卡片。布局与三按钮照 `webapps/webapp-card.tsx:32`，**但主点击动作不同**：
  * 网页那张卡的主动作是「预览」（一个弹窗），学习单这张是**跳转到编辑器**
@@ -42,7 +56,7 @@ export function WorksheetCard({ worksheet, deleting, duplicating, exporting, onO
   const used = worksheet.classroomCount > 0;
 
   return (
-    <div className={used ? 'card worksheet-management-card' : 'card worksheet-management-card is-unused'}>
+    <div className={used ? 'card worksheet-management-card' : 'card worksheet-management-card is-unused'} data-grade-tone={getGradeTone(worksheet.title)}>
       <div className="worksheet-management-card-header">
         <div className="worksheet-management-card-icon">
           {/* 学习单 = 一张带勾选框的纸。图标与「探究网页」的地球刻意不同 —— 两页的卡片
@@ -64,7 +78,7 @@ export function WorksheetCard({ worksheet, deleting, duplicating, exporting, onO
             type="button"
             className="worksheet-management-card-title"
             onClick={onOpen}
-            title="打开编辑器"
+            title={`${worksheet.title}（点击打开编辑器）`}
           >
             {worksheet.title}
           </button>

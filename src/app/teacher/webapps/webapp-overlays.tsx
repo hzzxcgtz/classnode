@@ -18,7 +18,7 @@ export function WebappDeleteBlockedDialog({ webappName, classrooms, onClose }: {
   onClose: () => void;
 }) {
   return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content teacher-dialog teacher-dialog-alert" role="alertdialog" aria-modal="true" aria-labelledby="webapp-delete-blocked-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-    <div style={{ textAlign: 'center', marginBottom: 20 }}><div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f8eeee', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#a85d5d" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h3 id="webapp-delete-blocked-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>无法删除探究网页</h3><p style={{ fontSize: '0.813rem', color: '#64748b', margin: 0 }}>这个网页正被课堂使用中，删掉会让那些课堂里的学生打不开它。</p></div>
+    <div style={{ textAlign: 'center', marginBottom: 20 }}><div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f8eeee', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#a85d5d" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><h3 id="webapp-delete-blocked-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>无法删除探究网页</h3><p style={{ fontSize: '0.813rem', color: 'var(--text-secondary, #475569)', margin: 0 }}>这个网页正被课堂使用中，删掉会让那些课堂里的学生打不开它。</p></div>
     <div style={{ background: '#f8eeee', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}><div style={{ fontSize: '0.813rem', fontWeight: 600, color: '#991b1b', marginBottom: 8, wordBreak: 'break-all' }}>「{webappName}」关联的课堂</div><RelatedClassroomList classrooms={classrooms} emptyText="没读到关联的课堂（这不该发生，请刷新重试）" /><div style={{ fontSize: '0.75rem', color: '#b91c1c', marginTop: 8 }}>课堂关联目前只能在创建课堂时勾选。</div></div>
     <button type="button" className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={onClose}>知道了</button>
   </div></>;
@@ -38,7 +38,7 @@ export function WebappRelatedClassroomsDialog({ webappName, classrooms, loading,
 }) {
   return <><div className="modal-overlay" onClick={onClose} /><div className="modal-content teacher-dialog" role="dialog" aria-modal="true" aria-labelledby="webapp-related-classrooms-title" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 32, width: 440, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
     <h3 id="webapp-related-classrooms-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px', wordBreak: 'break-all' }}>「{webappName}」关联的课堂</h3>
-    <p style={{ fontSize: '0.813rem', color: '#64748b', margin: '0 0 16px' }}>教师可以在「新建课堂」里为课堂勾选探究网页。</p>
+    <p style={{ fontSize: '0.813rem', color: 'var(--text-secondary, #475569)', margin: '0 0 16px' }}>教师可以在「新建课堂」里为课堂勾选探究网页。</p>
     <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: '4px 14px', marginBottom: 20 }}>
       <RelatedClassroomList classrooms={classrooms} loading={loading} emptyText="还没有课堂关联这个网页" />
     </div>
@@ -103,7 +103,7 @@ export function WebappPreviewDialog({ webapp, origin, onClose }: { webapp: Webap
         <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg, #f8faff, #f0f4ff)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 id="webapp-preview-title" style={{ margin: 0, fontSize: '0.938rem', fontWeight: 700, wordBreak: 'break-all' }}>{webapp.name}</h3>
-            <div style={{ fontSize: "0.75rem", color: '#64748b', marginTop: 2 }}>学生在课堂里看到的是同一个网页</div>
+            <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary, #475569)', marginTop: 2 }}>学生在课堂里看到的是同一个网页</div>
           </div>
           <button type="button" className="btn btn-secondary" onClick={() => setReloadKey(k => k + 1)} style={{ fontSize: "0.875rem", padding: '5px 12px' }}>重新加载</button>
           <button type="button" className="btn btn-secondary" onClick={onClose} style={{ fontSize: "0.875rem", padding: '5px 12px' }}>关闭</button>
@@ -119,7 +119,7 @@ export function WebappPreviewDialog({ webapp, origin, onClose }: { webapp: Webap
               style={{ width: '100%', height: '100%', border: 0, display: 'block', background: 'white' }}
             />
           ) : (
-            <div style={{ padding: 40, textAlign: 'center', color: '#64748b', fontSize: '0.875rem' }}>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary, #475569)', fontSize: '0.875rem' }}>
               网页托管服务没有就绪，暂时无法预览。课堂里的学生此刻也打不开这个网页。
             </div>
           )}

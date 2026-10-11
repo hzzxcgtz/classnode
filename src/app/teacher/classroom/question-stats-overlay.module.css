@@ -105,7 +105,7 @@
 .metric:last-child { border-right: 0; }
 .metric small { display: block; margin-bottom: 4px; color: #7d8ea1; font-size: 0.75rem; }
 .metric div { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.38rem; font-weight: 740; line-height: 1; }
-.metric span { margin-left: 2px; color: #94a3b8; font-family: inherit; font-size: 0.75rem; font-weight: 500; }
+.metric span { margin-left: 2px; color: var(--text-muted, #64748b); font-family: inherit; font-size: 0.75rem; font-weight: 500; }
 .donut { margin-left: auto; }
 
 .body {

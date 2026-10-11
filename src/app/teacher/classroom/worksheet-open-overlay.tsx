@@ -112,7 +112,7 @@ export function WorksheetOpenOverlay({
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 id="worksheet-open-title" style={{ margin: 0 }}>逐题开放</h3>
-            <p style={{ margin: '3px 0 0', fontSize: "0.8125rem", color: '#64748b' }}>
+            <p style={{ margin: '3px 0 0', fontSize: "0.8125rem", color: 'var(--text-secondary, #475569)' }}>
               开一题，全班立刻能看见并作答；收回只是让学生看不见，已交的答案不会丢。
             </p>
           </div>
@@ -125,7 +125,7 @@ export function WorksheetOpenOverlay({
 
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 18px 18px', background: '#f8fafc', overscrollBehavior: 'contain' }}>
           {rows.length === 0 ? (
-            <p style={{ margin: 0, padding: '32px 0', textAlign: 'center', color: '#64748b' }}>
+            <p style={{ margin: 0, padding: '32px 0', textAlign: 'center', color: 'var(--text-secondary, #475569)' }}>
               这间课堂还没有学习单。
             </p>
           ) : rows.map((row) => {
@@ -136,7 +136,7 @@ export function WorksheetOpenOverlay({
                   <strong style={{ fontSize: '0.875rem', color: '#172033' }}>{row.title}</strong>
                   {row.managed ? (
                     <>
-                      <span style={{ fontSize: "0.75rem", color: '#64748b' }}>已开放 {row.openIds.length} / {row.questions.length}</span>
+                      <span style={{ fontSize: "0.75rem", color: 'var(--text-secondary, #475569)' }}>已开放 {row.openIds.length} / {row.questions.length}</span>
                       {/*
                         主按钮 = 「第一道还没开放的题」。按顺序推是这一档的常见用法，
                         所以把它做成一等公民；跳着开仍然由下面每一行的小按钮承担。
@@ -166,7 +166,7 @@ export function WorksheetOpenOverlay({
                 </div>
 
                 {row.questions.length === 0 ? (
-                  <p style={{ margin: 0, fontSize: "0.8125rem", color: '#94a3b8' }}>这张单还没有可作答的题。</p>
+                  <p style={{ margin: 0, fontSize: "0.8125rem", color: 'var(--text-muted, #64748b)' }}>这张单还没有可作答的题。</p>
                 ) : (
                   <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {row.questions.map(({ node, heading }) => {
@@ -178,8 +178,8 @@ export function WorksheetOpenOverlay({
                           background: isOpen ? '#f2f5f8' : '#fff',
                           border: `1px solid ${isOpen ? '#c8d5e3' : '#e2e8f0'}`,
                         }}>
-                          <span style={{ flex: '0 0 auto', minWidth: 40, fontSize: "0.75rem", fontWeight: 700, color: '#64748b' }}>{heading}</span>
-                          <span style={{ flex: '0 0 auto', fontSize: "0.75rem", color: '#94a3b8' }}>{questionTypeLabel(node.type)}</span>
+                          <span style={{ flex: '0 0 auto', minWidth: 40, fontSize: "0.75rem", fontWeight: 700, color: 'var(--text-secondary, #475569)' }}>{heading}</span>
+                          <span style={{ flex: '0 0 auto', fontSize: "0.75rem", color: 'var(--text-muted, #64748b)' }}>{questionTypeLabel(node.type)}</span>
                           <span style={{ flex: 1, minWidth: 0, fontSize: '0.813rem', color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {/* ★ 2026-09-30：题干认公式（判空仍然用 `trim()`）。 */}
                             {node.prompt.trim()

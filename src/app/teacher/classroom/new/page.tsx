@@ -103,7 +103,7 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
   // 容器窄于 150 时它撑破网格而不是让位。`minWidth: 0` 把宽度决定权交回轨道。
   return (
     <div style={{ position: 'relative', minWidth: 0 }}>
-      <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: "0.75rem", color: 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
       <button type="button" onClick={onToggle} aria-expanded={open}
         aria-label={`${label}：${currentLabel}`}
         style={{
@@ -140,9 +140,9 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
             不指定
           </span>
         ) : (
-          <span style={{ color: '#94a3b8' }}>{placeholder}</span>
+          <span style={{ color: 'var(--text-muted)' }}>{placeholder}</span>
         )}
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ marginLeft: 'auto', flexShrink: 0 }}><polyline points="6 9 12 15 18 9" /></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ marginLeft: 'auto', flexShrink: 0 }}><polyline points="6 9 12 15 18 9" /></svg>
       </button>
       {open && (
         <div style={{
@@ -201,7 +201,7 @@ function GroupMaterialPicker({ label, placeholder, value, options, emptyHint, op
             );
           })}
           {options.length === 0 && (
-            <div style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#94a3b8' }}>{emptyHint}</div>
+            <div style={{ padding: '8px 12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{emptyHint}</div>
           )}
         </div>
       )}
@@ -545,7 +545,7 @@ export default function NewClassroomPage() {
     <div style={{ width: '100%', minWidth: 0, maxWidth: 760, margin: '0 auto' }}>
       <TeacherPageHeader title="创建新课堂" description="选好模式与班级，再从 AI 智能体 / 探究网页 / 学习单里挑至少一项，即可发起课堂。" />
 
-      <div style={{ background: 'white', borderRadius: 14, border: '1px solid #e2e8f0', padding: 24 }}>
+      <div className="teacher-surface" style={{ background: 'white', borderRadius: 14, border: '1px solid var(--card-border)', padding: 24 }}>
         <div className="new-classroom-steps" aria-label="课堂创建进度">
           {steps.map((step, index) => (
             <div key={step.label} className={step.complete ? 'is-complete' : ''}>
@@ -642,8 +642,8 @@ export default function NewClassroomPage() {
                   <span style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a' }}>{m.label}</span>
                   {m.id === 'standard' && <span className="recommended-mode-tag">推荐</span>}
                 </div>
-                <div style={{ fontSize: "0.75rem", color: '#64748b', lineHeight: 1.4, marginLeft: 24, display: 'flex', alignItems: 'flex-start', gap: 5, flex: 1 }}>
-                  <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? 'var(--primary)' : '#94a3b8' }}>{m.icon}</span>
+                <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', lineHeight: 1.4, marginLeft: 24, display: 'flex', alignItems: 'flex-start', gap: 5, flex: 1 }}>
+                  <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? 'var(--primary)' : 'var(--text-muted)' }}>{m.icon}</span>
                   <span>{m.desc}</span>
                 </div>
               </button>
@@ -661,13 +661,13 @@ export default function NewClassroomPage() {
             选择班级
             <span className="required-field-mark">必填</span>
             {mode !== 'standard' && (
-              <span style={{ fontSize: "0.75rem", color: '#94a3b8', fontWeight: 400, marginLeft: 4 }}>（仅显示已分组的班级）</span>
+              <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)', fontWeight: 400, marginLeft: 4 }}>（仅显示已分组的班级）</span>
             )}
           </div>
           {loadingOptions ? (
             <div className="new-classroom-loading" role="status">正在加载班级与智能体...</div>
           ) : classes.length === 0 ? (
-            <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center' }}>
+            <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: 'var(--text-muted)', textAlign: 'center' }}>
               暂无可选班级，请先在「班级管理」中创建班级
             </div>
           ) : (
@@ -689,12 +689,12 @@ export default function NewClassroomPage() {
                       fontSize: "0.875rem",
                       transition: 'all 0.12s', textAlign: 'left', fontFamily: 'inherit',
                     }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 9, background: isSelected ? 'var(--primary)' : '#f1f5f9', color: isSelected ? 'white' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 9, background: isSelected ? 'var(--primary)' : '#f1f5f9', color: isSelected ? 'white' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a' }}>{c.name}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.75rem", color: '#94a3b8', marginTop: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.75rem", color: 'var(--text-muted)', marginTop: 1 }}>
                         <span>{c._count?.students || 0} 名学生</span>
                         {hasGroups && (
                           <>
@@ -709,7 +709,7 @@ export default function NewClassroomPage() {
                     ) : hasGroups ? (
                       <span style={{ fontSize: "0.75rem", padding: '1px 8px', borderRadius: 8, background: '#f5f3ff', color: '#7c3aed', fontWeight: 500, flexShrink: 0 }}>已分组</span>
                     ) : (
-                      <span style={{ fontSize: "0.75rem", padding: '1px 8px', borderRadius: 8, background: '#f1f5f9', color: '#94a3b8', fontWeight: 500, flexShrink: 0 }}>无分组</span>
+                      <span style={{ fontSize: "0.75rem", padding: '1px 8px', borderRadius: 8, background: '#f1f5f9', color: 'var(--text-muted)', fontWeight: 500, flexShrink: 0 }}>无分组</span>
                     )}
                   </button>
                 );
@@ -742,7 +742,7 @@ export default function NewClassroomPage() {
             {/* ⚠️ 进度一定发生在「还没有任何一组配了材料」的那条路径上（全局三件套全空的课堂
                 是服务端 400 拦下的），所以这句得说清楚「不指定」也是选项 —— 否则教师会以为
                 留着不选和选「不指定」是同一件事，而它们一个能提交、一个不能。 */}
-            <div style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 12 }}>
+            <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', marginBottom: 12 }}>
               每个小组的智能体、探究网页与学习单**各自独立**，互不影响，也**不会**回落到课堂级的配置。
               某种材料这一组不需要，就在那个下拉里选「<strong style={{ fontWeight: 600 }}>不指定</strong>」（留空不选会拦住提交）。
             </div>
@@ -774,7 +774,7 @@ export default function NewClassroomPage() {
                       {i + 1}
                     </div>
                     <div style={{ fontSize: "0.875rem", fontWeight: 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>{g.name}</div>
-                    <div style={{ fontSize: "0.75rem", color: '#94a3b8', flexShrink: 0 }}>{(g.studentIds?.length || 0)} 名学生</div>
+                    <div style={{ fontSize: "0.75rem", color: 'var(--text-muted)', flexShrink: 0 }}>{(g.studentIds?.length || 0)} 名学生</div>
                   </div>
                   {/* 第二行：三件套**等宽三列**的网格。
                       ⚠️ 为什么不是「三个下拉并排塞进一条 flex」：三个下拉各需 ≥150px + 两个 8px 间隙
@@ -886,7 +886,7 @@ export default function NewClassroomPage() {
               选择AI智能体
               {/* 三件套（AI 智能体 / 探究网页 / 学习单）每一项都是选填，至少一项即可 ——
                   这里从前写的是「必填」，与实际规则不符：只挂一个探究网页也能建课堂。 */}
-              <span style={{ fontSize: "0.75rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 三件套任选其一</span>
+              <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 三件套任选其一</span>
             </div>
             <GroupMaterialPicker
               label="AI 智能体"
@@ -927,9 +927,9 @@ export default function NewClassroomPage() {
           <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>
             关联探究网页
-            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 只能选一个 · 三件套任选其一</span>
+            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 只能选一个 · 三件套任选其一</span>
           </div>
-          <div style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 12 }}>
+          <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', marginBottom: 12 }}>
             学生在「探究空间」里会打开这个网页。<strong style={{ fontWeight: 600 }}>一个课堂只关联一个网页</strong>；
             不选也可以 —— 那就记得至少选一个 AI 智能体。
           </div>
@@ -939,7 +939,7 @@ export default function NewClassroomPage() {
               这次创建的课堂**不会带任何网页**；网页本身没丢，可以去「探究网页」页确认后再发一次课堂。
             </div>
           ) : webapps.length === 0 ? (
-            <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center' }}>
+            <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: 'var(--text-muted)', textAlign: 'center' }}>
               还没有探究网页，可以先在「探究网页」里添加
             </div>
           ) : (
@@ -991,11 +991,11 @@ export default function NewClassroomPage() {
           <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>
             关联学习单
-            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: '#94a3b8' }}>选填 · 只能选一份 · 三件套任选其一</span>
+            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 只能选一份 · 三件套任选其一</span>
           </div>
           {/* ★ 2026-09-25：三句话收成一句 —— 教师说「整个页面高度有点大」，
               而「只关联一份」已经由**下拉是单选的**这件事本身说清楚了。 */}
-          <div style={{ fontSize: "0.75rem", color: '#64748b', marginBottom: 8 }}>
+          <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', marginBottom: 8 }}>
             学生在课堂里会填写它。一个课堂只关联一份，也可以不关联。
           </div>
           {worksheetLoadError ? (
@@ -1005,7 +1005,7 @@ export default function NewClassroomPage() {
             </div>
           ) : worksheets.length === 0 ? (
             // 空态**不给一个点开才发现是空的下拉** —— 直接把原因说出来，并指到该去哪建。
-            <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: '#94a3b8', textAlign: 'center' }}>
+            <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: 'var(--text-muted)', textAlign: 'center' }}>
               还没有学习单，可以先在「学习单」里创建
             </div>
           ) : (

@@ -62,7 +62,7 @@
   --radius-lg: 16px;
   --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.03);
   --shadow-card-hover: 0 8px 24px rgba(15, 23, 42, 0.07);
-  --teacher-sidebar-width: 220px;
+  --teacher-sidebar-width: 160px;
   --teacher-sidebar-collapsed-width: 68px;
   --teacher-drawer-width: 520px;
 }
@@ -249,6 +249,38 @@ html, body {
   box-shadow: 0 1px 3px rgba(35, 49, 61, .1);
 }
 
+/* 连页式页签：选中项的白底遮住基线，与白色内容面连成一体。 */
+.teacher-page-tabs.is-connected {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin: 0;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(#cdd5e0, #cdd5e0) left bottom / 100% 1px no-repeat;
+}
+.teacher-page-tabs.is-connected > button {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 9px 14px;
+  border: 1px solid #cdd5e0;
+  border-radius: 8px 8px 0 0;
+  background: #edf0f4;
+  color: #475569;
+  box-shadow: none;
+}
+.teacher-page-tabs.is-connected > button.is-active {
+  border-bottom-color: #fff;
+  background: #fff;
+  color: #1e293b;
+}
+.teacher-page-tabs.is-connected > button:not(.is-active):hover { background: #e2e7ee; }
+.teacher-page-tabs.is-connected > button.is-active .teacher-page-tabs-badge {
+  background: #e2e8f0;
+  color: #334155;
+}
+
 .teacher-page-tabs-icon { display: inline-flex; }
 
 .teacher-page-tabs-badge {
@@ -256,7 +288,7 @@ html, body {
   padding: 1px 6px;
   border-radius: 999px;
   background: #e2e8f0;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 0.75rem;
   line-height: 18px;
 }
@@ -1227,7 +1259,7 @@ html, body {
 
 .dashboard-table th {
   background: #f7f9fa;
-  color: #718294;
+  color: var(--text-secondary);
   font-size: 0.8125rem;
   font-weight: 650;
 }
@@ -1235,7 +1267,7 @@ html, body {
 .dashboard-table tbody tr:last-child td { border-bottom: 0; }
 .dashboard-table td { color: #5a6e80; font-variant-numeric: tabular-nums; }
 .dashboard-table td:not(:first-child), .dashboard-table th:not(:first-child) { text-align: center; }
-.dashboard-table small { display: block; margin-top: 2px; color: #99a6b1; font-size: 0.75rem; }
+.dashboard-table small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 0.75rem; }
 .dashboard-primary-cell { display: block; max-width: 180px; overflow: hidden; color: #273c50; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-code-cell { display: inline-block; max-width: 130px; overflow: hidden; color: #64788a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }
 
@@ -1267,7 +1299,7 @@ html, body {
   align-items: center;
   justify-content: center;
   padding: 14px;
-  color: #8b9aa7;
+  color: var(--text-muted);
   font-size: 0.75rem;
   line-height: 1.5;
   text-align: center;
@@ -2192,13 +2224,37 @@ tr:hover td {
   opacity: 0.6;
 }
 
-.classes-workspace-tabs {
-  padding: 12px 20px 11px;
-  border-bottom: 1px solid #e5ebf2;
+.classes-workspace .classes-workspace-tabs {
+  padding: 16px 0 0;
+}
+
+/* 切换标签与列表工具共享卡片内的操作区，不再嵌套一个圆角工具框。 */
+.classes-workspace .classes-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px;
+  border: 0;
+  border-bottom: 1px solid #cdd5e0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .classes-workspace-tabs .teacher-page-tabs {
   margin: 0;
+}
+
+.classes-group-content { padding: 20px; }
+.classes-workspace .classes-group-toolbar .input {
+  flex: 0 1 360px;
+  width: 360px;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border-color: #dbe3ee;
 }
 
 .classes-filter-controls,
@@ -2300,6 +2356,12 @@ tr:hover td {
   cursor: pointer;
 }
 
+/* 只裁剪学生内容区，保留卡片顶部设置菜单的溢出空间。 */
+.classes-student-content {
+  border-radius: 0 0 11px 11px;
+  overflow: hidden;
+}
+
 .student-table-scroll {
   max-width: 100%;
   overflow-x: auto;
@@ -2309,6 +2371,12 @@ tr:hover td {
 .student-table-scroll table {
   min-width: 820px;
 }
+
+.classes-student-content .student-table-scroll tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.classes-paste-dialog { max-width: 540px; padding: 24px; }
 
 .new-classroom-steps {
   display: grid;
@@ -2811,7 +2879,7 @@ tr:hover td {
   border: 1px solid #dbe3ee;
   border-radius: 8px;
   background: #fff;
-  color: #64748b;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2840,7 +2908,7 @@ tr:hover td {
   border: 0;
   border-radius: 5px;
   background: #f1f5f9;
-  color: #64748b;
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
@@ -2926,7 +2994,7 @@ tr:hover td {
 
 .agent-management-filter-empty span {
   margin-bottom: 6px;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 0.875rem;
 }
 
@@ -3034,7 +3102,7 @@ tr:hover td {
   border: 1px solid #dbe3ee;
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.46);
-  color: #7b8799;
+  color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
   font-size: 0.75rem;
@@ -3117,7 +3185,7 @@ tr:hover td {
   border-radius: 7px;
   border-color: #dbe3ee;
   background: #f8fafc;
-  color: #64748b;
+  color: var(--text-secondary);
 }
 
 .agent-management-card .agent-management-classrooms-chip:hover {
@@ -3161,7 +3229,7 @@ tr:hover td {
 }
 
 .agent-management-card-helper {
-  color: #8491a4;
+  color: var(--text-muted);
   font-size: 0.75rem;
   line-height: 1.45;
 }
@@ -3230,14 +3298,14 @@ tr:hover td {
 }
 
 .webapp-management-overview span {
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 0.75rem;
 }
 
 /* 三格的色调只用来互相区分，不额外承载语义（与智能体页的四格同理）。 */
 .webapp-management-overview .tone-blue strong { color: var(--primary); }
 .webapp-management-overview .tone-green strong { color: #059669; }
-.webapp-management-overview .tone-grey strong { color: #94a3b8; }
+.webapp-management-overview .tone-grey strong { color: var(--text-muted); }
 
 /* 筛选行：搜索框 + 关联状态下拉。尺寸照智能体页（38px 高、8px 圆角）。 */
 .webapp-management-filters {
@@ -3256,7 +3324,7 @@ tr:hover td {
   border: 1px solid #dbe3ee;
   border-radius: 8px;
   background: #fff;
-  color: #64748b;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3285,7 +3353,7 @@ tr:hover td {
   border: 0;
   border-radius: 5px;
   background: #f1f5f9;
-  color: #64748b;
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
@@ -3363,7 +3431,7 @@ tr:hover td {
 .webapp-management-card-created {
   display: block;
   margin-top: 2px;
-  color: #798c87;
+  color: var(--text-secondary);
   font-size: 0.75rem;
   line-height: 1.45;
 }
@@ -3418,7 +3486,7 @@ tr:hover td {
 .webapp-management-card.is-unused .webapp-management-usage-chip {
   border-color: #e1e7ef;
   background: #f8fafc;
-  color: #7b8799;
+  color: var(--text-secondary);
 }
 
 .webapp-management-card .webapp-management-usage-chip:hover {
@@ -3479,7 +3547,7 @@ tr:hover td {
   border: 1px solid #dbe3ee;
   border-radius: 8px;
   background: #fff;
-  color: #64748b;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3508,7 +3576,7 @@ tr:hover td {
   border: 0;
   border-radius: 5px;
   background: #f1f5f9;
-  color: #64748b;
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
@@ -3566,7 +3634,7 @@ tr:hover td {
 .worksheet-management-card-updated {
   display: block;
   margin-top: 2px;
-  color: #7f8ca1;
+  color: var(--text-muted);
   font-size: 0.75rem;
   line-height: 1.45;
 }
@@ -3580,7 +3648,7 @@ tr:hover td {
 
 .worksheet-management-card-description {
   margin-bottom: 10px;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 0.75rem;
   line-height: 1.55;
   display: -webkit-box;
@@ -3624,7 +3692,7 @@ tr:hover td {
 .worksheet-management-card.is-unused .worksheet-management-usage-chip {
   border-color: #e1e7ef;
   background: #f8fafc;
-  color: #7b8799;
+  color: var(--text-secondary);
 }
 
 .worksheet-management-card .worksheet-management-usage-chip:hover {
@@ -6827,6 +6895,9 @@ tr:hover td {
 }
 
 .worksheet-editor-grade-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex: 0 0 auto;
   margin-left: auto;
   padding: 4px 8px;
@@ -6897,6 +6968,11 @@ tr:hover td {
 /* 「最高 N 颗星星」—— 与 `.worksheet-editor-section-head > span` 同一族观感，
    但它旁边还要摆一个开关，所以自己一个类（不能靠 `> span` 选中）。 */
 .worksheet-editor-points-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 5px;
+  flex-shrink: 0;
   padding: 3px 8px;
   border-radius: 6px;
   background: var(--primary-light);
@@ -7725,6 +7801,7 @@ tr:hover td {
   min-height: 72px;
   padding: 9px 11px;
   background: #fff;
+  border-radius: 0 0 7px 7px;
   color: #1e293b;
   font: inherit;
   font-size: 0.938rem;
@@ -8622,7 +8699,7 @@ tr:hover td {
 
 .related-classroom-icon {
   flex-shrink: 0;
-  color: #94a3b8;
+  color: var(--text-muted);
   display: flex;
 }
 
@@ -8641,7 +8718,7 @@ tr:hover td {
   padding: 1px 6px;
   border-radius: 4px;
   font-size: 0.688rem;
-  color: #94a3b8;
+  color: var(--text-muted);
   border: 1px solid #e2e8f0;
 }
 
@@ -8651,13 +8728,13 @@ tr:hover td {
   border-radius: 4px;
   font-size: 0.688rem;
   background: #f1f5f9;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 /* 配色与 `classes/page.tsx` 里那份既有实现一致：绿=进行中、黄=已暂停、灰=已结束。 */
 .related-classroom-status.is-active { background: #dcfce7; color: #3f7859; }
 .related-classroom-status.is-paused { background: #f5ecdd; color: #956834; }
-.related-classroom-status.is-ended { background: #f1f5f9; color: #94a3b8; }
+.related-classroom-status.is-ended { background: #f1f5f9; color: var(--text-muted); }
 
 .related-classroom-list.is-pending,
 .related-classroom-list.is-empty {
@@ -8667,7 +8744,7 @@ tr:hover td {
 
 .related-classroom-hint {
   font-size: 0.813rem;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 @media (max-width: 900px) {
@@ -9411,54 +9488,124 @@ tr:hover td {
 /* ── ClassNode 教师端视觉规范 ──────────────────────────────────────────────
    这一层只作用于教师外壳：学生端继续使用原来的课堂主题。教师端以雾蓝中性色
    为背景，所有主要操作统一使用沉稳蓝；绿、橙、红只用于状态语义。 */
+/* 第一步：共用中性浅灰侧栏；其余教师页面的内容配色保持现状。 */
 .teacher-sidebar {
-  background: #fafbfc;
-  border-right-color: var(--cn-border) !important;
+  --sidebar-bg: #e0e3e8;
+  --sidebar-text: #334155;
+  --sidebar-active-bg: #f7f8fa;
+  --sidebar-active-text: #1e293b;
+  --sidebar-active-marker: #475569;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  border-right-color: #bfc6d0 !important;
 }
 
 .teacher-brand-fallback {
-  background: var(--cn-primary);
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-active-text) !important;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18);
 }
 
-.teacher-brand-title { color: var(--cn-text); }
-.teacher-brand-en { color: var(--cn-text-muted); }
+.teacher-brand-title { color: #1e293b; }
+.teacher-brand-meta {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+.teacher-brand-en { color: var(--sidebar-text); font-size: 11px; }
 .teacher-version-chip {
-  color: var(--cn-primary);
-  border: 1px solid #c7d4df;
-  background: var(--cn-primary-soft);
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 16px;
 }
 
-.teacher-nav-title { color: var(--cn-text-muted) !important; }
-
-.teacher-nav-button {
-  min-height: 40px;
-  color: #4f5f6e;
+.teacher-sidebar .teacher-nav-title { color: var(--sidebar-text) !important; }
+.teacher-sidebar .teacher-nav-button { min-height: 40px; color: var(--sidebar-text); }
+.teacher-sidebar .teacher-nav-button:hover:not(.is-active) { color: #1e293b; background: #cfd5de; }
+.teacher-sidebar .teacher-nav-button.is-active {
+  color: var(--sidebar-active-text);
+  background: var(--sidebar-active-bg);
+  box-shadow: inset 0 0 0 1px #b2bbc7;
 }
-
-.teacher-nav-button:hover:not(.is-active) {
-  color: var(--cn-text);
-  background: #f1f4f7;
-}
-
-.teacher-nav-button.is-active {
-  color: var(--cn-primary);
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(38, 51, 63, .08), inset 0 0 0 1px #d8e1e8;
-}
-
-.teacher-sidebar-footer button:hover { color: var(--cn-primary) !important; }
-.teacher-sidebar-footer button:last-of-type:hover { color: var(--cn-danger) !important; }
+.teacher-sidebar .teacher-nav-button.is-active::before { background: var(--sidebar-active-marker); }
+.teacher-service-status { background: #edf0f4; }
+.teacher-service-status-collapsed { background: transparent; }
+.teacher-service-status-label { color: var(--sidebar-text); }
+.teacher-sidebar-footer > div { border-top-color: #bfc6d0 !important; }
+.teacher-sidebar-footer button { color: var(--sidebar-text); }
+.teacher-sidebar-footer button:hover { color: #1e293b; background: #cfd5de; }
+.teacher-sidebar-footer button:last-of-type:hover { color: #b91c1c; }
 
 .teacher-sidebar-toggle {
-  border-color: var(--cn-border) !important;
-  color: var(--cn-text-muted) !important;
-  box-shadow: 2px 0 8px rgba(38, 51, 63, .06) !important;
+  border-color: #bfc6d0 !important;
+  color: #334155 !important;
+  background: #e0e3e8;
+  box-shadow: 2px 0 8px rgba(15, 23, 42, .12) !important;
+}
+.teacher-sidebar-toggle:hover { color: #1e293b !important; background: #cfd5de; }
+
+/* 班级管理是本轮唯一内容区样板，不向其他页面推广。 */
+.teacher-main[data-color-sample='classes'] .classes-switcher-item.is-active {
+  background: #dce3ec;
+  border-color: #b6c2d1;
+}
+.teacher-main[data-color-sample='classes'] .teacher-page-tabs.is-connected > button.is-active {
+  position: relative;
+  color: #0f172a;
+  font-weight: 700;
+}
+.teacher-main[data-color-sample='classes'] .teacher-page-tabs.is-connected > button.is-active::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 7px;
+  right: 7px;
+  height: 3px;
+  border-radius: 2px;
+  background: #475569;
+}
+.teacher-main[data-color-sample='classes'] .teacher-page-tabs.is-connected > button.is-active .teacher-page-tabs-icon svg {
+  stroke-width: 2;
+}
+.teacher-main[data-color-sample='classes'] .teacher-page-tabs.is-connected > button.is-active .teacher-page-tabs-badge {
+  background: #475569;
+  color: #fff;
+}
+.teacher-main[data-color-sample='classes'] .teacher-page-tabs.is-connected > button:not(.is-active) {
+  background: #dce2ea;
+}
+.teacher-main[data-color-sample='classes'] .teacher-page-tabs.is-connected > button:not(.is-active):hover {
+  background: #cdd6e2;
+}
+.teacher-main[data-color-sample='classes'] .classes-page .student-table-scroll thead th {
+  background: #dee5ed;
 }
 
-.teacher-sidebar-toggle:hover {
-  color: var(--cn-primary) !important;
-  background: #f1f4f7 !important;
+.teacher-main[data-color-sample='classes'] {
+  --page-bg: #e8edf4;
+  --card-bg: #fff;
+  --card-border: #cdd5e0;
+  --card-shadow: 0 1px 2px rgba(15, 23, 42, .08), 0 4px 12px rgba(15, 23, 42, .06);
+  background: var(--page-bg);
+}
+.teacher-main[data-color-sample='classes'] .classes-switcher,
+.teacher-main[data-color-sample='classes'] .classes-workspace,
+.teacher-main[data-color-sample='classes'] .classes-switcher-loading,
+.teacher-main[data-color-sample='classes'] .classes-empty-state {
+  background: var(--card-bg);
+  border-color: var(--card-border);
+  box-shadow: var(--card-shadow);
+}
+.teacher-main[data-color-sample='classes'] .classes-page .classes-workspace-header {
+  background: var(--card-bg);
+  border-bottom-color: var(--card-border);
+}
+.teacher-main[data-color-sample='classes'] .classes-workspace-tabs,
+.teacher-main[data-color-sample='classes'] .classes-switcher-label {
+  border-color: var(--card-border);
 }
 
 .teacher-layout .btn {
@@ -9592,13 +9739,72 @@ tr:hover td {
   font-size: 0.75rem;
 }
 
-/* 主要管理页面共享同一浅蓝灰标题面，不再用页面身份色制造跳色。 */
+/* 学习单以标题中的明确年级区分头部，正文与引用状态保持统一。 */
+.teacher-main[data-page-tone='worksheet'] .worksheet-management-card {
+  --worksheet-header-bg: #e5eaf1;
+  --worksheet-icon-bg: #d2dce8;
+  --worksheet-icon-color: #465d78;
+}
+.teacher-main[data-page-tone='worksheet'] .worksheet-management-card[data-grade-tone='2'] {
+  --worksheet-header-bg: #f1e5d9;
+  --worksheet-icon-bg: #e6d1bd;
+  --worksheet-icon-color: #805839;
+}
+.teacher-main[data-page-tone='worksheet'] .worksheet-management-card[data-grade-tone='1'] {
+  --worksheet-header-bg: #dfeaf5;
+  --worksheet-icon-bg: #c6d9eb;
+  --worksheet-icon-color: #365f86;
+}
+.teacher-main[data-page-tone='worksheet'] .worksheet-management-card[data-grade-tone='3'] {
+  --worksheet-header-bg: #eae3f1;
+  --worksheet-icon-bg: #d9cce5;
+  --worksheet-icon-color: #685080;
+}
+.teacher-main[data-page-tone='worksheet'] .worksheet-management-card[data-grade-tone='4'] {
+  --worksheet-header-bg: #e0ecee;
+  --worksheet-icon-bg: #c7dce0;
+  --worksheet-icon-color: #3e6871;
+}
+.teacher-main[data-page-tone='worksheet'] .worksheet-management-card[data-grade-tone='6'] {
+  --worksheet-header-bg: #ece6df;
+  --worksheet-icon-bg: #ddd2c6;
+  --worksheet-icon-color: #70604c;
+}
+.teacher-main[data-page-tone='worksheet'] .worksheet-management-card[data-grade-tone='5'] {
+  --worksheet-header-bg: #f0e2e5;
+  --worksheet-icon-bg: #e5cbd1;
+  --worksheet-icon-color: #805363;
+}
+.teacher-main[data-page-tone='worksheet'] .worksheet-management-card[data-grade-tone='7'] {
+  --worksheet-header-bg: #e3e6f2;
+  --worksheet-icon-bg: #cdd3e8;
+  --worksheet-icon-color: #515f86;
+}
+.teacher-main[data-page-tone='worksheet'] .worksheet-management-card[data-grade-tone='8'] {
+  --worksheet-header-bg: #eee7d8;
+  --worksheet-icon-bg: #e0d3b8;
+  --worksheet-icon-color: #78613c;
+}
+.teacher-main[data-page-tone='worksheet'] .worksheet-management-card[data-grade-tone='9'] {
+  --worksheet-header-bg: #e0e9ed;
+  --worksheet-icon-bg: #c8d7df;
+  --worksheet-icon-color: #476373;
+}
 .teacher-main[data-page-tone='worksheet'] .worksheet-management-card-header {
-  background: #f8fafb;
+  flex: 0 0 auto;
+  background: var(--worksheet-header-bg);
   border-bottom-color: var(--cn-border);
 }
+.teacher-main[data-page-tone='worksheet'] .worksheet-management-card-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  height: 2.8em;
+  overflow: hidden;
+}
 .teacher-main[data-page-tone='worksheet'] .worksheet-management-card-icon {
-  color: var(--cn-primary);
+  background: var(--worksheet-icon-bg);
+  color: var(--worksheet-icon-color);
 }
 .teacher-main[data-page-tone='worksheet'] .worksheet-management-search:focus-within {
   border-color: var(--cn-primary);
@@ -9606,11 +9812,22 @@ tr:hover td {
 }
 
 .teacher-main[data-page-tone='explore'] .webapp-management-card-header {
-  background: #f8fafb;
+  background: var(--webapp-header-bg, #e5eaf1);
   border-bottom-color: var(--cn-border);
 }
 .teacher-main[data-page-tone='explore'] .webapp-management-card-icon {
-  color: var(--cn-info);
+  background: var(--webapp-icon-bg, #d2dce8);
+  color: var(--webapp-icon-color, #465d78);
+}
+.teacher-main[data-page-tone='explore'] .webapp-management-card[data-file-kind='single'] {
+  --webapp-header-bg: #dfeaf5;
+  --webapp-icon-bg: #c6d9eb;
+  --webapp-icon-color: #365f86;
+}
+.teacher-main[data-page-tone='explore'] .webapp-management-card[data-file-kind='multiple'] {
+  --webapp-header-bg: #f1e5d9;
+  --webapp-icon-bg: #e6d1bd;
+  --webapp-icon-color: #805839;
 }
 .teacher-main[data-page-tone='explore'] .webapp-management-search:focus-within {
   border-color: var(--cn-primary);
@@ -9618,8 +9835,20 @@ tr:hover td {
 }
 
 .teacher-main[data-page-tone='agent'] .agent-management-card-header {
-  background: #f8fafb;
+  background: var(--agent-header-bg, #e5eaf1);
   border-bottom-color: var(--cn-border);
+}
+.teacher-main[data-page-tone='agent'] .agent-management-card[data-platform='coze'] {
+  --agent-header-bg: #dfeaf5;
+}
+.teacher-main[data-page-tone='agent'] .agent-management-card[data-platform='coze-agent'] {
+  --agent-header-bg: #eae3f1;
+}
+.teacher-main[data-page-tone='agent'] .agent-management-card[data-platform='zhipuai'] {
+  --agent-header-bg: #e0ecee;
+}
+.teacher-main[data-page-tone='agent'] .agent-management-card[data-platform='wenxin'] {
+  --agent-header-bg: #f1e5d9;
 }
 .teacher-main[data-page-tone='agent'] .agent-management-search:focus-within {
   border-color: var(--cn-primary);
@@ -9804,3 +10033,585 @@ tr:hover td {
   /* 为工具栏和操作提示预留空间，避免画布底部被外层容器裁掉。 */
   --third-party-canvas-height: calc(100% - 112px);
 }
+
+/* 教师管理页面共享已确认的控件对比度规范。 */
+.teacher-layout {
+  --primary: #365f91;
+  --primary-dark: #2c4f79;
+  --primary-border: #aebccd;
+  --primary-focus-rgb: 54, 95, 145;
+  --primary-soft: #e8eef6;
+  --primary-tint: #e8eef6;
+}
+.teacher-layout .btn-primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+.teacher-layout .btn-primary:hover:not(:disabled) {
+  border-color: #2c4f79;
+  background: #2c4f79;
+}
+.teacher-layout .btn-primary:active:not(:disabled) {
+  border-color: #233f62;
+  background: #233f62;
+}
+.teacher-layout .btn-secondary {
+  border-color: #aebccd;
+  background: #fff;
+  color: #334155;
+}
+.teacher-layout .btn-secondary:hover:not(:disabled) {
+  border-color: #889bb2;
+  background: #e2e8f0;
+  color: #1e293b;
+}
+.teacher-layout .btn-secondary:active:not(:disabled) {
+  background: #d7e0eb;
+}
+.teacher-layout .btn-ghost:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #334155;
+}
+.teacher-layout .btn:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.teacher-main[data-color-sample='classes'] input.input,
+.teacher-layout .classes-search-box,
+.teacher-layout .classes-group-filter {
+  height: 40px;
+  min-height: 40px;
+}
+.teacher-layout .input,
+.teacher-layout .classes-search-box,
+.teacher-layout .classes-group-filter {
+  border-color: #aebccd;
+  border-radius: 8px;
+}
+.teacher-layout .input:focus,
+.teacher-layout .classes-search-box:focus-within,
+.teacher-layout .classes-group-filter:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(54, 95, 145, .18);
+  outline: none;
+}
+.teacher-layout .btn:disabled,
+.teacher-layout .input:disabled,
+.teacher-layout .classes-group-filter:disabled {
+  border-color: #c0cad7;
+  background: #dce2e9;
+  color: #596779;
+  box-shadow: none;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+/* 第三步：班级管理的次要文字与图标对比度。 */
+.teacher-main[data-color-sample='classes'] {
+  --classes-text-secondary: #475569;
+  --classes-text-muted: #64748b;
+}
+.teacher-main[data-color-sample='classes'] .classes-switcher-copy small,
+.teacher-main[data-color-sample='classes'] .classes-current-heading > span,
+.teacher-main[data-color-sample='classes'] .classes-current-stats span,
+.teacher-main[data-color-sample='classes'] .classes-current-stats-secondary,
+.teacher-main[data-color-sample='classes'] .classes-search-box > svg {
+  color: var(--classes-text-secondary);
+}
+.teacher-main[data-color-sample='classes'] .input::placeholder,
+.teacher-main[data-color-sample='classes'] .classes-search-box input::placeholder {
+  color: var(--classes-text-muted);
+  opacity: 1;
+}
+
+/* 辅助文字与搜索控件只作用于教师内容区。 */
+.teacher-main {
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-subtle: #64748b;
+  --cn-text-muted: #475569;
+  --cn-placeholder: #64748b;
+}
+.teacher-main .agent-management-search,
+.teacher-main .worksheet-management-search,
+.teacher-main .webapp-management-search {
+  border-color: #aebccd;
+}
+.teacher-main .agent-management-search:focus-within,
+.teacher-main .worksheet-management-search:focus-within,
+.teacher-main .webapp-management-search:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(54, 95, 145, .18);
+}
+.teacher-main input::placeholder,
+.teacher-main textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+/* 教师页面统一背景与主要卡片层级；内部区块保留各自状态语义。 */
+.teacher-main {
+  --page-bg: #e8edf4;
+  --card-bg: #fff;
+  --card-border: #cdd5e0;
+  --card-shadow: 0 1px 2px rgba(15, 23, 42, .08), 0 4px 12px rgba(15, 23, 42, .06);
+  --cn-bg: var(--page-bg);
+  --cn-border: var(--card-border);
+  --cn-surface-muted: #dee5ed;
+  background: var(--page-bg);
+}
+.teacher-main .card,
+.teacher-main .teacher-surface,
+.teacher-main .dashboard-kpi-card,
+.teacher-main .dashboard-section-card,
+.teacher-main .agent-management-overview,
+.teacher-main .webapp-management-overview,
+.teacher-main .active-classroom-overview,
+.teacher-main .agent-management-card,
+.teacher-main .worksheet-management-card,
+.teacher-main .webapp-management-card,
+.teacher-main .active-classroom-card {
+  background: var(--card-bg);
+  border-color: var(--card-border);
+  box-shadow: var(--card-shadow);
+}
+.teacher-main .card:hover,
+.teacher-main .agent-management-card:hover,
+.teacher-main .worksheet-management-card:hover,
+.teacher-main .webapp-management-card:hover {
+  border-color: #b6c2d1;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, .08), 0 6px 16px rgba(15, 23, 42, .08);
+}
+.teacher-main .dashboard-section-card-header,
+.teacher-main .agent-management-card-header,
+.teacher-main .worksheet-management-card-header,
+.teacher-main .webapp-management-card-header {
+  border-bottom-color: var(--card-border);
+}
+.teacher-main .dashboard-table th {
+  background: #dee5ed;
+}
+
+/* AI 智能体状态样板：圆点与文字共同表达状态。 */
+.teacher-main .agent-management-page {
+  --agent-status-healthy: #246345;
+  --agent-status-error: #a33434;
+  --agent-status-pending: #855615;
+  --agent-status-disabled: #475569;
+  --agent-status-checking: #365f91;
+}
+.agent-connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--agent-status-disabled, #475569);
+  font-size: .75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.agent-connection-status-dot {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
+.agent-connection-status.is-healthy { color: var(--agent-status-healthy, #246345); }
+.agent-connection-status.is-error { color: var(--agent-status-error, #a33434); }
+.agent-connection-status.is-pending { color: var(--agent-status-pending, #855615); }
+.agent-connection-status.is-checking { color: var(--agent-status-checking, #365f91); }
+.agent-connection-status.is-disabled .agent-connection-status-dot {
+  border: 2px solid currentColor;
+  background: transparent;
+}
+.agent-connection-status-error { cursor: help; border-bottom: 1px dashed currentColor; }
+.teacher-main .agent-management-header-status.is-healthy { color: #246345; }
+.teacher-main .agent-management-header-status.is-error { color: #a33434; }
+.teacher-main .agent-management-header-status.is-pending { color: #855615; }
+.teacher-main .agent-management-header-status.is-disabled { color: #475569; }
+.teacher-main .agent-management-overview-item.tone-green strong { color: #246345; }
+.teacher-main .agent-management-overview-item.tone-red strong { color: #a33434; }
+.teacher-main .agent-management-toggle { background: #64748b; }
+.teacher-main .agent-management-toggle.is-enabled { background: var(--primary); }
+.teacher-main .agent-management-toggle:focus { outline-color: var(--primary); }
+
+/* 教师运行状态沿用智能体样板，开关使用主色表达启用操作。 */
+.teacher-main {
+  --state-healthy: #246345;
+  --state-error: #a33434;
+  --state-warning: #855615;
+  --state-muted: #475569;
+}
+.teacher-state,
+.teacher-main .dashboard-status,
+.teacher-main .related-classroom-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  background: transparent;
+  color: var(--state-muted);
+  font-size: .75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.teacher-state::before,
+.teacher-main .dashboard-status::before,
+.teacher-main .related-classroom-status::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
+.teacher-state.is-healthy,
+.teacher-main .dashboard-status.status-ok,
+.teacher-main .related-classroom-status.is-active { color: var(--state-healthy); }
+.teacher-state.is-warning,
+.teacher-main .dashboard-status.status-warning,
+.teacher-main .related-classroom-status.is-paused { color: var(--state-warning); }
+.teacher-state.is-error,
+.teacher-main .dashboard-status.status-error { color: var(--state-error); }
+.teacher-state.is-muted::before,
+.teacher-main .dashboard-status.status-muted::before,
+.teacher-main .related-classroom-status.is-ended::before {
+  border: 2px solid currentColor;
+  background: transparent;
+}
+
+/* 教师弹窗收尾：布局外的密码框也继承同一套语义色。 */
+.teacher-layout {
+  --cn-placeholder: #64748b;
+  --cn-text-muted: #475569;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --card-border: #cdd5e0;
+}
+.teacher-layout .modal-content,
+.teacher-layout .teacher-compact-dialog {
+  border: 1px solid var(--card-border) !important;
+}
+.teacher-layout .teacher-compact-dialog {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.teacher-layout .teacher-form-dialog,
+.teacher-layout .agent-form-modal { overflow-y: auto; }
+.teacher-layout .teacher-form-dialog > div:first-child p { color: #475569 !important; }
+.teacher-layout .teacher-form-dialog > div:first-child > button { color: #475569 !important; border-color: #aebccd !important; }
+.teacher-layout .agent-platform-tabs small { color: #64748b; }
+.teacher-layout input::placeholder,
+.teacher-layout textarea::placeholder { color: #64748b; opacity: 1; }
+
+/* 智能体总连接状态与顶部操作并列，小屏允许自然换行。 */
+.teacher-main .agent-token-management-button {
+  position: relative;
+}
+.teacher-main .agent-token-alert-badge {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  border: 2px solid var(--page-bg);
+  background: #855615;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.teacher-main .agent-token-alert-badge.is-urgent {
+  background: #a33434;
+}
+.teacher-main .agent-management-page .teacher-page-header-actions {
+  min-width: 0;
+  flex-shrink: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.teacher-main .agent-management-header-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0 8px 0 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.teacher-main .agent-management-header-status svg {
+  flex: 0 0 15px;
+}
+@media (max-width: 720px) {
+  .teacher-main .agent-management-page .teacher-page-header-actions {
+    justify-content: flex-start;
+  }
+}
+
+.teacher-layout .agent-credential-selection-row > .input,
+.teacher-layout .agent-credential-selection-row > .btn {
+  height: 42px;
+  min-height: 42px;
+}
+@media (max-width: 1023px) {
+  .teacher-layout .agent-credential-selection-row > .input,
+  .teacher-layout .agent-credential-selection-row > .btn {
+    height: 46px;
+    min-height: 46px;
+  }
+}
+
+/* 课堂统计使用一个外框和内部竖线，避免嵌套圆角卡片叠出双边框。 */
+.teacher-main .active-classroom-overview {
+  gap: 0;
+  overflow: hidden;
+}
+.teacher-main .active-classroom-overview > div {
+  border: 0;
+  border-right: 1px solid var(--card-border);
+  border-radius: 0;
+  background: transparent;
+}
+.teacher-main .active-classroom-overview > div:last-child {
+  border-right: 0;
+}
+.teacher-main .classroom-network-status {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
+}
+
+.teacher-layout .api-token-overlay { z-index: 220; }
+.teacher-layout .api-token-dialog {
+  width: 620px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  background: #fff;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, .18);
+}
+.api-token-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid #cdd5e0;
+  background: #eaf0f6;
+}
+.api-token-header > div { flex: 1; min-width: 0; }
+.api-token-header h3 { margin: 0 0 6px; font-size: 1.063rem; color: #0f172a; }
+.api-token-header p { margin: 0; font-size: .813rem; line-height: 1.65; color: #475569; }
+.teacher-layout .api-token-close { width: 32px; min-height: 32px; height: 32px; padding: 0; flex-shrink: 0; }
+.api-token-body { padding: 20px 24px; }
+.api-token-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.api-token-list-heading strong { font-size: .875rem; color: #334155; }
+.api-token-list-heading strong span { margin-left: 6px; color: #64748b; }
+.api-token-list { display: flex; flex-direction: column; gap: 12px; }
+.api-token-item { border: 1px solid #cdd5e0; border-radius: 10px; overflow: hidden; background: #fff; }
+.api-token-item-main { display: flex; align-items: flex-start; gap: 12px; padding: 14px; }
+.api-token-icon { width: 36px; height: 36px; border-radius: 9px; background: #e2eaf4; color: #365f91; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.api-token-item-copy { flex: 1; min-width: 0; }
+.api-token-item-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.api-token-item-title strong { font-size: .875rem; color: #1e293b; overflow-wrap: anywhere; }
+.api-token-mask { font: .75rem/1.5 monospace; color: #475569; margin-top: 5px; overflow-wrap: anywhere; }
+.api-token-usage { font-size: .75rem; color: #475569; margin-top: 4px; }
+.api-token-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.teacher-layout .api-token-item-actions .btn { min-height: 34px; padding: 6px 10px; font-size: .75rem; border-radius: 7px; }
+.teacher-layout .api-token-item-actions .api-token-delete { color: #a33434; }
+.api-token-confirmation { padding: 12px 14px; border-top: 1px solid #cdd5e0; background: #f8eeee; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.api-token-confirmation > span { flex: 1; font-size: .813rem; color: #a33434; }
+.api-token-editor { margin-top: 16px; padding: 16px; border: 1px solid #cdd5e0; border-radius: 10px; background: #f3f6fa; }
+.api-token-editor h4 { margin: 0 0 14px; font-size: .875rem; color: #1e293b; overflow-wrap: anywhere; }
+.api-token-editor label { display: block; margin-bottom: 5px; font-size: .813rem; font-weight: 500; color: #334155; }
+.api-token-editor label span { color: #64748b; font-weight: 400; }
+.api-token-editor .input { margin-bottom: 12px; font-size: .875rem; }
+.api-token-editor #api-token-value { font-family: monospace; }
+.api-token-field-hint { margin: -6px 0 14px; color: #64748b; font-size: .75rem; }
+.api-token-impact { padding: 10px 12px; margin-bottom: 14px; background: #fff1da; border: 1px solid #dfc6a0; border-radius: 8px; color: #855615; font-size: .813rem; line-height: 1.5; }
+.api-token-editor-actions, .api-token-footer { display: flex; justify-content: flex-end; gap: 8px; }
+.api-token-footer { padding: 14px 24px; border-top: 1px solid #cdd5e0; }
+.api-token-empty { padding: 24px 16px; border: 1px dashed #aebccd; border-radius: 10px; background: #f3f6fa; color: #475569; text-align: center; font-size: .813rem; }
+@media (max-width: 720px) {
+  .teacher-main .active-classroom-overview > div:nth-child(2n) { border-right: 0; }
+  .teacher-main .active-classroom-overview > div:nth-child(-n+2) { border-bottom: 1px solid var(--card-border); }
+  .api-token-header { padding: 16px; }
+  .api-token-body { padding: 16px; }
+  .api-token-item-main { flex-wrap: wrap; }
+  .api-token-item-actions { width: 100%; justify-content: flex-end; }
+  .api-token-footer { padding: 14px 16px; }
+}
+
+/* 课堂关联资源：类型标题与资源名称形成明确的两层信息。 */
+.teacher-main .classroom-resource-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 12px;
+  padding: 14px 20px;
+  border-top: 1px solid #CDD5E0;
+}
+.classroom-resource-section {
+  flex: 1 1 240px;
+  min-width: 0;
+  max-width: 440px;
+  padding: 12px 14px;
+  border: 1px solid var(--resource-border, #C5D3E3);
+  border-radius: 9px;
+  background: var(--resource-bg, #EAF0F7);
+}
+.classroom-resource-section[data-resource-kind="webapp"] { --resource-bg: #F3EBE2; --resource-border: #DCCBB9; }
+.classroom-resource-section[data-resource-kind="agent"] { --resource-bg: #EEEAF4; --resource-border: #D3C8E0; }
+.classroom-resource-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; font-size: .8125rem; font-weight: 700; color: #475569; }
+.classroom-resource-count { padding: 0 6px; border-radius: 5px; background: #FFFFFF; color: #475569; font-size: .75rem; }
+.classroom-resource-items { display: flex; flex-direction: column; gap: 10px; }
+.classroom-resource-item { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.classroom-resource-icon { width: 30px; height: 30px; border-radius: 7px; flex-shrink: 0; color: white; display: flex; align-items: center; justify-content: center; font-size: .9375rem; font-weight: 700; overflow: hidden; }
+.classroom-resource-copy { display: flex; flex-direction: column; min-width: 0; gap: 3px; }
+.classroom-resource-name { color: #1E293B; font-size: .875rem; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.classroom-resource-groups { color: #475569; font-size: .8125rem; line-height: 1.5; overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .teacher-main .classroom-resource-row { padding: 12px 16px; }
+  .classroom-resource-section { flex-basis: 100%; max-width: none; }
+}
+
+/* 互动面板：课堂操作、看板设置、学生筛选各占明确的一层。 */
+.student-board-header { padding: 6px 0 12px; }
+.student-board-actions { row-gap: 10px !important; }
+.student-board-action-group { padding: 0 8px 0 0 !important; border-radius: 0 !important; border-right: 1px solid #B9C5D4; }
+.student-board-action-group:last-child { padding-right: 0 !important; border-right: 0; }
+.student-board-view-controls { margin-bottom: 18px; padding: 14px 16px; background: white; border: 1px solid #CDD5E0; border-radius: 11px; }
+.student-board-mode { margin-bottom: 12px !important; padding-bottom: 12px; border-bottom: 1px solid #D5DEE8; }
+.student-board-filters { flex-wrap: wrap; gap: 8px !important; margin-bottom: 0 !important; overflow-x: visible !important; }
+@media (max-width: 1023px) {
+  .student-board-header { align-items: flex-start !important; }
+  .student-board-actions { width: 100%; }
+  .student-board-action-group { flex-wrap: wrap; row-gap: 6px !important; }
+}
+
+/* 绘图题试版：仅当前题型使用新的题干、作答、评价层级。 */
+.worksheet-editor-canvas[data-editing-type='drawing'] > .worksheet-editor-canvas-head { margin-bottom: 10px; padding-bottom: 8px; border: 0; }
+.worksheet-editor-canvas[data-editing-type='drawing'] > .worksheet-editor-canvas-head h2 { display: none; }
+.worksheet-editor-canvas[data-editing-type='drawing'] .worksheet-editor-task-head { padding-bottom: 8px; margin-bottom: 6px; border: 0; }
+.worksheet-editor-canvas[data-editing-type='drawing'] .worksheet-editor-task-title { font-size: .9375rem; color: #475569; }
+.worksheet-editor-canvas[data-editing-type='drawing'] .worksheet-editor-task-tools { display: none; }
+.worksheet-editor-canvas[data-editing-type='drawing'] .worksheet-editor-task-totals { font-size: .8125rem; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) > .worksheet-editor-question-head { background: transparent; padding: 8px 0 14px; border-bottom: 1px solid #CDD5E0; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-question-heading-copy strong { font-size: 1.125rem; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .is-prompt { display: contents; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .is-prompt > .worksheet-editor-section-head { display: none; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .is-prompt > .worksheet-editor-block:not(.drawing-prompt-block) { display: contents; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .drawing-prompt-block { padding: 18px 0; border: 0; }
+.drawing-required { color: #A33434; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .drawing-answer-settings,
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .drawing-evaluation-settings { padding: 16px 18px; margin: 0 0 16px; border: 1px solid #CDD5E0; border-radius: 10px; background: #EDF2F8; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .drawing-evaluation-settings { background: #F3F5F8; }
+.drawing-zone-heading { display: flex; align-items: center; gap: 7px; margin: 0 0 14px; color: #1E293B; font-size: .9375rem; font-weight: 700; }
+.drawing-zone-heading svg { width: 17px; height: 17px; color: #365F91; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .drawing-prompt-block h4,
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-block-head h4 { font-size: .875rem; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-block-head p,
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-hint,
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-drawing-note { color: #475569; font-size: .8125rem; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .drawing-answer-settings .worksheet-editor-drawing-settings { margin-top: 12px; padding: 12px 0 0; border-top: 1px solid #CDD5E0; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .drawing-answer-settings .worksheet-editor-drawing-section { border: 0; background: white; padding: 14px; border-radius: 0; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-drawing-tools.is-connected { width: 100%; padding: 0; border: 0; border-radius: 0; background: linear-gradient(#CDD5E0,#CDD5E0) left bottom / 100% 1px no-repeat; gap: 6px; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-drawing-tools.is-connected > button { min-height: 36px; padding: 8px 12px; border: 1px solid #CDD5E0; border-radius: 8px 8px 0 0; background: #DCE2EA; color: #475569; font-size: .8125rem; box-shadow: none; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-drawing-tools.is-connected > button.is-active { position: relative; background: white; border-bottom-color: white; color: #0F172A; font-weight: 700; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-drawing-tools.is-connected > button.is-active::before { content: ''; position: absolute; top: -1px; left: 7px; right: 7px; height: 3px; border-radius: 2px; background: #475569; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-drawing-note { margin: 0; padding: 12px 0 0; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-reference-block { padding: 0 0 14px; border: 0; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-ai-scoring { padding: 14px 0 0; border-top: 1px solid #CDD5E0; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-input-modes label.is-selected { border-color: #A8BBD1; background: #DCE6F2; }
+@media (max-width: 720px) {
+ .worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .drawing-answer-settings,
+ .worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .drawing-evaluation-settings { padding: 14px; }
+}
+
+/* 所有题型共用教师端已确认的主面板边界；内部配置区保持平面层级。 */
+.teacher-main .worksheet-editor-canvas { border-color: var(--card-border, #CDD5E0); box-shadow: var(--card-shadow); }
+.teacher-main .worksheet-editor-outline { border-color: var(--card-border, #CDD5E0); box-shadow: var(--card-shadow); }
+.worksheet-editor-question.is-focused .worksheet-editor-question-section { border-color: #CDD5E0; }
+.worksheet-editor-question.is-focused .worksheet-editor-block-head h4 { color: #1E293B; font-size: .875rem; }
+.worksheet-editor-question.is-focused .worksheet-editor-block-head p,
+.worksheet-editor-question.is-focused .worksheet-editor-hint { color: #475569; font-size: .8125rem; }
+.worksheet-editor-question.is-focused .worksheet-editor-rich-box { border-color: #AEBCCD; }
+.worksheet-editor-question.is-focused .worksheet-editor-formatbar { background: #EDF2F8; border-bottom-color: #CDD5E0; }
+.worksheet-editor-question.is-focused .worksheet-editor-question-section.is-grading { background: #F3F5F8; border: 1px solid #CDD5E0; border-radius: 10px; padding: 16px 18px; box-shadow: none; }
+
+/* 课堂资源是辅助信息，用紧凑条目呈现。 */
+.teacher-main .classroom-resource-row { gap: 10px 18px; padding: 10px 20px; }
+.classroom-resource-section { display: flex; align-items: center; flex: 0 1 auto; gap: 8px; max-width: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.classroom-resource-heading { flex-shrink: 0; margin: 0; font-size: .75rem; gap: 5px; }
+.classroom-resource-count { background: #E2E8F0; }
+.classroom-resource-items { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+.classroom-resource-item { padding: 4px 7px; border: 1px solid var(--resource-border, #C5D3E3); border-radius: 6px; background: var(--resource-bg, #EAF0F7); gap: 6px; }
+.classroom-resource-icon { width: 20px; height: 20px; border-radius: 4px; font-size: .75rem; }
+.classroom-resource-icon svg { width: 13px; height: 13px; }
+.classroom-resource-name { font-size: .8125rem; font-weight: 500; }
+.classroom-resource-groups { font-size: .75rem; }
+@media (max-width: 720px) { .teacher-main .classroom-resource-row { padding: 10px 16px; } .classroom-resource-section { flex-basis: auto; align-items: flex-start; } .classroom-resource-heading { padding-top: 5px; } }
+
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .is-prompt > .worksheet-editor-block:not(.drawing-prompt-block) > .worksheet-editor-block-head { display: none; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-question-index { width: auto; min-width: 0; padding: 0; background: transparent; font-size: 1.125rem; color: #1E293B; font-weight: 700; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-formatbar { padding: 6px 8px; background: #EDF2F8; border-bottom-color: #CDD5E0; }
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-formatbar button,
+.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-image-upload { min-height: 30px; color: #475569; }
+
+/* 客观题沿用各题型配置，采用相同的题干、作答、评分三层视觉。 */
+.worksheet-editor-question.is-focused:not([data-question-type='drawing']):not([data-question-type='short-answer']) .is-prompt { border: 0; background: transparent; padding: 0; }
+.worksheet-editor-question.is-focused:not([data-question-type='drawing']):not([data-question-type='short-answer']) .is-prompt > .worksheet-editor-section-head { display: none; }
+.worksheet-editor-question.is-focused:not([data-question-type='drawing']):not([data-question-type='short-answer']) .is-prompt > .worksheet-editor-block:first-of-type { border: 0; padding: 18px 0; }
+.worksheet-editor-question.is-focused:not([data-question-type='drawing']):not([data-question-type='short-answer']) .is-prompt > .worksheet-editor-block + .worksheet-editor-block { background: #EDF2F8; border: 1px solid #CDD5E0; border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+
+/* History records use stacked rows so dates, module summaries and actions stay readable. */
+.history-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 24px; background: #fff; border: 1px solid var(--card-border); border-radius: 12px; }
+.history-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px; }
+.history-summary > div + div { border-left: 1px solid var(--card-border); }
+.history-summary strong { font-size: 1.375rem; color: var(--primary); }
+.history-summary span { font-size: .8125rem; color: var(--text-secondary); }
+.history-record { padding: 20px; }
+.history-record + .history-record { border-top: 1px solid var(--card-border); }
+.history-record-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.history-record-heading h3 { margin: 0; font-size: 1rem; font-weight: 700; color: #1e293b; overflow-wrap: anywhere; }
+.history-record-heading p { margin: 5px 0 0; font-size: .8125rem; color: var(--text-secondary); }
+.history-record-badges { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.history-mode { padding: 3px 8px; background: #edf2f8; color: #365f91; border-radius: 5px; font-size: .75rem; white-space: nowrap; }
+.history-record-details { display: grid; grid-template-columns: 1.5fr 1.5fr repeat(4, 1fr); gap: 16px; margin: 18px 0; }
+.history-record dt { font-size: .75rem; color: var(--text-secondary); white-space: nowrap; }
+.history-record dd { margin: 5px 0 0; font-size: .8125rem; color: #334155; font-variant-numeric: tabular-nums; }
+.history-record-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; border-top: 1px solid #e5ebf2; padding-top: 14px; }
+.history-module-summary { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 0; }
+.history-module-summary > div { display: flex; align-items: baseline; gap: 8px; }
+.history-module-summary dd { margin: 0; }
+.history-record-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.history-record-actions .btn { font-size: .8125rem; padding: 7px 10px; white-space: nowrap; gap: 5px; }
+.worksheet-editor-ai-scoring-field > label { display: flex; align-items: center; gap: 5px; }
+@media (max-width: 1100px) {
+  .history-record-details { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .history-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-summary > div { padding: 14px; }
+  .history-summary > div:nth-child(3) { border-left: 0; }
+  .history-summary > div:nth-child(n+3) { border-top: 1px solid var(--card-border); }
+  .history-record { padding: 16px; }
+  .history-record-heading { flex-wrap: wrap; gap: 10px; }
+  .history-record-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-record-actions { margin-left: 0; }
+}
+
+.history-migration { padding: 16px 20px; margin-bottom: 16px; background: #edf2f8; border: 1px solid #cdd8e6; border-radius: 10px; }
+.history-migration h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; font-size: .875rem; font-weight: 700; color: #365f91; }
+.history-migration ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; list-style: none; margin: 0; padding: 0; }
+.history-migration li { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid #d9e2ed; border-radius: 8px; background: #fff; color: #475569; font-size: .8125rem; line-height: 1.6; }
+.history-migration-step { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 26px; height: 26px; border-radius: 50%; background: #365f91; color: #fff; font-weight: 700; }
+@media (max-width: 720px) { .history-migration { padding: 14px; } .history-migration ol { grid-template-columns: minmax(0, 1fr); gap: 10px; } }

@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ANALYSIS_AGENT_PROMPT_TEMPLATE } from '@/lib/analysis-agent-prompt-template';
+import { AGENT_PLATFORMS } from '@/app/teacher/agents/agent-platforms';
 
 const helpImages: Record<string, string[]> = {
   coze: [
@@ -43,7 +44,8 @@ export default function AgentHelpPage() {
 
 function Content() {
   const searchParams = useSearchParams();
-  const platform = searchParams.get('platform') || 'coze';
+  const requestedPlatform = searchParams.get('platform') || 'coze';
+  const [platform, setPlatform] = useState(helpImages[requestedPlatform] ? requestedPlatform : 'coze');
   const isAnalysisAgent = searchParams.get('purpose') === 'analysis';
   const images = helpImages[platform] || [];
   const [current, setCurrent] = useState(0);
@@ -103,13 +105,24 @@ function Content() {
       display: 'flex', flexDirection: 'column',
       fontFamily: 'system-ui', userSelect: 'none', position: 'relative',
     }}>
+      <header style={{ padding: '20px 64px 12px 24px', flexShrink: 0 }}>
+        <h1 style={{ margin: '0 0 12px', color: '#f1f5f9', fontSize: 20 }}>接入教程</h1>
+        <div role="group" aria-label="选择接入教程平台" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {AGENT_PLATFORMS.map(option => (
+            <button key={option.value} type="button" aria-pressed={platform === option.value}
+              onClick={() => { setPlatform(option.value); setCurrent(0); }}
+              style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${platform === option.value ? '#aebccd' : '#64748b'}`, background: platform === option.value ? '#e2e8f0' : '#334155', color: platform === option.value ? '#0f172a' : '#f1f5f9', font: '600 14px system-ui', cursor: 'pointer' }}>
+              {option.label}
+            </button>
+          ))}
+        </div>
       {isAnalysisAgent && (
         <button
           type="button"
           onClick={() => { void copyPromptTemplate(); }}
           title="复制到外部智能体平台的系统提示词中"
           style={{
-            position: 'absolute', top: 16, left: 16, zIndex: 10,
+            marginTop: 12,
             minHeight: 38, padding: '0 14px', borderRadius: 9,
             border: '1px solid rgba(191,219,254,.5)',
             background: copied ? 'rgba(22,101,52,.88)' : 'rgba(30,64,175,.82)',
@@ -120,6 +133,7 @@ function Content() {
           {copied ? '已复制提示词模板' : '复制分析提示词模板'}
         </button>
       )}
+      </header>
       {/* 关闭按钮 */}
       <button onClick={() => window.close()}
         style={{
@@ -138,11 +152,11 @@ function Content() {
       {/* 图片区域 */}
       <div style={{
         flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '48px 40px 100px', minHeight: 0, overflow: 'hidden',
+        padding: '16px 24px 128px', minHeight: 0, overflow: 'hidden',
       }}>
         <img
           src={images[current]}
-          alt={`配置步骤 ${current + 1}`}
+          alt={`${AGENT_PLATFORMS.find(option => option.value === platform)?.label}接入步骤 ${current + 1}`}
           style={{
             maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
             borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
@@ -161,7 +175,7 @@ function Content() {
           {/* 圆点指示器 */}
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {images.map((_, i) => (
-              <button key={i} onClick={() => setCurrent(i)}
+              <button key={i} onClick={() => setCurrent(i)} aria-label={`查看第 ${i + 1} 步`} aria-pressed={current === i}
                 style={{
                   width: current === i ? 24 : 6, height: 6, borderRadius: 3, border: 'none',
                   background: current === i ? '#3b82f6' : 'rgba(255,255,255,0.2)',

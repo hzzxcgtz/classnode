@@ -435,6 +435,7 @@ function WorksheetEditorBody() {
       inheritedPoints={inheritedPoints}
       // ★ 2026-09-26：逐题分值的量词跟着学习单的奖励档走（星星「颗」/ 花朵「朵」/ 分数「分」）。
       pointsUnit={pointsUnitLabel(editor.settings.rewardStyle)}
+      rewardStyle={editor.settings.rewardStyle}
       rejectedPointInput={editor.rejectedPoints[row.node.id]}
       onPromptChange={(prompt, data) => editor.updatePrompt(row.node.id, prompt, data)}
       onDataChange={patch => editor.updateData(row.node.id, patch)}
@@ -651,7 +652,7 @@ function WorksheetEditorBody() {
           </button>
         </aside>
 
-        <main className="worksheet-editor-canvas">
+        <main className="worksheet-editor-canvas" data-editing-type={activeQuestion?.node.type}>
           {blocks.length === 0 ? (
             <div className="worksheet-editor-canvas-empty">
               <span>01</span>

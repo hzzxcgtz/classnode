@@ -48,8 +48,8 @@ const CELL_STYLE: Record<WorksheetCellStatus, { background: string; border: stri
 function placeholder(label: string, hint: string, compact: boolean) {
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '8px 6px', borderRadius: compact ? 6 : 8, background: '#f9fafb', border: '1px dashed #e2e8f0', textAlign: 'center' }}>
-      <span style={{ fontSize: compact ? "0.75rem" : '0.813rem', fontWeight: 600, color: '#94a3b8' }}>{label}</span>
-      <span style={{ fontSize: "0.75rem", color: '#cbd5e1', lineHeight: 1.4 }}>{hint}</span>
+      <span style={{ fontSize: compact ? "0.75rem" : '0.813rem', fontWeight: 600, color: 'var(--text-muted, #64748b)' }}>{label}</span>
+      <span style={{ fontSize: "0.75rem", color: 'var(--text-muted, #64748b)', lineHeight: 1.4 }}>{hint}</span>
     </div>
   );
 }
@@ -93,7 +93,7 @@ function stateTone(state: WorksheetTileState): { background: string; border: str
    */
   if (state.kind === 'stuck') return { background: '#faf6ef', border: '1px solid #f3e2c0', color: '#8a6134' };
   if (state.kind === 'all-submitted') return { background: '#f2f9f3', border: '1px solid #cfe8d5', color: '#3f7a52' };
-  return { background: '#f8fafc', border: '1px solid #eef2f6', color: '#64748b' };
+  return { background: '#f8fafc', border: '1px solid #eef2f6', color: 'var(--text-secondary, #475569)' };
 }
 
 export function WorksheetTileContent({ state, answer, compact }: {
@@ -192,7 +192,7 @@ export function WorksheetTileContent({ state, answer, compact }: {
                   它原来就住在这一行，而这一行在 working / stuck 两态下**没有文字、高度是 0**
                   ⇒ 记号一来整行长高、下面那块预览跟着往下跳。搬走之后这一行只剩标题文字。 */}
               {state.kind === 'all-submitted' && (
-                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, fontSize: "0.75rem", color: '#64748b', overflow: 'hidden' }}>
+                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, fontSize: "0.75rem", color: 'var(--text-secondary, #475569)', overflow: 'hidden' }}>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {answer.heading} · {answer.typeLabel}
                   </span>

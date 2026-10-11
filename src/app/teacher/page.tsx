@@ -354,55 +354,18 @@ export default function TeacherDashboard() {
   return (
     <div>
       <TeacherPageHeader title="课堂管理" description="创建课堂并实时掌握学生互动进度。" actions={
+        <>
+        <button type="button" className="btn btn-ghost classroom-network-status" onClick={() => void toggleLanAccess()} disabled={networkSaving}
+          title={lanAccess ? '学生设备可通过局域网访问' : '当前仅教师电脑本机可访问'} aria-pressed={lanAccess}>
+          <span className={`network-status-dot ${lanAccess ? 'is-open' : ''}`} />
+          {networkSaving ? '切换中…' : lanAccess ? '局域网访问已开放' : '局域网访问已关闭'}
+        </button>
         <button className="btn btn-primary" onClick={() => router.push('/teacher/classroom/new')}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           创建新课堂
         </button>
+        </>
       } />
-
-      {/* 工具栏 */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 16,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <h2
-            style={{
-              fontSize: "0.938rem",
-              fontWeight: 600,
-              margin: 0,
-              color: "#0f172a",
-            }}
-          >
-            活跃课堂
-          </h2>
-          {activeClassrooms.length > 0 && (
-            <span
-              style={{
-                fontSize: "0.75rem",
-                padding: "1px 8px",
-                borderRadius: 10,
-                background: "#dcfce7",
-                color: "#3f7859",
-                fontWeight: 500,
-              }}
-            >
-              {activeClassrooms.length} 个
-            </span>
-          )}
-        </div>
-        <div className="classroom-management-toolbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <button type="button" className="btn btn-secondary" onClick={() => void toggleLanAccess()} disabled={networkSaving}
-          title={lanAccess ? '学生设备可通过局域网访问' : '当前仅教师电脑本机可访问'}>
-          <span className={`network-status-dot ${lanAccess ? 'is-open' : ''}`} />
-          {networkSaving ? '切换中…' : lanAccess ? '局域网访问已开放' : '局域网访问已关闭'}
-        </button>
-      </div>
-      </div>
 
       {activeClassrooms.length > 0 && (
         <><div className="active-classroom-overview" aria-label="活跃课堂概览">
@@ -462,7 +425,7 @@ export default function TeacherDashboard() {
               style={{
                 background: "white",
                 borderRadius: 12,
-                border: "1px solid #e2e8f0",
+                border: "1px solid var(--card-border)",
                 overflow: "hidden",
                 transition: "box-shadow 0.15s",
               }}
@@ -604,21 +567,21 @@ export default function TeacherDashboard() {
                         color: "#475569",
                         fontSize: "0.875rem",
                         fontWeight: 600,
-                        border: "1px solid #e2e8f0",
+                        border: "1px solid var(--card-border)",
                         cursor: "pointer",
                         boxSizing: "border-box",
                       }}
                     >
-                      <span style={{ color: "#94a3b8", fontWeight: 500 }}>互动码</span>
+                      <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>互动码</span>
                       <strong style={{ color: "#0f766e", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "0.75rem", letterSpacing: "0.04em" }}>{cr.code}</strong>
                       <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0f766e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     </button>
                   </div>
-                  <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
                     {cr.classes?.[0]?.class?.name && (
                       <>
                         {cr.classes[0].class.name}
-                        <span style={{ margin: "0 6px", color: "#e2e8f0" }}>
+                        <span style={{ margin: "0 6px", color: 'var(--text-muted, #64748b)' }}>
                           |
                         </span>
                       </>
@@ -626,7 +589,7 @@ export default function TeacherDashboard() {
                     {cr.mode === 'group' || cr.mode === 'advanced'
                       ? `${cr.participantCount ?? (cr._count?.students || 0)} 个小组 · ${cr.realStudentCount ?? 0} 名学生`
                       : `${cr.realStudentCount ?? (cr._count?.students || 0)} 名学生`}
-                    <span style={{ margin: "0 6px", color: "#e2e8f0" }}>|</span>
+                    <span style={{ margin: "0 6px", color: 'var(--text-muted, #64748b)' }}>|</span>
                     <span>
                       {new Date(cr.createdAt).toLocaleString("zh-CN", {
                         month: "2-digit",
@@ -652,7 +615,7 @@ export default function TeacherDashboard() {
                     {
                       label: "在线",
                       value: onlineMap[cr.id] || 0,
-                      color: "#3f7859",
+                      color: "var(--state-healthy)",
                     },
                     {
                       label: "离线",
@@ -660,7 +623,7 @@ export default function TeacherDashboard() {
                         0,
                         (cr.participantCount ?? (cr._count?.students || 0)) - (onlineMap[cr.id] || 0),
                       ),
-                      color: "#94a3b8",
+                      color: "var(--text-muted)",
                     },
                     // 2026-09-25：第三格「互动」（`totalRounds` 求和）已按教师要求**去掉**。
                     // ⇒ 卡片上只剩「在线 / 离线」两格，它们是一对（离线 = 参与者数 − 在线），
@@ -680,7 +643,7 @@ export default function TeacherDashboard() {
                       <div
                         style={{
                           fontSize: "0.75rem",
-                          color: "#94a3b8",
+                          color: "var(--text-muted)",
                           marginTop: 1,
                         }}
                       >
@@ -716,70 +679,48 @@ export default function TeacherDashboard() {
                 const total = materials.worksheets.length + materials.webapps.length + materials.agents.length;
                 if (total === 0) return null;
 
-                /** 一个材料条。三类共用一套长相，只有左侧那个图标不同。 */
                 const chip = (key: string, icon: ReactNode, name: string, groupNames: string[]) => (
-                  <span key={key} style={{
-                    display: "inline-flex", alignItems: "center", gap: 5,
-                    padding: "3px 10px 3px 4px", borderRadius: 6,
-                    background: "#f8fafc", border: "1px solid #eef2f6",
-                    fontSize: "0.75rem", color: "#475569",
-                  }}>
+                  <span key={key} className="classroom-resource-item">
                     {icon}
-                    {name}
-                    {/* 高级模式下同一类有多份，光看名字不知道为什么有多个 ——
-                        把「这一份是谁的」写在旁边（用户要求「认真思考」的那一点）。 */}
-                    {groupNames.length > 0 && (
-                      <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>{groupNames.join("、")}</span>
-                    )}
+                    <span className="classroom-resource-copy">
+                      <span className="classroom-resource-name">{name}</span>
+                      {groupNames.length > 0 && (
+                        <span className="classroom-resource-groups">{groupNames.join("、")}</span>
+                      )}
+                    </span>
                   </span>
                 );
 
-                /** 一个方形的图标块（与原来智能体那个 logo 块同一个形状）。 */
                 const iconBox = (background: string, content: ReactNode) => (
-                  <span style={{
-                    width: 18, height: 18, borderRadius: 4, flexShrink: 0,
-                    background, color: "white",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: "0.75rem", fontWeight: 700, overflow: "hidden",
-                  }}>
-                    {content}
-                  </span>
+                  <span className="classroom-resource-icon" style={{ background }}>{content}</span>
                 );
 
-                /** 一类材料：一个类名 + 它的全部条目。空类不渲染。 */
-                const section = (label: string, chips: ReactNode[]) => chips.length === 0 ? null : (
-                  <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: "0.75rem", color: "#94a3b8", fontWeight: 700, marginRight: 2 }}>{label}</span>
-                    {chips}
-                  </span>
+                const section = (kind: string, label: string, chips: ReactNode[]) => chips.length === 0 ? null : (
+                  <div key={kind} className="classroom-resource-section" data-resource-kind={kind}>
+                    <div className="classroom-resource-heading">
+                      <span>{label}</span>
+                      <span className="classroom-resource-count">{chips.length}</span>
+                    </div>
+                    <div className="classroom-resource-items">{chips}</div>
+                  </div>
                 );
 
                 return (
-                  <div
-                    className="active-classroom-agent-row"
-                    style={{
-                      padding: "8px 20px",
-                      borderTop: "1px solid #f1f5f9",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      flexWrap: "wrap",
-                    }}
-                  >
+                  <div className="active-classroom-agent-row classroom-resource-row">
                     {/* 顺序 = 三件套本身（学习单 / 探究空间 / 智能学伴）。 */}
-                    {section("学习单", materials.worksheets.map(({ material, groupNames }) => chip(
+                    {section("worksheet", "学习单", materials.worksheets.map(({ material, groupNames }) => chip(
                       material.id,
-                      iconBox("#0ea5e9", <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>),
+                      iconBox("#365F91", <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>),
                       material.title,
                       groupNames,
                     )))}
-                    {section("探究网页", materials.webapps.map(({ material, groupNames }) => chip(
+                    {section("webapp", "探究网页", materials.webapps.map(({ material, groupNames }) => chip(
                       material.id,
-                      iconBox("var(--primary)", <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>),
+                      iconBox("var(--primary)", <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>),
                       material.name,
                       groupNames,
                     )))}
-                    {section("智能学伴", materials.agents.map(({ material: agt, groupNames }) => chip(
+                    {section("agent", "智能学伴", materials.agents.map(({ material: agt, groupNames }) => chip(
                       agt.id,
                       iconBox(platformColors[agt.platform] || "#64748b", agt.logo ? (
                         <img
@@ -806,41 +747,21 @@ export default function TeacherDashboard() {
                   borderTop: "1px solid #f1f5f9",
                 }}
               >
-                <span
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: "50%",
-                    flexShrink: 0,
-                    background: cr.status === "paused" ? "#956834" : "#3f7859",
-                    boxShadow:
-                      cr.status === "paused"
-                        ? "0 0 6px rgba(245,158,11,0.4)"
-                        : "0 0 6px rgba(63, 120, 89,0.4)",
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: "0.75rem",
-                    fontWeight: 500,
-                    marginRight: "auto",
-                    color: cr.status === "paused" ? "#956834" : "#3f7859",
-                  }}
-                >
+                <span className={`teacher-state is-${cr.status === "paused" ? "warning" : "healthy"}`} style={{ marginRight: 'auto' }}>
                   {cr.status === "paused" ? "已暂停" : "进行中"}
                 </span>
 
                 <div className="active-classroom-actions">
                 {/* 编辑 + 互动码 */}
                 <button onClick={() => openSettings(cr)} title="修改课堂设置"
-                  style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.875rem", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
+                  style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.875rem", background: "transparent", color: 'var(--text-secondary, #475569)', border: "1px solid var(--card-border)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#475569"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   编辑
                 </button>
                 <button onClick={() => void openQrCode(cr)} disabled={loadingQrClassroomId !== null} title="显示互动码"
-                  style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.875rem", background: "transparent", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
+                  style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.875rem", background: "transparent", color: 'var(--text-secondary, #475569)', border: "1px solid var(--card-border)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "var(--primary)"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; }}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="17" y="2" width="5" height="5" rx="1"/><rect x="2" y="17" width="5" height="5" rx="1"/><path d="M11 2h2"/><path d="M11 22h2"/><path d="M2 11v2"/><path d="M22 11v2"/><path d="M15 15h2v2h-2z"/><path d="M17 15v-1a2 2 0 0 0-2-2h-1"/><path d="M15 19v1a2 2 0 0 0 2 2h1"/><path d="M19 17h2v2h-2z"/></svg>
@@ -881,7 +802,7 @@ export default function TeacherDashboard() {
             background: "white",
             borderRadius: 14,
             padding: "48px 20px",
-            border: "1px solid #e2e8f0",
+            border: "1px solid var(--card-border)",
             textAlign: "center",
           }}
         >
@@ -902,7 +823,7 @@ export default function TeacherDashboard() {
               height="24"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="#94a3b8"
+              stroke="var(--text-muted)"
               strokeWidth="1.5"
               strokeLinecap="round"
             >
@@ -926,7 +847,7 @@ export default function TeacherDashboard() {
           <p
             style={{
               fontSize: "0.813rem",
-              color: "#94a3b8",
+              color: "var(--text-muted)",
               margin: "0 0 20px",
             }}
           >
@@ -1219,7 +1140,7 @@ export default function TeacherDashboard() {
             setSettingsModalClassroom(null);
           }}
         >
-          <div
+          <div className="teacher-compact-dialog" role="dialog" aria-modal="true" aria-label="课堂设置"
             style={{
               background: "white",
               borderRadius: 16,
@@ -1279,7 +1200,7 @@ export default function TeacherDashboard() {
                 <p
                   style={{
                     fontSize: "0.8125rem",
-                    color: "#94a3b8",
+                    color: "var(--text-muted)",
                     margin: "2px 0 0",
                   }}
                 >
@@ -1325,7 +1246,7 @@ export default function TeacherDashboard() {
                     width: "100%",
                     padding: "10px 14px",
                     borderRadius: 10,
-                    border: "1px solid #e2e8f0",
+                    border: "1px solid var(--card-border)",
                     fontSize: "0.875rem",
                     outline: "none",
                     boxSizing: "border-box",
@@ -1375,7 +1296,7 @@ export default function TeacherDashboard() {
                       <span
                         style={{
                           fontSize: "0.75rem",
-                          color: "#94a3b8",
+                          color: "var(--text-muted)",
                           fontWeight: 400,
                           marginLeft: 4,
                         }}
@@ -1398,7 +1319,7 @@ export default function TeacherDashboard() {
                         if (!agent)
                           return (
                             <span
-                              style={{ fontSize: "0.813rem", color: "#94a3b8" }}
+                              style={{ fontSize: "0.813rem", color: "var(--text-muted)" }}
                             >
                               未配置
                             </span>
@@ -1416,10 +1337,10 @@ export default function TeacherDashboard() {
                               gap: 6,
                               padding: "6px 12px",
                               borderRadius: 8,
-                              border: "1px solid #e2e8f0",
+                              border: "1px solid var(--card-border)",
                               background: "#f8fafc",
                               fontSize: "0.813rem",
-                              color: "#64748b",
+                              color: 'var(--text-secondary, #475569)',
                             }}
                           >
                             {logoUrl ? (
@@ -1492,7 +1413,7 @@ export default function TeacherDashboard() {
                       <span
                         style={{
                           fontSize: "0.75rem",
-                          color: "#94a3b8",
+                          color: "var(--text-muted)",
                           fontWeight: 400,
                           marginLeft: 4,
                         }}
@@ -1567,10 +1488,10 @@ export default function TeacherDashboard() {
                                 gap: 6,
                                 padding: "6px 10px",
                                 borderRadius: 8,
-                                border: "1px solid #e2e8f0",
+                                border: "1px solid var(--card-border)",
                                 background: "white",
                                 fontSize: "0.813rem",
-                                color: "#64748b",
+                                color: 'var(--text-secondary, #475569)',
                               }}
                             >
                               {logoUrl ? (
@@ -1644,7 +1565,7 @@ export default function TeacherDashboard() {
                   <span
                     style={{
                       fontSize: "0.75rem",
-                      color: "#94a3b8",
+                      color: "var(--text-muted)",
                       fontWeight: 400,
                       marginLeft: 4,
                     }}
@@ -1668,7 +1589,7 @@ export default function TeacherDashboard() {
 
                   if (materials.length === 0) {
                     return (
-                      <span style={{ fontSize: "0.813rem", color: "#94a3b8" }}>
+                      <span style={{ fontSize: "0.813rem", color: "var(--text-muted)" }}>
                         {/* 两种模式的「没有」不是同一件事：高级模式是「一个组都没配」，
                             课堂级那张表在该模式下压根不被读。 */}
                         {settingsModalClassroom.mode === "advanced"
@@ -1706,16 +1627,16 @@ export default function TeacherDashboard() {
                               gap: 6,
                               padding: "6px 12px",
                               borderRadius: 8,
-                              border: "1px solid #e2e8f0",
+                              border: "1px solid var(--card-border)",
                               background: "#f8fafc",
                               fontSize: "0.813rem",
-                              color: "#64748b",
+                              color: 'var(--text-secondary, #475569)',
                             }}
                           >
                             <span>{material.name}</span>
                             {/* 高级模式下同一类不止一个 —— 光看名字不知道为什么有多个。 */}
                             {groupNames.length > 0 && (
-                              <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
+                              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
                                 {groupNames.join("、")}
                               </span>
                             )}

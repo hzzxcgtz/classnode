@@ -211,96 +211,27 @@ export default function HistoryPage() {
             />
           ) : (
             <>
-              {/* 统计摘要 */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gap: 16,
-                marginBottom: 24,
-              }}>
-            {[
-              { label: '历史课堂', value: history.length, color: '#0891b2', bg: '#ecfeff', icon: 'history' },
-              { label: '参与学生', value: totalStudents, color: '#8b5cf6', bg: '#f5f3ff', icon: 'users' },
-              { label: '交互总轮数', value: totalInteractions, color: '#db2777', bg: '#fdf2f8', icon: 'message' },
-              { label: '总文字量', value: totalChars > 10000 ? `${(totalChars / 10000).toFixed(1)}万` : `${totalChars}`, color: '#956834', bg: '#faf4eb', icon: 'file' },
-            ].map(stat => (
-              <div key={stat.label} style={{
-                background: 'white', borderRadius: 14,
-                border: '1px solid #e2e8f0', padding: '20px 22px',
-                display: 'flex', alignItems: 'center', gap: 14,
-                transition: 'box-shadow 0.2s, transform 0.15s',
-              }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.06)';
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.boxShadow = 'none';
-                  e.currentTarget.style.transform = 'none';
-                }}
-              >
-                <div style={{
-                  width: 40, height: 40, borderRadius: 11,
-                  background: stat.bg, color: stat.color,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                }}>
-                  {stat.icon === 'history' && (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-                  )}
-                  {stat.icon === 'users' && (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
-                  )}
-                  {stat.icon === 'message' && (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-                  )}
-                  {stat.icon === 'file' && (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
-                  )}
-                </div>
-                <div>
-                  <div style={{ fontSize: "1.375rem", fontWeight: 700, color: stat.color, lineHeight: 1.1 }}>{stat.value}</div>
-                  <div style={{ fontSize: "0.75rem", color: '#64748b', marginTop: 2 }}>{stat.label}</div>
-                </div>
+              <div className="history-summary teacher-surface">
+                {[
+                  { label: '历史课堂', value: history.length },
+                  { label: '参与学生', value: totalStudents },
+                  { label: '交互总轮数', value: totalInteractions },
+                  { label: '总文字量', value: totalChars > 10000 ? `${(totalChars / 10000).toFixed(1)}万` : `${totalChars}` },
+                ].map(stat => (
+                  <div key={stat.label}><strong>{stat.value}</strong><span>{stat.label}</span></div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          {/* 历史课堂表格 */}
-          <div style={{ background: 'white', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          {/* 历史课堂记录 */}
+          <div className="teacher-surface" style={{ background: 'white', borderRadius: 12, border: '1px solid var(--card-border)', overflow: 'hidden' }}>
             <div style={{
               padding: '16px 20px', borderBottom: '1px solid #eef2f6',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
               <h2 style={{ fontSize: "0.938rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>课堂记录</h2>
-              <span style={{ fontSize: "0.75rem", color: '#94a3b8' }}>共 {history.length} 条记录</span>
+              <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)' }}>共 {history.length} 条记录</span>
             </div>
-            {/* 三件套三列加上之后**明显变宽** ⇒ 允许横向滚动。
-                ⚠️ **不许为了塞下去而缩字号**（规格 §3.3：教师屏幕上的可读性优先）。 */}
-            <div style={{ overflowX: 'auto' }}>
-            {/* 🔴 **必须给 min-width**（照 `globals.css` 里 `.student-table-scroll table` 的先例）：
-                `globals.css` 有 `table { width: 100% }` ⇒ 只写 `overflow-x: auto` 时浏览器会
-                **优先压窄列 / 换行**，横向滚动条**永不出现**，而规格 §3.3 的意图（可读性优先）落空。 */}
-            <table style={{ minWidth: 1180 }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'center' }}>课堂名称</th>
-                  <th style={{ textAlign: 'center' }}>模式</th>
-                  <th style={{ textAlign: 'center' }}>创建时间</th>
-                  <th style={{ textAlign: 'center' }}>结束时间</th>
-                  <th style={{ textAlign: 'center' }}>时长</th>
-                  <th style={{ textAlign: 'center' }}>参与人数</th>
-                  <th style={{ textAlign: 'center' }}>交互量</th>
-                  <th style={{ textAlign: 'center' }}>文字量</th>
-                  {/* ★ M6c：三件套的使用痕迹（学伴 / 探究空间 / 学习单）。
-                      ⚠️ 学伴那一列**复用现成的 `totalRounds`**，不新增字段 ——
-                      本轮只是把三列放在一起，让「三件套」在表上成一个整体。 */}
-                  <th style={{ textAlign: 'center' }}>学伴</th>
-                  <th style={{ textAlign: 'center' }}>探究空间</th>
-                  <th style={{ textAlign: 'center' }}>学习单</th>
-                  <th style={{ textAlign: 'center' }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
+            <div className="history-record-list">
                 {pagedHistory.map((cr) => {
                   const startTime = new Date(cr.createdAt);
                   const endTime = cr.endedAt ? new Date(cr.endedAt) : null;
@@ -309,90 +240,36 @@ export default function HistoryPage() {
                     : null;
 
                   return (
-                    <tr key={cr.id}>
-                      <td>
-                        <div style={{ fontWeight: 500, color: '#0f172a' }}>
-                          {cr.title || '未命名课堂'}
+                    <article className="history-record" key={cr.id}>
+                      <header className="history-record-heading">
+                        <div>
+                          <h3>{cr.title || '未命名课堂'}</h3>
+                          <p>{cr.classes.map((cc) => cc.class.name).join(', ') || '未关联班级'}</p>
                         </div>
-                        <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginTop: 2 }}>
-                          {cr.classes.map((cc) => cc.class.name).join(', ')}
+                        <div className="history-record-badges">
+                          <span className="history-mode">{cr.mode === 'advanced' ? '高级模式' : cr.mode === 'group' ? '分组模式' : '标准模式'}</span>
+                          <span className="teacher-state is-muted">已结束</span>
                         </div>
-                      </td>
-                      <td style={{ textAlign: 'center', fontSize: "0.875rem", color: '#475569', whiteSpace: 'nowrap' }}>
-                        <span style={{
-                          display: 'inline-block', padding: '2px 8px', borderRadius: 4,
-                          fontSize: "0.75rem", fontWeight: 600,
-                          background: cr.mode === 'advanced' ? '#f5f3ff' : cr.mode === 'group' ? '#faf4eb' : '#f0fdf4',
-                          color: cr.mode === 'advanced' ? '#7c3aed' : cr.mode === 'group' ? '#956834' : '#059669',
-                        }}>
-                          {cr.mode === 'advanced' ? '高级模式' : cr.mode === 'group' ? '分组模式' : '标准模式'}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'center', fontSize: "0.875rem", color: '#475569', whiteSpace: 'nowrap' }}>{startTime.toLocaleString()}</td>
-                      <td style={{ textAlign: 'center', fontSize: "0.875rem", color: '#475569', whiteSpace: 'nowrap' }}>{endTime ? endTime.toLocaleString() : <span style={{ color: '#cbd5e1' }}>-</span>}</td>
-                      <td style={{ textAlign: 'center' }}>
-                        {duration !== null ? (
-                          <span style={{
-                            fontSize: "0.813rem", color: '#475569',
-                            display: 'flex', alignItems: 'center', gap: 4,
-                          }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-                            {duration}分钟
-                          </span>
-                        ) : <span style={{ color: '#cbd5e1' }}>-</span>}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#475569' }}>
-                          {cr.mode === 'group' || cr.mode === 'advanced'
-                            ? `${cr.participantCount || 0} 组/${cr.realStudentCount ?? 0} 人`
-                            : `${cr.participantCount || 0}/${cr.realStudentCount ?? (cr._count?.students || 0)}`}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <span style={{
-                          fontSize: "0.813rem", fontWeight: 600,
-                          color: (cr.totalRounds || 0) > 50 ? 'var(--primary)' : (cr.totalRounds || 0) > 10 ? '#956834' : '#94a3b8',
-                        }}>
-                          {cr.totalRounds || 0} 轮
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <span style={{ fontSize: "0.813rem", fontWeight: 500, color: '#475569' }}>
-                          {cr.totalChars > 0 ? (
-                            cr.totalChars >= 10000
-                              ? `${(cr.totalChars / 10000).toFixed(1)}万字`
-                              : `${cr.totalChars} 字`
-                          ) : <span style={{ color: '#cbd5e1' }}>-</span>}
-                        </span>
-                      </td>
-                      {/* ★ M6c 三件套。🔴 两句文案的**判据**在服务端/规格里，不在这里现编：
-                          · 探究空间为 0 时写「无记录」——**不许**写「未使用」：那段注释逐字写着
-                            「0 行」有两种成因不可区分（这节课确实没人用 / 这节课没有教师打开过看板
-                            ⇒ 学生按需推流根本没推）；
-                          · 学习单的分母是**已有作答行数**，不是人数 ⇒ 只能写「已交 N / M 题」。
-                          时长文案 `webappDurationText` 由**服务端用 `formatDuration` 算好** ——
-                          前端不许另写一份格式化（那是第二份实现）。 */}
-                      <td style={{ textAlign: 'center', fontSize: "0.875rem", color: '#475569' }}>
-                        {cr.totalRounds > 0 ? `${cr.totalRounds} 轮` : <span style={{ color: '#cbd5e1' }}>-</span>}
-                      </td>
-                      <td style={{ textAlign: 'center', fontSize: "0.875rem", color: '#475569' }}>
-                        {cr.webappUsageCount > 0
-                          // 🔴 「累计」二字是承重的：这个时长是 SUM(durationMs)，**按人相加**
-                          //    （3 人各 22 分钟 ⇒ 1 小时 6 分，可以比这一节课本身还长）。
-                          //    不写「累计」的话，它紧挨着的「时长」列会与它自相矛盾。
-                          ? `${cr.webappUsageCount} ${moduleCountUnit(cr.mode)} · 累计 ${cr.webappDurationText}`
-                          : <span style={{ color: '#cbd5e1' }}>无记录</span>}
-                      </td>
-                      <td style={{ textAlign: 'center', fontSize: "0.875rem", color: '#475569' }}>
-                        {cr.worksheetTotal > 0
-                          ? `已交 ${cr.worksheetSubmitted} / ${cr.worksheetTotal} 题`
-                          : <span style={{ color: '#cbd5e1' }}>无作答</span>}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                      </header>
+                      <dl className="history-record-details">
+                        <div><dt>创建时间</dt><dd>{startTime.toLocaleString()}</dd></div>
+                        <div><dt>结束时间</dt><dd>{endTime ? endTime.toLocaleString() : '—'}</dd></div>
+                        <div><dt>时长</dt><dd>{duration !== null ? `${duration} 分钟` : '—'}</dd></div>
+                        <div><dt>参与人数</dt><dd>{cr.mode === 'group' || cr.mode === 'advanced'
+                          ? `${cr.participantCount || 0} 组 / ${cr.realStudentCount ?? 0} 人`
+                          : `${cr.participantCount || 0} / ${cr.realStudentCount ?? (cr._count?.students || 0)} 人`}</dd></div>
+                        <div><dt>交互量</dt><dd>{cr.totalRounds || 0} 轮</dd></div>
+                        <div><dt>文字量</dt><dd>{cr.totalChars >= 10000 ? `${(cr.totalChars / 10000).toFixed(1)}万字` : `${cr.totalChars || 0} 字`}</dd></div>
+                      </dl>
+                      <div className="history-record-footer">
+                        <dl className="history-module-summary">
+                          <div><dt>智能学伴</dt><dd>{cr.totalRounds > 0 ? `${cr.totalRounds} 轮` : '无记录'}</dd></div>
+                          <div><dt>探究空间</dt><dd>{cr.webappUsageCount > 0 ? `${cr.webappUsageCount} ${moduleCountUnit(cr.mode)} · 累计 ${cr.webappDurationText}` : '无记录'}</dd></div>
+                          <div><dt>学习单</dt><dd>{cr.worksheetTotal > 0 ? `已交 ${cr.worksheetSubmitted} / ${cr.worksheetTotal} 题` : '无作答'}</dd></div>
+                        </dl>
+                        <div className="history-record-actions">
                           <button className="btn btn-secondary"
                             disabled={previewingClassroomId !== null || exporting}
-                            style={{ fontSize: "0.875rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                             onClick={() => handlePreview(cr.id)}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
                             {previewingClassroomId === cr.id ? '准备中...' : '导出对话'}
@@ -400,28 +277,20 @@ export default function HistoryPage() {
                           <button className="btn btn-secondary"
                             disabled={exporting}
                             title="导出学习单作答明细（含笔迹）与探究空间使用汇总"
-                            style={{ fontSize: "0.875rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
                             onClick={() => void handleExportWorksheetReport(cr.id, cr.title, cr.code)}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" /><line x1="9" y1="3" x2="9" y2="21" /></svg>
                             导出学习单与探究空间
                           </button>
-                          <button onClick={() => setRestoreTarget(cr.id)} disabled={restoring}
-                            title="恢复课堂"
-                            style={{
-                              fontSize: "0.875rem", padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 4,
-                              borderRadius: 6, cursor: 'pointer', fontWeight: 500,
-                              border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#3f7859',
-                            }}>
+                          <button className="btn btn-secondary" onClick={() => setRestoreTarget(cr.id)} disabled={restoring}
+                            title="恢复课堂">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
                             恢复
                           </button>
                         </div>
-                      </td>
-                    </tr>
+                      </div>
+                    </article>
                   );
                 })}
-              </tbody>
-            </table>
             </div>
             <Pagination current={page} total={history.length} pageSize={pageSize} pageSizeOptions={[10, 15, 20, 50, 100]} onChange={setPage} onPageSizeChange={setPageSize} />
           </div>
@@ -440,7 +309,7 @@ export default function HistoryPage() {
               </div>
               <div>
                 <h2 style={{ fontSize: "1rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>数据备份与恢复</h2>
-                <p style={{ color: '#64748b', fontSize: "0.8125rem", margin: '2px 0 0' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: "0.8125rem", margin: '2px 0 0' }}>
                   新备份包含课堂数据、API 凭据、上传附件和教学网页。旧备份可能缺少附件或网页。
                 </p>
               </div>
@@ -474,7 +343,7 @@ export default function HistoryPage() {
         }} onClick={() => !restoring && setRestoreTarget(null)}>
           <div style={{
             background: 'white', borderRadius: 14, padding: '28px 32px',
-            maxWidth: 440, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+            maxWidth: 440, width: '90%', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', border: '1px solid var(--card-border)', boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
           }} onClick={e => e.stopPropagation()}>
             <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f0fdf4', color: '#3f7859', margin: '0 auto 16px',
               display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -494,7 +363,7 @@ export default function HistoryPage() {
                 style={{ fontSize: "0.875rem", padding: '7px 16px' }}>取消</button>
               <button onClick={() => handleRestoreClassroom(restoreTarget)} disabled={restoring}
                 style={{ fontSize: "0.875rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
-                  background: restoring ? '#94a3b8' : '#3f7859', color: 'white' }}>
+                  background: restoring ? 'var(--text-muted)' : '#3f7859', color: 'white' }}>
                 {restoring ? '恢复中...' : '确认恢复'}
               </button>
             </div>
@@ -560,7 +429,7 @@ function ExportPreviewDialog({
           <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600, color: '#0f172a' }}>
             导出对话记录
           </h3>
-          <p style={{ margin: '4px 0 0', fontSize: "0.8125rem", color: '#64748b' }}>
+          <p style={{ margin: '4px 0 0', fontSize: "0.8125rem", color: 'var(--text-secondary)' }}>
             选择学生和格式后点击确认导出
           </p>
         </div>
@@ -578,7 +447,7 @@ function ExportPreviewDialog({
             <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
               {classroom?.title || '未命名课堂'}
             </div>
-            <div style={{ color: '#64748b', lineHeight: 1.7 }}>
+            <div style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
               <span>班级：{data.classes?.join('、') || '-'}</span>
               <br />
               <span style={{ marginRight: 18 }}>创建：{startTime}</span>
@@ -595,7 +464,7 @@ function ExportPreviewDialog({
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 marginBottom: 8,
               }}>
-                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b' }}>
+                <span style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--text-secondary)' }}>
                   选择学生（{selectedStudentIds.length}/{students.length}）
                 </span>
                 <label style={{
@@ -625,7 +494,7 @@ function ExportPreviewDialog({
                         onChange={() => onToggleStudent(sid)}
                         style={{ accentColor: 'var(--primary)' }} />
                       <span style={{ fontWeight: 500, color: '#0f172a', flex: 1 }}>{s.name}</span>
-                      <span style={{ color: '#94a3b8', fontSize: "0.75rem" }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: "0.75rem" }}>
                         {rounds} 轮 · {msgCount} 条
                       </span>
                     </label>
@@ -649,7 +518,7 @@ function ExportPreviewDialog({
             <div style={{ marginBottom: 12 }}>
               <div style={{
                 display: 'flex', justifyContent: 'space-between',
-                fontSize: "0.75rem", color: '#64748b', marginBottom: 4,
+                fontSize: "0.75rem", color: 'var(--text-secondary)', marginBottom: 4,
               }}>
                 <span>{exportStage || '导出中...'}</span>
                 <span>{exportProgress}%</span>
@@ -678,7 +547,7 @@ function ExportPreviewDialog({
               style={{
                 fontSize: "0.875rem", padding: '7px 18px', borderRadius: 8, border: 'none',
                 cursor: (exporting || selectedStudentIds.length === 0) ? 'not-allowed' : 'pointer', fontWeight: 500,
-                background: (exporting || selectedStudentIds.length === 0) ? '#94a3b8' : 'var(--primary)',
+                background: (exporting || selectedStudentIds.length === 0) ? 'var(--text-muted)' : 'var(--primary)',
                 color: 'white',
                 display: 'flex', alignItems: 'center', gap: 6,
               }}>
@@ -819,7 +688,7 @@ function BackupManager() {
   };
   const dialog: React.CSSProperties = {
     background: 'white', borderRadius: 14, padding: '28px 32px',
-    maxWidth: 440, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+    maxWidth: 440, width: '90%', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', border: '1px solid var(--card-border)', boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
   };
 
   return (
@@ -866,35 +735,19 @@ function BackupManager() {
         </button>
       </div>
 
-      {/* 跨设备迁移提示 */}
-      <div style={{
-        padding: '16px 20px', marginBottom: 16,
-        background: '#faf4eb', borderRadius: 12,
-        border: '1px solid #fde68a',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#956834" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          <strong style={{ fontSize: "0.875rem", color: '#92400e' }}>跨设备迁移</strong>
-        </div>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
-            <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.813rem", fontWeight: 700, flexShrink: 0 }}>1</div>
-            <span style={{ fontSize: "0.813rem", color: '#92400e', lineHeight: 1.5 }}>点击<strong>「立即备份」</strong>，在历史列表中点击<strong>「下载」</strong>保存备份文件</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', color: '#956834' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </div>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fefce8', borderRadius: 8, border: '1px solid #fde68a' }}>
-            <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: "0.813rem", fontWeight: 700, flexShrink: 0 }}>2</div>
-            <span style={{ fontSize: "0.813rem", color: '#92400e', lineHeight: 1.5 }}>在新电脑上点击<strong>「上传备份」</strong>，文件即出现在列表中，再点<strong>「恢复」</strong></span>
-          </div>
-        </div>
-      </div>
+      <section className="history-migration" aria-label="跨设备迁移">
+        <h3>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+          跨设备迁移
+        </h3>
+        <ol>
+          <li><span className="history-migration-step" aria-hidden="true">1</span><span>点击<strong>「立即备份」</strong>，在历史列表中点击<strong>「下载」</strong>保存备份文件</span></li>
+          <li><span className="history-migration-step" aria-hidden="true">2</span><span>在新电脑上点击<strong>「上传备份」</strong>，文件即出现在列表中，再点<strong>「恢复」</strong></span></li>
+        </ol>
+      </section>
       {backups.length > 0 && (
         <div>
-          <div style={{ fontSize: "0.75rem", fontWeight: 600, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <div style={{ fontSize: "0.75rem", fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
             历史备份 ({backups.length})
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -905,7 +758,7 @@ function BackupManager() {
                 background: '#f8fafc', fontSize: "0.813rem",
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                   <span style={{ fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</span>
                   {b.source === 'imported' ? (
                     <span style={{
@@ -920,7 +773,7 @@ function BackupManager() {
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                  <span style={{ color: '#94a3b8', fontSize: "0.75rem", whiteSpace: 'nowrap' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: "0.75rem", whiteSpace: 'nowrap' }}>
                     {new Date(b.createdAt).toLocaleString()} · {b.size > 1048576 ? (b.size / 1048576).toFixed(1) + ' MB' : (b.size / 1024).toFixed(1) + ' KB'}
                   </span>
                   <a href={api.getBackupDownloadUrl(b.name)} download
@@ -1003,7 +856,7 @@ function BackupManager() {
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
             </div>
             <h3 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: '#0f172a', textAlign: 'center' }}>系统初始化</h3>
-            <p style={{ fontSize: '0.813rem', color: '#64748b', textAlign: 'center', margin: '0 0 16px' }}>
+            <p style={{ fontSize: '0.813rem', color: 'var(--text-secondary)', textAlign: 'center', margin: '0 0 16px' }}>
               将清空所有数据，恢复到初始状态。<br />管理员密码和系统内置屏蔽词将保留。
             </p>
 
@@ -1047,7 +900,7 @@ function BackupManager() {
                 disabled={resetting || resetConfirmText !== '确认初始化'}
                 style={{ fontSize: "0.875rem", padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 500,
                   background: resetConfirmText === '确认初始化' ? '#934e4e' : '#e2e8f0',
-                  color: resetConfirmText === '确认初始化' ? 'white' : '#94a3b8',
+                  color: resetConfirmText === '确认初始化' ? 'white' : 'var(--text-muted)',
                   opacity: resetting ? 0.6 : 1 }}>
                 {resetting ? '初始化中...' : '确认初始化'}
               </button>

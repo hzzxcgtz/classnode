@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import type { PlatformTokenSummary } from '@/lib/types';
 import { defaultExpiryDate, tokenExpiryView } from '@/lib/platform-token-expiry';
@@ -97,122 +97,105 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
 
   const editingRow = editingId && editingId !== '' ? tokens.find((t) => t.id === editingId) : null;
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  const busyRef = useRef(busy);
+  closeRef.current = onClose;
+  busyRef.current = busy;
+  useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
+    dialogRef.current?.querySelector<HTMLElement>('button')?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!busyRef.current) closeRef.current();
+      }
+      if (event.key === 'Tab') {
+        const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),[tabindex="0"]') ?? []).filter(element => element.getClientRects().length > 0);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => { document.removeEventListener('keydown', onKey, true); previousFocus?.focus(); };
+  }, []);
+  useEffect(() => {
+    if (editingId !== null) dialogRef.current?.querySelector<HTMLInputElement>('#api-token-label')?.focus();
+  }, [editingId]);
+
   return (
-    <>
-      <div className="modal-overlay" onClick={onClose} />
-      <div className="modal-content teacher-dialog" role="dialog" aria-modal="true" aria-labelledby="api-token-title"
-        style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 201, background: 'white', borderRadius: 16, padding: 24, width: 560, maxWidth: '92vw', maxHeight: '86vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-
-        <h3 id="api-token-title" style={{ fontSize: '1.063rem', fontWeight: 700, margin: '0 0 4px' }}>扣子访问令牌</h3>
-        <p style={{ fontSize: '0.813rem', color: '#64748b', margin: '0 0 16px', lineHeight: 1.7 }}>
-          它属于<strong>扣子账号</strong>，不属于某个 Bot —— 同一个号做出来的智能体共用一份。
-          在这里存好，接入智能体时直接选。
-        </p>
-
-        {tokens.length === 0 && editingId === null && (
-          <div style={{ padding: '18px 16px', background: '#f8fafc', borderRadius: 10, fontSize: '0.813rem', color: '#94a3b8', textAlign: 'center', marginBottom: 14 }}>
-            还没有扣子访问令牌
+    <div className="modal-overlay api-token-overlay" onClick={() => { if (!busy) onClose(); }}>
+      <div ref={dialogRef} className="modal-content teacher-dialog api-token-dialog" role="dialog" aria-modal="true" aria-labelledby="api-token-title" onClick={event => event.stopPropagation()}>
+        <header className="api-token-header">
+          <div>
+            <h3 id="api-token-title">扣子访问令牌</h3>
+            <p>同一个扣子账号的智能体可共用一份令牌。保存后，接入智能体时直接选择。</p>
           </div>
-        )}
-
-        {tokens.map((row) => {
-          const expiry = tokenExpiryView(row.expiresAt, new Date());
-          return (
-            /* ★ 2026-09-25 视觉改版（教师：「UI 要设计优化一下」）：
-               加了**钥匙图标**做视觉锚点（与卡片区同一套语言：圆角色块 + 同色前景），
-               信息排成三行（备注+倒计时 / 掩码 / 谁在用），操作挤在右侧一列。
-               原来是一行挤四样东西、掩码单独吊在下面，扫起来没有主次。 */
-            <div key={row.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', marginBottom: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#f2f5f8', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3" />
-                </svg>
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 600, fontSize: '0.875rem', wordBreak: 'break-all' }}>{row.label}</span>
-                  <ExpiryChip level={expiry.level} text={expiry.text} />
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontFamily: 'monospace', marginTop: 3, wordBreak: 'break-all' }}>
-                  {row.maskedToken}
-                </div>
-                {/* ⚠️ 「0 个智能体在用」也照实说：它决定了这份凭据**能不能删**，
-                    而留空会让人以为「还没查」。 */}
-                <div style={{ fontSize: "0.75rem", color: row.agentCount > 0 ? '#64748b' : '#cbd5e1', marginTop: 3 }}>
-                  {row.agentCount > 0 ? `${row.agentCount} 个智能体在用` : '还没有智能体用它'}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                <button type="button" className="btn btn-secondary" style={{ fontSize: "0.875rem", padding: '3px 10px' }} onClick={() => startEdit(row)}>改</button>
-                {confirming === row.id ? (
-                  <>
-                    <button type="button" className="btn btn-secondary" disabled={busy}
-                      style={{ fontSize: "0.875rem", padding: '3px 10px', color: '#a85d5d', borderColor: '#fecaca' }}
-                      onClick={() => void remove(row)}>{busy ? '处理中…' : '确定删除'}</button>
-                    <button type="button" className="btn btn-secondary" style={{ fontSize: "0.875rem", padding: '3px 10px' }} onClick={() => setConfirming(null)}>取消</button>
-                  </>
-                ) : (
-                  <button type="button" className="btn btn-secondary"
-                    style={{ fontSize: "0.875rem", padding: '3px 10px', color: '#a85d5d' }}
-                    onClick={() => setConfirming(row.id)}>删</button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-
-        {editingId === null ? (
-          <button type="button" onClick={startCreate} style={{
-            width: '100%', marginTop: 4, padding: '11px', borderRadius: 12, cursor: 'pointer',
-            border: '1px dashed #cbd5e1', background: '#fff', color: 'var(--primary)',
-            fontSize: "0.875rem", fontWeight: 600, fontFamily: 'inherit',
-          }}>
-            + 新建一份
+          <button type="button" className="btn btn-secondary api-token-close" onClick={onClose} disabled={busy} aria-label="关闭令牌管理">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
           </button>
-        ) : (
-          <div style={{ border: '1px solid #c7d2fe', background: '#f8faff', borderRadius: 10, padding: 14, marginTop: 4 }}>
-            <div style={{ fontSize: '0.813rem', fontWeight: 600, marginBottom: 10 }}>
-              {editingId === '' ? '新建一份' : `修改「${editingRow?.label ?? ''}」`}
-            </div>
-
-            <label style={{ display: 'block', fontSize: "0.875rem", color: '#475569', marginBottom: 4 }}>备注（这是谁的账号）</label>
-            <input className="input" value={label} onChange={(e) => setLabel(e.target.value)}
-              placeholder="例如：张老师的号" style={{ fontSize: "0.875rem", marginBottom: 10 }} />
-
-            <label style={{ display: 'block', fontSize: "0.875rem", color: '#475569', marginBottom: 4 }}>
-              扣子访问令牌 {editingId !== '' && <span style={{ color: '#94a3b8' }}>（留空 = 不改）</span>}
-            </label>
-            <input className="input" value={token} onChange={(e) => setToken(e.target.value)}
-              placeholder={editingId === '' ? '在扣子平台获取，以 pat_ 开头' : '留空则沿用原来的'}
-              style={{ fontSize: "0.875rem", marginBottom: 10, fontFamily: 'monospace' }} autoComplete="off" />
-
-            <label style={{ display: 'block', fontSize: "0.875rem", color: '#475569', marginBottom: 4 }}>
-              有效期 <span style={{ color: '#94a3b8' }}>（扣子目前最长 30 天；默认已填好，按实际改）</span>
-            </label>
-            <input type="date" className="input" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)}
-              style={{ fontSize: "0.875rem", marginBottom: 12 }} />
-
-            {/* 🔴 影响面提示：一份被多个智能体用着的凭据，改它就是同时改那几个的钥匙。 */}
-            {editingRow && editingRow.agentCount > 0 && token.trim() !== '' && (
-              <div style={{ fontSize: '0.75rem', color: '#b45309', background: '#faf4eb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.6 }}>
-                改这个 Token 会同时影响 <strong>{editingRow.agentCount} 个</strong>正在用它的智能体。
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setEditingId(null)} disabled={busy}>取消</button>
-              <button type="button" className="btn btn-primary" onClick={() => void submit()} disabled={busy}>
-                {busy ? '保存中…' : '保存'}
-              </button>
-            </div>
+        </header>
+        <div className="api-token-body">
+          <div className="api-token-list-heading">
+            <strong>已保存的令牌 <span>{tokens.length}</span></strong>
+            {editingId === null && <button type="button" className="btn btn-primary" onClick={startCreate} disabled={busy}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              新建令牌
+            </button>}
           </div>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>关闭</button>
+          {tokens.length === 0 && <div className="api-token-empty">还没有扣子访问令牌</div>}
+          <div className="api-token-list">
+            {tokens.map(row => {
+              const expiry = tokenExpiryView(row.expiresAt, new Date());
+              return <div key={row.id} className="api-token-item">
+                <div className="api-token-item-main">
+                  <div className="api-token-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3" /></svg>
+                  </div>
+                  <div className="api-token-item-copy">
+                    <div className="api-token-item-title"><strong>{row.label}</strong><ExpiryChip level={expiry.level} text={expiry.text} /></div>
+                    <div className="api-token-mask">{row.maskedToken}</div>
+                    <div className="api-token-usage">{row.agentCount > 0 ? `${row.agentCount} 个智能体在用` : '尚未使用'}</div>
+                  </div>
+                  <div className="api-token-item-actions">
+                    <button type="button" className="btn btn-secondary" onClick={() => { setConfirming(null); startEdit(row); }} disabled={busy}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6zM14 5l5 5" /></svg>编辑
+                    </button>
+                    <button type="button" className="btn btn-secondary api-token-delete" onClick={() => setConfirming(row.id)} disabled={busy}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>删除
+                    </button>
+                  </div>
+                </div>
+                {confirming === row.id && <div className="api-token-confirmation">
+                  <span>确定删除这份令牌？</span>
+                  <button type="button" className="btn btn-secondary" onClick={() => setConfirming(null)} disabled={busy}>取消</button>
+                  <button type="button" className="btn btn-danger" onClick={() => void remove(row)} disabled={busy}>{busy ? '处理中…' : '确定删除'}</button>
+                </div>}
+              </div>;
+            })}
+          </div>
+          {editingId !== null && <form className="api-token-editor" onSubmit={event => { event.preventDefault(); void submit(); }}>
+            <h4>{editingId === '' ? '新建令牌' : `编辑「${editingRow?.label ?? ''}」`}</h4>
+            <label htmlFor="api-token-label">备注（这是谁的账号）</label>
+            <input id="api-token-label" className="input" value={label} onChange={event => setLabel(event.target.value)} placeholder="例如：张老师的号" />
+            <label htmlFor="api-token-value">个人访问令牌{editingId !== '' && <span>（留空沿用原令牌）</span>}</label>
+            <input id="api-token-value" className="input" value={token} onChange={event => setToken(event.target.value)} placeholder={editingId === '' ? '在扣子平台获取，以 pat_ 开头' : '填写新令牌以替换原值'} autoComplete="off" autoCapitalize="none" spellCheck={false} />
+            <label htmlFor="api-token-expiry">有效期</label>
+            <input id="api-token-expiry" type="date" className="input" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} />
+            <p className="api-token-field-hint">按扣子平台显示的实际有效期填写。</p>
+            {editingRow && editingRow.agentCount > 0 && token.trim() !== '' && <div className="api-token-impact">替换令牌会影响正在使用它的 <strong>{editingRow.agentCount} 个智能体</strong>。</div>}
+            <div className="api-token-editor-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setEditingId(null)} disabled={busy}>取消</button>
+              <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? '保存中…' : '保存'}</button>
+            </div>
+          </form>}
         </div>
+        {editingId === null && <footer className="api-token-footer"><button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy}>关闭</button></footer>}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -226,7 +209,7 @@ export function ApiTokenModal({ tokens, onRefresh, onClose, onError }: {
 export function ExpiryChip({ level, text }: { level: ReturnType<typeof tokenExpiryView>['level']; text: string }) {
   const tone = {
     none: { bg: '#f1f5f9', fg: '#64748b', border: '#e2e8f0' },
-    ok: { bg: '#f8fafc', fg: '#94a3b8', border: '#e2e8f0' },
+    ok: { bg: '#e8eef5', fg: '#475569', border: '#cdd5e0' },
     soon: { bg: '#faf4eb', fg: '#b45309', border: '#fde68a' },
     urgent: { bg: '#f8eeee', fg: '#b91c1c', border: '#fecaca' },
     expired: { bg: '#f8eeee', fg: '#b91c1c', border: '#fecaca' },

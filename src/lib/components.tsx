@@ -27,13 +27,15 @@ export function TeacherPageTabs<T extends string>({
   value,
   onChange,
   items,
+  variant = 'segmented',
 }: {
   value: T;
   onChange: (value: T) => void;
   items: Array<{ value: T; label: string; badge?: string | number; icon?: ReactNode }>;
+  variant?: 'segmented' | 'connected';
 }) {
   return (
-    <div className="teacher-page-tabs" role="tablist">
+    <div className={`teacher-page-tabs${variant === 'connected' ? ' is-connected' : ''}`} role="tablist">
       {items.map(item => {
         const selected = value === item.value;
         return (

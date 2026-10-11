@@ -8,7 +8,7 @@ test('页面能区分可优化与固定内容，复制正文不包含教师编�
   assert.match(parts.editable, /# 角色：小学数学/);
   assert.match(parts.fixed, /## 工作流：/);
   assert.match(parts.fixed, /## 限制：/);
-  assert.match(parts.fixed, /默认显示人数、悬停显示姓名/);
+  assert.match(parts.fixed, /默认显示姓氏称呼、悬停显示完整姓名/);
   assert.doesNotMatch(parts.prompt, /可优化区|固定区|以下规则用于/);
   assert.match(parts.prompt, /student.*姓名#学号/);
 });

@@ -124,7 +124,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
     <div className="modal-overlay">
       <div className="modal-content teacher-dialog teacher-form-dialog webapp-form-modal" role="dialog" aria-modal="true" aria-labelledby="webapp-form-title" onClick={e => e.stopPropagation()} style={{ maxWidth: 620, padding: 0, borderRadius: 14 }}>
         <div style={{ padding: '16px 24px 0', background: 'linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%)', borderBottom: '1px solid var(--border)', position: 'relative' }}>
-          <button type="button" onClick={onClose} disabled={saving} aria-label="关闭网页表单" style={{ position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>✕</button>
+          <button type="button" onClick={onClose} disabled={saving} aria-label="关闭网页表单" style={{ position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--text-muted, #64748b)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>✕</button>
           <h2 id="webapp-form-title" style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 2px' }}>{created ? '上传成功' : editing ? '编辑探究网页' : '添加探究网页'}</h2>
           <p style={{ fontSize: "0.8125rem", color: 'var(--text-secondary)', margin: '0 0 12px' }}>
             {created ? `「${created.name}」已经可以用在课堂里了。` : editing ? '可以改显示名称，也可以改指包里的另一个 HTML 作为入口。' : '上传一个静态网页，课堂上学生就能打开它。'}
@@ -161,7 +161,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
               ) : (
                 <input id="webapp-entry" className="input" value={entryPath} onChange={e => setEntryPath(e.target.value)} style={{ fontSize: "0.875rem", padding: '8px 12px' }} />
               )}
-              <div style={{ fontSize: "0.75rem", color: '#94a3b8', marginTop: 4 }}>
+              <div style={{ fontSize: "0.75rem", color: 'var(--text-muted, #64748b)', marginTop: 4 }}>
                 {entriesError
                   ? `${entriesError}（可以先按原入口保存）`
                   : entries.length > 0

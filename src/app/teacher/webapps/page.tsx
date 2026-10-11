@@ -30,7 +30,6 @@ export default function WebappsPage() {
    */
   const [webappOrigin, setWebappOrigin] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [usageFilter, setUsageFilter] = useState<'all' | 'used' | 'unused'>('all');
   const toastTimerRef = useRef<number | null>(null);
 
   const notify = (message: string, type: 'success' | 'error') => {
@@ -60,24 +59,11 @@ export default function WebappsPage() {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
   }, []);
 
-  /**
-   * 搜索与「关联状态」筛选。与智能体页同一套信息架构，但**判据只有一个维度**：
-   * 网页没有启用/健康/异常这三件事，只有「被课堂用着吗」。
-   * 硬套智能体那四格会得到无意义的数字（例如「连接健康」对网页根本没有定义）。
-   */
   const normalizedSearch = search.trim().toLocaleLowerCase('zh-CN');
-  const filteredWebapps = webapps.filter(webapp => {
-    const matchesSearch = !normalizedSearch || webapp.name.toLocaleLowerCase('zh-CN').includes(normalizedSearch);
-    const matchesUsage = usageFilter === 'all'
-      || (usageFilter === 'used' && webapp.classroomCount > 0)
-      || (usageFilter === 'unused' && webapp.classroomCount === 0);
-    return matchesSearch && matchesUsage;
-  });
+  const filteredWebapps = webapps.filter(webapp =>
+    !normalizedSearch || webapp.name.toLocaleLowerCase('zh-CN').includes(normalizedSearch)
+  );
   const pagedWebapps = filteredWebapps.slice((page - 1) * pageSize, page * pageSize);
-  const usageSummary = {
-    used: webapps.filter(webapp => webapp.classroomCount > 0).length,
-    unused: webapps.filter(webapp => webapp.classroomCount === 0).length,
-  };
 
   return (
     <div>
@@ -104,37 +90,13 @@ export default function WebappsPage() {
       )}
 
       {!loading && webapps.length > 0 && (
-        <>
-          {/*
-            概览三格。⚠️ **刻意不是智能体页那四格**：网页没有「启用 / 健康 / 异常」这三件事，
-            硬套会得到无意义的数字（「连接健康」对网页根本没有定义）。这一页唯一有意义的
-            维度是「被课堂用着吗」，所以三格都长在它上面。
-          */}
-          <div className="webapp-management-overview" aria-label="探究网页概览">
-            {[
-              { label: '全部网页', value: webapps.length, tone: 'blue' },
-              { label: '已关联课堂', value: usageSummary.used, tone: 'blue' },
-              { label: '未被使用', value: usageSummary.unused, tone: 'grey' },
-            ].map(item => (
-              <div key={item.label} className={`tone-${item.tone}`}>
-                <strong>{item.value}</strong>
-                <span>{item.label}</span>
-              </div>
-            ))}
-          </div>
-          <div className="webapp-management-filters">
-            <label className="webapp-management-search">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="搜索网页名称" aria-label="搜索网页" />
-              {search && <button type="button" onClick={() => { setSearch(''); setPage(1); }} aria-label="清空网页搜索">×</button>}
-            </label>
-            <select value={usageFilter} onChange={event => { setUsageFilter(event.target.value as typeof usageFilter); setPage(1); }} aria-label="按关联状态筛选网页">
-              <option value="all">全部关联状态</option>
-              <option value="used">已关联课堂</option>
-              <option value="unused">未被使用</option>
-            </select>
-          </div>
-        </>
+        <div className="webapp-management-filters">
+          <label className="webapp-management-search">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="搜索网页名称" aria-label="搜索网页" />
+            {search && <button type="button" onClick={() => { setSearch(''); setPage(1); }} aria-label="清空网页搜索">×</button>}
+          </label>
+        </div>
       )}
 
       {loading ? (
@@ -152,8 +114,8 @@ export default function WebappsPage() {
         <TeacherEmptyState
           icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>}
           title="没有符合条件的网页"
-          description="可以换个关键词，或把关联状态改回「全部关联状态」。"
-          action={<button className="btn btn-secondary" onClick={() => { setSearch(''); setUsageFilter('all'); setPage(1); }}>查看全部网页</button>}
+          description="可以换个关键词，或清空搜索查看全部网页。"
+          action={<button className="btn btn-secondary" onClick={() => { setSearch(''); setPage(1); }}>查看全部网页</button>}
         />
       ) : (
         // ⚠️ 网格布局由 `globals.css` 的 `.webapp-management-grid` 给（含 900/720 两档断点）。

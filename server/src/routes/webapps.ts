@@ -456,6 +456,10 @@ router.get('/', async (req, res) => {
 
     res.json(webapps.map(webapp => ({
       ...webapp,
+      fileCount: (() => {
+        const dir = resolveInsideWebappsRoot(webapp.id);
+        return dir ? walkTree(dir).files.length : 0;
+      })(),
       classroomCount: classroomCounts.get(webapp.id)?.size ?? 0,
     })));
   } catch (error) {

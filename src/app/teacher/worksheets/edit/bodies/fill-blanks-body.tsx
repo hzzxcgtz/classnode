@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from 'react';
 
+import { EditorRewardUnit } from '../editor-reward-unit';
+import type { RewardStyle } from '@/lib/worksheet-reward';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { readBlankCount } from '@/lib/worksheet-questions';
 import { BLANK_MARK_TEXT } from '@/lib/worksheet-prompt-marks';
@@ -152,13 +154,14 @@ export function SymbolListInput({ values, split, placeholder, onChange }: {
  *   · 关闭总开关只隐藏设置，不删除 `fillBlankSettings` 与答案；重新开启后原值恢复。
  *   · 原来那两句说明（「每个空可以填多个可接受答案…」与「逐空给分」的算术）跟着搬到列表下方。
  */
-export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUnit = '分' }: {
+export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUnit = '分', rewardStyle }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
   /** 「全对」的奖励数量（逐题或继承学习单级）——只用来把「逐空评分」那笔账算给教师看。 */
   fullPoints?: number;
   /** 跟随学习单奖励形式，例如「分」「座奖杯」「颗星星」。 */
   pointsUnit?: string;
+  rewardStyle?: RewardStyle;
 }) {
   const runs = readPromptRunsFor(node);
   // ★ 2026-09-28（教师反馈）：清单走 `blankSlots` —— **题干里的空与表格里的空是同一批**。
@@ -347,7 +350,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                       placeholder={String(inheritScore)}
                       onChange={event => setMaxScore(index, event.target.value)}
                     />
-                    <b>{pointsUnit}</b>
+                    <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />
                   </label>
                 )}
                 {legacyGradingOf(settings[index]) && (

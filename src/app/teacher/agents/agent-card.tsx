@@ -77,7 +77,7 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
   } as CSSProperties;
 
   return (
-    <div className="card agent-management-card" style={cardStyle}>
+    <div className="card agent-management-card" style={cardStyle} data-platform={agent.platform}>
       <div className="agent-management-card-header">
         <div className="agent-management-card-avatar">
           {agent.logo ? <Image unoptimized width={46} height={46} src={agent.logo.startsWith('/') ? `${getApiBaseUrl()}${agent.logo}` : agent.logo} alt="" /> : agent.name[0]}
@@ -157,10 +157,11 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
 
         <div className="agent-management-status-row">
           <div className="agent-management-status-copy">
-            {!enabled ? <Status color="#94a3b8" label="已停用" />
-              : !checkedAt ? <Status color="#cbd5e1" label="尚未检测" />
-                : agent.lastCheckOk ? <Status color="#3f8866" label="连接健康" labelColor="#3f8866" />
-                  : <Status color="#b85d5d" label="连接异常" labelColor="#a94f4f" error onMouseEnter={event => {
+            {!enabled ? <Status tone="disabled" label="已停用" />
+              : testing ? <Status tone="checking" label="检测中" />
+                : !checkedAt ? <Status tone="pending" label="尚未检测" />
+                : agent.lastCheckOk ? <Status tone="healthy" label="连接健康" />
+                  : <Status tone="error" label="连接异常" error onMouseEnter={event => {
                     if (!agent.lastCheckError) return;
                     const rect = event.currentTarget.getBoundingClientRect();
                     onShowError(agent.lastCheckError, rect.top - 8, rect.left + rect.width / 2);
@@ -183,8 +184,17 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
 }
 
 function CapabilityTag({ children }: { children: React.ReactNode }) { return <span className="agent-management-capability-tag">{children}</span>; }
-function Time({ children }: { children: React.ReactNode }) { return <span style={{ fontSize: "0.75rem", color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>{children}</span>; }
-function Status({ color, label, labelColor, error, onMouseEnter, onMouseLeave }: { color: string; label: string; labelColor?: string; error?: boolean; onMouseEnter?: React.MouseEventHandler<HTMLSpanElement>; onMouseLeave?: () => void }) { return <><span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} /><span onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} style={{ fontSize: "0.75rem", color: labelColor || '#94a3b8', fontWeight: 500, whiteSpace: 'nowrap', cursor: error ? 'help' : undefined, borderBottom: error ? '1px dashed #fca5a5' : undefined }}>{label}</span></>; }
+function Time({ children }: { children: React.ReactNode }) { return <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{children}</span>; }
+function Status({ tone, label, error, onMouseEnter, onMouseLeave }: {
+  tone: 'healthy' | 'error' | 'pending' | 'disabled' | 'checking'; label: string; error?: boolean;
+  onMouseEnter?: React.MouseEventHandler<HTMLSpanElement>; onMouseLeave?: () => void;
+}) {
+  return <span className={`agent-connection-status is-${tone}`} role="status">
+    <span className="agent-connection-status-dot" aria-hidden="true" />
+    <span onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}
+      className={error ? 'agent-connection-status-error' : undefined}>{label}</span>
+  </span>;
+}
 function RefreshIcon({ spinning }: { spinning: boolean }) { return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={spinning ? { animation: 'spin 1s linear infinite' } : undefined}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>; }
 function EditIcon() { return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>; }
 function DeleteIcon() { return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>; }

@@ -861,19 +861,12 @@
 .questionNavRow .questionNavSelect { grid-column: 1; grid-row: 1; min-width: 0; }
 .questionNavRow .questionNavMeta { grid-column: 1 / -1; grid-row: 2; flex-direction: row; align-items: center; gap: 12px; text-align: left; }
 
-.questionNavRow { position: relative; cursor: pointer; }
-.questionNavRow .questionNavSelect::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  cursor: pointer;
-}
-.questionNavRow .questionNavSelect:focus-visible::after {
-  outline: 2px solid #7996b1;
-  outline-offset: -2px;
-}
-.questionNavRow .questionNavAnalysis { position: relative; z-index: 1; }
+/* 题目按钮本身覆盖整张卡片；分析按钮作为同级独立入口。 */
+.questionNavRow { position: relative; display: block; padding: 0; }
+.questionNavRow .questionNavSelect { display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 8px 10px; border-radius: inherit; }
+.questionNavRow[data-analysis='true'] .questionNavTitle { padding-right: 90px; min-height: 27px; justify-content: center; }
+.questionNavRow .questionNavAnalysis { position: absolute; right: 10px; top: 8px; z-index: 1; }
+.questionNavSelect:focus-visible { outline: 2px solid #7996b1; outline-offset: -2px; }
 
 /* 学生横向排列，题目行与左侧选择卡片使用相同的视觉语言。 */
 .participantHeadButton { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; border: 0; padding: 2px 0; background: transparent; color: #425b73; cursor: pointer; }

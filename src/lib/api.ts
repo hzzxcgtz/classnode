@@ -572,6 +572,7 @@ export const api = {
     request<{
       narrative: string;
       analyzedAt: string | null;
+      analysisDurationMs: number | null;
       perStudent: WorksheetAnalysisPayload['perStudent'];
       feedback?: WorksheetAnalysisPayload['feedback'];
       agentId: string;

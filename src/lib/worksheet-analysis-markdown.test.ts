@@ -43,3 +43,22 @@ test('兼容 CRLF 且不改动正常 Markdown', () => {
     '- **表现二：漏选D选项（部分正确）** →作答证据：11名学生只选AB\n- **表现三：错选C选项（答错）** →作答证据：7名学生选AC',
   );
 });
+
+test('旧报告总标题隐藏，核心结论与正文保留', () => {
+  assert.equal(normalizeWorksheetAnalysisMarkdown('## 一、班级分析\n\n### 核心结论\n保留**关键概念**。'), '### 核心结论\n保留**关键概念**。');
+});
+
+test('引号包裹的重点紧接中文与冒号时补齐强调边界', () => {
+  assert.equal(
+    normalizeWorksheetAnalysisMarkdown('写记事小短文要**“选小事、抓细节”**：先确定一件课间发生的小事。'),
+    '写记事小短文要 **“选小事、抓细节”** ：先确定一件课间发生的小事。',
+  );
+  assert.equal(
+    normalizeWorksheetAnalysisMarkdown('先用**“动作”**写具体，再用**“语言”**补细节。'),
+    '先用 **“动作”** 写具体，再用 **“语言”** 补细节。',
+  );
+});
+
+test('智能体返回普通文字或引用中的小节名时仍显示为标题', () => {
+  assert.equal(normalizeWorksheetAnalysisMarkdown('> 核心结论\n> 保留正文。\n\n典型表现与作答依据\n正文\n\n关键认识或方法\n正文\n\n课堂讲评方案\n正文\n\n讲评后检查\n正文'), '### 核心结论\n> 保留正文。\n\n### 典型表现与作答依据\n正文\n\n### 关键认识或方法\n正文\n\n### 课堂讲评方案\n正文\n\n### 讲评后检查\n正文');
+});

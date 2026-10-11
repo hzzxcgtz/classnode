@@ -1,3 +1,4 @@
+import { extractAnalysisProtocol } from '../services/analysis-protocol.js';
 import { recordAnalysisUsage } from '../services/analysis-usage.js';
 import { parseAnalysisFeedback, readAnalysisFeedback, mergeAnalysisFeedback } from '../services/analysis-feedback.js';
 import { readAnswerGeneration, advanceAnswerGeneration, answerGenerationFor, type AnswerGeneration } from '../services/answer-generation.js';
@@ -1582,7 +1583,15 @@ async function payloadResponse(
   const participantNames = Object.fromEntries(
     participants.map((participant) => [participant.participantId, participant.name]),
   );
-  return { ...payload, labeled, stale, ...analysis, perStudent, feedback: readAnalysisFeedback(analysis.perStudent, payload.entries.map(entry => entry.studentId)), participantNames, analysisAgent, canSend };
+  const storedMetadata = analysis.perStudent && typeof analysis.perStudent === 'object' && !Array.isArray(analysis.perStudent)
+    ? analysis.perStudent as Record<string, unknown> : {};
+  const analysisDurationMs = typeof storedMetadata.analysisDurationMs === 'number' && Number.isFinite(storedMetadata.analysisDurationMs) && storedMetadata.analysisDurationMs >= 0
+    ? storedMetadata.analysisDurationMs : null;
+  const storedFeedback = readAnalysisFeedback(analysis.perStudent, payload.entries.map(entry => entry.studentId));
+  const legacyFeedback = (!storedFeedback || storedFeedback.groups.length === 0) && analysis.narrative ? parseAnalysisFeedback(analysis.narrative, payload.entries).feedback : null;
+  const feedback = storedFeedback ? { ...storedFeedback, groups: storedFeedback.groups.length ? storedFeedback.groups : legacyFeedback?.groups ?? [] }
+    : legacyFeedback && (legacyFeedback.groups.length || legacyFeedback.students.length) ? legacyFeedback : null;
+  return { ...payload, labeled, stale, ...analysis, narrative: analysis.narrative === null ? null : extractAnalysisProtocol(analysis.narrative).narrative, analysisDurationMs, perStudent, feedback, participantNames, analysisAgent, canSend };
 }
 
 router.post('/:id/analysis/:questionId', async (req, res) => {
@@ -1732,6 +1741,7 @@ router.get('/:id/analysis/:questionId/sheet/:index', async (req, res) => {
  */
 router.post('/:id/analysis/:questionId/run', async (req, res) => {
   try {
+    const analysisStartedAt = Date.now();
     const prisma: PrismaClient = req.app.get('prisma');
     const worksheetId = req.params.id;
     const questionId = req.params.questionId;
@@ -1875,7 +1885,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
      */
     /* 「还缺谁」按**全班**算（不是这一轮发出去的那几个）—— 面板要的是「谁还没有分」。 */
     const studentIds = allEntries.map((entry) => entry.studentId);
-    const { perStudent, feedback, analyzedAt } = await prisma.$transaction(async tx => {
+    const { perStudent, feedback, analyzedAt, analysisDurationMs } = await prisma.$transaction(async tx => {
       const existing = await tx.worksheetQuestionAnalysis.findUnique({
         where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
         select: { perStudent: true, agentId: true, narrative: true },
@@ -1901,7 +1911,11 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
       );
       // 沿用现有 JSON 结果列，新增独立元数据；评分读取和成绩写回仍只识别 scores。
       const previousResult = existing?.perStudent && typeof existing.perStudent === 'object' && !Array.isArray(existing.perStudent) ? existing.perStudent : {};
-      const storedResult = { ...(perStudent ?? previousResult), analysisFeedback: feedback, analysisUsage: recordAnalysisUsage(existing?.perStudent, existing?.agentId ?? null, existing?.narrative ?? null, agent.id, (result.content ?? '').length) };
+      // 耗时与整体报告一起保存；补跑个人评分保留原报告的时间和耗时。
+      const analysisDurationMs = scoped && row.narrative
+        ? (previousResult as Record<string, unknown>).analysisDurationMs ?? null
+        : Math.max(0, Date.now() - analysisStartedAt);
+      const storedResult = { ...(perStudent ?? previousResult), analysisDurationMs, analysisFeedback: feedback, analysisUsage: recordAnalysisUsage(existing?.perStudent, existing?.agentId ?? null, existing?.narrative ?? null, agent.id, (result.content ?? '').length) };
       const analyzedAt = scoped && row.narrative ? row.analyzedAt : new Date();
       await tx.worksheetQuestionAnalysis.update({
         where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
@@ -1914,7 +1928,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
         },
       });
 
-      return { perStudent, feedback, analyzedAt };
+      return { perStudent, feedback, analyzedAt, analysisDurationMs };
     });
 
     /*
@@ -1940,6 +1954,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
          否则面板会拿一段「只说了 3 个人」的文字当全班结论显示。 */
       narrative: scoped && row.narrative ? row.narrative : narrative,
       analyzedAt,
+      analysisDurationMs,
       perStudent,
       feedback,
       agentId: agent.id,

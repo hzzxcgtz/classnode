@@ -49,3 +49,9 @@ test('补跑保留全班报告名单，只合入指定学生建议；全量重�
   assert.deepEqual(replaced.groups, next.groups);
   assert.deepEqual(replaced.missing, ['a']);
 });
+
+test('裸 JSON 名单区兼容解析，机器数据不进入正文', () => {
+  const parsed = parseAnalysisFeedback('核心结论\n正文\n\n### 典型表现对应名单\n{"groups":[{"id":"g1","students":["张伟#2"]}]}\n<classnode-scores>{"scores":[]}</classnode-scores>', entries);
+  assert.deepEqual(parsed.feedback.groups, [{id:'g1',studentIds:['b']}]);
+  assert.equal(parsed.narrative, '核心结论\n正文\n\n<classnode-scores>{"scores":[]}</classnode-scores>');
+});

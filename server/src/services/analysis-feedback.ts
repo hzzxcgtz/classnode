@@ -1,3 +1,4 @@
+import { extractAnalysisProtocol, analysisProtocolJson } from './analysis-protocol.js';
 /** 独立于成绩的班级问题名单与逐生建议。只接受本次名单中的完整标签。 */
 export const FEEDBACK_START = '<classnode-feedback>';
 export const FEEDBACK_END = '</classnode-feedback>';
@@ -14,7 +15,8 @@ export function feedbackInstruction(entries: readonly Entry[]): string {
   return [
     '【班级问题名单与个人建议】所有题型均需返回，与 AI 评分开关无关。',
     `反馈名单（完整标签必须逐字复制）：${entries.map(entry => entry.anonLabel).join('、')}`,
-    '报告采用所配置学科与学段的五段结构：核心结论、典型表现与作答依据、关键认识或方法、课堂讲评或活动方案、讲评后检查；标题随学科和题型调整，简单题可以合并。典型问题与优秀回答都用名单链接关联学生：问题旁可写 [相关同学](#classnode-group-g1)，优秀实例旁可写 [优秀作答同学](#classnode-group-g2)，在 groups 中填写各自作者或相关学生的完整标签，每组 id 唯一。单人优秀实例只关联该作者，不与问题名单混用；引用真实作答并说明亮点，不把润色冒充原话，无法确认作者时不猜。不要在班级正文直接写姓名、学号或可识别的个人错误；人数由系统根据有效名单显示，悬停查看姓名，不自行计数。没有需记录的名单时 groups 返回空数组，不强行分组。',
+    '报告采用所配置学科与学段的五段结构：核心结论、典型表现与作答依据、关键认识或方法、课堂讲评或活动方案、讲评后检查；标题随学科和题型调整，简单题可以合并。典型问题与优秀回答都用名单链接关联学生：问题旁可写 [相关同学](#classnode-group-g1)，优秀实例旁可写 [优秀作答同学](#classnode-group-g2)，在 groups 中填写各自作者或相关学生的完整标签，每组 id 唯一。单人优秀实例只关联该作者，不与问题名单混用；引用真实作答并说明亮点，不把润色冒充原话，无法确认作者时不猜。不要在班级正文直接写姓名、学号或可识别的个人错误；姓氏称呼由系统根据有效名单显示，悬停查看完整姓名，不自行计数。没有需记录的名单时 groups 返回空数组，不强行分组。',
+    '典型表现与作答依据是报告重点，通常占正文约三分之一至二分之一。按独立实例或问题类型展开：优秀作答1—2例、主要问题1—2类，每项给出真实作答依据、对应名单、具体亮点或症结及可验证追问，不挤成两段概括。对照本题要求解释证据，原因只作为待验证推测；按学科、学段和题型选择维度，证据不足时不凑数、不编造。',
     '每位反馈名单学生必须在 students 中返回一条个性化 advice，不漏人、不重复；建议依据该学生实际作答。评分仅按另行提供的评分协议返回，不在这个数据块中填写分数。',
     '评价 reason 和小建议 advice 都直接说给学生听，统一用“你”称呼，保持温柔、耐心、尊重、以鼓励为主的口吻。先肯定真实表现，再给一个容易做到的下一步和检查方法；不责备、不比较、不贴标签、不用训斥或命令语气，不空泛夸奖或编造优点。建议要承接评价，评分仍严格依据标准，不能为鼓励而虚增分数。',
     '每位学生只写一份个人建议；同一学生同时出现在反馈块和评分块时，两个 advice 必须逐字一致，先形成个人建议，再复制到评分块，不分别生成。',
@@ -22,15 +24,16 @@ export function feedbackInstruction(entries: readonly Entry[]): string {
     FEEDBACK_START,
     '{"groups":[{"id":"g1","students":["张伟#7"]}],"students":[{"student":"张伟#7","advice":"针对该学生实际作答的一条具体小建议"}]}',
     FEEDBACK_END,
-    '数据块仅放合法 JSON，不加代码围栏。若另需评分数据块，两种数据块都返回。',
+    '报告各段标题必须使用 ### Markdown 标题。典型表现对应名单与个人反馈是数据协议说明，不是正文小节，不输出这两个标题。所有 groups 和 students 只放在 classnode-feedback 起止标签内，禁止裸 JSON 或把数据块放进引用段落。若另需评分数据块，两种数据块都返回。',
   ].join('\n');
 }
 
 export function parseAnalysisFeedback(raw: string, entries: readonly Entry[]): { narrative: string; feedback: AnalysisFeedback } {
-  const blocks = [...raw.matchAll(/<classnode-feedback>([\s\S]*?)<\/classnode-feedback>/g)];
-  const narrative = raw.replace(/<classnode-feedback>[\s\S]*?<\/classnode-feedback>/g, '').replace(/<classnode-feedback>[\s\S]*$/, '').trim();
-  let data: Record<string, unknown> = {};
-  if (blocks.length === 1) { try { data = object(JSON.parse(blocks[0][1])); } catch { /* 不猜名单；报告与有效评分仍可保留。 */ } }
+  // 这一阶段仅提取反馈，评分留给同一条链路的评分解析器。
+  const separated = extractAnalysisProtocol(raw, ['feedback']);
+  const blocks = separated.blocks;
+  const narrative = separated.narrative;
+  const data = blocks.length === 1 ? object(analysisProtocolJson(blocks[0].body)) : {};
   const labelCount = new Map<string, number>();
   for (const entry of entries) labelCount.set(entry.anonLabel, (labelCount.get(entry.anonLabel) ?? 0) + 1);
   const labels = new Map(entries.filter(entry => labelCount.get(entry.anonLabel) === 1).map(entry => [entry.anonLabel, entry.studentId]));

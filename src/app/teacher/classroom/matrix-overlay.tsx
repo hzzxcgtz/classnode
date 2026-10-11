@@ -302,19 +302,19 @@ export function MatrixOverlay({
                       const active = selectedQuestionTarget?.worksheetId === item.worksheetId
                         && selectedQuestionTarget.questionId === item.questionId;
                       return (
-                        <div key={item.questionId} className={styles.questionNavRow} data-active={active}>
+                        <div key={item.questionId} className={styles.questionNavRow} data-active={active} data-analysis={item.analysisAvailable}>
                           <button type="button" className={styles.questionNavSelect}
                             onClick={() => openQuestion(item.worksheetId, item.questionId)}>
                             <span className={styles.questionNavTitle}>
                               <strong>{item.heading}</strong>
                             </span>
-                          </button>
                             <span className={styles.questionNavMeta}>
                               <small>已交 {item.aggregate.submitted}/{item.aggregate.total}</small>
                               <strong data-tone={item.manual ? 'neutral' : (item.aggregate.accuracy ?? 100) < 60 ? 'warning' : 'good'}>
                                 {item.manual ? '主观题' : item.aggregate.graded > 0 ? `${item.aggregate.accuracy}%` : '待判分'}
                               </strong>
                             </span>
+                          </button>
                           {item.analysisAvailable && <div className={styles.questionNavAnalysis}>
                             <AnalysisTrigger classroomId={classroomId} worksheetId={item.worksheetId}
                               row={item} analyzed={worksheet.analyzedQuestionIds.includes(item.questionId)} compact
@@ -340,6 +340,7 @@ export function MatrixOverlay({
                   nodesByWorksheet={nodesByWorksheet}
                   embedded
                   onClose={() => {}}
+                  onOpenStudent={id => openParticipant(id, selectedQuestionTarget.questionId)}
                   expandAnalysis={Boolean(analysisTarget)}
                 />
               ) : <div className={styles.emptyState}>从左侧选择一道题查看详情</div>}

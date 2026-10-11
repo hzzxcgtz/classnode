@@ -210,12 +210,17 @@ test('🔴 成功路径：写回 narrative/agentId/model，且**一个载荷字�
   assert.equal(body.agentId, agent.id);
   assert.equal(body.model, 'coze');
   assert.ok(body.analyzedAt, '成功分析必须返回真实完成时间');
+  assert.equal(typeof body.analysisDurationMs, 'number');
+  assert.ok(Number(body.analysisDurationMs) >= 0);
 
   const after = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
   assert.match(String(after.narrative), /多数人画成了满月/, '解读要落库');
   assert.equal(after.agentId, agent.id);
   assert.equal(after.model, 'coze');
   assert.equal(after.analyzedAt?.toISOString(), body.analyzedAt);
+  assert.equal((after.perStudent as Record<string, unknown>).analysisDurationMs, body.analysisDurationMs);
+  const savedPayload = await (await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id))).json() as Record<string, unknown>;
+  assert.equal(savedPayload.analysisDurationMs, body.analysisDurationMs, '刷新后仍返回原报告耗时');
   // 🔴 用户裁定 3：两组字段各自动自己那一半 —— 载荷那一侧**一个字节都不许动**
   assert.deepEqual(after.aggregate, before.aggregate, 'aggregate 不许被这次分析改动');
   assert.equal(after.totalCount, before.totalCount, 'totalCount 不许动');
@@ -321,6 +326,7 @@ test('★ 只补这几个人：只发他们、把分并进去、**不动整体�
   assert.equal(scoped.status, 200, '补跑不该失败');
   const afterScoped = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
   assert.equal(afterScoped.analyzedAt?.getTime(), afterFull.analyzedAt?.getTime(), '补分不得更新整体分析时间');
+  assert.equal((afterScoped.perStudent as Record<string, unknown>).analysisDurationMs, (afterFull.perStudent as Record<string, unknown>).analysisDurationMs, '补分保留原报告耗时');
   assert.equal(afterScoped.narrative, firstNarrative, '补跑把「全班整体解读」换成了「只看了这一个同学」——那正是教师担心的那件事');
   const merged = afterScoped.perStudent as { scores: Array<{ studentId: string }>; missing?: string[] };
   assert.equal(merged.scores.length, 2, '补跑要把缺的那个人补上，并保留之前那位');
@@ -967,4 +973,33 @@ test('分析调用计入仪表盘：历史补计、重跑累加、课堂去重�
   const failed = await fetch(runUrl(srv.base,worksheet.id,'q3',classroom.id),{method:'POST'});
   assert.equal(failed.status,502);
   assert.equal((await usage()).find(row=>row.id===b.id)?.totalCalls,1);
+});
+
+test('协议缺闭合仍正确保存分数；历史脏正文读取清理且名单恢复，不修改原记录', async (t) => {
+  const db = await openTempDb();
+  const raw = `### 核心结论\n能说明理由。\n<classnode-scores>${JSON.stringify({ scores: [{ student: ZHANG, score: 8, reason: '你的思路清楚。', advice: '再补一个分支。' }] })}`;
+  const fake = await startFakeCoze(raw);
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const agent = await makeAgent(p, 'coze', fake.base);
+  const { worksheet, classroom } = await seed(p, { analysisAgentId: agent.id, node: DRAWING_AI, roster: TWO_STUDENTS });
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+  const url = payloadUrl(srv.base, worksheet.id, 'q3', classroom.id);
+  await fetch(url, { method: 'POST' });
+  const run = await fetch(runUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+  assert.equal(run.status, 200);
+  const saved = await p.worksheetQuestionAnalysis.findFirstOrThrow({ where: { worksheetId: worksheet.id } });
+  assert.equal(saved.narrative, '### 核心结论\n能说明理由。');
+  const score = (saved.perStudent as {scores:Array<{studentId:string;score:number}>}).scores[0];
+  assert.equal(score.score, 8);
+  const dirty = `### 核心结论\n原报告。\n<classnode-feedback>${JSON.stringify({ groups: [{id:'g1',students:[ZHANG]}], students: [] })}</classnode-feedback>\n<classnode-scores>{"scores":[{"student":"${ZHANG}","score":8}]}`;
+  await p.worksheetQuestionAnalysis.update({ where:{id:saved.id}, data:{narrative:dirty} });
+  const response = await fetch(url);
+  assert.equal(response.status,200);
+  const payload = await response.json() as {narrative:string;feedback:{groups:Array<{studentIds:string[]}>};perStudent:{scores:Array<{score:number}>}};
+  assert.equal(payload.narrative,'### 核心结论\n原报告。');
+  assert.deepEqual(payload.feedback.groups[0].studentIds,[score.studentId]);
+  assert.equal(payload.perStudent.scores[0].score,8);
+  assert.equal((await p.worksheetQuestionAnalysis.findUniqueOrThrow({where:{id:saved.id}})).narrative,dirty);
 });

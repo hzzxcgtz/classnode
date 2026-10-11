@@ -32,9 +32,14 @@ test('each school stage and subject has one complete standalone Markdown prompt'
     for (const heading of ['## 工作流：', '## 输出格式：', '## 限制：']) assert.ok(text.indexOf(heading) > fixedAt);
     assert.match(text, /班级正文不直接显示学生姓名、学号/);
     assert.ok(text.includes('### 核心结论'));
-    const report = text.split('### 一、班级分析')[1].split('### 二、典型表现对应名单')[0];
+    assert.match(text, /重要的词、句使用 Markdown \*\*加粗\*\*/);
+    assert.match(text, /不添加“一、班级分析”等总标题/);
+    const report = text.split('### 班级报告要求')[1].split('### 二、典型表现对应名单')[0];
     assert.equal((report.match(/^### /gm) ?? []).length, 5);
     assert.match(report, /典型表现与/);
+    assert.match(report, /三分之一至二分之一/);
+    assert.match(report, /每个实例或问题类型单独成段或列表项/);
+    assert.match(report, /证据不足时明确说明/);
     assert.match(report, /后检查/);
     assert.match(report, /简单题可以合并段落/);
     assert.match(report, /不逐人罗列/);

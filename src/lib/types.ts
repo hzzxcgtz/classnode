@@ -592,6 +592,8 @@ export interface WorksheetAnalysisPayload {
   narrative: string | null;
   /** 最近一次成功生成整体 AI 分析的时间；旧结果未记录时为 null。 */
   analyzedAt?: string | null;
+  /** 整体分析从请求开始到结果校验完成的耗时，旧报告为 null。 */
+  analysisDurationMs?: number | null;
   /** ★ M7b：写这段解读的智能体与平台（审计用）。 */
   agentId: string | null;
   model: string | null;

@@ -1,3 +1,4 @@
+import { extractAnalysisProtocol, analysisProtocolJson } from './analysis-protocol.js';
 import { type QuestionNode } from './worksheet-questions.js';
 import { rubricTextOf } from './analysis-question.js';
 import { readAnalysisFeedback } from './analysis-feedback.js';
@@ -156,25 +157,18 @@ export function parseAiAnalysisResult(
   entries: Array<{ studentId: string; anonLabel: string; name?: string }>,
 ): { narrative: string; perStudent: StoredAiScoring | null; missing: string[] } | { error: string } {
   if (typeof raw !== 'string') return { error: '模型没有返回可用内容' };
-  if (!config.enabled) return { narrative: raw, perStudent: null, missing: [] };
+  const separated = extractAnalysisProtocol(raw);
+  if (!config.enabled) return { narrative: separated.narrative, perStudent: null, missing: [] };
 
   /*
    * ⚠️ 机器块缺失/读不出来时**不再作废整次** —— 解读（教师看得懂的那半）是独立的一份，
    *    该留住。分数这边退回「一份都没有」，由 `missing` 把全班列出来，教师据此补跑。
    */
-  const start = raw.lastIndexOf(AI_SCORE_BLOCK_START);
-  const end = raw.lastIndexOf(AI_SCORE_BLOCK_END);
-  const blockScores = (() => {
-    if (start < 0 || end < start) return null;
-    try {
-      const parsed: unknown = JSON.parse(raw.slice(start + AI_SCORE_BLOCK_START.length, end).trim());
-      const rows = (parsed as { scores?: unknown } | null)?.scores;
-      return Array.isArray(rows) ? rows : null;
-    } catch { return null; }
-  })();
-  const narrative = (start >= 0 && end > start
-    ? `${raw.slice(0, start)}${raw.slice(end + AI_SCORE_BLOCK_END.length)}`
-    : raw).trim();
+  const scoreBlocks = separated.blocks.filter(block => block.kind === 'scores');
+  const data = scoreBlocks.length === 1 ? analysisProtocolJson(scoreBlocks[0].body) : null;
+  const rows = data && typeof data === 'object' ? (data as { scores?: unknown }).scores : null;
+  const blockScores = Array.isArray(rows) ? rows : null;
+  const narrative = separated.narrative;
   if (!narrative) return { error: '模型没有返回可用内容' };
 
   const byLabel = new Map(entries.map((entry) => [entry.anonLabel, entry.studentId]));

@@ -82,7 +82,7 @@
 .scoreCard[open] .scoreToggleClosed { display: none; }
 .scoreCard[open] .scoreToggleOpen { display: inline; }
 
-.scoreHeader > div { display: flex; align-items: baseline; gap: 9px; }
+.scoreHeader > div { display: flex; align-items: center; gap: 9px; }
 .scoreHeader strong { font-size: 0.94rem; }
 .scoreHeader > div span { color: #6f8297; font-size: 0.75rem; }
 
@@ -325,3 +325,18 @@
   .compactBody .resultText { padding: 14px; }
   .compactActions { flex-direction: row; align-items: center; }
 }
+
+.scoreHeader > div .scoreToggleClosed,
+.scoreHeader > div .scoreToggleOpen {
+  padding: 6px 11px;
+  border: 1px solid #adc5db;
+  border-radius: 7px;
+  background: #fff;
+  color: #315b80;
+  font-size: .813rem;
+  font-weight: 650;
+}
+.scoreHeader:hover .scoreToggleClosed,
+.scoreHeader:hover .scoreToggleOpen { background: #e7f0f8; border-color: #7e9fbd; }
+
+.scoreFullMarks { display: inline-flex; align-items: center; gap: 4px; line-height: 1; }

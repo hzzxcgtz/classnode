@@ -1,5 +1,6 @@
 'use client';
 
+import { RewardUnit } from '@/components/worksheet-reward-unit';
 import { useMemo } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode } from '@/lib/types';
 // ★ 2026-09-30：矩阵表头是**连线右项 / 归类框名**（教师原文）⇒ 认公式。
@@ -13,6 +14,7 @@ import styles from './question-stats-overlay.module.css';
 import { BlankDistribution, OrderDistribution } from './question-type-distributions';
 import { QuestionContentPreview } from './question-content-preview';
 import { OptionDistribution } from './question-option-distribution';
+import { useWorksheetAnalysis } from './analysis-panel';
 import { QuestionAnalysisSection } from './question-analysis-section';
 
 /**
@@ -147,7 +149,7 @@ function Section({ title, children, note }: { title: string; children: React.Rea
 }
 
 export function QuestionStatsOverlay({
-  classroomId, mode, board, worksheetId, questionId, nodesByWorksheet, onClose, expandAnalysis = false, embedded = false,
+  classroomId, mode, board, worksheetId, questionId, nodesByWorksheet, onClose, onOpenStudent, expandAnalysis = false, embedded = false,
 }: {
   /** 课堂 mode —— 只在量词上用（分组 / 高级模式下「人」要写成「组」），与旁边两屏同源。 */
   mode: string;
@@ -157,6 +159,7 @@ export function QuestionStatsOverlay({
   questionId: string;
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
   onClose: () => void;
+  onOpenStudent?: (participantId: string) => void;
   /** 从总览的 AI 入口进入时，直接展开本题下方的分析。 */
   expandAnalysis?: boolean;
   /** 统一学习单工作区内直接渲染，不再创建遮罩和第二层浮窗。 */
@@ -190,6 +193,19 @@ export function QuestionStatsOverlay({
     return questionStats(node, rows);
   }, [node, worksheet, questionId]);
 
+  const analysisState = useWorksheetAnalysis(classroomId, worksheetId, questionId, mode, Boolean(node && showsAgentAnalysis(node)));
+  const subjective = Boolean(node && supportsAiScoring(node));
+  const scoring = analysisState.payload?.aiScoring;
+  const validScores = scoring?.enabled
+    ? (analysisState.payload?.perStudent?.scores ?? []).filter(item =>
+      typeof item.score === 'number' && Number.isFinite(item.score) && item.score >= 0 && item.score <= scoring.maxScore
+      && worksheet?.participants.some(participant => participant.participantId === item.studentId
+        && participant.answerRows.some(row => row.questionId === questionId && row.status === 'submitted')))
+    : [];
+  const average = validScores.length
+    ? Number((validScores.reduce((sum, item) => sum + item.score!, 0) / validScores.length).toFixed(1)) : null;
+  const rewardUnit = scoring?.unit ?? '';
+
   const unit = mode === 'group' || mode === 'advanced' ? '组' : '人';
   const distribution = stats?.distribution ?? null;
 
@@ -215,20 +231,26 @@ export function QuestionStatsOverlay({
                 {[
                   { label: `参与者`, value: String(stats.total), suffix: unit, color: '#0f172a' },
                   { label: '已交', value: String(stats.submitted), suffix: unit, color: '#0f172a' },
-                  { label: '全对', value: String(stats.correct), suffix: unit, color: OK },
-                  { label: '部分给分', value: String(stats.partial), suffix: unit, color: WARN },
-                  { label: '答错', value: String(stats.wrong), suffix: unit, color: BAD },
+                  ...(subjective ? [
+                    { label: 'AI 已评分', value: String(validScores.length), suffix: unit, color: '#426a88' },
+                    { label: 'AI 平均奖励', value: average === null ? '—' : String(average), suffix: average === null ? '' : rewardUnit, color: '#956834' },
+                    { label: '奖励满额', value: scoring?.enabled ? String(scoring.maxScore) : '—', suffix: scoring?.enabled ? rewardUnit : '', color: '#426a88' },
+                  ] : [
+                    { label: '全对', value: String(stats.correct), suffix: unit, color: OK },
+                    { label: '部分给分', value: String(stats.partial), suffix: unit, color: WARN },
+                    { label: '答错', value: String(stats.wrong), suffix: unit, color: BAD },
+                  ]),
                 ].map((cell) => (
                   // 展示用：数值 1.375rem/700（这一屏第二大的字），标签降到 0.688rem 灰。
                   <div key={cell.label} className={styles.metric}>
                     <small>{cell.label}</small>
-                    <div style={{ color: cell.color }}>
-                      {cell.value}<span>{cell.suffix}</span>
+                    <div className={cell.label === 'AI 平均奖励' || cell.label === '奖励满额' ? styles.rewardMetricValue : undefined} style={{ color: cell.color }}>
+                      {cell.value}<span>{cell.label === 'AI 平均奖励' || cell.label === '奖励满额' ? <RewardUnit unit={cell.suffix} /> : cell.suffix}</span>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className={styles.donut}>
+              {!subjective && <div className={styles.donut}>
                 {/* ⚠️ 正确率是 `null` 时中心画「—」而**不是 0%** —— 0% 是一句假话（没有判过的行）。 */}
                 <VerdictDonut
                   size={80}
@@ -245,10 +267,19 @@ export function QuestionStatsOverlay({
                     { name: '未作答', value: stats.unanswered, color: CHART.unanswered },
                   ]}
                 />
+              </div>}
               </div>
-              </div>
-              <div className={styles.summaryStatus}><StackedBar stats={stats} compact /></div>
-              <div className={styles.summaryLegend}><StackedBar stats={stats} legendOnly /></div>
+              {subjective ? <>
+                <div className={styles.subjectiveLegend}>
+                  <span>已提交 <strong>{stats.submitted}</strong> · 未提交 <strong>{stats.total - stats.submitted}</strong></span>
+                  <span>{analysisState.loading ? '正在读取 AI 评分…' : scoring?.enabled
+                    ? `平均奖励按 ${validScores.length} ${unit}已评分作答计算` : '未开启 AI 评分'}</span>
+                </div>
+                <div className={styles.submissionTrack}><span style={{ width: `${stats.total ? stats.submitted / stats.total * 100 : 0}%` }} /></div>
+              </> : <>
+                <div className={styles.summaryStatus}><StackedBar stats={stats} compact /></div>
+                <div className={styles.summaryLegend}><StackedBar stats={stats} legendOnly /></div>
+              </>}
             </div>
           )}
         </div>
@@ -323,7 +354,7 @@ export function QuestionStatsOverlay({
           {node && showsAgentAnalysis(node) && (
             <div className={styles.section}>
               <QuestionAnalysisSection key={`${worksheetId}:${questionId}`} classroomId={classroomId}
-                worksheetId={worksheetId} questionId={questionId} mode={mode} initiallyExpanded={expandAnalysis}
+                worksheetId={worksheetId} questionId={questionId} state={analysisState} onOpenStudent={onOpenStudent} initiallyExpanded={expandAnalysis}
                 analyzed={worksheet?.analyzedQuestionIds?.includes(questionId) ?? false}
                 analyzedAt={worksheet?.analysisTimes?.[questionId] ?? null} />
             </div>

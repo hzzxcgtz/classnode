@@ -11,6 +11,7 @@ import { localizeLegacyLabels } from '@/lib/worksheet-analysis-cells';
 import { AnalysisReport } from './analysis-report';
 import { scoreParticipantMeta, sortAnalysisScores } from '@/lib/worksheet-analysis-score-display';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
+import { RewardUnit } from '@/components/worksheet-reward-unit';
 import { pointsUnitLabel, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
 import styles from './analysis-panel.module.css';
 
@@ -80,12 +81,6 @@ export function useWorksheetAnalysis(
     return () => window.removeEventListener(WORKSHEET_ANALYSIS_STARTED_EVENT, started);
   }, []);
 
-  useEffect(() => {
-    if (operation !== 'analyzing') return;
-    const timer = window.setInterval(() => setRunElapsedSeconds((value) => value + 1), 1000);
-    return () => window.clearInterval(timer);
-  }, [operation]);
-
   // 关闭浮窗后任务仍在模块级注册表中。重新打开同一道题时接回原 Promise，而不是重复外发。
   useEffect(() => {
     const task = activeWorksheetAnalysisTask(classroomId, worksheetId, questionId);
@@ -94,7 +89,11 @@ export function useWorksheetAnalysis(
     setOperation('analyzing');
     setRunStage(task.stage);
     setRunElapsedSeconds(Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000)));
-    const stageTimer = window.setInterval(() => setRunStage(task.stage), 300);
+    const stageTimer = window.setInterval(() => {
+      setRunStage(task.stage);
+      // 根据任务真实开始时间重算，后台节流或面板重挂载不会漏计秒数。
+      setRunElapsedSeconds(Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000)));
+    }, 300);
     void task.promise
       .then(async (out) => {
         if (!alive) return;
@@ -211,7 +210,7 @@ export function AnalysisBanners({ state }: { state: WorksheetAnalysisState }) {
  * 正文（文档 / 联系表 / 解读 / 确认块）。
  * ⚠️ **从 `analysis-overlay.tsx` 原样搬过来**，行为一个字没改。
  */
-export function AnalysisBody({ state, classroomId, worksheetId, questionId, nameOf, compact = false }: {
+export function AnalysisBody({ state, classroomId, worksheetId, questionId, nameOf, onOpenStudent, compact = false }: {
   compact?: boolean;
   state: WorksheetAnalysisState;
   classroomId: string;
@@ -234,6 +233,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
    * 只回到教师端，不会进入发给第三方 AI 的载荷。
    */
   nameOf?: (participantId: string) => string | null;
+  onOpenStudent?: (participantId: string) => void;
 }) {
   const { payload, loading, sheetFailed } = state;
   const sheets = payload?.sheetLayouts ?? [];
@@ -336,7 +336,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
           <summary className={styles.scoreHeader}>
             <div>
               <strong>AI 评分</strong>
-              <span>满额 {payload.perStudent.maxScore} {payload.perStudent.unit}</span>
+              <span className={styles.scoreFullMarks}>满额 {payload.perStudent.maxScore} <RewardUnit unit={payload.perStudent.unit} /></span>
             </div>
             {/* ★ 2026-10-07（教师裁定 2）：这份分**已经写回成绩**（进总分、进奖励、进报告），
                 不再是「仅供参考」的旁注 —— 那句话会让教师以为不必核对。 */}
@@ -413,7 +413,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 
       {!loading && payload && payload.covered > 0 && payload.narrative && (
         <section className={styles.resultCard} aria-label="AI 分析结果">
-          <AnalysisReport className={styles.resultText} payload={payload} text={localize(payload.narrative) ?? ''} />
+          <AnalysisReport onOpenStudent={onOpenStudent} className={styles.resultText} payload={payload} text={localize(payload.narrative) ?? ''} />
         </section>
       )}
 

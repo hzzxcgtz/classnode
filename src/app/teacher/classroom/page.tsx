@@ -16,6 +16,7 @@ import { useWebappMonitor } from './use-webapp-monitor';
 import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-tiles';
 import { WorksheetTileContent } from './worksheet-tiles';
 import { SvgAvatar } from '@/components/svg-avatar';
+import { ClassroomImagePreviewContext } from './answer-photo';
 import { MatrixOverlay, type WorksheetWorkspaceEntry } from './matrix-overlay';
 import { WorksheetDrawer, type WorksheetDrawerEntry } from './worksheet-drawer';
 import { clearConfirmText, participantOverview } from './worksheet-drawer-state';
@@ -1123,13 +1124,13 @@ function ClassroomBoardContent() {
   useEffect(() => {
     if (!worksheetWorkspace && !worksheetDrawer) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || fullscreenImg) return;
       event.preventDefault();
       closeWorksheetLayer();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [worksheetWorkspace, worksheetDrawer, closeWorksheetLayer]);
+  }, [worksheetWorkspace, worksheetDrawer, closeWorksheetLayer, fullscreenImg]);
 
   const beginWorksheetLayer = useCallback(() => {
     const token = Date.now();
@@ -2554,6 +2555,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
   }));
 
   return (
+    <ClassroomImagePreviewContext.Provider value={openFullscreenImage}>
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {gridFullscreen && <style>{`body { overflow: hidden; }`}</style>}
       <style>{`.preview-scroll::-webkit-scrollbar { width: 4px; } .preview-scroll::-webkit-scrollbar-track { background: transparent; } .preview-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; } .preview-scroll { scrollbar-width: thin; scrollbar-color: #e2e8f0 transparent; } .control-btn:hover { background: #f1f5f9 !important; } @keyframes slideDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -4179,7 +4181,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               cursor: 'grab',
               pointerEvents: 'auto',
             }} />
-          <button onClick={() => { setFullscreenImg(null); setZoomLevel(1); }}
+          <button aria-label="关闭大图预览" onClick={() => { setFullscreenImg(null); setZoomLevel(1); }}
             style={{
               position: 'absolute', top: 20, right: 24,
               width: 40, height: 40, borderRadius: '50%',
@@ -4233,6 +4235,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         </div>
       )}
     </div>
+    </ClassroomImagePreviewContext.Provider>
   );
 }
 

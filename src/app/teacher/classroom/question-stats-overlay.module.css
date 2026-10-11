@@ -281,3 +281,13 @@
 .analysisResultHeader strong { color: #29465f; font-size: .85rem; }
 .analysisResultHeader span span { color: #718397; font-size: .7rem; }
 .inlineAnalysisActions { border: 0; padding: 0; margin-left: auto; }
+
+.subjectiveLegend { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; padding: 0 16px 10px; color: #718397; font-size: .7rem; }
+.subjectiveLegend strong { color: #3c5f7b; }
+.submissionTrack { height: 5px; background: #e2e8f0; overflow: hidden; }
+.submissionTrack > span { display: block; height: 100%; background: #466b87; }
+
+/* 奖励图标与数值共用居中行，避免按小字号的文字基线下沉。 */
+.metric .rewardMetricValue { display: flex; align-items: center; gap: 4px; }
+.rewardMetricValue > span { display: inline-flex; align-items: center; }
+.metric .rewardMetricValue span { margin-left: 0; }

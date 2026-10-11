@@ -7,3 +7,8 @@
 .tooltip strong { display: block; margin-bottom: 3px; font-size: .7rem; color: #71859a; }
 .tooltip span { overflow-wrap: anywhere; }
 .unverified { color: #8a7356; font-size: .85em; }
+
+.studentList { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.studentLink { border: 0; border-radius: 4px; padding: 3px 6px; background: #eaf2f8; color: #426a8c; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.studentLink:hover { background: #dceaf4; }
+.studentLink:focus-visible { outline: 2px solid #7996b1; outline-offset: 2px; }

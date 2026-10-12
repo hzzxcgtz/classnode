@@ -13,6 +13,7 @@ import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import styles from '../worksheet.module.css';
 import DrawingToolbarIcon from './drawing-surfaces/drawing-toolbar-icon';
+import { DrawingErrorBoundary } from './drawing-error-boundary';
 
 const BasicDrawing = dynamic(() => import('./drawing-surfaces/basic-drawing'), { ssr: false });
 const MathDrawing = dynamic(() => import('./drawing-surfaces/math-drawing'), { ssr: false });
@@ -120,17 +121,19 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
           <span>{maximized ? '退出全屏' : '全屏'}</span>
         </button>
       </div>
-      <Surface
-        starter={readDrawingStarter(node)}
-        data={drawingDocument?.data}
-        backgroundUrl={backgroundUrl}
-        disabled={disabled}
-        onChange={update}
-        onImage={updateImage}
-        /* ★ 2026-10-06：题目 id 当「撤销历史」的 key —— 全屏切 portal 会重挂子树，
-           历史靠这个 key 从模块级的表里取回来（见 `types.ts` 的 `historyKey`）。 */
-        historyKey={node.id}
-      />
+      <DrawingErrorBoundary key={`${node.id}:${tool}`} toolLabel={TOOL_LABELS[tool]}>
+        <Surface
+          starter={readDrawingStarter(node)}
+          data={drawingDocument?.data}
+          backgroundUrl={backgroundUrl}
+          disabled={disabled}
+          onChange={update}
+          onImage={updateImage}
+          /* ★ 2026-10-06：题目 id 当「撤销历史」的 key —— 全屏切 portal 会重挂子树，
+             历史靠这个 key 从模块级的表里取回来（见 `types.ts` 的 `historyKey`）。 */
+          historyKey={node.id}
+        />
+      </DrawingErrorBoundary>
     </div>
   );
   /*

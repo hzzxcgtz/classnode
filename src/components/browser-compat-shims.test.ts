@@ -19,12 +19,40 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+import ts from 'typescript';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
 const SHIM = fs.readFileSync(path.join(HERE, 'browser-compat-shims.tsx'), 'utf8');
 const LAYOUT = fs.readFileSync(path.join(ROOT, 'src', 'app', 'layout.tsx'), 'utf8');
 const GATE = fs.readFileSync(path.join(ROOT, 'scripts', 'check-classroom-browser-compat.mjs'), 'utf8');
+
+const executableShim = ts.transpileModule(SHIM, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2017 },
+}).outputText;
+
+test('缺少 toSorted 时绘图对象能排序，原数组和同层绘图顺序保持不变', () => {
+  const context = vm.createContext({ exports: {} });
+  vm.runInContext('delete Array.prototype.toSorted', context);
+  vm.runInContext(executableShim, context);
+  assert.equal(vm.runInContext(`(() => {
+    const original = [{id: 'a', layer: 2}, {id: 'b', layer: 1}, {id: 'c', layer: 2}];
+    const sorted = original.toSorted((a, b) => a.layer - b.layer);
+    return sorted.map(x => x.id).join(',') === 'b,a,c'
+      && original.map(x => x.id).join(',') === 'a,b,c'
+      && !Object.keys(Array.prototype).includes('toSorted');
+  })()`, context), true);
+  assert.equal(vm.runInContext(`JSON.stringify([, 3, 1].toSorted())`, context), '[1,3,null]');
+  assert.equal(vm.runInContext('2 in [, 3, 1].toSorted()', context), true);
+});
+
+test('保留已有的原生 toSorted，不覆盖新浏览器实现', () => {
+  const context = vm.createContext({ exports: {} });
+  vm.runInContext('globalThis.originalToSorted = Array.prototype.toSorted', context);
+  vm.runInContext(executableShim, context);
+  assert.equal(vm.runInContext('Array.prototype.toSorted === originalToSorted', context), true);
+});
 
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');

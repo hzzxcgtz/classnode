@@ -68,7 +68,10 @@ try {
   await api('/api/settings/verify-password', 'POST', { password: 'candidate-test-only' });
   const klass = await api('/api/classes', 'POST', { name: '验收班级' });
   await api(`/api/classes/${klass.id}/students`, 'POST', { name: '验收学生[A]' });
-  const worksheet = await api('/api/worksheets', 'POST', { title: '验收学习单', content: { schemaVersion: 1, nodes: [{ id: 'q1', type: 'short-answer', prompt: '说说你的观察', inputMode: 'keyboard', data: {}, children: [] }] }, settings: { allowResubmit: true, autoGrade: false } });
+  const worksheet = await api('/api/worksheets', 'POST', { title: '验收学习单', content: { schemaVersion: 1, nodes: [
+    { id: 'q1', type: 'short-answer', prompt: '说说你的观察', inputMode: 'keyboard', data: {}, children: [] },
+    ...['free', 'math', 'mind-map', 'flowchart'].map(tool => ({ id: `drawing-${tool}`, type: 'drawing', prompt: `绘图验收 ${tool}`, data: { drawingTool: tool }, children: [] })),
+  ] }, settings: { allowResubmit: true, autoGrade: false } });
   const classroom = await api('/api/classroom/create', 'POST', { title: '候选版本验收', mode: 'standard', classIds: [klass.id], agentIds: [], worksheetIds: [worksheet.id] });
   for (const page of ['dashboard', 'classes', 'agents', 'classroom', 'history']) {
     await navigate(`${base}/teacher/${page}/`);
@@ -77,38 +80,57 @@ try {
     assert.equal(await evaluate(`document.body.innerText.includes('Application error')`), false);
     await screenshot(`teacher-${page}`);
   }
+  // Exercise the drawing initialization paths with the APIs missing on old iPads.
+  await command('Page.addScriptToEvaluateOnNewDocument', { source: 'delete Array.prototype.toSorted; delete globalThis.structuredClone;' });
   await navigate(`${base}/classroom/?code=${classroom.code}`);
   await waitFor(() => evaluate(`document.body.innerText.includes('验收学生[A]')`));
   await clickText('验收学生[A]'); await clickText('确认并进入');
   await waitFor(() => evaluate(`document.body.innerText.includes('验收学习单')`));
   await clickText('学习单');
   await waitFor(() => evaluate(`Boolean(document.querySelector('textarea'))`));
+  await waitFor(() => evaluate(`Boolean(document.querySelector('.react-flow__viewport')) && Boolean(document.querySelector('me-root')) && Boolean(document.querySelector('[data-tool-cursor] canvas')) && Boolean(document.querySelector('svg[id*="react-sketch-canvas"]'))`));
+  assert.equal(await evaluate(`document.body.innerText.includes('暂时无法加载')`), false, 'All four drawing tools must initialize without hitting the error boundary');
   const writeDraft = text => evaluate(`(()=>{const e=document.querySelector('textarea');const set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;set.call(e,${JSON.stringify(text)});e.dispatchEvent(new Event('input',{bubbles:true}));return e.value})()`);
   await writeDraft('候选版本浏览器作答');
   await pause(2200);
   const session = await evaluate(`JSON.parse(localStorage.getItem('chat_session_${classroom.code}'))`);
   const readAnswers = () => evaluate(`fetch('/api/worksheets/${worksheet.id}/answers',{headers:{Authorization:'Bearer '+${JSON.stringify(session.token)}}}).then(r=>r.json())`);
-  await waitFor(async () => (await readAnswers()).rows?.length === 1);
+  await waitFor(async () => (await readAnswers()).rows?.some(row => row.questionId === 'q1'));
   await screenshot('student-answer');
   await api(`/api/worksheets/classroom/${classroom.id}/answers`, 'DELETE', { worksheetId: worksheet.id, participantId: session.studentId, questionId: 'q1' });
   await waitFor(() => evaluate(`document.querySelector('textarea')?.value === ''`));
   await pause(1800);
-  assert.equal((await readAnswers()).rows.length, 0, 'Clear must remain empty after debounce');
+  assert.equal((await readAnswers()).rows.some(row => row.questionId === 'q1'), false, 'Clear must remain empty after debounce');
   await writeDraft('清除后的新作答');
-  await waitFor(async () => (await readAnswers()).rows?.[0]?.value?.text === '清除后的新作答');
+  await waitFor(async () => (await readAnswers()).rows?.find(row => row.questionId === 'q1')?.value?.text === '清除后的新作答');
   await screenshot('student-reanswer');
   // Storage denial must leave the current in-memory worksheet usable with an explicit warning.
   await evaluate(`Storage.prototype.setItem=function(){throw new DOMException('blocked','QuotaExceededError')};`);
   await writeDraft('存储受限仍可保存');
   await waitFor(() => evaluate(`document.body.innerText.includes('浏览器无法保存离线草稿')`));
-  await waitFor(async () => (await readAnswers()).rows?.[0]?.value?.text === '存储受限仍可保存');
+  await waitFor(async () => (await readAnswers()).rows?.find(row => row.questionId === 'q1')?.value?.text === '存储受限仍可保存');
   await screenshot('student-storage-denied');
   assert.deepEqual(errors, [], 'No browser runtime exceptions');
+  // Force a drawing initialization failure; the worksheet and its answer must survive.
+  await evaluate(`(() => {
+    globalThis.testOriginalToSorted = Array.prototype.toSorted;
+    Array.prototype.toSorted = function(){ throw new Error('drawing-init-test'); };
+    document.querySelector('[data-tool-cursor]').closest('[class*="thirdPartyWorkspace"]').querySelector('button[aria-label="全屏画板"]').click();
+  })()`);
+  await waitFor(() => evaluate(`document.body.innerText.includes('drawing-init-test')`));
+  assert.equal(await evaluate(`document.body.innerText.includes('Application error')`), false, 'Drawing failure must remain local');
+  assert.equal(await evaluate(`Boolean(document.querySelector('textarea'))`), true, 'Other questions must remain mounted');
+  await evaluate(`Array.prototype.toSorted = globalThis.testOriginalToSorted; delete globalThis.testOriginalToSorted;`);
+  await clickText('重新加载画板');
+  await waitFor(() => evaluate(`Boolean(document.querySelector('[data-tool-cursor] canvas'))`));
+  await clickText('退出全屏');
+  await waitFor(() => evaluate(`!document.body.innerText.includes('drawing-init-test')`));
+  assert.equal(await evaluate(`document.querySelector('textarea')?.value`), '存储受限仍可保存', 'Retry must preserve the other answer');
   const html = await fetch(base + '/classroom/'); assert.match(html.headers.get('cache-control') || '', /no-store/);
-  const result = { result: 'PASS', teacherPages: 5, studentJoin: true, answerSave: true, realtimeClearAndReanswer: true, deniedStorageStillSaves: true, runtimeExceptions: errors.length, htmlNoStore: true, viewport: '1024x768 Chrome (not Safari hardware)', realAi: false, runtime: bundled ? 'candidate app bundled Node + production dependencies + builtin DB + frontend' : 'production server + current static export; workspace dependencies via symlink', artifacts };
+  const result = { result: 'PASS', teacherPages: 5, studentJoin: true, drawingToolsWithoutModernApis: 4, drawingFailureContainedAndRetry: true, answerSave: true, realtimeClearAndReanswer: true, deniedStorageStillSaves: true, runtimeExceptions: errors.length, htmlNoStore: true, viewport: '1024x768 Chrome (not Safari hardware)', realAi: false, runtime: bundled ? 'candidate app bundled Node + production dependencies + builtin DB + frontend' : 'production server + current static export; workspace dependencies via symlink', artifacts };
   fs.writeFileSync(path.join(artifacts, 'result.json'), JSON.stringify(result, null, 2)); console.log(JSON.stringify(result, null, 2));
 } catch (error) {
-  if (socket?.readyState === 1) { try { console.error(await evaluate('document.body.innerText')); await screenshot('failure'); } catch {} }
+  if (socket?.readyState === 1) { try { console.error(await evaluate('document.body.innerText')); console.error(await evaluate(`({flow:!!document.querySelector('.react-flow__viewport'), mind:!!document.querySelector('me-root'), math:document.querySelector('[data-tool-cursor]')?.innerHTML.slice(0,300), sketch:!!document.querySelector('svg[id*="react-sketch-canvas"]')})`)); await screenshot('failure'); } catch {} }
   throw error;
 } finally {
   socket?.close(); await stop(chrome); await stop(backend);

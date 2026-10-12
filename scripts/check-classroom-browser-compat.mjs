@@ -177,6 +177,11 @@ function checkBundleLookbehinds() {
 //    `format(` 不含 `.at(`，而 `foo.at(` 是真命中。
 const BUNDLE_API_FAMILY = [
   {
+    token: '.toSorted(',
+    shim: /Object\.defineProperty\(Array\.prototype,\s*["']toSorted["']/,
+    shimWhy: '学生端入口的 toSorted 兜底（JSXGraph 初始化画板）',
+  },
+  {
     token: 'structuredClone',
     shim: /globalThis\.structuredClone\s*=/,
     shimWhy: '学生端入口的兜底（src/components/browser-compat-shims.tsx）',

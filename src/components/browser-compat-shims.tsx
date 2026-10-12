@@ -1,5 +1,17 @@
 'use client';
 
+// JSXGraph calls this while initializing/updating its board. Safari 15 has no
+// toSorted; copying before sorting preserves the library's original draw order.
+if (typeof Array.prototype.toSorted !== 'function') {
+  Object.defineProperty(Array.prototype, 'toSorted', {
+    configurable: true,
+    writable: true,
+    value: function toSorted<T>(this: T[], compareFn?: (a: T, b: T) => number): T[] {
+      return Array.from(this).sort(compareFn);
+    },
+  });
+}
+
 /**
  * 老 iPad 的**兜底**：Safari 15.0–15.3 没有 `structuredClone`（15.4 才有）。
  *

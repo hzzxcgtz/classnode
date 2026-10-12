@@ -59,6 +59,7 @@ type Demand = {
 
 type FakeSocket = {
   id: string;
+  connected: boolean;
   rooms: Set<string>;
   handshake: { headers: { cookie?: string } };
   data: Record<string, unknown>;
@@ -233,6 +234,7 @@ function createHarness(options: HarnessOptions = {}) {
     const handlers = new Map<string, (...args: never[]) => unknown>();
     const socket: FakeSocket = {
       id,
+      connected: true,
       rooms: new Set([id]),
       handshake: { headers: options.cookie === undefined ? {} : { cookie: options.cookie } },
       data: {},
@@ -255,6 +257,7 @@ function createHarness(options: HarnessOptions = {}) {
       },
       /** 模拟 Socket.IO 的断开：先从所有房间摘掉，再触发 disconnect 处理器。 */
       async disconnect() {
+        socket.connected = false;
         for (const room of [...socket.rooms]) socket.leave(room);
         sockets.delete(id);
         const handler = handlers.get('disconnect');
@@ -2337,6 +2340,8 @@ test('Phase 5: 同参与者 AI 串行、停止后可重试、Coze 会话按课�
     return new globalThis.Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
   });
   const student = await joinAsStudent(harness, 'classroom-a', 'phase5-p');
+  // 加入失败时直接报错，避免后续等待上游请求直到整个用例超时。
+  assert.ok(student.socket.rooms.has('classroom:classroom-a'), 'AI 测试前学生应已加入课堂');
   const input = { classroomCode: '1234', studentId: 'phase5-p', content: 'hello' };
   const first = student.call('send-message', input);
   await arrival;
@@ -2357,6 +2362,7 @@ test('Phase 5: 同参与者 AI 串行、停止后可重试、Coze 会话按课�
   assert.equal(messages.filter(row => row.role === 'assistant').length, 1);
   assert.equal(requests[0], requests[1], '同课堂同参与者上下文稳定');
   const other = await joinAsStudent(harness, 'classroom-b', 'phase5-p');
+  assert.ok(other.socket.rooms.has('classroom:classroom-b'), '跨课堂 AI 测试前学生应已加入课堂');
   arrival = new Promise<void>(resolve => { started = resolve; });
   const third = other.call('send-message', input);
   await arrival;

@@ -156,17 +156,41 @@ router.post('/reset-password', async (req, res) => {
   if (!isLocalMachineRequest(req)) return res.status(403).json({ error: '只能从本机控制面板重置密码' });
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const temporaryPassword = crypto.randomBytes(9).toString('base64url');
+    const temporaryPassword = crypto.randomInt(100_000, 1_000_000).toString();
     await prisma.setting.upsert({
       where: { key: 'admin_password' },
       update: { value: hashPassword(temporaryPassword) },
       create: { key: 'admin_password', value: hashPassword(temporaryPassword) },
     });
     revokeAllTeacherSessions();
+    loginAttempts.clear();
     res.json({ success: true, temporaryPassword, message: '已生成临时密码，请登录后立即修改' });
   } catch {
     res.status(500).json({ error: '重置密码失败' });
   }
+});
+
+// Installed control window uses loopback IPC; no teacher browser session is needed.
+router.get('/desktop-info', async (req, res) => {
+  if (!isLocalMachineRequest(req)) return res.status(403).json({ error: '仅供本机控制面板使用' });
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const settings = await prisma.setting.findMany({ where: { key: { in: ['bind-ip', 'lan-access'] } } });
+    res.json({ selectedIp: settings.find(s => s.key === 'bind-ip')?.value || '', lanEnabled: settings.find(s => s.key === 'lan-access')?.value !== 'false' });
+  } catch { res.status(500).json({ error: '获取本机网络配置失败' }); }
+});
+router.put('/desktop-network', async (req, res) => {
+  if (!isLocalMachineRequest(req)) return res.status(403).json({ error: '仅供本机控制面板使用' });
+  const ip = req.body?.ip;
+  const { networkInterfaces } = await import('node:os');
+  const localIps = Object.values(networkInterfaces()).flatMap(entries => entries || []).filter(entry => entry.family === 'IPv4' && !entry.internal).map(entry => entry.address);
+  if (typeof ip !== 'string' || !localIps.includes(ip)) return res.status(400).json({ error: '所选网卡已不可用，请重新选择' });
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    await prisma.setting.upsert({ where: { key: 'bind-ip' }, update: { value: ip }, create: { key: 'bind-ip', value: ip } });
+    req.app.get('io')?.emit('nic-changed', { ip });
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: '保存网络配置失败' }); }
 });
 
 router.use(requireTeacher);

@@ -52,7 +52,7 @@ for (const file of ['README.md', 'README.en.md']) {
 
 for (const file of ['myportal/index.html', 'myportal/classnode.html']) {
   if (!fs.existsSync(path.join(root, file))) continue;
-  changed += writeIfChanged(file, read(file).replace(/v\d+\.\d+\.\d+/g, `v${version}`));
+  changed += writeIfChanged(file, read(file).replace(/v\d+\.\d+\.\d+/g, `v${version}`).replace(/([?&]v=)\d+\.\d+\.\d+/g, `$1${version}`));
 }
 
 if (fs.existsSync(path.join(root, 'myportal/deploy.html'))) {

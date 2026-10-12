@@ -1,832 +1,269 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ClassNode</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>支点课堂</title>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
 :root {
-  --bg: linear-gradient(160deg, #f0f2f5 0%, #e8ecf1 100%);
-  --surface: rgba(255,255,255,0.68);
-  --surface-hover: rgba(255,255,255,0.85);
-  --text: #1d1d1f;
-  --text2: #6e6e73;
-  --text3: #aeaeb2;
-  --border: rgba(0,0,0,0.05);
-  --shadow: 0 8px 32px rgba(0,0,0,0.04), 0 1px 4px rgba(0,0,0,0.02);
-  --shadow-sm: 0 2px 8px rgba(0,0,0,0.03);
-  --accent: #007aff;
-  --accent-bg: rgba(0,122,255,0.1);
-  --green: #34c759;
-  --green-bg: rgba(52,199,89,0.12);
-  --red: #ff3b30;
-  --red-bg: rgba(255,59,48,0.08);
-  --orange: #ff9500;
-  --orange-bg: rgba(255,149,0,0.1);
-  --radius: 18px;
-  --radius-sm: 10px;
+  color-scheme: light dark;
+  --background: #f5f5f5;
+  --surface: #ffffff;
+  --field: #f8f8f8;
+  --text: #23262b;
+  --muted: #7b7b7b;
+  --border: #d9d9d9;
+  --separator: #e6e6e6;
+  --accent: #087df4;
+  --accent-border: #0874e4;
+  --footer: #ededed;
+  --button: linear-gradient(#fff, #fcfcfc);
 }
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: linear-gradient(160deg, #1c1c1e 0%, #222224 100%);
-    --surface: rgba(44,44,46,0.72);
-    --surface-hover: rgba(44,44,46,0.9);
-    --text: #f5f5f7;
-    --text2: #98989d;
-    --text3: #636366;
-    --border: rgba(255,255,255,0.05);
-    --shadow: 0 8px 32px rgba(0,0,0,0.3), 0 1px 4px rgba(0,0,0,0.15);
-    --accent: #0a84ff;
-    --accent-bg: rgba(10,132,255,0.15);
-    --green: #30d158;
-    --green-bg: rgba(48,209,88,0.12);
-    --red: #ff453a;
-    --red-bg: rgba(255,69,58,0.1);
-    --orange: #ff9f0a;
-    --orange-bg: rgba(255,159,10,0.12);
-  }
-}
-
-html, body { height: 100%; overflow: hidden; }
-
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
 body {
-  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
-  background: var(--bg);
+  background: var(--background);
   color: var(--text);
-  -webkit-font-smoothing: antialiased;
-  user-select: none;
-}
-
-/* ===== Shell ===== */
-.shell {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  padding: 0 20px;
-}
-
-/* ===== Header ===== */
-.head {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 22px 0 18px;
-  -webkit-app-region: drag;
-  border-bottom: 0.5px solid var(--border);
-}
-
-.head-icon {
-  width: 52px; height: 52px;
-  border-radius: 14px;
-  object-fit: cover;
-  flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(88,86,214,0.15), inset 0 1px 0 rgba(255,255,255,0.25);
-}
-
-.head-body { flex: 1; min-width: 0; }
-
-.head-body h1 {
-  font-size: 20px; font-weight: 700; letter-spacing: -0.3px;
-  line-height: 1.2; display: flex; align-items: center; gap: 8px;
-}
-
-.head-version {
-  font-size: 10px; font-weight: 600;
-  color: var(--accent); background: var(--accent-bg);
-  padding: 1px 8px; border-radius: 5px;
-  vertical-align: middle;
-}
-
-.head-body .sub {
-  font-size: 12px; color: var(--text2);
-  margin-top: 3px;
-}
-
-/* ===== Scroll ===== */
-.scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.scroll::-webkit-scrollbar { width: 4px; }
-.scroll::-webkit-scrollbar-thumb { background: var(--text3); border-radius: 4px; }
-
-/* ===== Error ===== */
-.err {
-  display: none;
-  background: var(--red-bg);
-  border: 0.5px solid rgba(255,59,48,0.12);
-  border-radius: var(--radius-sm);
-  padding: 12px 16px;
-  font-size: 13px; color: var(--red);
-  line-height: 1.5;
-  animation: errIn 0.25s ease;
-}
-@keyframes errIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-.err.show { display: block; }
-
-/* ===== Card ===== */
-.card {
-  background: var(--surface);
-  backdrop-filter: saturate(1.6) blur(24px);
-  -webkit-backdrop-filter: saturate(1.6) blur(24px);
-  border-radius: var(--radius);
-  padding: 22px;
-  box-shadow: var(--shadow);
-  border: 0.5px solid var(--border);
-  transition: all 0.2s ease;
-}
-
-/* ===== Status Section ===== */
-.status-head {
-  display: flex; align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.status-badge {
-  display: flex; align-items: center; gap: 10px;
-}
-
-.dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  position: relative;
-  flex-shrink: 0;
-}
-
-.dot.run { background: var(--green); }
-.dot.run::after {
-  content: '';
-  position: absolute;
-  inset: -5px;
-  border-radius: 50%;
-  background: var(--green);
-  opacity: 0.3;
-  animation: breathe 2.2s ease-in-out infinite;
-}
-@keyframes breathe {
-  0%, 100% { transform: scale(1); opacity: 0.25; }
-  50% { transform: scale(1.6); opacity: 0.06; }
-}
-
-.dot.stop { background: var(--red); }
-.dot.stopping { background: var(--red); animation: stopFade 0.9s ease-in-out infinite; }
-@keyframes stopFade {
-  0%, 100% { transform: scale(1); opacity: 0.6; }
-  50% { transform: scale(0.7); opacity: 0.25; }
-}
-
-.dot.go { background: transparent; position: relative; }
-.dot.go::before {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 2.5px solid var(--orange);
-  border-top-color: transparent;
-  animation: spin 0.8s linear infinite;
-}
-.dot.go::after {
-  content: '';
-  position: absolute;
-  inset: 2px;
-  border-radius: 50%;
-  background: var(--orange);
-  opacity: 0.35;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.status-label {
-  font-size: 20px; font-weight: 700;
-  letter-spacing: -0.3px;
-}
-.status-label.run { color: var(--green); }
-.status-label.stop { color: var(--red); }
-.status-label.stopping { color: var(--red); opacity: 0.6; }
-.status-label.go { color: var(--orange); }
-
-.status-port {
-  font-size: 11px; font-weight: 500;
-  color: var(--green); background: var(--green-bg);
-  padding: 3px 10px; border-radius: 6px;
-}
-
-.status-desc {
-  font-size: 13px; color: var(--text2);
-  line-height: 1.5; margin-bottom: 16px;
-}
-
-/* Buttons */
-.act {
-  display: flex; gap: 8px;
-  justify-content: flex-end;
-}
-
-.act .btn {
-  padding: 9px 18px;
-  border-radius: var(--radius-sm);
-  border: none;
-  font-size: 13px; font-weight: 600;
-  cursor: pointer; font-family: inherit;
-  transition: all 0.2s ease;
-  display: flex; align-items: center; gap: 6px;
-}
-
-.act .btn:active { transform: scale(0.96); }
-.act .btn:disabled { opacity: 0.25; cursor: default; transform: none; }
-
-.act .btn svg { width: 15px; height: 15px; }
-
-.btn-start {
-  background: var(--accent); color: white;
-  box-shadow: 0 4px 12px rgba(0,122,255,0.15);
-}
-.btn-start:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
-
-.btn-stop {
-  background: transparent; color: var(--red);
-  border: 0.5px solid rgba(255,59,48,0.15);
-}
-.btn-stop:hover:not(:disabled) { background: var(--red-bg); border-color: var(--red); }
-
-/* ===== Address Section ===== */
-.addr-title {
-  font-size: 15px; font-weight: 600;
-  margin-bottom: 12px;
-}
-
-.addr-item {
-  display: flex; align-items: center;
-  gap: 8px; padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: rgba(0,0,0,0.018);
-  transition: all 0.2s ease;
-}
-.addr-item:hover { background: var(--surface-hover); }
-.addr-item + .addr-item { margin-top: 6px; }
-
-.addr-name {
-  font-size: 13px; font-weight: 600;
-  min-width: 36px; flex-shrink: 0;
-}
-
-.addr-url {
-  flex: 1; min-width: 0;
-  font-size: 12px; color: var(--text2);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-family: "SF Mono", "Menlo", "Cascadia Code", "Consolas", monospace;
-  font-variant-numeric: tabular-nums;
-}
-
-.addr-acts {
-  display: flex; gap: 2px;
-  flex-shrink: 0; opacity: 0.35;
-  transition: opacity 0.2s ease;
-}
-.addr-item:hover .addr-acts { opacity: 1; }
-
-.addr-acts .ibtn {
-  height: 28px;
-  border-radius: 6px; border: none;
-  background: transparent; cursor: pointer;
-  display: flex; align-items: center;
-  gap: 4px;
-  padding: 0 8px;
-  transition: all 0.15s ease;
-  color: var(--text3);
-  font-size: 11px; font-weight: 500;
-  font-family: inherit;
-}
-.addr-acts .ibtn:hover:not(:disabled) { background: var(--surface); color: var(--text); }
-.addr-acts .ibtn:active:not(:disabled) { transform: scale(0.95); }
-.addr-acts .ibtn:disabled { opacity: 0.15; cursor: default; }
-.addr-acts .ibtn svg { width: 13px; height: 13px; flex-shrink: 0; }
-
-/* NIC Selector (dropdown) */
-.iface-box {
-  display: none;
-}
-.iface-box.show { display: block; }
-.iface-label { font-size: 11px; font-weight: 500; color: var(--text3); margin-bottom: 6px; }
-.iface-select {
-  width: 100%; padding: 9px 12px; border-radius: var(--radius-sm);
-  background: var(--surface); color: var(--text);
-  border: 0.5px solid var(--border); font-size: 12px; font-family: inherit;
-  cursor: pointer; outline: none; appearance: auto;
-  transition: border-color 0.15s;
-}
-.iface-select:hover { border-color: var(--accent); }
-.iface-select option { background: var(--surface); color: var(--text); }
-
-/* Separator */
-.sep { border: none; border-top: 0.5px solid var(--border); margin: 12px 0; }
-
-/* Reset Password Button */
-.reset-btn {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  width: 100%; padding: 10px; border-radius: var(--radius-sm);
-  border: 0.5px solid rgba(255,149,0,0.2); cursor: pointer;
-  background: var(--orange-bg); color: var(--orange);
-  font-size: 12px; font-weight: 600; font-family: inherit;
-  transition: all 0.2s ease;
-}
-.reset-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
-.reset-btn:active { transform: scale(0.97); }
-
-/* Modal */
-.modal-overlay {
-  display: none; position: fixed; inset: 0; z-index: 999;
-  background: rgba(0,0,0,0.35); backdrop-filter: blur(4px);
-  align-items: center; justify-content: center;
-}
-.modal-overlay.show { display: flex; }
-.modal-box {
-  background: var(--surface); backdrop-filter: saturate(1.6) blur(24px);
-  border-radius: var(--radius); padding: 28px; width: 320px;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.2);
-  border: 0.5px solid var(--border);
-  text-align: center;
-}
-.modal-icon {
-  width: 48px; height: 48px; border-radius: 50%;
-  background: var(--orange-bg); display: flex;
-  align-items: center; justify-content: center;
-  margin: 0 auto 16px;
-}
-.modal-icon svg { width: 24px; height: 24px; color: var(--orange); }
-.modal-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
-.modal-desc { font-size: 13px; color: var(--text2); line-height: 1.5; margin-bottom: 20px; }
-.modal-actions { display: flex; gap: 8px; }
-.modal-actions .btn { flex: 1; padding: 10px; border-radius: var(--radius-sm);
-  border: none; font-size: 13px; font-weight: 600; cursor: pointer;
-  font-family: inherit; transition: all 0.15s ease;
-}
-.modal-actions .btn:active { transform: scale(0.96); }
-.modal-actions .btn-secondary { background: transparent; color: var(--text2);
-  border: 0.5px solid var(--border);
-}
-.modal-actions .btn-secondary:hover { background: var(--surface-hover); }
-.modal-actions .btn-danger { background: var(--orange); color: white; }
-.modal-actions .btn-danger:hover { filter: brightness(1.08); }
-.modal-actions .btn:disabled { opacity: 0.3; cursor: default; }
-
-.modal-success {
-  text-align: center;
-}
-.modal-success svg { width: 40px; height: 40px; color: var(--green); margin-bottom: 12px; }
-.modal-success .s-text { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-.modal-success .s-sub { font-size: 12px; color: var(--text2); }
-
-/* ===== Footer ===== */
-.foot {
-  padding: 14px 0 20px;
-  border-top: 0.5px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.foot-text {
-  font-size: 13px;
-  color: var(--text2);
-  text-align: center;
-  line-height: 1.5;
-}
-
-.foot-text em {
-  font-style: normal;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.foot-acts {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.foot-acts .fl {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  text-decoration: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  padding: 4px 10px;
-  border-radius: 8px;
-}
-
-.foot-acts .fl:hover {
-  transform: scale(1.05);
-  background: var(--surface);
-}
-
-.foot-acts .fl img {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.foot-acts .fl .fl-label {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
   font-size: 12px;
-  font-weight: 500;
-  transition: color 0.2s ease;
+  -webkit-font-smoothing: antialiased;
 }
-
-.fl-gitcode .fl-label { color: #e4392b; }
-.fl-github .fl-label { color: #24292f; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid #7aafe9; outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: default; }
+[hidden] { display: none !important; }
+.window { display: flex; flex-direction: column; height: 100%; }
+.content { padding: 22px 24px 18px; overflow-y: auto; flex: 1; min-height: 0; }
+.brand { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.brand img { width: 40px; height: 40px; border-radius: 9px; }
+.brand h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+.brand p { font-size: 12px; color: var(--muted); margin: 0; }
+.version { font-size: 11px; color: var(--muted); margin-left: 8px; font-weight: 400; }
+.status { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 20px; min-height: 44px; }
+.status-main { display: flex; gap: 7px; align-items: center; min-width: 0; }
+.status-main strong { font-weight: 500; white-space: nowrap; }
+.port { color: var(--muted); margin-left: 4px; white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: #888; flex-shrink: 0; }
+.status[data-phase="running"] .dot { background: #35a454; animation: pulse 3s infinite; }
+.status[data-phase="starting"] .dot, .status[data-phase="stopping"] .dot {
+  width: 12px; height: 12px; border-radius: 50%; background: transparent;
+  border: 1.7px solid var(--border); border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+.btn {
+  font-size: 12px; border: 1px solid #c7c7c7; border-radius: 5px;
+  padding: 5px 12px; background: var(--button); color: var(--text);
+  box-shadow: 0 1px 2px #0000000b; min-height: 27px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  white-space: nowrap; transition: background-color .12s, border-color .12s;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent-border); color: white; }
+.btn:hover:not(:disabled) { filter: brightness(.97); }
+.btn:active:not(:disabled) { filter: brightness(.92); }
+.btn.copied { color: #287248; border-color: #8cb89a; background: #f0f8f2; }
+svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.group-label { font-size: 12px; color: var(--muted); margin: 0 0 9px 1px; font-weight: 500; }
+.group { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
+.address-card { padding: 13px 16px; }
+.address-card + .address-card { border-top: 1px solid var(--separator); }
+.entry-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+.entry-head svg { color: var(--muted); width: 17px; height: 17px; }
+.entry-head h3 { font-size: 13px; font-weight: 600; margin: 0; }
+.entry-head span { color: var(--muted); font-size: 11px; margin-left: auto; }
+.url { font: 12px/1.5 "SFMono-Regular", Consolas, monospace; letter-spacing: -.25px; background: var(--field); border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px; color: var(--text); user-select: all; overflow-wrap: anywhere; }
+.entry-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 9px; }
+.entry-note { font-size: 11px; color: var(--muted); line-height: 1.5; margin: 9px 0 0; }
+.setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; min-height: 47px; }
+.setting + .setting { border-top: 1px solid var(--separator); }
+.setting-label small { font-size: 11px; color: var(--muted); display: block; margin-top: 3px; }
+.network-trigger { min-width: 158px; justify-content: space-between; }
+.network-trigger svg { width: 10px; height: 10px; }
+.maintenance { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.maintenance-label { color: var(--muted); }
+.folder-actions { display: flex; gap: 8px; }
+.folder-actions .btn { font-size: 11px; padding: 5px 9px; }
+.repo-links { display: flex; gap: 12px; margin-top: 17px; }
+.repo-links button { font-size: 10px; color: var(--muted); background: none; border: 0; padding: 0; }
+.footer { flex-shrink: 0; border-top: 1px solid var(--border); background: var(--footer); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.footer p { font-size: 10px; color: var(--muted); line-height: 1.6; margin: 0; }
+.footer .btn { font-size: 11px; }
+.service-error { padding: 13px 16px; background: #fff8ef; border: 1px solid #e4cda8; border-radius: 7px; margin-bottom: 20px; }
+.service-error h2 { font-size: 13px; margin: 0 0 8px; color: #926322; }
+.service-error p { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 0; overflow-wrap: anywhere; }
+.error-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.shade { position: fixed; inset: 0; z-index: 10; background: #00000032; display: grid; place-items: center; padding: 24px; animation: fade-in .15s ease-out; }
+.dialog { width: 100%; max-width: 380px; position: relative; background: var(--background); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 18px 50px #00000030; padding: 28px 24px 20px; animation: dialog-in .18s ease-out; }
+.close { position: absolute; right: 12px; top: 10px; background: none; border: 0; color: var(--muted); font-size: 20px; }
+.dialog h3 { font-size: 16px; margin: 0 0 12px; padding-right: 15px; font-weight: 600; }
+.dialog p { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0 0 12px; }
+.dialog > .btn { margin-top: 10px; width: 100%; min-height: 30px; }
+.dialog .tip { font-size: 11px; text-align: center; margin: 14px 0 0; }
+.password-box { padding: 16px; margin: 16px 0 8px; text-align: center; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
+.password-box label { font-size: 11px; color: var(--muted); }
+.password { font-size: 32px; letter-spacing: 7px; padding-left: 7px; margin-top: 8px; font-variant-numeric: tabular-nums; font-weight: 600; user-select: all; }
+.network-list { display: grid; gap: 8px; margin-top: 16px; }
+.network-choice { padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); text-align: left; }
+.network-choice.selected { border-color: var(--accent); }
+.network-choice strong { display: flex; justify-content: space-between; font-size: 12px; }
+.network-choice strong span { font-weight: 400; font-size: 11px; color: var(--accent); }
+.network-choice code { display: block; margin-top: 7px; font-size: 12px; color: var(--muted); }
+.toast { position: fixed; bottom: 66px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 48px); width: max-content; z-index: 20; padding: 9px 14px; background: #30363eed; color: #fff; border-radius: 7px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; box-shadow: 0 3px 12px #00000020; animation: fade-in .15s ease-out; }
+.spinner { width: 12px; height: 12px; border: 1.7px solid #ffffff70; border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }
+[data-platform="windows"] { --background: #f3f3f3; --field: #fff; --accent: #0067c0; --accent-border: #00579f; --footer: #f3f3f3; --button: #fafafa; }
+[data-platform="windows"] body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+[data-platform="windows"] .brand h1 { font-size: 20px; }
+[data-platform="windows"] .status { border: 1px solid var(--border); border-radius: 5px; padding: 10px 12px; background: var(--surface); }
+[data-platform="windows"] .group-label { color: var(--text); font-size: 13px; font-weight: 600; }
+[data-platform="windows"] .group { border-radius: 5px; }
+[data-platform="windows"] .url { border-radius: 3px; border-bottom-color: #a0a0a0; }
+[data-platform="windows"] .btn { min-height: 30px; border-radius: 4px; box-shadow: none; border-color: #d5d5d5; border-bottom-color: #b8b8b8; }
+[data-platform="windows"] .btn.primary { border-color: var(--accent-border); }
+[data-platform="windows"] .dialog { border-radius: 8px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 50% { box-shadow: 0 0 0 3px #35a4540d; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-color-scheme: dark) {
-  .fl-github .fl-label { color: #f0f6fc; }
+  :root, [data-platform="windows"] { --background: #272727; --surface: #303030; --field: #353535; --text: #eeeeee; --muted: #a3a3a3; --border: #4b4b4b; --separator: #424242; --accent: #1685f3; --accent-border: #1685f3; --footer: #252525; --button: #3b3b3b; }
+  [data-platform="windows"] { --background: #202020; --surface: #2b2b2b; --field: #323232; --accent: #0067c0; --accent-border: #247dbb; }
+  .btn, [data-platform="windows"] .btn { border-color: var(--border); }
+  .btn.copied { background: #2a4130; color: #9dceac; border-color: #5d8869; }
+  .service-error { background: #3a3225; border-color: #796442; }
+  .service-error h2 { color: #e4bd83; }
 }
-
-/* ===== Copy flash ===== */
-@keyframes copyFlash {
-  0% { background: var(--accent); color: white; border-radius: 6px; }
-  100% { background: transparent; }
+@media (max-width: 490px) {
+  .content { padding: 18px 18px 16px; }
+  .footer { padding: 12px 18px; }
+  .network-trigger { min-width: 145px; font-size: 11px; }
+  .entry-head span { font-size: 10px; }
 }
-.ibtn.copied { animation: copyFlash 0.5s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
 </style>
 </head>
 <body>
-<div class="shell">
-  <!-- Header -->
-  <div class="head">
-    <img class="head-icon" src="logo.png" alt="" onerror="this.style.display='none';document.getElementById('headFallback').style.display='flex'">
-    <div class="head-body">
-      <h1>ClassNode <span class="head-version">__APP_VERSION__</span></h1>
-      <div class="sub">AI 互动课堂 · 控制面板</div>
+<main class="window">
+  <div class="content">
+    <header class="brand">
+      <img src="logo.png" alt="支点课堂">
+      <div><h1>支点课堂<span class="version">__APP_VERSION__</span></h1><p>ClassNode · 课堂服务控制</p></div>
+    </header>
+    <section class="status" id="status" data-phase="starting" aria-busy="true">
+      <div class="status-main" role="status" aria-live="polite">
+        <i class="dot" id="dot" aria-hidden="true"></i><strong id="statusText">正在启动…</strong><span class="port" id="portText">端口 3001</span>
+      </div>
+      <button class="btn" id="serviceButton" disabled>正在启动…</button>
+    </section>
+    <section class="service-error" id="errorPanel" hidden>
+      <h2>服务启动失败</h2><p id="errorText"></p><p>查看日志了解原因，处理后可重新启动服务。</p>
+      <div class="error-actions"><button class="btn" data-folder="logs">打开日志</button><button class="btn primary" id="retryButton">重试启动</button></div>
+    </section>
+    <h2 class="group-label">访问课堂</h2>
+    <div class="group" id="addresses"></div>
+    <h2 class="group-label">网络与管理</h2>
+    <div class="group">
+      <div class="setting"><div class="setting-label">学生访问网络</div><button class="btn network-trigger" id="networkButton" disabled><span id="networkText">选择网络</span><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4 3-3 3 3m-6 4 3 3 3-3"/></svg></button></div>
+      <div class="setting"><div class="setting-label">管理员密码<small>忘记密码时可在本机重置</small></div><button class="btn" id="resetButton" disabled>重置密码…</button></div>
     </div>
+    <div class="maintenance"><span class="maintenance-label">本机文件</span><div class="folder-actions"><button class="btn" data-folder="data">打开数据目录</button><button class="btn" data-folder="logs">打开日志目录</button></div></div>
+    <div class="repo-links"><button data-open="gitcode">GitCode 源码交流 ↗</button><button data-open="github">GitHub ↗</button></div>
   </div>
-
-  <!-- Error -->
-  <div class="err" id="errBox"></div>
-
-  <!-- Content -->
-  <div class="scroll">
-    <!-- Status -->
-    <div class="card">
-      <div class="status-head">
-        <div class="status-badge">
-          <span class="dot go" id="sDot"></span>
-          <span class="status-label go" id="sLabel">启动中...</span>
-        </div>
-        <span class="status-port" id="sPort">服务端口 3001</span>
-      </div>
-      <div class="status-desc" id="sDesc">正在连接本地服务…</div>
-      <div class="act">
-        <button class="btn btn-start" id="btnGo" onclick="startSrv()">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          启动
-        </button>
-        <button class="btn btn-stop" id="btnStop" onclick="stopSrv()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-          停止
-        </button>
-      </div>
-    </div>
-
-    <!-- Addresses -->
-    <div class="card">
-      <div class="addr-title">访问地址</div>
-      <div class="addr-item">
-        <span class="addr-name">教师</span>
-        <span class="addr-url" id="urlT">—</span>
-        <div class="addr-acts">
-          <button class="ibtn" id="btnTC" onclick="cpUrl('teacher')" disabled title="复制链接">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            复制
-          </button>
-          <button class="ibtn" id="btnTO" onclick="openUrl('teacher')" disabled title="在浏览器打开">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            打开
-          </button>
-        </div>
-      </div>
-      <div class="addr-item">
-        <span class="addr-name">学生</span>
-        <span class="addr-url" id="urlS">—</span>
-        <div class="addr-acts">
-          <button class="ibtn" id="btnSC" onclick="cpUrl('student')" disabled title="复制链接">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            复制
-          </button>
-          <button class="ibtn" id="btnSO" onclick="openUrl('student')" disabled title="在浏览器打开">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            打开
-          </button>
-        </div>
-      </div>
-      <div class="iface-box" id="ifaceBox">
-        <div class="iface-label">选择网卡</div>
-        <select class="iface-select" id="ifaceSelect" onchange="onIfaceChange(event)"></select>
-      </div>
-
-      <hr class="sep">
-
-      <button class="reset-btn" id="resetBtn" onclick="showResetModal()" disabled>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        重置管理密码
-      </button>
-    </div>
-  </div>
-
-  <!-- Reset Password Modal -->
-  <div class="modal-overlay" id="resetModal">
-    <div class="modal-box" id="resetModalBox">
-      <!-- Confirm step -->
-      <div id="resetConfirm">
-        <div class="modal-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        </div>
-        <div class="modal-title">重置管理密码？</div>
-        <div class="modal-desc">系统将生成一个仅显示一次的临时密码。<br>请登录后立即修改密码。</div>
-        <div class="modal-actions">
-          <button class="btn btn-secondary" onclick="hideResetModal()">取消</button>
-          <button class="btn btn-danger" id="resetConfirmBtn" onclick="doResetPwd()">确认重置</button>
-        </div>
-      </div>
-      <!-- Success step -->
-      <div id="resetSuccess" style="display:none">
-        <div class="modal-success">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-          <div class="s-text">密码已重置</div>
-          <div class="s-sub">临时密码：<strong id="temporaryPassword"></strong><br>请妥善记录并登录后修改</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Footer -->
-  <div class="foot">
-    <div class="foot-text">
-      <em>教学互促 · 源码共研</em>&ensp;欢迎对技术感兴趣的老师访问仓库交流
-    </div>
-    <div class="foot-acts">
-      <a class="fl fl-gitcode" href="#" onclick="openUrl('gitcode')" title="前往 GitCode 浏览源码">
-        <img src="gitcode_logo.png" alt="">
-        <span class="fl-label">GitCode</span>
-      </a>
-      <a class="fl fl-github" href="#" onclick="openUrl('github')" title="前往 GitHub 浏览源码">
-        <img src="github_logo.png" alt="">
-        <span class="fl-label">GitHub</span>
-      </a>
-    </div>
-  </div>
-</div>
-
+  <footer class="footer"><p>关闭窗口后，服务仍在后台运行。<br>从<span id="trayLabel">菜单栏</span>可重新打开控制面板。</p><button class="btn" id="exitButton">退出并停止服务…</button></footer>
+</main>
 <script>
-let _p = null;
-let _startTs = 0;
-let _stopTs = 0;
-let _ifaces = [];
-let _selIface = -1;
-let _shownStartError = '';
-const invoke = (window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke || (() => null));
 
-function eShow(m) {
-  const e = document.getElementById('errBox');
-  e.textContent = m;
-  e.classList.add('show');
-  setTimeout(() => e.classList.remove('show'), 4000);
+const icons={open:'<path d="M14 3h7v7M21 3l-9 9"/><path d="M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/>',copy:'<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',teacher:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',student:'<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/>'};const icon=name=>`<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name]}</svg>`;
+
+const invoke=window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
+function setPlatform(platform) {
+  document.documentElement.dataset.platform = platform === 'windows' ? 'windows' : 'macos';
+  document.getElementById('trayLabel').textContent = platform === 'macos' ? '菜单栏' : '系统托盘';
 }
-
-function ui(s) {
-  const dot = document.getElementById('sDot');
-  const lab = document.getElementById('sLabel');
-  const desc = document.getElementById('sDesc');
-  const go = document.getElementById('btnGo');
-  const stp = document.getElementById('btnStop');
-  document.getElementById('sPort').textContent = `服务端口 ${s.port || 3001}`;
-  const bts = ['TC','TO','SC','SO'].map(i => document.getElementById('btn' + i));
-
-  if (s.running) {
-    dot.className = 'dot run';
-    lab.className = 'status-label run';
-    lab.textContent = '运行中';
-    go.disabled = true; stp.disabled = false;
-    bts.forEach(b => b.disabled = false);
-    document.getElementById('resetBtn').disabled = false;
-    desc.textContent = '服务正常，局域网内设备可扫码或输入地址加入课堂';
-    _startTs = 0; _stopTs = 0;
-    _shownStartError = '';
-
-    // 记录接口信息
-    _ifaces = (s.interfaces && s.interfaces.length > 0) ? s.interfaces :
-              (s.ips || []).map(ip => ({ name: '网络', label: '网络', ip: ip }));
-    const savedIdx = s.selectedIp ? _ifaces.findIndex(i => i.ip === s.selectedIp) : -1;
-    _selIface = savedIdx >= 0 ? savedIdx : (_selIface >= 0 && _selIface < _ifaces.length ? _selIface : 0);
-    renderUrls();
-    renderIfaces();
-  } else if (s.lastError) {
-    _startTs = 0; _stopTs = 0;
-    dot.className = 'dot stop';
-    lab.className = 'status-label stop';
-    lab.textContent = '启动失败';
-    go.disabled = false; stp.disabled = true;
-    bts.forEach(b => b.disabled = true);
-    document.getElementById('resetBtn').disabled = true;
-    desc.textContent = s.lastError;
-    document.getElementById('urlT').textContent = '—';
-    document.getElementById('urlS').textContent = '—';
-    document.getElementById('ifaceBox').style.display = 'none';
-    if (_shownStartError !== s.lastError) {
-      _shownStartError = s.lastError;
-      eShow('启动失败: ' + s.lastError);
-    }
-  } else if (_stopTs > 0 && Date.now() - _stopTs < 15000) {
-    dot.className = 'dot stopping';
-    lab.className = 'status-label stopping';
-    lab.textContent = '停止中…';
-    go.disabled = true; stp.disabled = true;
-    bts.forEach(b => b.disabled = true);
-    document.getElementById('resetBtn').disabled = true;
-    desc.textContent = '正在停止服务…';
-  } else if (s.starting || (_startTs > 0 && Date.now() - _startTs < 30000)) {
-    dot.className = 'dot go';
-    lab.className = 'status-label go';
-    lab.textContent = '启动中…';
-    go.disabled = true; stp.disabled = true;
-    bts.forEach(b => b.disabled = true);
-    document.getElementById('resetBtn').disabled = true;
-    desc.textContent = '正在启动服务，请稍候…';
-  } else {
-    _startTs = 0; _stopTs = 0;
-    dot.className = 'dot stop';
-    lab.className = 'status-label stop';
-    lab.textContent = '已停止';
-    go.disabled = false; stp.disabled = true;
-    bts.forEach(b => b.disabled = true);
-    document.getElementById('resetBtn').disabled = true;
-    desc.textContent = '服务未运行，点击「启动」按钮开启';
-    document.getElementById('urlT').textContent = '—';
-    document.getElementById('urlS').textContent = '—';
-    document.getElementById('ifaceBox').style.display = 'none';
-  }
+setPlatform(/Win/i.test(navigator.platform) ? 'windows' : 'macos');
+let state={running:false,starting:true,port:3001,interfaces:[]}, selectedIp='', lanEnabled=true, pendingAction='', commandPending=false, bootWaiting=true, polling=false, temporaryPassword='', returnFocus=null, addressSignature='';
+const $=id=>document.getElementById(id);
+const bootDeadline=Date.now()+4000;
+function phase(){ return pendingAction || (state.starting||bootWaiting?'starting':state.running?'running':state.lastError?'failed':'stopped'); }
+function escapeHtml(value){const el=document.createElement('div');el.textContent=String(value);return el.innerHTML}
+function toast(message){document.querySelector('.toast')?.remove();const el=document.createElement('div');el.className='toast';el.setAttribute('role','status');el.textContent=message;document.body.append(el);setTimeout(()=>el.remove(),2600)}
+function url(role){return `http://${role==='teacher'?'localhost':selectedIp||'localhost'}:${state.port}/${role==='teacher'?'teacher':'classroom'}/`}
+function card(role) {
+  const teacher=role==='teacher';
+  const enabled=phase()==='running'&&(teacher||(lanEnabled&&!!selectedIp));
+  const summary=teacher?'在本机管理课堂':phase()==='starting'?'服务启动中':phase()==='stopping'?'服务停止中':!state.running?'服务恢复后可访问':!lanEnabled?'局域网访问已关闭':!selectedIp?'未检测到局域网地址':'局域网访问已开放';
+  return `<article class="address-card"><div class="entry-head">${icon(role)}<h3>${teacher?'教师端':'学生端'}</h3><span>${summary}</span></div><div class="url">${escapeHtml(url(role))}</div><div class="entry-actions"><button class="btn" data-copy="${role}" ${enabled?'':'disabled'}>${icon('copy')}复制网址</button><button class="btn primary" data-open="${role}" ${enabled?'':'disabled'}>${icon('open')}打开${teacher?'教师端':'学生端'}</button></div>${teacher?'':'<p class="entry-note">学生设备需连接同一局域网。</p>'}</article>`;
 }
-
-function renderUrls() {
-  const iface = _ifaces[_selIface];
-  if (!iface) return;
-  const h = iface.ip;
-  const port = 3001;
-  const b = `http://${h}:${port}`;
-  document.getElementById('urlT').textContent = b + '/teacher';
-  document.getElementById('urlS').textContent = b + '/classroom';
+function render() {
+  const current=phase(), moving=current==='starting'||current==='stopping';
+  $('status').hidden=current==='failed';
+  $('status').dataset.phase=current;
+  $('status').setAttribute('aria-busy',String(moving));
+  $('errorPanel').hidden=current!=='failed';
+  $('errorText').textContent=state.lastError||'';
+  $('statusText').textContent=({running:'服务运行中',starting:'正在启动…',stopping:'正在停止…',stopped:'服务已停止',failed:'服务启动失败'})[current];
+  $('portText').textContent=`端口 ${state.port}`;
+  $('serviceButton').textContent=moving?$('statusText').textContent:current==='running'?'停止服务':'启动服务';
+  $('serviceButton').disabled=moving;
+  $('retryButton').disabled=moving;
+  $('resetButton').disabled=current!=='running';
+  $('networkButton').disabled=current!=='running';
+  $('exitButton').disabled=moving;
+  const iface=state.interfaces.find(i=>i.ip===selectedIp);
+  $('networkText').textContent=iface?`${iface.label||iface.name} · ${iface.ip}`:'选择网络';
+  const signature=JSON.stringify([current,state.port,selectedIp,lanEnabled]);
+  if(addressSignature!==signature){addressSignature=signature;$('addresses').innerHTML=card('teacher')+card('student');}
 }
-
-function renderIfaces() {
-  const bx = document.getElementById('ifaceBox');
-  const sel = document.getElementById('ifaceSelect');
-  if (_ifaces.length <= 1) {
-    bx.classList.remove('show');
-    return;
-  }
-  bx.classList.add('show');
-  const cur = sel.value;
-  sel.innerHTML = _ifaces.map((iface, i) => {
-    const label = iface.ip + ' — ' + (iface.label || iface.name || '未知');
-    return `<option value="${iface.ip}">${escHtml(label)}</option>`;
-  }).join('');
-  sel.value = _ifaces[_selIface]?.ip || cur;
-}
-
-function onIfaceChange(e) {
-  const ip = e.target.value;
-  const idx = _ifaces.findIndex(i => i.ip === ip);
-  if (idx >= 0) _selIface = idx;
-  renderUrls();
-  fetch('http://localhost:3001/api/settings/bind-ip', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: ip }) }).catch(() => {});
-}
-
-function escHtml(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-async function chk() {
+async function poll() {
+  if(polling)return;
+  polling=true;
   try {
-    let s;
-    try { s = await invoke('get_server_status'); }
-    catch {
+    state=await invoke('get_server_status');
+    state.lastError=state.lastError||state.last_error;
+    state.interfaces=state.interfaces||[];
+    if(state.platform)setPlatform(state.platform);
+    if(state.starting||state.running||state.lastError||Date.now()>=bootDeadline)bootWaiting=false;
+    if(!commandPending) {
+      if(pendingAction==='starting'&&!state.starting&&(state.running||state.lastError))pendingAction='';
+      if(pendingAction==='stopping'&&!state.running)pendingAction='';
+    }
+    render();
+    if(state.running&&!pendingAction) {
       try {
-        const r = await fetch('http://localhost:3001/api/server-info');
-        const info = await r.json();
-        s = { running: true, port: info.port, ips: info.localIPs || [], interfaces: info.interfaces || [], selectedIp: info.selectedIp || '' };
-      } catch {
-        try { const r = await fetch('http://localhost:3001/api/health'); s = { running: r.ok, port: 3001, ips: [], interfaces: [], selectedIp: '' }; }
-        catch { s = { running: false, port: 3001, ips: [], interfaces: [] }; }
-      }
+        const info=await invoke('cmd_desktop_request',{operation:'info',ip:null});
+        selectedIp=info.selectedIp||selectedIp;
+        lanEnabled=info.lanEnabled!==false;
+      } catch { /* Native status remains available while the API finishes starting. */ }
     }
-    ui(s);
-  } catch (e) { console.error(e); }
+    if(!state.interfaces.some(i=>i.ip===selectedIp))selectedIp=state.interfaces[0]?.ip||'';
+    render();
+  } catch(e) {toast('无法读取服务状态：'+e);}
+  finally {polling=false;}
 }
-
-async function startSrv() {
-  const btn = document.getElementById('btnGo');
-  if (btn.disabled) return;
-  _startTs = Date.now();
-  _shownStartError = '';
-  btn.disabled = true;
-  document.getElementById('sDot').className = 'dot go';
-  document.getElementById('sLabel').className = 'status-label go';
-  document.getElementById('sLabel').textContent = '启动中…';
+async function service(start) {
+  if(pendingAction||commandPending)return;
+  bootWaiting=false;
+  pendingAction=start?'starting':'stopping';
+  commandPending=true;
+  render();
   try {
-    await invoke('cmd_start_server');
-    setTimeout(chk, 2000);
-  } catch (e) { eShow('启动失败: ' + e); chk(); }
+    await invoke(start?'cmd_start_server':'cmd_stop_server');
+    commandPending=false;
+    await poll();
+  } catch(e) {
+    commandPending=false;pendingAction='';
+    if(start)state.lastError=String(e);
+    toast(String(e));
+  } finally {render();}
 }
+function modal(title,body){closeModal();returnFocus=document.activeElement;const el=document.createElement('div');el.className='shade';el.innerHTML=`<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle"><button class="close" aria-label="关闭">×</button><h3 id="dialogTitle">${title}</h3>${body}</div>`;document.body.append(el);el.querySelector('button').focus()}
+function closeModal(){const el=document.querySelector('.shade');if(el?.dataset.pending==='true')return;if(el){el.remove();temporaryPassword='';returnFocus?.focus()}}
+async function reset(){const btn=$('confirmReset');const overlay=btn.closest('.shade');overlay.dataset.pending='true';btn.disabled=true;btn.textContent='正在重置…';try{const data=await invoke('cmd_desktop_request',{operation:'reset',ip:null});if(!data.success||!/^\d{6}$/.test(data.temporaryPassword))throw Error(data.error||'未收到有效密码');const password=data.temporaryPassword;overlay.dataset.pending='false';modal('新的管理员密码已生成',`<p>这次生成的是 6 位数字，方便输入。</p><div class="password-box"><label>新管理员密码</label><div class="password" id="passwordValue"></div></div><button class="btn primary" id="copyPassword">${icon('copy')}复制密码</button><button class="btn" data-open="teacher">${icon('open')}打开教师端登录</button><p class="tip">登录后，可在设置中改成自己的密码。</p>`);temporaryPassword=password;$('passwordValue').textContent=password}catch(e){overlay.dataset.pending='false';btn.disabled=false;btn.textContent='确认重置';toast('重置失败：'+e)}}
+async function copy(text,button){try{await invoke('cmd_copy_text',{text});button.classList.add('copied');toast('已复制');setTimeout(()=>button.classList.remove('copied'),1400)}catch(e){toast('复制失败，请选中内容手动复制')}}
+document.addEventListener('click',async event=>{const b=event.target.closest('button');if(!b||b.disabled)return;try{if(b.classList.contains('close'))closeModal();else if(b.dataset.open)await invoke('cmd_open_url',{urlType:b.dataset.open,ip:b.dataset.open==='teacher'?'localhost':selectedIp||null});else if(b.dataset.copy)await copy(url(b.dataset.copy),b);else if(b.dataset.folder)await invoke('cmd_open_directory',{kind:b.dataset.folder});else if(b.id==='serviceButton')await service(!state.running);else if(b.id==='retryButton')await service(true);else if(b.id==='resetButton')modal('重置管理密码？','<p>将生成新的 6 位数字密码。原密码会失效，已登录的教师会话将退出。</p><button class="btn primary" id="confirmReset">确认重置</button>');else if(b.id==='confirmReset')await reset();else if(b.id==='copyPassword')await copy(temporaryPassword,b);else if(b.id==='networkButton')modal('选择学生访问地址',`<p>选择学生设备所在的局域网，网址将同步更新。</p><div class="network-list">${state.interfaces.map(i=>`<button class="network-choice ${i.ip===selectedIp?'selected':''}" data-ip="${escapeHtml(i.ip)}"><strong>${escapeHtml(i.label||i.name)}${i.ip===selectedIp?'<span>当前使用</span>':''}</strong><code>${escapeHtml(i.ip)}</code></button>`).join('')||'<p>未检测到局域网地址，请检查网络连接。</p>'}</div>`);else if(b.dataset.ip){b.disabled=true;await invoke('cmd_desktop_request',{operation:'network',ip:b.dataset.ip});selectedIp=b.dataset.ip;closeModal();render();toast('学生网址已更新')}else if(b.id==='exitButton')modal('退出并停止服务？','<p>学生将暂时无法访问课堂。如果只想收起窗口，点击窗口关闭按钮即可继续后台运行。</p><button class="btn" id="keepRunning">继续运行</button><button class="btn primary" id="confirmExit">退出并停止服务</button>');else if(b.id==='keepRunning')closeModal();else if(b.id==='confirmExit'){b.disabled=true;await invoke('cmd_quit')}}catch(e){b.disabled=false;toast(String(e))}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')closeModal();if(event.key==='Tab'){const modal=document.querySelector('.shade');if(!modal)return;const buttons=[...modal.querySelectorAll('button:not(:disabled)')];const first=buttons[0],last=buttons[buttons.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}}});
+render();poll();setInterval(poll,2500);
 
-async function stopSrv() {
-  const btn = document.getElementById('btnStop');
-  if (btn.disabled) return;
-  _stopTs = Date.now();
-  btn.disabled = true;
-  document.getElementById('sDot').className = 'dot stopping';
-  document.getElementById('sLabel').className = 'status-label stopping';
-  document.getElementById('sLabel').textContent = '停止中…';
-  try {
-    await invoke('cmd_stop_server');
-    _stopTs = 0;
-    setTimeout(chk, 600);
-  } catch (e) { _stopTs = 0; eShow('停止失败: ' + e); chk(); }
-}
-
-function openUrl(t) {
-  const iface = _ifaces[_selIface];
-  const ip = iface ? iface.ip : null;
-  try { invoke('cmd_open_url', { urlType: t, ip: ip }); } catch (e) { console.error(e); }
-}
-
-async function cpUrl(t) {
-  const el = document.getElementById(t === 'teacher' ? 'urlT' : 'urlS');
-  const u = el.textContent;
-  if (!u || u === '—') return;
-  try {
-    await navigator.clipboard.writeText(u);
-    const btn = document.getElementById('btn' + (t === 'teacher' ? 'T' : 'S') + 'C');
-    btn.classList.add('copied');
-    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-    setTimeout(() => {
-      btn.classList.remove('copied');
-      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-    }, 700);
-  } catch (e) { console.error(e); }
-}
-
-function showResetModal() {
-  document.getElementById('resetConfirm').style.display = '';
-  document.getElementById('resetSuccess').style.display = 'none';
-  document.getElementById('resetConfirmBtn').disabled = false;
-  document.getElementById('resetModal').classList.add('show');
-}
-
-function hideResetModal() {
-  document.getElementById('resetModal').classList.remove('show');
-}
-
-async function doResetPwd() {
-  const btn = document.getElementById('resetConfirmBtn');
-  btn.disabled = true;
-  try {
-    const r = await fetch('http://localhost:3001/api/settings/reset-password', { method: 'POST' });
-    if (!r.ok) throw new Error('重置失败');
-    const data = await r.json();
-    document.getElementById('temporaryPassword').textContent = data.temporaryPassword || '';
-    document.getElementById('resetConfirm').style.display = 'none';
-    document.getElementById('resetSuccess').style.display = '';
-    setTimeout(hideResetModal, 2500);
-  } catch (e) {
-    eShow('密码重置失败: ' + e);
-    hideResetModal();
-  }
-}
-
-_startTs = Date.now();
-setTimeout(() => { chk(); _p = setInterval(chk, 3000); }, 900);
-// 额外获取已保存的 IP 用于初始化
-setTimeout(() => {
-  fetch('http://localhost:3001/api/server-info').then(r => r.json()).then(info => {
-    if (info.selectedIp) {
-      const idx = _ifaces.findIndex(i => i.ip === info.selectedIp);
-      if (idx >= 0 && idx !== _selIface) {
-        _selIface = idx;
-        renderUrls();
-        const sel = document.getElementById('ifaceSelect');
-        if (sel) sel.value = info.selectedIp;
-      }
-    }
-  }).catch(() => {});
-}, 2000);
 </script>
 </body>
 </html>

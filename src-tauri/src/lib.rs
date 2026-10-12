@@ -397,6 +397,7 @@ fn open_browser_url(url: &str) {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ServerStatus {
+    platform: &'static str,
     running: bool,
     starting: bool,
     last_error: Option<String>,
@@ -407,7 +408,12 @@ struct ServerStatus {
 
 #[tauri::command]
 fn get_server_status(app: tauri::AppHandle) -> ServerStatus {
-    let running = TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok();
+    let owned_alive = {
+        let state = app.state::<ServerState>();
+        let mut managed = state.0.lock().unwrap();
+        managed.as_mut().map(|info| matches!(info.child.try_wait(), Ok(None))).unwrap_or(false)
+    };
+    let running = owned_alive && TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok();
     if !running {
         let server_state = app.state::<ServerState>();
         let mut server = server_state.0.lock().unwrap();
@@ -427,6 +433,7 @@ fn get_server_status(app: tauri::AppHandle) -> ServerStatus {
     let interfaces = get_local_ips();
     let ips: Vec<String> = interfaces.iter().map(|i| i.ip.clone()).collect();
     ServerStatus {
+        platform: std::env::consts::OS,
         running,
         starting: IS_STARTING.load(Ordering::Relaxed),
         last_error: LAST_START_ERROR.lock().unwrap().clone(),
@@ -450,7 +457,9 @@ fn cmd_start_server(app: tauri::AppHandle) -> Result<(), String> {
         }
     }
     if TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok() {
-        return Err("服务已在运行中".to_string());
+        let error = format!("端口 {SERVER_PORT} 被其他程序占用，请关闭该程序后重试");
+        *LAST_START_ERROR.lock().unwrap() = Some(error.clone());
+        return Err(error);
     }
     *LAST_START_ERROR.lock().unwrap() = None;
 
@@ -475,11 +484,14 @@ fn cmd_start_server(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn cmd_stop_server(app: tauri::AppHandle) -> Result<(), String> {
-    stop_server(&app)?;
-    *LAST_START_ERROR.lock().unwrap() = None;
-    update_tray(&app, false);
-    Ok(())
+async fn cmd_stop_server(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        stop_server(&app)?;
+        *LAST_START_ERROR.lock().unwrap() = None;
+        let handle = app.clone();
+        app.run_on_main_thread(move || update_tray(&handle, false)).map_err(|e| e.to_string())?;
+        Ok(())
+    }).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -509,13 +521,86 @@ fn cmd_open_url(url_type: String, ip: Option<String>) {
     }).or_else(|| get_local_ips().first().map(|i| i.ip.clone()))
         .unwrap_or_else(|| "localhost".to_string());
     let url = match url_type.as_str() {
-        "teacher" => format!("http://{}:{}/teacher", ip, SERVER_PORT),
-        "student" => format!("http://{}:{}/classroom", ip, SERVER_PORT),
+        "teacher" => format!("http://{}:{}/teacher/", ip, SERVER_PORT),
+        "student" => format!("http://{}:{}/classroom/", ip, SERVER_PORT),
         "repo" | "gitcode" => "https://gitcode.com/weixin_41523975/classnode".to_string(),
         "github" => "https://github.com/hzzxcgtz/classnode".to_string(),
-        _ => format!("http://{}:{}/teacher", ip, SERVER_PORT),
+        _ => format!("http://{}:{}/teacher/", ip, SERVER_PORT),
     };
     open_browser_url(&url);
+}
+
+// Narrow native bridge: fixed loopback host and allowlisted operations only.
+fn desktop_request(operation: &str, ip: Option<String>) -> Result<serde_json::Value, String> {
+    use std::io::{Read, Write};
+    let (method, path, body) = match operation {
+        "info" => ("GET", "/api/settings/desktop-info", String::new()),
+        "reset" => ("POST", "/api/settings/reset-password", "{}".to_string()),
+        "network" => {
+            let ip = ip.ok_or("请选择网卡")?;
+            if !get_local_ips().iter().any(|i| i.ip == ip) { return Err("网卡已不可用".into()); }
+            ("PUT", "/api/settings/desktop-network", serde_json::json!({ "ip": ip }).to_string())
+        }
+        _ => return Err("不支持的本机操作".into()),
+    };
+    let address = format!("127.0.0.1:{SERVER_PORT}").parse().map_err(|e| format!("地址错误: {e}"))?;
+    let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(3)).map_err(|e| format!("本机服务未连接: {e}"))?;
+    stream.set_read_timeout(Some(Duration::from_secs(5))).map_err(|e| e.to_string())?;
+    stream.set_write_timeout(Some(Duration::from_secs(3))).map_err(|e| e.to_string())?;
+    let request = format!("{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:{SERVER_PORT}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+    stream.write_all(request.as_bytes()).map_err(|e| e.to_string())?;
+    let mut response = String::new();
+    stream.take(65_536).read_to_string(&mut response).map_err(|e| format!("读取响应失败: {e}"))?;
+    let (headers, body) = response.split_once("\r\n\r\n").ok_or("本机服务响应无效")?;
+    let value: serde_json::Value = serde_json::from_str(body).map_err(|_| "本机服务未返回有效数据")?;
+    let status = headers.split_whitespace().nth(1).unwrap_or("");
+    if status != "200" { return Err(value["error"].as_str().unwrap_or("本机操作失败").to_string()); }
+    Ok(value)
+}
+
+#[tauri::command]
+async fn cmd_desktop_request(operation: String, ip: Option<String>) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || desktop_request(&operation, ip)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn cmd_open_directory(app: AppHandle, kind: String) -> Result<(), String> {
+    let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let path = match kind.as_str() { "data" => root, "logs" => root.join("logs"), _ => return Err("不支持的目录".into()) };
+    fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    let mut command = if cfg!(target_os = "macos") { Command::new("open") } else if cfg!(target_os = "windows") { Command::new("explorer.exe") } else { Command::new("xdg-open") };
+    command.arg(path).spawn().map_err(|e| format!("打开目录失败: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn cmd_copy_text(text: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::Write;
+        use std::process::Stdio;
+        if text.len() > 4096 { return Err("复制内容过长".into()); }
+        let mut command = if cfg!(target_os = "macos") { Command::new("pbcopy") } else if cfg!(target_os = "windows") {
+            let mut command = Command::new("powershell.exe");
+            command.args(["-NoProfile", "-NonInteractive", "-Command", "$text=[Console]::In.ReadToEnd(); Set-Clipboard -Value $text"]);
+            command
+        } else { let mut command = Command::new("xclip"); command.args(["-selection", "clipboard"]); command };
+        command.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
+        #[cfg(target_os = "windows")]
+        command.creation_flags(0x08000000);
+        let mut child = command.spawn().map_err(|e| format!("无法访问剪贴板: {e}"))?;
+        let result = child.stdin.take().ok_or("无法写入剪贴板")?.write_all(text.as_bytes());
+        let status = child.wait().map_err(|e| e.to_string())?;
+        result.map_err(|e| e.to_string())?;
+        if !status.success() { return Err("复制失败，请手动复制".into()); }
+        Ok(())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn cmd_quit(app: AppHandle) -> Result<(), String> {
+    stop_server(&app)?;
+    app.exit(0);
+    Ok(())
 }
 
 // ─── App Entry ───────────────────────────────────────────
@@ -552,6 +637,10 @@ pub fn run() {
             cmd_start_server,
             cmd_stop_server,
             cmd_open_url,
+            cmd_desktop_request,
+            cmd_open_directory,
+            cmd_copy_text,
+            cmd_quit,
         ])
         .setup(|app| {
             let icon = Image::from_bytes(tray_icon_bytes(false))

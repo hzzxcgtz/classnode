@@ -32,8 +32,8 @@ test('版本准备的帮助和无效版本不修改文件', t => {
 test('版本递增同步门户文件，随后重复同步保持幂等', t => {
   const directory = fixture(t);
   fs.mkdirSync(path.join(directory, 'myportal'));
-  fs.writeFileSync(path.join(directory, 'myportal/index.html'), '<p>v2.0.0</p>');
-  fs.writeFileSync(path.join(directory, 'myportal/classnode.html'), '<p>v2.0.0</p>');
+  fs.writeFileSync(path.join(directory, 'myportal/index.html'), '<link href="css/style.css?v=2.0.0-milestone"><p>v2.0.0</p>');
+  fs.writeFileSync(path.join(directory, 'myportal/classnode.html'), '<link href="css/style.css?v=2.0.0-milestone"><p>v2.0.0</p>');
   fs.writeFileSync(path.join(directory, 'myportal/deploy.html'), 'ClassNode_2.0.0_macos_intel.dmg\nclassnode-2.0.0.zip\ncd classnode-2.0.0\n');
   assert.equal(nodeScript(directory, 'prepare-release.mjs', ['patch']).status, 0);
   assert.ok(fs.existsSync(path.join(directory, 'server/changelogs/v2.0.1.md')));

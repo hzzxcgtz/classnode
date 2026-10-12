@@ -560,7 +560,7 @@ export const api = {
     request<WorksheetAnalysisPayload>(
       `/api/worksheets/${worksheetId}/analysis/${questionId}?classroomId=${encodeURIComponent(classroomId)}`),
   /**
-   * ★ M7b：**唯一会外发的那一次调用**（把全班作业发给第三方 AI）。
+   * ★ M7b：AI 外发请求（把本次参与分析的作业发给第三方 AI）。
    * 界面静默调用，但必须先经过 `computeWorksheetAnalysis` 返回的 `canSend` 能力闸门。
    */
   /**
@@ -568,9 +568,9 @@ export const api = {
    * ⚠️ 补跑**只补分、不动整体解读**（服务端那条规矩）—— 少发几个人还有一个好处：
    *    联系表上的小标签更不容易被模型看串。
    */
-  runWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string, only?: string[]) =>
+  runWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string, only?: string[], regrade = false, analysisOnly = false) =>
     request<{
-      narrative: string;
+      narrative: string | null;
       analyzedAt: string | null;
       analysisDurationMs: number | null;
       perStudent: WorksheetAnalysisPayload['perStudent'];
@@ -579,7 +579,7 @@ export const api = {
       model: string;
     }>(
       `/api/worksheets/${worksheetId}/analysis/${questionId}/run?classroomId=${encodeURIComponent(classroomId)}`
-      + (only && only.length > 0 ? `&only=${encodeURIComponent(only.join(','))}` : ''),
+      + (only && only.length > 0 ? `&only=${encodeURIComponent(only.join(','))}` : '') + (regrade ? '&regrade=true' : '') + (analysisOnly ? '&analysisOnly=true' : ''),
       { method: 'POST' },
       ANALYSIS_REQUEST_TIMEOUT_MS),
   /**

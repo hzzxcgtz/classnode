@@ -1,5 +1,6 @@
 'use client';
 
+import { TeacherPendingText } from '@/components/teacher-pending-text';
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Toast, TeacherPageHeader, TeacherPageTabs } from '@/lib/components';
@@ -517,7 +518,7 @@ export default function AvatarsPage() {
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.5"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
                   </div>
                 </div>
-                <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}>正在生成{tab === 'student' ? '头像' : '图标'}...</p>
+                <p style={{ fontSize: "0.938rem", fontWeight: 600, color: '#0f172a', margin: '0 0 4px' }}><TeacherPendingText>正在生成{tab === 'student' ? '头像' : '图标'}...</TeacherPendingText></p>
                 <p style={{ fontSize: "0.813rem", color: 'var(--text-muted)', margin: 0 }}>程序化随机组合中，请稍候</p>
               </div>
             ) : (
@@ -603,7 +604,7 @@ export default function AvatarsPage() {
                     onMouseEnter={e => { if (!generating) { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = 'var(--text-muted)'; }}}
                     onMouseLeave={e => { if (!generating) { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#cbd5e1'; }}}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    {generating ? '生成中...' : '换一批'}
+                    <TeacherPendingText active={generating}>{generating ? '生成中...' : '换一批'}</TeacherPendingText>
                   </button>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
                     <span style={{ fontSize: "0.813rem", fontWeight: 500, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}>已选 <span style={{ color: 'var(--primary)', fontWeight: 700, marginLeft: 3 }}>{selectedRandom.size}</span> / {randomPool.length}</span>
@@ -636,7 +637,7 @@ export default function AvatarsPage() {
                 {generating && (
                   <div className="avatar-random-loading" role="status" aria-live="polite">
                     <div className="avatar-random-loading-spinner" />
-                    <strong>正在生成新一批{tab === 'student' ? '头像' : '图标'}...</strong>
+                    <strong><TeacherPendingText>正在生成新一批{tab === 'student' ? '头像' : '图标'}...</TeacherPendingText></strong>
                     <span>当前内容会保留，新头像生成后自动替换</span>
                   </div>
                 )}

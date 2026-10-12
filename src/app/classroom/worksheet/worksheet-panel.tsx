@@ -1,5 +1,9 @@
 'use client';
 
+import { ReviewFailure, ReviewHistory, ReviewTiming, type AnswerReview } from './review-history';
+
+import { formatReviewAdvice } from '@/lib/worksheet-review-display';
+
 import { normalizeGeneration, type WorksheetGeneration } from './worksheet-generation';
 import { subscribeWorksheetAnalysisUpdated } from './worksheet-socket-bus';
 
@@ -329,6 +333,8 @@ export interface WorksheetQuestionListProps {
   statuses: Record<string, WorksheetQuestionStatus>;
   submitting: Record<string, boolean>;
   interactive: boolean;
+  /** 教师预览仅在内存试填，图片也不上传。 */
+  previewOnly?: boolean;
   /**
    * 「提交之后还能不能改」（规格 §8.4 的第二层，第一层在服务端的 409）。
    *
@@ -351,6 +357,8 @@ export interface WorksheetQuestionListProps {
   /** 远程智能体给当前学生的参考分；只在学生端传入，教师预览不显示。 */
   aiReferenceScores?: Record<string, StudentAiReferenceScore>;
   aiAdvice?: Record<string, string>;
+  reviews?: AnswerReview[];
+  onRetryReview?: (id: string) => void;
   wrongBlankIndexes?: Record<string, number[]>;
   /** ★ 2026-09-27：答错的空的正确答案（空下标 → 答案）。**只在已提交的题上有内容**。 */
   correctBlanks?: Record<string, Record<string, string>>;
@@ -385,6 +393,7 @@ export function WorksheetQuestionList({
   statuses,
   submitting,
   interactive,
+  previewOnly = false,
   allowResubmit,
   reward,
   rewardFullFallback,
@@ -392,6 +401,8 @@ export function WorksheetQuestionList({
   gradeStates,
   aiReferenceScores,
   aiAdvice,
+  reviews = [],
+  onRetryReview,
   wrongBlankIndexes,
   correctBlanks,
   rewardBursts,
@@ -456,10 +467,23 @@ export function WorksheetQuestionList({
         const state = questionDisplayState(statuses[node.id], raw);
         const submitted = statuses[node.id] === 'submitted';
         // 已提交 + 不许重交 ⇒ 这一题对学生是「定稿」。控件收起，按钮不出现。
-        const locked = submitted && !allowResubmit;
+        const personalReview = (node.type === 'short-answer' || node.type === 'drawing') && node.data.studentAiReviewEnabled === true && node.data.aiScoringEnabled === true;
+        const questionReviews = reviews.filter(r => r.questionId === node.id);
+        const latestReview = questionReviews.filter(r => r.status === 'succeeded' && r.evaluatedAt).sort((a, b) => Date.parse(b.evaluatedAt!) - Date.parse(a.evaluatedAt!))[0];
+        const pendingReview = questionReviews.find(r => r.status === 'pending');
+        const reviewPending = Boolean(pendingReview);
+        const reviewQueued = pendingReview?.phase === 'queued';
+        const reviewLimit = typeof node.data.aiReviewLimit === 'number' ? node.data.aiReviewLimit : 1;
+        const reviewUsed = questionReviews.filter(r => r.status === 'succeeded' && r.source === 'student').length;
+        const reviewRemaining = Math.max(0, reviewLimit - reviewUsed);
+        const studentHistoryReviews = questionReviews.filter(r => r.source === 'student');
+        const showReviewHistory = studentHistoryReviews.length > 0 && (reviewLimit > 1 || studentHistoryReviews.some(r => r.status === 'superseded'));
+        const latestFailedReview = questionReviews[0]?.status === 'failed' ? questionReviews[0] : null;
+        const currentFeedbackAvailable = !questionReviews.length || questionReviews[0].status === 'succeeded';
+        const locked = personalReview ? reviewPending || reviewRemaining === 0 : submitted && !allowResubmit;
         const untouched = raw === undefined || isDraftEmpty(raw);
         // 没内容可提交、又还没交过 ⇒ 按钮按不动（点下去必然被服务端 400 拒）。
-        const submitDisabled = Boolean(submitting[node.id]) || (!submitted && untouched);
+        const submitDisabled = Boolean(submitting[node.id]) || reviewPending || (!submitted && untouched);
         // ★ M5a：课堂级锁定也禁用控件（停笔），但它**不**收起提交按钮 ——
         // 裁定 ③ 是「停笔，但还能交卷」。见下面渲染那一段。
         const controlsDisabled = !interactive || locked || classroomLocked;
@@ -484,9 +508,11 @@ export function WorksheetQuestionList({
         };
         const promptImage = readPromptImage(node);
         const questionIcon = <span className={styles.questionIcon}>{questionTypeIcon(node.type)}</span>;
-        const gradeState = interactive ? gradeStates?.[node.id] : undefined;
-        const aiReferenceScore = interactive ? aiReferenceScores?.[node.id] : undefined;
-        const studentAdvice = interactive ? aiAdvice?.[node.id] || aiReferenceScore?.advice : undefined;
+        const feedbackReady = interactive && !reviewPending && !submitting[node.id] && currentFeedbackAvailable;
+        const gradeState = feedbackReady ? gradeStates?.[node.id] : undefined;
+        const currentScore = feedbackReady ? scores?.[node.id] ?? null : null;
+        const aiReferenceScore = interactive && !reviewPending && !submitting[node.id] && currentFeedbackAvailable ? aiReferenceScores?.[node.id] : undefined;
+        const studentAdvice = interactive && !reviewPending && !submitting[node.id] && currentFeedbackAvailable ? aiAdvice?.[node.id] || aiReferenceScore?.advice : undefined;
         const mixedFillScoring = node.type === 'fill-blank'
           && node.autoGrade !== false
           && hasExplicitFillGrading(fillSettingsFor(node, promptRuns))
@@ -533,7 +559,7 @@ export function WorksheetQuestionList({
             */}
             {reward && (state !== 'empty' || gradeState) && (
               <span className={styles.resultReward}>
-                <QuestionReward scale={reward} full={fullPoints} score={scores?.[node.id] ?? null} />
+                <QuestionReward scale={reward} full={fullPoints} score={currentScore} />
               </span>
             )}
             <div className={styles.questionResult} role="status" aria-live="polite">
@@ -596,7 +622,7 @@ export function WorksheetQuestionList({
               <RewardBurst
                 key={`${node.id}:${rewardBursts?.[node.id]}`}
                 scale={reward}
-                score={scores?.[node.id] ?? null}
+                score={currentScore}
               />
             ) : null}
             {/* ★ 2026-09-26：「选择填空」的作答**跨了题干与题干下方**（空在题干里、
@@ -667,6 +693,7 @@ export function WorksheetQuestionList({
               draft={draft}
               onChange={onChange}
               disabled={controlsDisabled}
+              localOnly={previewOnly}
               // ★ 2026-09-27（教师）：「选择和判断学生错误后也要与填空一样给出叉叉符号并
               // 给出正确答案。」服务端只在**判过分、且学生没全对**时才发这串东西
               //（`wrongChoiceAnswers` 那条窄口）⇒ 还没提交的题这里是空表，
@@ -695,11 +722,12 @@ export function WorksheetQuestionList({
                 <span className={styles.aiScoreCommentMark}><AiFeedbackIcon /></span>
                 <div className={styles.aiScoreCommentBody}>
                   <strong className={styles.aiScoreCommentHeading}>AI 给你的评价</strong>
+                  {latestReview && <ReviewTiming review={latestReview} />}
                   <p className={styles.aiScoreCommentText}>{aiReferenceScore.comment}</p>
                   {studentAdvice && (
                     <div className={styles.aiScoreAdvice}>
                       <strong><AiFeedbackIcon advice />小建议</strong>
-                      <p>{studentAdvice}</p>
+                      <p>{formatReviewAdvice(studentAdvice)}</p>
                     </div>
                   )}
                 </div>
@@ -709,7 +737,7 @@ export function WorksheetQuestionList({
             {interactive && studentAdvice && !aiReferenceScore?.comment && (
               <aside className={styles.aiScoreComment} aria-label="小建议">
                 <span className={`${styles.aiScoreCommentMark} ${styles.aiAdviceMark}`}><AiFeedbackIcon advice /></span>
-                <div className={styles.aiScoreCommentBody}><strong className={styles.aiScoreCommentHeading}>小建议</strong><p className={styles.aiScoreCommentText}>{studentAdvice}</p></div>
+                <div className={styles.aiScoreCommentBody}><strong className={styles.aiScoreCommentHeading}>小建议</strong><p className={styles.aiScoreCommentText}>{formatReviewAdvice(studentAdvice)}</p></div>
               </aside>
             )}
 
@@ -719,7 +747,9 @@ export function WorksheetQuestionList({
             {/* ⊘ 2026-09-28（教师）：「这个字不要了」—— 原来 `locked` 那一支只有一句话
                 （「这道题已经完成，老师设置为不能再修改」），删掉之后那一支空了。
                 ⇒ 直接改成「非锁定才渲染提交区」：锁定时这里什么都不画（按钮本来就不渲染）。 */}
-            {interactive && !locked && (
+            {interactive && showReviewHistory && <ReviewHistory node={node} reviews={studentHistoryReviews} onRetry={personalReview && reviewRemaining > 0 && !reviewPending ? onRetryReview : undefined} />}
+            {interactive && !showReviewHistory && latestFailedReview && !reviewPending && <ReviewFailure review={latestFailedReview} onRetry={reviewRemaining > 0 && latestFailedReview.canRetry !== false && onRetryReview ? () => onRetryReview(latestFailedReview.id) : undefined} />}
+            {interactive && !previewOnly && (!locked || personalReview) && (
                 <>
                   {/* ★ M5a：锁定期间**保留提交**（停笔但可交卷），这句话是它的说明。
                       「只能提交已保存的内容」不是修辞 —— 有未保存改动的那道题会被拦下
@@ -727,7 +757,11 @@ export function WorksheetQuestionList({
                   {classroomLocked && (
                     <p className={styles.lockedNote}>老师已锁定作答 —— 只能提交已保存的内容</p>
                   )}
-                  <div className={styles.submitRow}>
+                  {personalReview && (reviewPending || reviewLimit > 1) && <div className={`${styles.reviewStatus}${reviewPending ? ` ${styles.reviewThinkingCard}` : ''}`} role="status">
+                    {reviewPending ? <><span className={styles.reviewThinkingBuddy} aria-hidden="true"><img src="/logo.png" alt="" /><i>✦</i><i>✦</i></span><span className={styles.reviewThinkingCopy}><strong>{reviewQueued ? '作品已提交，正在等待 AI 评价…' : 'AI 正在认真看你的作品，请稍等…'}</strong><span>{reviewQueued ? '轮到你的作品后，就会开始评价啦' : '一起发现作品的亮点，准备小建议'}</span><span className={styles.thinkingDots} aria-hidden="true"><i /><i /><i /></span></span></> : <span>还可评价 <strong>{reviewRemaining}</strong> 次</span>}
+                  </div>}
+
+                  {(!personalReview || reviewRemaining > 0 || reviewPending) && <div className={styles.submitRow}>
                     <button
                       type="button"
                       className={`${styles.submitButton}${submitted ? ` ${styles.submitButtonResubmit}` : ''}`}
@@ -744,9 +778,9 @@ export function WorksheetQuestionList({
                           <span className={styles.spinner} aria-hidden="true" />
                           正在保存…
                         </>
-                      ) : submitted ? '保存修改' : '完成作答'}
+                      ) : reviewPending ? (reviewQueued ? '等待 AI 评价…' : 'AI 思考中…') : personalReview && reviewRemaining > 0 ? '完成作答并提交' : submitted ? '保存修改' : '完成作答并提交'}
                     </button>
-                  </div>
+                  </div>}
                 </>
             )}
           </section>
@@ -825,13 +859,23 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
   const [load, setLoad] = useState<LoadState>({ kind: 'loading' });
   /** 重试按钮的计数器：+1 ⇒ 重新拉一次（不改 key，避免把面板整个重挂）。 */
   const [reloadToken, setReloadToken] = useState(0);
+  const [reviews, setReviews] = useState<AnswerReview[]>([]);
+  const [reviewedAnswers, setReviewedAnswers] = useState<SavedAnswerRow[]>();
+  useEffect(() => { setReviews([]); setReviewedAnswers(undefined); }, [worksheetId]);
+  const retryReview = async (reviewId: string) => {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/worksheets/${encodeURIComponent(worksheetId!)}/answers/reviews`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', ...getStudentSessionAuthorization() }, body: JSON.stringify({ reviewId }) });
+      if (!res.ok) { const data = await res.json(); throw new Error(data.error || '重试失败'); }
+      window.dispatchEvent(new CustomEvent('worksheet-review-refresh', { detail: { worksheetId } }));
+    } catch (e) { setToast({ msg: e instanceof Error ? e.message : '重试失败', type: 'error' }); }
+  };
   /**
    * ★ 2026-09-28：收到清除指令后重拉服务端那一份。
    * 🔴 **必须 `useCallback` 稳定**：它进了 `useWorksheetAnswers` 里那条 effect 的依赖，
    * 内联箭头每次渲染都是新引用 ⇒ 那条 effect 每帧都跑。今天有 token 守卫兜着不会成环，
    * 但那是**碰巧**（守卫在调用之前）—— 别把这个当许可。
    */
-  const handleCleared = useCallback(() => setReloadToken((n) => n + 1), []);
+  const handleCleared = useCallback(() => { setReviews([]); setReviewedAnswers(undefined); setReloadToken((n) => n + 1); }, []);
 
   useEffect(() => {
     if (!worksheetId) {
@@ -956,19 +1000,30 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
         const res = await fetch(`${getApiBaseUrl()}/api/worksheets/${encodeURIComponent(worksheetId)}/answers`, { credentials: 'include', headers: getStudentSessionAuthorization() });
         if (!res.ok) return;
         const data = await res.json();
+        const configRes = await fetch(`${getApiBaseUrl()}/api/worksheets/${encodeURIComponent(worksheetId)}/student-view`, { credentials: 'include', headers: getStudentSessionAuthorization() });
+        const config = configRes.ok ? await configRes.json() : null;
+        if (cancelled || current !== revision) return;
+        const history = await fetch(`${getApiBaseUrl()}/api/worksheets/${encodeURIComponent(worksheetId)}/answers/reviews`, { credentials: 'include', headers: getStudentSessionAuthorization() });
+        if (!cancelled && current === revision) {
+          setReviewedAnswers(Array.isArray(data.rows) ? data.rows : []);
+          if (history.ok) { const result = await history.json(); if (!cancelled && current === revision) setReviews(result.reviews ?? []); }
+        }
         if (cancelled || current !== revision) return;
         setLoad(previous => previous.kind === 'ready' && previous.worksheet.id === worksheetId
-          ? { ...previous, worksheet: { ...previous.worksheet, aiReferenceScores: parseAiReferenceScores(data), aiAdvice: parseAiAdvice(data) } }
+          ? { ...previous, worksheet: { ...previous.worksheet, ...(config ? (() => { const groups = studentVisibleGroups(config.content?.nodes ?? []); return { groups, questions: groups.flatMap(group => group.items.map(item => item.node)), allowResubmit: config.settings?.allowResubmit !== false, reward: resolveRewardScale(config.settings), rewardFullFallback: resolveWorksheetFullStep(config.settings), answerMode: normalizeAnswerMode(config.settings?.answerMode), openQuestions: normalizeOpenQuestions(config.openQuestions) }; })() : {}), aiReferenceScores: parseAiReferenceScores(data), aiAdvice: parseAiAdvice(data) } }
           : previous);
       } catch { /* 保留已有反馈，稍后重新取得焦点时重试。 */ }
     };
     const unsubscribe = subscribeWorksheetAnalysisUpdated(event => { if (event.worksheetId === worksheetId) void refresh(); });
     const visible = () => { if (document.visibilityState === 'visible') void refresh(); };
+    const timer = window.setInterval(() => { if (active && document.visibilityState === 'visible') void refresh(); }, 5000);
+    const submitted = (event: Event) => { if ((event as CustomEvent).detail?.worksheetId === worksheetId) void refresh(); };
+    window.addEventListener('worksheet-review-refresh', submitted);
     window.addEventListener('focus', visible);
     document.addEventListener('visibilitychange', visible);
     if (active) void refresh();
-    return () => { cancelled = true; unsubscribe(); window.removeEventListener('focus', visible); document.removeEventListener('visibilitychange', visible); };
-  }, [worksheetId, session?.id, active]);
+    return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener('worksheet-review-refresh', submitted); unsubscribe(); window.removeEventListener('focus', visible); document.removeEventListener('visibilitychange', visible); };
+  }, [worksheetId, session?.id, active, reloadToken]);
 
   const questions = load.kind === 'ready' ? load.worksheet.questions : [];
   const answers = useWorksheetAnswers({
@@ -979,6 +1034,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
     // ⚠️ 走 `NO_SAVED_ANSWERS`（模块级常量）而不是现写 `[]`：水合 effect 拿它当依赖项，
     // 每次渲染换一个数组身份就会把学生正在敲的字抹掉。见那个常量的注释。
     generation: load.kind === 'ready' ? load.worksheet.generation : undefined,
+    reviewedAnswers,
     savedAnswers: load.kind === 'ready' ? load.worksheet.savedAnswers : NO_SAVED_ANSWERS,
     setToast,
     // ★ M5a：**从 props 进来**（D1 铺好的那条路：会话层专门 state → 外壳 → 本面板）。
@@ -1149,6 +1205,8 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
               gradeStates={answers.gradeStates}
               aiReferenceScores={load.worksheet.aiReferenceScores}
               aiAdvice={load.worksheet.aiAdvice}
+              reviews={reviews}
+              onRetryReview={retryReview}
               wrongBlankIndexes={answers.wrongBlankIndexes}
               correctBlanks={answers.correctBlanks}
               rewardBursts={answers.rewardBursts}

@@ -39,6 +39,7 @@ import styles from '../worksheet.module.css';
  * 因为它现在与分派是同一件事。
  */
 export interface QuestionInputProps {
+  localOnly?: boolean;
   node: WorksheetQuestionNode;
   /**
    * 这一题的输入态。`undefined` = **学生一个指头都还没动过**（面板的 `drafts` 里没有它）。
@@ -70,7 +71,7 @@ export interface QuestionInputProps {
   correctBlanks?: Record<string, string>;
 }
 
-export function QuestionInput({ node, draft, onChange, disabled, correctKeys, correctBlanks }: QuestionInputProps) {
+export function QuestionInput({ node, draft, onChange, disabled, correctKeys, correctBlanks, localOnly = false }: QuestionInputProps) {
   /**
    * 这一题的**起点**（形状一定与 `node.type` 同族）。
    *
@@ -104,6 +105,7 @@ export function QuestionInput({ node, draft, onChange, disabled, correctKeys, co
   if (isPhotoNode(node)) {
     return (
       <PhotoBody
+        localOnly={localOnly}
         draft={pick('photo') ?? { kind: 'photo', url: '' }}
         onChange={(next) => onChange?.(node, next)}
         disabled={disabled}
@@ -208,7 +210,8 @@ export function QuestionInput({ node, draft, onChange, disabled, correctKeys, co
   return <p className={styles.cardNote}>（这道题的题型暂时没法在这里作答）</p>;
 }
 
-function PhotoBody({ draft, onChange, disabled }: {
+function PhotoBody({ draft, onChange, disabled, localOnly }: {
+  localOnly: boolean;
   draft: Extract<AnswerDraft, { kind: 'photo' }>;
   onChange: (next: AnswerDraft) => void;
   disabled: boolean;
@@ -221,6 +224,18 @@ function PhotoBody({ draft, onChange, disabled }: {
     setUploading(true);
     setError('');
     try {
+      if (localOnly) {
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('请选择 JPG、PNG 或 WebP 图片');
+        if (file.size > 5 * 1024 * 1024) throw new Error('图片不能超过 5 MB');
+        const url = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error('图片读取失败，请重试'));
+          reader.readAsDataURL(file);
+        });
+        onChange({ kind: 'photo', url });
+        return;
+      }
       const result = await api.uploadWorksheetImage(file);
       onChange({ kind: 'photo', url: result.url });
     } catch (uploadError) {

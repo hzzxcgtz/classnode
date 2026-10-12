@@ -1,19 +1,21 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { TeacherPendingText } from '@/components/teacher-pending-text';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { useSocket } from '@/lib/socket';
 import { isNotFound } from '@/lib/http-error';
 import type { WorksheetAnalysisPayload } from '@/lib/types';
 import { moduleCountUnit } from './worksheet-tile-state';
-import { activeWorksheetAnalysisTask, startWorksheetAnalysisTask, WORKSHEET_ANALYSIS_STARTED_EVENT } from '@/lib/worksheet-analysis-background';
+import { activeWorksheetAnalysisTask, startWorksheetAnalysisTask, WORKSHEET_ANALYSIS_STARTED_EVENT, type AnalysisAction } from '@/lib/worksheet-analysis-background';
 import { worksheetAnalysisProgressLabel } from '@/lib/worksheet-analysis-progress';
 import { localizeLegacyLabels } from '@/lib/worksheet-analysis-cells';
 import { AnalysisReport } from './analysis-report';
 import { scoreParticipantMeta, sortAnalysisScores } from '@/lib/worksheet-analysis-score-display';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
-import { RewardUnit } from '@/components/worksheet-reward-unit';
 import { pointsUnitLabel, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
 import styles from './analysis-panel.module.css';
+import { worksheetAnalysisActions } from '@/lib/worksheet-analysis-actions';
 
 export type AnalysisOperation = 'analyzing' | null;
 export type AnalysisRunStage = 'preparing' | 'sending' | 'analyzing' | 'finalizing' | null;
@@ -38,6 +40,7 @@ export interface WorksheetAnalysisState {
   loading: boolean;
   busy: boolean;
   operation: AnalysisOperation;
+  activeAction?: AnalysisAction | null;
   runStage: AnalysisRunStage;
   runElapsedSeconds: number;
   error: string | null;
@@ -49,7 +52,7 @@ export interface WorksheetAnalysisState {
    * ★ 2026-10-07：`only` = **只补这几个人**（模型上次漏掉的那几个）；
    *   不传就是全班 —— 补跑只补分、不动整体解读，见服务端那条注释。
    */
-  run: (only?: string[]) => Promise<void>;
+  run: (only?: string[], regrade?: boolean, incremental?: boolean, analysisOnly?: boolean) => Promise<void>;
   unit: string;
 }
 
@@ -66,8 +69,11 @@ export function useWorksheetAnalysis(
   mode: string,
   enabled = true,
 ): WorksheetAnalysisState {
+  const { on } = useSocket();
   const [payload, setPayload] = useState<WorksheetAnalysisPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const ownedRun = useRef(false);
+  const [activeAction, setActiveAction] = useState<AnalysisAction | null>(null);
   const [operation, setOperation] = useState<AnalysisOperation>(null);
   const [runStage, setRunStage] = useState<AnalysisRunStage>(null);
   const [runElapsedSeconds, setRunElapsedSeconds] = useState(0);
@@ -84,16 +90,12 @@ export function useWorksheetAnalysis(
   // 关闭浮窗后任务仍在模块级注册表中。重新打开同一道题时接回原 Promise，而不是重复外发。
   useEffect(() => {
     const task = activeWorksheetAnalysisTask(classroomId, worksheetId, questionId);
-    if (!task) return;
+    if (!task || ownedRun.current) return;
     let alive = true;
     setOperation('analyzing');
+    setActiveAction(task.action);
     setRunStage(task.stage);
     setRunElapsedSeconds(Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000)));
-    const stageTimer = window.setInterval(() => {
-      setRunStage(task.stage);
-      // 根据任务真实开始时间重算，后台节流或面板重挂载不会漏计秒数。
-      setRunElapsedSeconds(Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000)));
-    }, 300);
     void task.promise
       .then(async (out) => {
         if (!alive) return;
@@ -113,8 +115,22 @@ export function useWorksheetAnalysis(
         setRunStage(null);
         setOperation(null);
       });
-    return () => { alive = false; window.clearInterval(stageTimer); };
+    return () => { alive = false; };
   }, [classroomId, worksheetId, questionId, taskRevision]);
+
+  // Both a newly started task and a reattached task use the registry's real start time.
+  useEffect(() => {
+    if (operation !== 'analyzing') return;
+    const updateProgress = () => {
+      const task = activeWorksheetAnalysisTask(classroomId, worksheetId, questionId);
+      if (!task) return;
+      setRunStage(task.stage);
+      setRunElapsedSeconds(Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000)));
+    };
+    updateProgress();
+    const timer = window.setInterval(updateProgress, 300);
+    return () => window.clearInterval(timer);
+  }, [operation, classroomId, worksheetId, questionId, taskRevision]);
 
   /** 打开时先读已存的（不重算）；没算过则算一次。 */
   const load = useCallback(async () => {
@@ -139,25 +155,42 @@ export function useWorksheetAnalysis(
 
   useEffect(() => { if (enabled) void load(); }, [load, enabled]);
 
-  const run = useCallback(async (only?: string[]) => {
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let revision = 0;
+    const refresh = () => {
+      clearTimeout(timer);
+      const requestRevision = ++revision;
+      timer = setTimeout(() => {
+        void api.getWorksheetAnalysis(classroomId, worksheetId, questionId).then(next => {
+          if (alive && requestRevision === revision) setPayload(next);
+        }).catch(() => { /* Keep the current result during a temporary disconnect. */ });
+      }, 150);
+    };
+    const stopReview = on('worksheet-analysis-updated', data => { if (data.worksheetId === worksheetId) refresh(); });
+    const stopAnswer = on('worksheet-answer-updated', data => { if (data.classroomId === classroomId && data.questionId === questionId) refresh(); });
+    const fallback = window.setInterval(refresh, 10000);
+    window.addEventListener('focus', refresh);
+    return () => { alive = false; clearTimeout(timer); clearInterval(fallback); stopReview(); stopAnswer(); window.removeEventListener('focus', refresh); };
+  }, [enabled, on, classroomId, worksheetId, questionId]);
+
+  const run = useCallback(async (only?: string[], regrade = false, incremental = false, analysisOnly = false) => {
+    if (ownedRun.current) return;
+    ownedRun.current = true;
     setOperation('analyzing');
+    setActiveAction(regrade ? 'regrade' : incremental || only?.length ? 'incremental' : 'analysis');
     setRunStage('preparing');
     setRunElapsedSeconds(0);
     setError(null);
-    // 远端平台只在请求结束时返回最终结果，无法报告真实百分比；这里按已经开始的真实步骤
-    // 给教师阶段提示，不伪造“完成 63%”一类精度。
-    const stageTimers = [
-      window.setTimeout(() => setRunStage('sending'), 650),
-      window.setTimeout(() => setRunStage('analyzing'), 1800),
-    ];
     try {
       const task = startWorksheetAnalysisTask({
-        classroomId, worksheetId, questionId,
+        classroomId, worksheetId, questionId, regrade, incremental, analysisOnly,
         questionLabel: payload?.questionLabel ?? '本题',
         ...(only && only.length > 0 ? { only } : {}),
       });
       const out = await task.promise;
-      stageTimers.forEach((timer) => window.clearTimeout(timer));
       setRunStage('finalizing');
       // 只合入 AI 产出的解读、参考评分与审计字段；载荷统计一个都不动。
       try {
@@ -168,18 +201,18 @@ export function useWorksheetAnalysis(
       // 让“结果已返回”这一阶段能被人看见；不影响请求本身，也不伪造网络进度。
       await new Promise<void>((resolve) => window.setTimeout(resolve, 450));
     } catch (e) {
-      stageTimers.forEach((timer) => window.clearTimeout(timer));
-      // 🔴 失败**不动 payload.narrative** —— 已有的解读必须原样留在屏幕上
+      // 失败保留已有报告；等待状态结束后恢复显示。
       // （服务端也没写库；两边都不动，才叫「失败不丢东西」）。
       setError(e instanceof Error ? e.message : '分析失败');
     } finally {
+      ownedRun.current = false;
       setRunStage(null);
       setOperation(null);
     }
   }, [classroomId, worksheetId, questionId, payload?.questionLabel]);
 
   return {
-    payload, loading, busy, operation, runStage, runElapsedSeconds,
+    payload, loading, busy, operation, activeAction, runStage, runElapsedSeconds,
     error, sheetFailed,
     markSheetFailed: useCallback(() => setSheetFailed(true), []),
     run,
@@ -192,9 +225,9 @@ export function AnalysisBanners({ state }: { state: WorksheetAnalysisState }) {
   return (
     <>
       {/* 「算完之后又有人交了」—— 服务端算的，必须显眼。否则教师会把一份不完整的名单当成当前的。 */}
-      {state.payload?.stale && (
-        <div style={{ padding: '8px 18px', background: '#faf4eb', borderBottom: '1px solid #fde68a', color: '#92400e', fontSize: '0.82rem', flex: '0 0 auto' }}>
-          ⚠️ 有新的作答，结果可能已过期 —— 点「重新生成」以纳入。
+      {!state.busy && state.payload?.stale && state.payload.narrative && (
+        <div style={{ padding: '8px 18px', background: '#edf5ff', borderBottom: '1px solid #d7e5f4', color: '#315f8c', fontSize: '0.82rem', flex: '0 0 auto' }}>
+          有新的作品提交，更新全班分析后即可纳入总结。
         </div>
       )}
       {state.error && (
@@ -237,6 +270,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 }) {
   const { payload, loading, sheetFailed } = state;
   const sheets = payload?.sheetLayouts ?? [];
+  const generatingReport = state.busy && state.activeAction === 'analysis';
   const [showDetails, setShowDetails] = useState(false);
 
   /**
@@ -268,82 +302,33 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
       {loading && <div className={styles.loading}>正在读取已保存的分析结果…</div>}
 
       {!loading && payload && payload.covered === 0 && (
-        <div className={styles.emptyResult}>这道题还没有已提交的作答。</div>
+        <div className={styles.emptyResult}><strong>等待学生提交作品</strong><span>学生提交后，作答统计和 AI 评价会自动显示在这里。</span></div>
       )}
 
-      {/*
-        ★ 2026-10-07（教师：40 人一起交给智能体）—— 模型**很少一次评全**，
-        而面板原来是「有分就显示、没拿到的人连名字都不出现」⇒ 教师无从知道漏了谁。
-        这里把缺的人点名说出来（用真名，`participantNames` 那张表只给教师端）。
-        ⚠️ 文案里那句「已经拿到的分不会丢」是真的：服务端写的时候是**并进**已存那份
-           （见 `mergeAiScoring`），补跑不会把上一轮拿到的分换掉。
-      */}
-      {!loading && payload?.aiScoring?.enabled && (
-        (() => {
-          const got = payload.perStudent?.scores.length ?? 0;
-          const all = payload.perStudent?.missing ?? [];
-          /*
-           * ★ 2026-10-07：把「模型这次漏了」与「**根本评不了**」分开 ——
-           *  后者是那些**图没取到、形状也认不出**的作答（载荷里的 `unscorableIds`）。
-           *  ⚠️ 他们**不能**进「只补这 N 人」那颗按钮：补跑再多次也评不出来，
-           *    只会白等三分钟。要的是**让学生重新提交一次**（重交会重新抓一张图）。
-           */
-          const unscorable = new Set(payload.unscorableIds ?? []);
-          const missing = all.filter((id) => !unscorable.has(id));
-          const cannotScore = all.filter((id) => unscorable.has(id));
-          if (missing.length === 0 && cannotScore.length === 0 && got > 0) return null;
-          const names = missing.map((id) => payload.participantNames?.[id] ?? nameOf?.(id) ?? '未命名学生');
-          const cannotNames = cannotScore.map((id) => payload.participantNames?.[id] ?? nameOf?.(id) ?? '未命名学生');
-          return (
-            <div className={styles.scoreMissing}>
-              {got === 0
-                ? '本次没有拿到任何逐生评分。'
-                : `本次只拿到 ${got}/${got + missing.length} 份评分。`}
-              {names.length > 0 && <> 还没拿到分的：<strong>{names.join('、')}</strong>。</>}
-              {/*
-                ★ 2026-10-07（教师问：「只补这几个人的话，AI 对整体的分析是不是也要更新呢？」）——
-                答案：**要**。补跑只补分、不动整体解读（模型那段解读只说了这几个人，
-                拿它盖掉全班那份是错的）。所以这里把「整体解读是按几个人写的」直接说出来：
-                  拿到的分比解读当时覆盖的人多 ⇒ 那份整体解读已经旧了，人齐了就提示重写一遍。
-              */}
-              {(payload.perStudent?.scores.length ?? 0) > (payload.covered ?? 0) && (
-                <span>
-                  整体分析是按当时 <strong>{payload.covered}</strong> 人写的，现在已经有 {payload.perStudent?.scores.length} 人有分 ——
-                  点「重新生成」可以按完整的人重写一遍整体分析。
-                </span>
-              )}
-              {missing.length > 0 && (
-                <button type="button" className={styles.scoreMissingAction} onClick={() => void state.run(missing)}>
-                  只补这 {missing.length} 人
-                </button>
-              )}
-              {missing.length > 0 && (
-                <span>补跑只补这几个人的分（已经拿到的分不会丢，整体分析不动）。</span>
-              )}
-              {cannotScore.length > 0 && (
-                <span>
-                  <strong>{cannotNames.join('、')}</strong> 的作答这一版读不出来（快照没抓到、形状也认不出），
-                  AI 评不了他们 —— 让他们重新提交一次这道题（重交会重新抓一张图），再点「重新生成」。
-                </span>
-              )}
-            </div>
-          );
-        })()
-      )}
+      {!loading && !state.busy && payload && payload.covered > 0 && payload.aiScoring.enabled && !payload.studentAiReviewEnabled && (() => {
+        const scored = new Set((payload.perStudent?.scores ?? []).filter(row => row.score !== null).map(row => row.studentId));
+        const unscorable = new Set(payload.unscorableIds ?? []);
+        const missing = payload.entries.filter(row => !scored.has(row.studentId));
+        const names = (unreadable: boolean) => missing.filter(row => unscorable.has(row.studentId) === unreadable)
+          .map(row => payload.participantNames?.[row.studentId] ?? nameOf?.(row.studentId) ?? '未命名学生');
+        const ungraded = names(false);
+        const unreadable = names(true);
+        if (!missing.length) return null;
+        return <div className={styles.scoreMissing}>
+          {ungraded.length > 0 && <span>尚未评分：<strong>{ungraded.join('、')}</strong></span>}
+          {unreadable.length > 0 && <span>作品暂无法识别：<strong>{unreadable.join('、')}</strong>，请重新提交清晰作品。</span>}
+        </div>;
+      })()}
 
-      {!loading && payload?.perStudent && (
-        <details className={styles.scoreCard} aria-label="AI 评分" key={`${classroomId}:${worksheetId}:${questionId}`}>
+      {!loading && payload?.perStudent && (payload.perStudent.scores.length > 0 || !!payload.pendingReviewIds?.length) && (
+        <details className={styles.scoreCard} aria-label="全班 AI 评分明细" open={payload.studentAiReviewEnabled || undefined} key={`${classroomId}:${worksheetId}:${questionId}`}>
           <summary className={styles.scoreHeader}>
             <div>
-              <strong>AI 评分</strong>
-              <span className={styles.scoreFullMarks}>满额 {payload.perStudent.maxScore} <RewardUnit unit={payload.perStudent.unit} /></span>
+              <strong>全班 AI 评分明细</strong>
             </div>
-            {/* ★ 2026-10-07（教师裁定 2）：这份分**已经写回成绩**（进总分、进奖励、进报告），
-                不再是「仅供参考」的旁注 —— 那句话会让教师以为不必核对。 */}
             <div className={styles.scoreHeaderActions}>
-              <span className={styles.aiScoreNotice}>已计入成绩</span>
-              <span className={styles.scoreToggleClosed}>展开评分 ▾</span>
-              <span className={styles.scoreToggleOpen}>收拢评分 ▴</span>
+              <span className={styles.scoreToggleClosed}>查看明细 ▾</span>
+              <span className={styles.scoreToggleOpen}>收起明细 ▴</span>
             </div>
           </summary>
           {payload.perStudent.criteria && (
@@ -353,7 +338,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
             <div className={styles.scoreCriteria}>评分标准：{payload.perStudent.criteria}</div>
           )}
           <div className={styles.scoreList}>
-            {sortAnalysisScores(payload.perStudent.scores, payload.entries).map((item) => (
+            {sortAnalysisScores([...payload.perStudent.scores, ...(payload.pendingReviewIds ?? []).filter(id => !payload.perStudent!.scores.some(row => row.studentId === id)).map(studentId => ({ studentId, score: null, reason: '', advice: '' }))], payload.entries).map((item) => (
               <div className={styles.scoreRow} key={item.studentId}>
                 <span className={styles.scoreName}>
                   {payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '未命名学生'}
@@ -363,8 +348,9 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                       {meta.number && `#${meta.number}`}
                     </span>;
                   })()}
+                  {payload.pendingReviewIds?.includes(item.studentId) && <span className={styles.reviewPending} role="status"><TeacherPendingText>AI 正在评价…</TeacherPendingText></span>}
                 </span>
-                <strong className={styles.scoreValue}>
+                {!payload.pendingReviewIds?.includes(item.studentId) && <strong className={styles.scoreValue}>
                   {(() => {
                     if (item.score === null) return '暂无法评分';
                     if (item.score === 0) return null;
@@ -375,10 +361,10 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                       {Array.from({ length: item.score }, (_, index) => <RewardIcon key={index} kind={reward.value} size={22} />)}
                     </span>;
                   })()}
-                </strong>
-                <div className={styles.scoreReason}>
+                </strong>}
+                {!payload.pendingReviewIds?.includes(item.studentId) && <div className={styles.scoreReason}>
                   <span>{item.reason || '智能体未补充简短评价'}</span>
-                  {(payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice || item.advice) && (
+                  {(item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice) && (
                     <div className={styles.scoreAdvice}>
                       <strong className={styles.scoreAdviceHeading}>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -386,42 +372,32 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                         </svg>
                         AI 给{payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位'}同学的小建议
                       </strong>
-                      <p>{payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice || item.advice}</p>
+                      <p>{item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice}</p>
                     </div>
                   )}
-                </div>
+                </div>}
               </div>
             ))}
           </div>
         </details>
       )}
 
-      {!loading && payload?.feedback && (() => {
-        const scored = new Set((payload.perStudent?.scores ?? []).filter(row => row.advice).map(row => row.studentId));
-        const students = sortAnalysisScores(payload.feedback.students.filter(row => !scored.has(row.studentId)), payload.entries);
-        const missing = payload.feedback.missing.filter(id => !scored.has(id));
-        if (students.length === 0 && missing.length === 0) return null;
-        return <details className={styles.scoreCard} aria-label="学生小建议" key={`feedback:${classroomId}:${worksheetId}:${questionId}`}>
-          <summary className={styles.scoreHeader}><div><strong>学生小建议</strong><span>{students.length} 条</span></div><div><span className={styles.scoreToggleClosed}>展开建议 ▾</span><span className={styles.scoreToggleOpen}>收拢建议 ▴</span></div></summary>
-          {missing.length > 0 && <div className={styles.scoreCriteria}>还有 {missing.length} 位同学的小建议未通过核对或未返回，可重新分析补全。</div>}
-          <div className={styles.scoreList}>{students.map(item => <div className={styles.feedbackRow} key={item.studentId}>
-            <span className={styles.scoreName}>{payload.participantNames?.[item.studentId] ?? '未命名学生'} <span className={styles.scoreCell}>{scoreParticipantMeta(payload.entries, item.studentId).number && `#${scoreParticipantMeta(payload.entries, item.studentId).number}`}</span></span>
-            <div className={styles.scoreAdvice}><strong className={styles.scoreAdviceHeading}>AI 给{payload.participantNames?.[item.studentId] ?? '这位'}同学的小建议</strong><p>{item.advice}</p></div>
-          </div>)}</div>
-        </details>;
-      })()}
-
-      {!loading && payload && payload.covered > 0 && payload.narrative && (
+      {!loading && payload && payload.covered > 0 && payload.narrative && !generatingReport && (
         <section className={styles.resultCard} aria-label="AI 分析结果">
           <AnalysisReport onOpenStudent={onOpenStudent} className={styles.resultText} payload={payload} text={localize(payload.narrative) ?? ''} />
         </section>
       )}
 
-      {!loading && payload && payload.covered > 0 && !payload.narrative && (
-        <div className={styles.emptyResult}>尚未开始分析。点击分析按钮后，任务会在后台完成并自动保存。</div>
+      {!loading && generatingReport && <div className={`${styles.analysisNotice} ${styles.reportPending}`} role="status">
+        <span className={styles.reportPendingDots} aria-hidden="true"><i /><i /><i /></span>
+        <TeacherPendingText>正在生成全班分析，请稍等…</TeacherPendingText>
+      </div>}
+
+      {!loading && payload && payload.covered > 0 && !payload.narrative && !generatingReport && (
+        <div className={styles.analysisNotice}>{payload.perStudent?.scores.length ? '学生个人评价已更新。需要了解全班情况时，可生成全班分析。' : '已收到学生作品。可生成全班分析，查看整体情况。'}</div>
       )}
 
-      {!loading && payload && (
+      {!loading && payload && payload.covered > 0 && (
         <>
           <button type="button" className={styles.detailsToggle}
             aria-expanded={showDetails} onClick={() => setShowDetails((value) => !value)}>
@@ -481,28 +457,43 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
   );
 }
 
+function AnalysisActionIcon({ action, pending = false, supplement = false }: { action: AnalysisAction; pending?: boolean; supplement?: boolean }) {
+  return <svg className={pending ? styles.actionSpinner : undefined} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {pending ? <><circle cx="12" cy="12" r="8" opacity=".25" /><path d="M12 4a8 8 0 0 1 8 8" /></> : action === 'incremental'
+      ? <><circle cx="8" cy="7" r="3" /><path d="M2 21v-3a6 6 0 0 1 12 0v3M19 6v8M15 10h8" /></>
+      : action === 'regrade'
+        ? <><path d="M3 8v13h18M7 17v-3M11 17v-6M15 17v-3" /><path d="M21 7a5 5 0 1 0-1.5 3.6M21 3v4h-4" /></>
+        : supplement
+          ? <><path d="M3 4v17h18M7 17v-5M11 17V8M15 17v-4M19 3v6M16 6h6" /></>
+          : <><path d="M4 4v16h16M8 15v-4M13 15V7M18 15V4" /></>}
+  </svg>;
+}
+
 /** 结果窗底部：查看结果后可以直接重新分析，不再出现发送内容确认步骤。 */
 export function AnalysisActions({ state, compact = false }: { state: WorksheetAnalysisState; compact?: boolean }) {
-  const { payload, busy, operation, runStage, runElapsedSeconds } = state;
-  let actionText = payload?.narrative
-    ? (payload.aiScoring.enabled ? '重新分析与评分' : '重新分析')
-    : (payload?.aiScoring.enabled ? '分析与评分' : '开始分析');
-  if (operation === 'analyzing' && runStage) actionText = worksheetAnalysisProgressLabel(runStage, runElapsedSeconds);
+  const { payload, busy, operation, activeAction, runStage, runElapsedSeconds } = state;
+  const actions = worksheetAnalysisActions(payload);
+  if (payload?.covered === 0 && !busy) return null;
+  const labelFor = (action: AnalysisAction, label: string) => operation === 'analyzing' && runStage && (activeAction ?? 'analysis') === action
+    ? worksheetAnalysisProgressLabel(runStage, runElapsedSeconds) : label;
+
   return (
     <div className={`${styles.actions} ${compact ? styles.compactActions : ''}`}>
+      {payload?.aiScoring.enabled && actions.ungradedCount > 0 && <button type="button" className={styles.actionButton} disabled={busy || !payload.canSend.ok} onClick={() => void state.run(undefined, false, true)}><AnalysisActionIcon action="incremental" pending={busy && activeAction === 'incremental'} />{labelFor('incremental', `补评未评学生（${actions.ungradedCount}）`)}</button>}
       <button type="button" disabled={!payload?.canSend.ok || busy}
-        onClick={() => void state.run()}
+        onClick={() => void state.run(undefined, false, false, actions.automatic)}
         title={payload && !payload.canSend.ok ? payload.canSend.reason : '分析会在后台执行，完成后自动保存'}
         className={styles.actionButton}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6 7a7 7 0 0 1 11-2l3 3M4 16l3 3a7 7 0 0 0 11-2" /></svg>
-        {actionText}
+        <AnalysisActionIcon action="analysis" supplement={actions.ungradedCount > 0} pending={busy && (activeAction ?? 'analysis') === 'analysis'} />
+        {labelFor('analysis', actions.primaryLabel)}
       </button>
-      {/* 不可点时必须**说出来为什么** —— 只灰掉一个按钮，教师不知道该去哪儿修 */}
+      {payload?.aiScoring.enabled && actions.canRegrade && <button type="button" className={styles.actionButton} disabled={busy || !payload.canSend.ok} onClick={() => { if (window.confirm('重新评分会替换本班已有 AI 评分，并按差额调整奖励。是否继续？')) void state.run(undefined, true); }}><AnalysisActionIcon action="regrade" pending={busy && activeAction === 'regrade'} />{labelFor('regrade', '重评并更新班级分析')}</button>}
+            {/* 不可点时必须**说出来为什么** —— 只灰掉一个按钮，教师不知道该去哪儿修 */}
       {payload && !payload.canSend.ok && (
         <span className={styles.actionWarning}>{payload.canSend.reason}</span>
       )}
       {payload?.canSend.ok && !busy && (
-        <span className={styles.actionHint}>分析会在后台执行，完成后自动保存</span>
+        <span className={styles.actionHint}>{actions.hint}</span>
       )}
     </div>
   );

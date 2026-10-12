@@ -867,8 +867,10 @@
 /* 题目按钮本身覆盖整张卡片；分析按钮作为同级独立入口。 */
 .questionNavRow { position: relative; display: block; padding: 0; }
 .questionNavRow .questionNavSelect { display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 8px 10px; border-radius: inherit; }
-.questionNavRow[data-analysis='true'] .questionNavTitle { padding-right: 90px; min-height: 27px; justify-content: center; }
-.questionNavRow .questionNavAnalysis { position: absolute; right: 10px; top: 8px; z-index: 1; }
+.questionNavRow[data-analysis='true'] .questionNavTitle { padding-right: 0; min-height: 0; }
+.questionNavRow .questionNavAnalysis { position: static; padding: 0 10px 8px; justify-content: flex-end; }
+.questionNavRow .questionNavAnalysis .analysisButton { min-height: 24px; padding: 3px 7px; font-size: .75rem; line-height: 1.2; white-space: nowrap; }
+.questionNavRow .questionNavAnalysis .analysisSpinner { width: 11px; height: 11px; }
 .questionNavSelect:focus-visible { outline: 2px solid #7996b1; outline-offset: -2px; }
 
 /* 学生横向排列，题目行与左侧选择卡片使用相同的视觉语言。 */
@@ -879,7 +881,7 @@
 .matrixQuestionCorner { width: 120px; min-width: 120px; max-width: 120px; padding: 0 6px; position: sticky; top: 0; background: #edf2f7; border-bottom: 1px solid #dce5ee; }
 .matrixQuestionHead { position: sticky; left: 0; z-index: 3; width: 120px; min-width: 120px; max-width: 120px; padding: 6px; background: #fff; border-right: 1px solid #dce5ee; border-bottom: 1px solid #e8edf3; text-align: left; }
 .matrixQuestionHead .questionHeadButton { text-align: left; margin-bottom: 4px; }
-.matrixQuestionHead .questionHeadButton strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; line-height: 1.4; }
+.matrixQuestionHead .questionHeadButton strong { font-size: 0.75rem; font-weight: 600; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; line-height: 1.4; }
 .matrixQuestionMeta { display: flex; align-items: center; justify-content: space-between; gap: 4px; color: #7a8a9d; font-size: 0.75rem; }
 .matrixQuestionMeta > span { white-space: nowrap; }
 .matrixQuestionMeta .analysisButton { padding: 2px 4px; font-size: 0.875rem; white-space: nowrap; }
@@ -892,3 +894,8 @@
 
 /* 固定表格布局由 colgroup 分配学生列，单元格不再提供固定列宽。 */
 .participantHead, .bodyCell, .matrixFooterCell { width: auto; max-width: none; }
+
+.analysisStatus { display: inline-flex; align-items: center; gap: 4px; color: #8797a8; font-size: .7rem; line-height: 1.4; white-space: nowrap; }
+.analysisStatus[data-state='ready'] { color: #557867; }
+.analysisStatus[data-state='running'] { color: #587796; }
+.analysisStatus span { font-size: .5rem; }

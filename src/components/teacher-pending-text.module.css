@@ -1,0 +1,29 @@
+.halo { color: inherit; }
+
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  .halo {
+    background-color: #60758d;
+    background-image: radial-gradient(circle at center, #b7cddf 0%, #97b4cb 25%, #7895b0 45%, #60758d 72%);
+    background-size: 96px 96px;
+    background-repeat: no-repeat;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    animation: teacherTextHalo 3.6s ease-in-out infinite;
+  }
+}
+
+@keyframes teacherTextHalo {
+  0%, 15% { background-position: -96px 50%; }
+  85%, 100% { background-position: calc(100% + 96px) 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .halo {
+    animation: none;
+    background: none;
+    color: inherit;
+    -webkit-text-fill-color: currentColor;
+  }
+}

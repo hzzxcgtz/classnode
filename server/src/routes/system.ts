@@ -133,6 +133,20 @@ router.get('/storage-stats', async (req, res) => {
       }
     }
 
+    // Individual evaluations are independent of class report snapshots.
+    const personalReviews = await prisma.worksheetAnswerReview.findMany({
+      where: { source: 'student', status: { in: ['succeeded', 'superseded'] } },
+      select: { question: true, answer: { select: { response: { select: { classroomId: true } } } } },
+    });
+    for (const review of personalReviews) {
+      const snapshot = review.question as { agentId?: string; evaluationUsage?: { chars?: number } };
+      if (!snapshot.agentId) continue;
+      const stats = agentUsageMap[snapshot.agentId] ??= { classroomIds: new Set(), totalCalls: 0, totalChars: 0 };
+      stats.classroomIds.add(review.answer.response.classroomId);
+      stats.totalCalls++;
+      stats.totalChars += typeof snapshot.evaluationUsage?.chars === 'number' ? snapshot.evaluationUsage.chars : 0;
+    }
+
     const agentUsage = allAgents.map(a => {
       const stats = agentUsageMap[a.id];
       return {

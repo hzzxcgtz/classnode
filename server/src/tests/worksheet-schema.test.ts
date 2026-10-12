@@ -15,11 +15,13 @@ import { ensureAnalysisClassroomColumn, ensureWorksheetAnswerColumns, ensureWork
  * 那条「逐字对拍」用例会**一个字都不检查**它（比对只遍历本数组）—— 加表时三处一起改：
  * 本数组 · `DROP_ORDER` · `INDEX_NAMES`，外加第一条用例里那个 `tbl_name IN (...)` 查询。
  */
-const WORKSHEET_TABLES = ['Worksheet', 'ClassroomWorksheet', 'WorksheetResponse', 'WorksheetAnswer', 'WorksheetQuestionAnalysis'];
+const WORKSHEET_TABLES = ['Worksheet', 'ClassroomWorksheet', 'WorksheetResponse', 'WorksheetAnswer', 'WorksheetQuestionAnalysis', 'WorksheetAnswerReview'];
 /** 逆外键依赖顺序：先删引用方，最后删被引用方。 */
-const DROP_ORDER = ['WorksheetQuestionAnalysis', 'WorksheetAnswer', 'WorksheetResponse', 'ClassroomWorksheet', 'Worksheet'];
+const DROP_ORDER = ['WorksheetAnswerReview', 'WorksheetQuestionAnalysis', 'WorksheetAnswer', 'WorksheetResponse', 'ClassroomWorksheet', 'Worksheet'];
 /** 7 个具名索引 —— 名字必须与 worksheet-schema.ts 里的定义逐一对应。 */
 const INDEX_NAMES = [
+  'WorksheetAnswerReview_requestId_key',
+  'WorksheetAnswerReview_answerId_createdAt_idx',
   'ClassroomWorksheet_worksheetId_idx',
   'ClassroomWorksheet_classroomId_worksheetId_key',
   'WorksheetResponse_classroomId_idx',
@@ -122,7 +124,7 @@ test('在缺表的库上建出 5 张表，且第二次调用不重复建', async
     // sqlite_autoindex_*（Prisma 的 db push 也会产生同样的条目，不是我们写歪了）。
     const indexes = await db.$queryRawUnsafe<{ name: string }[]>(
       `SELECT name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL
-         AND tbl_name IN ('ClassroomWorksheet','WorksheetResponse','WorksheetAnswer','WorksheetQuestionAnalysis')`);
+         AND tbl_name IN ('ClassroomWorksheet','WorksheetResponse','WorksheetAnswer','WorksheetQuestionAnalysis','WorksheetAnswerReview')`);
     assert.deepEqual(indexes.map(i => i.name).sort(), [...INDEX_NAMES].sort());
 
     // 建出来的表真能写：外键指向的父行存在时才写得进去（证明约束真的生效）
@@ -563,4 +565,16 @@ test('M7a 迁移：表不存在 / 已经是新形状 ⇒ 什么都不做', async
   } finally {
     await db.$disconnect(); fs.rmSync(file, { force: true });
   }
+});
+
+test('旧评价记录表自动补充耗时列，重复启动保持幂等', async () => {
+  const { db, file } = makeCopy('review-duration');
+  try {
+    await ensureWorksheetTables(db);
+    await db.$executeRawUnsafe('ALTER TABLE "WorksheetAnswerReview" DROP COLUMN "evaluationDurationMs"');
+    await ensureWorksheetTables(db);
+    const columns = await db.$queryRawUnsafe<{ name: string; type: string }[]>('PRAGMA table_info("WorksheetAnswerReview")');
+    assert.equal(columns.find(column => column.name === 'evaluationDurationMs')?.type, 'INTEGER');
+    assert.deepEqual(await ensureWorksheetTables(db), { created: [], indexesCreated: [] });
+  } finally { await db.$disconnect(); fs.rmSync(file, { force: true }); }
 });

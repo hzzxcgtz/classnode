@@ -130,6 +130,8 @@
 }
 
 .section > h4 {
+  display: flex;
+  align-items: center;
   margin: 0;
   color: #21344a;
   font-size: .78rem;

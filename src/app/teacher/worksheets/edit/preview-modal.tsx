@@ -6,6 +6,7 @@ import type { WorksheetContent, WorksheetSettings } from '@/lib/types';
 import { resolveWorksheetBackgroundSources } from '@/lib/worksheet-backgrounds';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { surfaceAlphas } from '@/lib/worksheet-surface';
+import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 // 🔴 **学生端那个组件本体**，不是一份模仿。理由见下面的文件头 —— 这个 import 是本文件
 // 唯一一处「教师端引学生端」的地方，而它引的是**唯一的作答态渲染**：
 // 两个模块各自的路径在这里交汇，分叉在结构上不可能。
@@ -41,9 +42,8 @@ type PreviewOrientation = 'portrait' | 'landscape';
  *   1. **内层舞台是写死的 768px**，不是百分比 —— 一旦跟着窗口缩放，它就退化成
  *      「一个窄一点的预览」，那句「教师看到的就是学生看到的宽度」也就不成立了。
  *      教师的窗口比 768 窄时**横向滚动**，而不是把舞台压窄。
- *   2. **只读**（`interactive={false}`）：没有「提交本题」、控件全部 `disabled`、
- *      不显示任何作答状态。这里**不接真实作答**（规格 §6.3），也**不显示正确答案** ——
- *      那会让教师误以为学生也看得到。
+ *   2. 允许临时试填（`previewOnly`）：草稿仅存在本弹窗状态中，照片在本地读取；
+ *      没有提交、AI 调用或保存，不显示正确答案。关闭弹窗后草稿释放。
  *
  * ⚠️ 顶栏（标题 / 进度 / 保存状态 / 奖励累计）**不**在这个共享组件里：它读的是
  * 学生的会话状态（保存中、离线条数、奖励累计），教师端没有对应物。所以这里只画一个
@@ -53,8 +53,7 @@ type PreviewOrientation = 'portrait' | 'landscape';
  * 星星不提供信息）。它不会出现有**两道**保证，都是结构性的、不是一句约定：
  *   · 下面这个 `WorksheetQuestionList` **不传** `reward` / `scores` —— 共享组件里那两处
  *     奖励的渲染都以「传了配置」为前提（`reward?: …`，不传就没有东西可画）；
- *   · 而且它是以 `interactive={false}` 渲染的，共享组件里那道 `interactive && reward`
- *     的闸门即使将来有人补传了配置也仍然关着。
+ *   · 预览没有提交或评分结果，也不调用真实作答接口。
  * 看板 / 抽屉 / 按题看则根本不经过这个组件。
  */
 export function WorksheetPreviewModal({ title, content, settings, onClose }: {
@@ -64,6 +63,7 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
   onClose: () => void;
 }) {
   const [orientation, setOrientation] = useState<PreviewOrientation>('portrait');
+  const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({});
   // 与面板同一条口径：拍平在调用方做（`flattenAnswerable`），所以「屏幕上有几道题」
   // 在预览与学生端是同一个数。
   // ⚠️ 不取 `flattenQuestions`：任务不是一道题（它没有作答控件），把它算进「共 N 题」
@@ -119,7 +119,7 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
           <div>
             <h3 id="worksheet-preview-title">学生端预览</h3>
             <p>
-             按 iPad {orientation === 'portrait' ? '竖屏' : '横屏'}尺寸渲染，共 {questionCount} 题。这里渲染的就是学生端作答面板的同一份组件与样式，只读、不含正确答案。
+             按 iPad {orientation === 'portrait' ? '竖屏' : '横屏'}尺寸渲染，共 {questionCount} 题。可以试填、绘图或选择照片，测试内容不保存，不调用 AI。
             </p>
           </div>
           <div className="worksheet-editor-preview-orientation" role="group" aria-label="预览方向">
@@ -140,14 +140,14 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
             <div className="worksheet-editor-preview-title">{title || '未命名学习单'}</div>
             <WorksheetQuestionList
               groups={groups}
-              // 预览没有作答态可言：空输入态、空状态、空提交中。**不传** `onChange` /
-              // `onSubmit`，配合 `interactive={false}` ⇒ 一行都不会被写出去。
-              drafts={{}}
+              // 仅接入弹窗本地草稿，不接 onSubmit；previewOnly 让图片也只在本地读取。
+              drafts={drafts}
               statuses={{}}
               submitting={{}}
-              interactive={false}
-              // 只读态没有「已提交」可言（`statuses` 是空的），这个开关在预览里不生效；
-              // 传 `true` 只是不给读的人留一个「这里为什么是 false」的问题。
+              interactive
+              previewOnly
+              onChange={(node, draft) => setDrafts(previous => ({ ...previous, [node.id]: draft }))}
+              // 预览没有已提交状态，始终允许修改测试内容。
               allowResubmit
               // ★ M5a：锁定是**课堂级**的运行时状态，教师端的「学生端预览」没有课堂可言
               // ⇒ 恒 `false`。显式写出来（而不是靠默认值）是刻意的，见那个字段的注释。

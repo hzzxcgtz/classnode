@@ -473,7 +473,6 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           <span className="worksheet-editor-question-index">{focusedMode && node.type === 'drawing' ? `第 ${badgeLabel} 题` : badgeLabel}</span>
           {focusedMode ? (
             <span className="worksheet-editor-question-heading-copy">
-              {node.type !== 'drawing' && <span>编辑题目</span>}
               <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(node.type)}</span>{typeLabel}</strong>
             </span>
           ) : (
@@ -737,57 +736,82 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                 </div>
                 {aiScoringEnabled && (
                   <div className="worksheet-editor-ai-scoring-fields">
-                    <div className="worksheet-editor-ai-scoring-field">
-                      <label htmlFor={`ai-scoring-max-${node.id}`}>
-                        {/* ★ 2026-10-06：这一格与本地判分块那一格是**同一个字段**
-                            （这道题最多给多少），原来两边各叫各的（满分 / 满额 / 分值）。
-                            ⇒ 现在两处**同名**，而且名字跟着学习单的奖励形式走：
-                              分数档叫「分值」，图标 / 奖杯那一档叫「奖励数量」——
-                              同一个字段，量词要对得上后面那个单位（「3 座奖杯」不是「分值 3 座奖杯」）。 */}
-                        {pointsUnit === '分' ? '分值' : '奖励数量'} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />
-                      </label>
-                      <div className="worksheet-editor-ai-scoring-stepper">
-                        <button
-                          type="button"
-                          disabled={aiScoringMaxScore <= 1}
-                          onClick={() => onDataChange({ aiScoringMaxScore: Math.max(1, aiScoringMaxScore - 1) })}
-                          aria-label={`减少 1 ${pointsUnit}`}
-                        >−</button>
-                        <input
-                          id={`ai-scoring-max-${node.id}`}
-                          type="number"
-                          min={1}
-                          max={100}
-                          step={1}
-                          value={aiScoringMaxScore}
-                          onChange={(event) => {
-                            const value = Number.parseInt(event.target.value, 10);
-                            if (Number.isInteger(value) && value >= 1 && value <= 100) {
-                              onDataChange({ aiScoringMaxScore: value });
-                            }
-                          }}
-                          aria-label={`AI 评分分值（${pointsUnit}）`}
-                        />
-                        <button
-                          type="button"
-                          disabled={aiScoringMaxScore >= 100}
-                          onClick={() => onDataChange({ aiScoringMaxScore: Math.min(100, aiScoringMaxScore + 1) })}
-                          aria-label={`增加 1 ${pointsUnit}`}
-                        >+</button>
+                    <div className="worksheet-editor-ai-settings">
+                      <div className="worksheet-editor-individual-review">
+                        <div className="worksheet-editor-individual-review-head">
+                          <div>
+                            <h5>学生自主评价</h5>
+                            <p>提交作品后自动获取 AI 评价</p>
+                          </div>
+                          <HeadSwitch checked={node.data.studentAiReviewEnabled === true} onChange={enabled => onDataChange({ studentAiReviewEnabled: enabled })} label="学生自主评价" title={node.data.studentAiReviewEnabled === true ? '已开启学生自主评价' : '已关闭学生自主评价'} />
+                        </div>
+                        {node.data.studentAiReviewEnabled === true && <>
+                          <div className="worksheet-editor-review-quota">
+                            <label htmlFor={`ai-review-limit-${node.id}`}>每人每题评价次数</label>
+                            <div className="worksheet-editor-ai-scoring-stepper">
+                              <button type="button" disabled={(Number(node.data.aiReviewLimit) || 1) <= 1} onClick={() => onDataChange({ aiReviewLimit: Math.max(1, (Number(node.data.aiReviewLimit) || 1) - 1) })} aria-label="减少评价次数">−</button>
+                              <input id={`ai-review-limit-${node.id}`} type="number" min={1} max={20} step={1} value={typeof node.data.aiReviewLimit === 'number' ? node.data.aiReviewLimit : 1} onChange={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 1 && value <= 20) onDataChange({ aiReviewLimit: value }); }} />
+                              <button type="button" disabled={(Number(node.data.aiReviewLimit) || 1) >= 20} onClick={() => onDataChange({ aiReviewLimit: Math.min(20, (Number(node.data.aiReviewLimit) || 1) + 1) })} aria-label="增加评价次数">+</button>
+                            </div>
+                            <span>次</span>
+                          </div>
+                          <p className="worksheet-editor-review-help">成功评价扣次，失败不扣；次数用完后仍可提交作品。<br />允许学生修改作品，最新有效评分替换旧分，奖励不累计。</p>
+                        </>}
+                      </div>
+                      <div className="worksheet-editor-ai-scoring-field">
+                        <label htmlFor={`ai-scoring-max-${node.id}`}>
+                          {/* ★ 2026-10-06：这一格与本地判分块那一格是**同一个字段**
+                              （这道题最多给多少），原来两边各叫各的（满分 / 满额 / 分值）。
+                              ⇒ 现在两处**同名**，而且名字跟着学习单的奖励形式走：
+                                分数档叫「分值」，图标 / 奖杯那一档叫「奖励数量」——
+                                同一个字段，量词要对得上后面那个单位（「3 座奖杯」不是「分值 3 座奖杯」）。 */}
+                          {pointsUnit === '分' ? '分值' : '奖励数量'} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />
+                        </label>
+                        <div className="worksheet-editor-ai-scoring-stepper">
+                          <button
+                            type="button"
+                            disabled={aiScoringMaxScore <= 1}
+                            onClick={() => onDataChange({ aiScoringMaxScore: Math.max(1, aiScoringMaxScore - 1) })}
+                            aria-label={`减少 1 ${pointsUnit}`}
+                          >−</button>
+                          <input
+                            id={`ai-scoring-max-${node.id}`}
+                            type="number"
+                            min={1}
+                            max={100}
+                            step={1}
+                            value={aiScoringMaxScore}
+                            onChange={(event) => {
+                              const value = Number.parseInt(event.target.value, 10);
+                              if (Number.isInteger(value) && value >= 1 && value <= 100) {
+                                onDataChange({ aiScoringMaxScore: value });
+                              }
+                            }}
+                            aria-label={`AI 评分分值（${pointsUnit}）`}
+                          />
+                          <button
+                            type="button"
+                            disabled={aiScoringMaxScore >= 100}
+                            onClick={() => onDataChange({ aiScoringMaxScore: Math.min(100, aiScoringMaxScore + 1) })}
+                            aria-label={`增加 1 ${pointsUnit}`}
+                          >+</button>
+                        </div>
+                        <p className="worksheet-editor-review-help">本题满分，AI 按评分标准评定。</p>
                       </div>
                     </div>
+                    {node.data.studentAiReviewEnabled === true && <p className="worksheet-editor-ai-template-note">使用前，请将分析智能体的提示词更新为模板中的双模式说明。评价次数默认 1 次。评价期间不能修改；次数用完后定稿，增加次数可解锁。</p>}
                     {/*
                       🔴 显示的是**合并后**的值：`rubricText` 为准，旧字段 `aiScoringCriteria`
                       作回退 —— 老学习单只填过「评分要求」的，教师在这里照旧看得见原文。
                       ⚠️ `onChange` 必须把旧字段**一并清掉**：只写 `rubricText` 的话，
                       教师把输入框删空之后，回退值会重新出现（「删不掉」）。
                     */}
-                    <label className="is-wide">
+                    <label className="worksheet-editor-ai-rubric">
                       <span>评分标准</span>
                       <textarea
                         value={rubricText || aiScoringCriteria}
                         maxLength={2400}
-                        rows={4}
+                        rows={8}
                         placeholder="例如：观点明确；至少写出两个依据；能结合题目材料说明。也可以只上传评分量表图片。"
                         /*
                           ★ 2026-10-06（教师）：「这里复制进来的文本，格式要去掉」。
@@ -888,8 +912,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                           对错标记），所以原来那句「仅供参考，不会覆盖教师评价」已经不成立了。
                           ⚠️ 这里**没有**「教师改分」入口（教师端唯一改答案的动作是「已查看」），
                           所以「覆盖」这件事不存在；真正要提醒教师的是「这个分会算进成绩」。 */}
-                      AI 评分会算进成绩（满分 {aiScoringMaxScore} {pointsUnit}）。
-                      {pointsUnit === '分' ? '分数最多保留一位小数。' : `${pointsUnit}按整数发放。`}
+                      AI 评分会计入成绩 · 本题满分 <span className="worksheet-editor-ai-score-value">{aiScoringMaxScore} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>
+                      {pointsUnit === '分' ? '，分数最多保留一位小数。' : '，奖励按整数发放。'}
                     </p>
                   </div>
                 )}

@@ -336,3 +336,21 @@ test('★ 三态与 score 同生共死：correct ⇔ score === full、incorrect 
     assert.equal(hit.gradeState === 'incorrect', hit.score <= 0, `零分档对不上（ai=${ai}）`);
   }
 });
+
+
+test('个人评价接受只有有效评分块的响应；全班分析仍要求正文', () => {
+  const config = { enabled: true, maxScore: 10, unit: '分', criteria: '' };
+  const entries = [{ studentId: 's1', anonLabel: '同学#1' }];
+  const raw = '<classnode-scores>{"scores":[{"student":"同学#1","score":8,"reason":"你写清楚了经过。","advice":"你可以补充当时的心情。"}]}</classnode-scores>';
+  const result = parseAiAnalysisResult(raw, config, entries, { allowScoreOnly: true });
+  assert.ok(!('error' in result));
+  assert.equal(result.perStudent?.scores[0].score, 8);
+  assert.equal(result.perStudent?.scores[0].advice, '你可以补充当时的心情。');
+  assert.equal(result.narrative, '');
+  assert.ok('error' in parseAiAnalysisResult(raw, config, entries));
+  for (const invalid of ['', '<classnode-scores>{broken}</classnode-scores>', raw.replace('"score":8', '"score":null'), raw.replace('同学#1', '另一同学#2')]) {
+    const parsed = parseAiAnalysisResult(invalid, config, entries, { allowScoreOnly: true });
+    assert.ok(!('error' in parsed));
+    assert.ok(!parsed.perStudent?.scores.some(row => row.score !== null), '坏结果不能被当成成功评分');
+  }
+});

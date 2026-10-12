@@ -96,7 +96,7 @@ export const QUESTION_TYPE_OPTIONS: Array<{
    *
    * 教师给的对照表（逐字）：
    *   选择题 慧眼选择 · 填空题 开心填空 · 连线题 巧手连线 · 分类题 分类达人 ·
-   *   判断题 真假侦探 · 排序题 顺序高手 · 问答题 妙语问答 · 绘图题 创意画板
+   *   判断题 真假侦探 · 排序题 顺序高手 · 表达题 自由表达 · 绘图题 创意画板
    *
    * 🔴 它与 `label`（教师端用的正式题型名）**是两件事，都要留着**：
    *   教师端下拉里写「慧眼选择」会让人对不上教材与教研的用词。
@@ -117,7 +117,7 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   { value: 'order', label: '排序题', nickname: '顺序高手', hint: '把打乱的条目排成正确顺序', graded: true },
   { value: 'match', label: '连线题', nickname: '巧手连线', hint: '把左栏与右栏一一连起来', graded: true },
   { value: 'categorize', label: '归类题', nickname: '分类达人', hint: '把若干条目拖到对应的框里', graded: true },
-  { value: 'short-answer', label: '问答题', nickname: '妙语问答', hint: '主观题，不自动评分', graded: false },
+  { value: 'short-answer', label: '表达题', nickname: '自由表达', hint: '适合简答、说明、论述和小习作，支持文字、手写或照片作答，可开启 AI 评分', graded: false },
   // ★ M4b：`drawing` 这个题型名是**本计划的裁定**（规格没有给）—— 见 `QuestionType` 的注释。
   // `graded: false` **是有意的决定，不是补测试**：手写 / 绘图不参与自动判分（规格 §12 裁定 3）。
   // 服务端那一侧有**两条**闸（B1，提交 `e1ff80c`）：`JUDGES.drawing` 恒回 `null`；
@@ -206,10 +206,10 @@ export const TRUE_FALSE_OPTIONS: ChoiceOption[] = [
 ];
 
 /**
- * 这一**题型**支持 AI 评分吗 —— 只有主观那两型（问答题、绘图题）。
+ * 这一**题型**支持 AI 评分吗 —— 只有主观那两型（表达题、绘图题）。
  *
  * ★ 2026-10-09（教师裁定）：「填空题简化 —— 所有空都不涉及 AI 评分；想让学生自由写就用
- *    **问答题**。删 `'ai'` 与 `'none'` 两档。」⇒ 填空题**从这里出去**（原先逐空还能选 AI）。
+ *    **表达题**。删 `'ai'` 与 `'none'` 两档。」⇒ 填空题**从这里出去**（原先逐空还能选 AI）。
  *
  * 🔴 这一个事实在客户端原来有**两份不一样的写法**：题卡里写题型（对），教师看板那一列写
  *    `data.aiScoringEnabled === true`（**不看题型**，错）⇒ 一道老填空题只要库里还留着那个开关，

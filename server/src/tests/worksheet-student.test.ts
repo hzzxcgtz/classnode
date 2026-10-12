@@ -811,7 +811,7 @@ test('判分：autoGrade 开 ⇒ 单选题有对错、填空归一化后判对�
   assert.equal(shortAnswer.isCorrect, null, '主观题不参与判分，返回 null');
   assert.equal(shortAnswer.gradeState, null, '三态也一起是 null');
   assert.equal(shortAnswer.score, null, '得分也一起是 null（**不是 0**：0 是「判错」那个数）');
-  assert.deepEqual(Object.keys(shortAnswer).sort(), ['correctBlanks', 'gradeState', 'isCorrect', 'score', 'wrongBlankIndexes']);
+  assert.deepEqual(Object.keys(shortAnswer).sort(), ['correctBlanks', 'gradeState', 'isCorrect', 'reviewId', 'reviewStatus', 'score', 'wrongBlankIndexes']);
 
   const rows = await db.prisma.worksheetAnswer.findMany({ orderBy: { questionId: 'asc' } });
   assert.deepEqual(

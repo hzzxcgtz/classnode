@@ -1,3 +1,4 @@
+import { recoverInterruptedReviews } from './services/individual-review.js';
 import express from 'express';
 import { createServer, type ServerResponse } from 'http';
 import { Server } from 'socket.io';
@@ -43,6 +44,8 @@ const prisma = new PrismaClient();
 async function main() {
   recoverInterruptedMaintenance();
   await upgradeDatabase(prisma);
+  // Recover interrupted jobs before accepting requests, even when students remain offline.
+  await recoverInterruptedReviews(prisma);
   const port = parseInt(process.env.PORT || '3001', 10);
 
   const app = express();

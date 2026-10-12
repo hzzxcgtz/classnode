@@ -1,5 +1,6 @@
 'use client';
 
+import styles from '../worksheet.module.css';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 /** Keep a failed lazy-loaded drawing tool from taking down the whole worksheet. */
@@ -26,7 +27,7 @@ export class DrawingErrorBoundary extends Component<{
         <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
           {this.state.error.name}: {this.state.error.message}
         </pre>
-        <button type="button" onClick={() => this.setState({ error: null })}>重新加载画板</button>
+        <button type="button" className={styles.submitButton} onClick={() => this.setState({ error: null })}>重新加载画板</button>
       </div>
     );
   }

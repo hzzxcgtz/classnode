@@ -1,6 +1,7 @@
 'use client';
 
 import { api } from './api';
+import { runWorksheetAnalysisSteps } from './worksheet-analysis-steps';
 import type { WorksheetAnalysisPayload } from './types';
 
 export const WORKSHEET_ANALYSIS_STARTED_EVENT = 'classnode:worksheet-analysis-started';
@@ -16,19 +17,21 @@ export interface WorksheetAnalysisNotice {
 }
 
 type AnalysisResult = {
-  narrative: string;
+  narrative: string | null;
   analyzedAt?: string | null;
   perStudent: WorksheetAnalysisPayload['perStudent'];
   feedback?: WorksheetAnalysisPayload['feedback'];
   agentId: string;
   model: string;
 };
+export type AnalysisAction = 'analysis' | 'incremental' | 'regrade';
 export type BackgroundAnalysisStage = 'preparing' | 'sending' | 'analyzing' | 'finalizing';
 
 export interface BackgroundAnalysisTask {
   key: string;
   startedAt: number;
   stage: BackgroundAnalysisStage;
+  action: AnalysisAction;
   promise: Promise<AnalysisResult>;
 }
 
@@ -54,6 +57,9 @@ function announce(detail: WorksheetAnalysisNotice): void {
 export function startWorksheetAnalysisTask(input: {
   /** ★ 2026-10-07：只补这几个人（模型上次漏掉的那几个）；不给就是全班。 */
   only?: string[];
+  regrade?: boolean;
+  incremental?: boolean;
+  analysisOnly?: boolean;
   classroomId: string;
   worksheetId: string;
   questionId: string;
@@ -68,6 +74,7 @@ export function startWorksheetAnalysisTask(input: {
     key,
     startedAt: Date.now(),
     stage: 'preparing' as BackgroundAnalysisStage,
+    action: (input.regrade ? 'regrade' : input.incremental || input.only?.length ? 'incremental' : 'analysis') as AnalysisAction,
     promise: null as unknown as Promise<AnalysisResult>,
   };
   const promise = api.computeWorksheetAnalysis(classroomId, worksheetId, questionId)
@@ -77,7 +84,9 @@ export function startWorksheetAnalysisTask(input: {
       window.setTimeout(() => {
         if (tasks.get(key) === task && task.stage === 'sending') task.stage = 'analyzing';
       }, 900);
-      return api.runWorksheetAnalysis(classroomId, worksheetId, questionId, input.only);
+      return runWorksheetAnalysisSteps(payload, input,
+        options => api.runWorksheetAnalysis(classroomId, worksheetId, questionId, options.only, options.regrade, options.analysisOnly),
+        () => api.computeWorksheetAnalysis(classroomId, worksheetId, questionId));
     })
     .then(async (result) => {
       task.stage = 'finalizing';

@@ -352,7 +352,7 @@ test('🔴 questionTypeNickname：教师给的八个别名逐字对上', () => {
   assert.equal(questionTypeNickname('categorize'), '分类达人');
   assert.equal(questionTypeNickname('true-false'), '真假侦探');
   assert.equal(questionTypeNickname('order'), '顺序高手');
-  assert.equal(questionTypeNickname('short-answer'), '妙语问答');
+  assert.equal(questionTypeNickname('short-answer'), '自由表达');
   assert.equal(questionTypeNickname('drawing'), '创意画板');
 });
 

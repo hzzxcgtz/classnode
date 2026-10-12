@@ -1,3 +1,4 @@
+import { TeacherPendingText } from '@/components/teacher-pending-text';
 import Image from 'next/image';
 import type { CSSProperties } from 'react';
 import { getApiBaseUrl } from '@/lib/api-base';
@@ -173,7 +174,7 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
         <div className="agent-management-card-footer">
           <span className="agent-management-card-helper">{enabled ? (purpose === 'analysis' ? '仅教师端可使用' : '可在课堂配置中选用') : '停用后不会出现在课堂中'}</span>
           <div className="agent-management-card-actions">
-            {enabled && <button type="button" style={actionStyle()} onClick={onTest} disabled={testing}><RefreshIcon spinning={testing} />{testing ? '检测中...' : '测试'}</button>}
+            {enabled && <button type="button" style={actionStyle()} onClick={onTest} disabled={testing}><RefreshIcon spinning={testing} /><TeacherPendingText active={testing}>{testing ? '检测中...' : '测试'}</TeacherPendingText></button>}
             <button type="button" style={actionStyle()} onClick={onEdit} disabled={toggling || deleting}><EditIcon />编辑</button>
             <button type="button" style={actionStyle(true)} onClick={onDelete} disabled={deleting || toggling}><DeleteIcon />{deleting ? '处理中...' : '删除'}</button>
           </div>
@@ -192,7 +193,7 @@ function Status({ tone, label, error, onMouseEnter, onMouseLeave }: {
   return <span className={`agent-connection-status is-${tone}`} role="status">
     <span className="agent-connection-status-dot" aria-hidden="true" />
     <span onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}
-      className={error ? 'agent-connection-status-error' : undefined}>{label}</span>
+      className={error ? 'agent-connection-status-error' : undefined}><TeacherPendingText active={tone === 'checking'}>{label}</TeacherPendingText></span>
   </span>;
 }
 function RefreshIcon({ spinning }: { spinning: boolean }) { return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={spinning ? { animation: 'spin 1s linear infinite' } : undefined}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>; }

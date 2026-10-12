@@ -311,7 +311,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                 </label>
               )}
               {/* ★ 2026-10-09（教师裁定）：**「评分方式」那一排整个删了** —— 填空题只剩
-                  「每空有答案键、都算分」一条路（想让学生自由写就用问答题）。
+                  「每空有答案键、都算分」一条路（想让学生自由写就用表达题）。
                   只剩一档的选择器不是简化，是装饰：它会让人以为还有别的档。
                   ⚠️ 老库里写着 `'ai'` / `'none'` 的空下面那句提示会点出来（见 `legacyGradingOf`）。 */}
               {/* 答案独占第三行；本空的分值紧跟在这一行末尾。 */}
@@ -370,7 +370,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
               //**还有几个空压根不算分**（老数据），以及教师该怎么办。
               <p className="worksheet-editor-legacy-grading-note">
                 有 {legacyBlankCount} 个空还是旧版的「AI 评分 / 不评分」，它们<strong>不计分</strong>、
-                也算不进「本题满分」—— 请给这些空填上答案（想让学生自由写，请改用<strong>问答题</strong>）。
+                也算不进「本题满分」—— 请给这些空填上答案（想让学生自由写，请改用<strong>表达题</strong>）。
               </p>
             )}
             <p className="worksheet-editor-compact-note">

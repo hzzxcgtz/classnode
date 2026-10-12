@@ -7146,9 +7146,7 @@ tr:hover td {
 
 .worksheet-editor-ai-scoring-fields {
   display: grid;
-  /* ★ 2026-10-05：第一列从 110px 加宽到 124px —— 「奖励总量」那一格换成了
-     `− [ 5 ] +` 的分段控件（124px 宽），110px 装不下。 */
-  grid-template-columns: 124px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 14px;
   border: 1px solid #dbe7f2;
@@ -7162,6 +7160,7 @@ tr:hover td {
    用后代选择器会把它也变成 grid 容器（见 TSX 里那段「不许用 label 包住按钮」的注释）。 */
 .worksheet-editor-ai-scoring-fields > label,
 .worksheet-editor-ai-scoring-field {
+  min-width: 0;
   display: grid;
   align-content: start;
   gap: 6px;
@@ -7185,7 +7184,7 @@ tr:hover td {
 
 .worksheet-editor-ai-scoring-fields input { min-height: 38px; padding: 7px 10px; }
 .worksheet-editor-ai-scoring-fields textarea {
-  min-height: 76px;
+  min-height: 132px;
   padding: 9px 11px;
   resize: vertical;
   font-size: 0.875rem;
@@ -7278,7 +7277,7 @@ tr:hover td {
 .worksheet-editor-ai-scoring-fields .worksheet-editor-rubric-image,
 .worksheet-editor-ai-scoring-fields .worksheet-editor-rubric-upload { grid-column: 1 / -1; }
 
-.worksheet-editor-rubric-upload { align-self: flex-start; }
+.worksheet-editor-rubric-upload { align-self: flex-start; justify-self: start; }
 
 .worksheet-editor-rubric-image {
   display: flex;
@@ -10615,3 +10614,91 @@ tr:hover td {
 .history-migration li { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid #d9e2ed; border-radius: 8px; background: #fff; color: #475569; font-size: .8125rem; line-height: 1.6; }
 .history-migration-step { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 26px; height: 26px; border-radius: 50%; background: #365f91; color: #fff; font-weight: 700; }
 @media (max-width: 720px) { .history-migration { padding: 14px; } .history-migration ol { grid-template-columns: minmax(0, 1fr); gap: 10px; } }
+
+/* AI scoring uses explicit sections so new settings cannot fall into a fixed-width column. */
+.worksheet-editor-ai-settings { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 14px; }
+.worksheet-editor-individual-review,
+.worksheet-editor-ai-settings > .worksheet-editor-ai-scoring-field { padding: 16px; min-width: 0; border: 1px solid #dbe4ef; border-radius: 10px; background: #fff; box-shadow: 0 2px 6px rgb(35 57 83 / 4%); }
+.worksheet-editor-individual-review-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.worksheet-editor-individual-review-head h5 { margin: 0; color: #334b68; font-size: .875rem; font-weight: 700; }
+.worksheet-editor-individual-review-head p,
+.worksheet-editor-ai-scoring .worksheet-editor-review-help { margin: 5px 0 0; color: #718298; font-size: .8125rem; font-weight: 400; line-height: 1.65; }
+.worksheet-editor-review-quota { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 14px 0 8px; color: #40566f; font-size: .875rem; }
+.worksheet-editor-review-quota label { font-weight: 600; }
+.worksheet-editor-review-quota > span { color: #718298; }
+.worksheet-editor-ai-scoring .worksheet-editor-ai-template-note { margin: 0; color: #6a7e93; font-size: .8125rem; font-weight: 400; line-height: 1.6; }
+.worksheet-editor-ai-rubric { min-width: 0; margin-top: 4px; }
+.worksheet-editor-ai-score-value { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; vertical-align: middle; }
+@media (max-width: 720px) {
+  .worksheet-editor-ai-settings { grid-template-columns: minmax(0, 1fr); }
+  .worksheet-editor-individual-review,
+  .worksheet-editor-ai-settings > .worksheet-editor-ai-scoring-field { padding: 14px; }
+}
+
+
+/* Compact worksheet settings: preserve existing controls and responsive touch targets. */
+.worksheet-settings-dialog .worksheet-answer-mode-options.is-row > label {
+  padding: 10px 8px;
+  align-items: center;
+}
+.worksheet-settings-dialog .worksheet-answer-mode-options strong { font-size: .78rem; }
+.worksheet-settings-dialog .worksheet-answer-mode-options em { font-size: .68rem; line-height: 1.4; }
+.worksheet-settings-switches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.worksheet-settings-switches .worksheet-settings-switch { gap: 8px; padding: 10px; }
+.worksheet-settings-switches .worksheet-settings-switch + .worksheet-settings-switch { margin-top: 0; }
+.worksheet-settings-switches .worksheet-settings-switch-icon { width: 25px; height: 25px; }
+.worksheet-settings-switches .worksheet-settings-switch-copy strong { font-size: .78rem; }
+.worksheet-settings-switches .worksheet-settings-switch-copy em { font-size: .68rem; }
+.worksheet-settings-dialog .worksheet-editor-reward-options { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; }
+.worksheet-settings-dialog .worksheet-editor-reward-option { padding: 8px 4px; gap: 4px; font-size: .7rem; min-height: 78px; }
+.worksheet-settings-dialog .worksheet-editor-reward-glyph { width: 38px; height: 38px; }
+.worksheet-settings-dialog .worksheet-editor-reward-option:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
+.worksheet-settings-analysis { display: grid; grid-template-columns: 105px minmax(0, 1fr); gap: 12px; align-items: center; }
+.worksheet-settings-analysis .worksheet-settings-section-head { margin-bottom: 0; }
+.worksheet-settings-analysis .worksheet-editor-field { margin: 0; }
+.worksheet-settings-analysis select { width: 100%; height: 44px; min-height: 44px; padding: 10px 12px; font-size: .85rem; }
+.worksheet-settings-appearance-preview { display: grid; grid-template-columns: 164px minmax(0, 1fr); gap: 20px; align-items: center; margin-top: 14px; }
+.worksheet-settings-background-current { position: relative; height: 220px; box-sizing: border-box; padding: 9px 5px; border: 3px solid #526175; border-radius: 15px; background: #344256; box-shadow: 0 3px 8px rgb(35 48 65 / 12%); overflow: hidden; }
+.worksheet-settings-background-scene { position: relative; width: 100%; height: 100%; border-radius: 8px; background-position: center; background-size: contain; background-repeat: no-repeat; overflow: hidden; }
+.worksheet-settings-background-card { position: absolute; left: 7px; top: 24px; width: calc(100% - 14px); min-height: 154px; box-sizing: border-box; padding: 10px; border: 1px solid rgba(255,255,255,.8); border-radius: 8px; background: rgba(255,255,255,.86); color: #526982; }
+.worksheet-settings-opacity-controls { min-width: 0; }
+.worksheet-settings-opacity-controls .worksheet-editor-scoring-options.is-row { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; gap: 7px; }
+.worksheet-settings-opacity-controls .worksheet-editor-scoring-options > label { padding: 8px 10px; }
+.worksheet-settings-opacity-controls .worksheet-editor-scoring-options strong { font-size: .78rem; }
+.worksheet-settings-opacity-controls .worksheet-editor-scoring-options em { font-size: .68rem; }
+.worksheet-settings-background-card strong { display: block; font-size: .75rem; margin-bottom: 10px; }
+.worksheet-settings-background-card > span { display: block; height: 5px; border-radius: 4px; background: #cfdae5; width: 85%; margin-top: 7px; }
+.worksheet-settings-background-card > span:last-child { width: 58%; }
+.worksheet-settings-background .worksheet-background-grid { margin-top: 12px; }
+.worksheet-settings-footer { justify-content: flex-end; }
+@media (max-width: 640px) {
+  .worksheet-settings-dialog .worksheet-answer-mode-options.is-row { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .worksheet-settings-dialog .worksheet-editor-reward-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .worksheet-settings-switches { grid-template-columns: minmax(0, 1fr); }
+  .worksheet-settings-analysis { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .worksheet-settings-background .worksheet-settings-collapse-value { padding: 3px 6px; font-size: .68rem; }
+  .worksheet-settings-background .worksheet-settings-collapse-hint { display: none; }
+}
+
+.worksheet-settings-background-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #172033; font-size: .875rem; }
+.worksheet-settings-opacity-heading { margin-top: 0; margin-bottom: 10px; }
+.worksheet-settings-dialog .worksheet-editor-reward-points { display: flex; align-items: center; justify-content: center; height: 38px; font-size: .95rem; font-weight: 600; color: inherit; }
+.worksheet-editor-ai-rubric textarea { min-height: 220px; }
+
+@media (max-width: 640px) {
+  .worksheet-settings-appearance-preview { grid-template-columns: 108px minmax(0, 1fr); gap: 12px; }
+  .worksheet-settings-background-current { height: 148px; padding: 3px; border-width: 2px; border-radius: 11px; }
+  .worksheet-settings-background-card { left: 5px; top: 15px; width: calc(100% - 10px); min-height: 108px; padding: 6px; }
+  .worksheet-settings-background-card strong { font-size: .6rem; }
+}
+
+.worksheet-settings-background-current::before { content: ''; position: absolute; width: 3px; height: 3px; border-radius: 50%; background: #aab7c8; top: 3px; left: calc(50% - 1.5px); }
+.worksheet-settings-background-current::after { content: ''; position: absolute; width: 26px; height: 2px; border-radius: 2px; background: #aab7c8; bottom: 3px; left: calc(50% - 13px); }
+@media (max-width: 640px) { .worksheet-settings-background-current { padding: 8px 3px; } }
+
+.worksheet-ipad-hover { background: transparent; border: 0; box-shadow: none; overflow: visible; }
+.worksheet-ipad-hover .worksheet-ipad-hover-frame { width: 164px; height: 220px; padding: 9px 5px; border-width: 3px; border-radius: 15px; transform-origin: top left; }
+.worksheet-ipad-hover .worksheet-settings-background-card { left: 7px; top: 24px; width: calc(100% - 14px); min-height: 154px; padding: 10px; }
+.worksheet-ipad-hover .worksheet-settings-background-card strong { font-size: .75rem; }
+.worksheet-ipad-hover .worksheet-settings-background-card > span { padding: 0; border: 0; }
+.worksheet-editor-canvas > .worksheet-editor-canvas-head { align-items: flex-start; }

@@ -10,7 +10,12 @@ import { readDrawingStarter } from '@/lib/worksheet-drawing-starter';
 import { DrawingDocumentPreview } from './drawing-document-preview';
 import styles from './question-content-preview.module.css';
 
-export function QuestionContentPreview({ node }: {node:WorksheetQuestionNode}) {
+export function QuestionTypeBadge({ node }: { node: WorksheetQuestionNode }) {
+  const toolNames = { free: '基础绘图', math: '数学作图', 'mind-map': '思维导图', flowchart: '流程图' };
+  return <span className={styles.type}>{node.type === 'drawing' ? toolNames[readDrawingTool(node)] : questionTypeLabel(node.type)}</span>;
+}
+
+export function QuestionContentPreview({ node, showType = true }: { node: WorksheetQuestionNode; showType?: boolean }) {
   const runs = readPromptRunsFor(node);
   const image = readPromptImage(node);
   const options = node.type === 'true-false' ? TRUE_FALSE_OPTIONS : readOptions(node);
@@ -22,9 +27,8 @@ export function QuestionContentPreview({ node }: {node:WorksheetQuestionNode}) {
   const pool = sharedPoolChoices(node);
   const starter = readDrawingStarter(node);
   const background = node.type === 'drawing' ? readDrawingBackground(node) : null;
-  const toolNames = {free:'基础绘图',math:'数学作图','mind-map':'思维导图',flowchart:'流程图'};
   return <div className={styles.preview}>
-    <span className={styles.type}>{node.type === 'drawing' ? toolNames[readDrawingTool(node)] : questionTypeLabel(node.type)}</span>
+    {showType && <QuestionTypeBadge node={node} />}
     <div className={styles.prompt}><PromptText text={node.prompt} runs={runs} table={node.data.table} placeholder="题干未填写" /></div>
     {image && <img className={styles.image} src={worksheetAssetUrl(image)} alt="题干配图" />}
     {options.length>0 && ['single-choice','multi-choice','true-false'].includes(node.type) && <ul className={styles.items}>{options.map(option=><li key={option.key}><b>{option.key}</b><span><PromptText text={option.text} placeholder="" />{option.imageUrl && <img className={styles.image} src={worksheetAssetUrl(option.imageUrl)} alt={`${option.key}选项配图`} />}</span></li>)}</ul>}

@@ -758,7 +758,7 @@ test('★ 补跑（?only=）不许把没参与这一轮的学生改掉', async (
 
   // 补跑：只发张伟一个人，给他一个新分
   fake.setAnswer(`只看了这一个。<classnode-scores>{"scores":[{"student":"${ZHANG}","score":10,"reason":"补上了","advice":"很好。"}]}</classnode-scores>`);
-  const scoped = await fetch(`${runUrl(srv.base, worksheet.id, 'q3', classroom.id)}&only=${zhang}`, { method: 'POST' });
+  const scoped = await fetch(`${runUrl(srv.base, worksheet.id, 'q3', classroom.id)}&only=${zhang}&regrade=true`, { method: 'POST' });
   assert.equal(scoped.status, 200, await scoped.text());
 
   assert.equal((await gradeOf(p, await responseOf(zhang))).score, 10, '补跑的那一个人以**新分**为准（教师决定 3）');
@@ -1002,4 +1002,44 @@ test('协议缺闭合仍正确保存分数；历史脏正文读取清理且名�
   assert.deepEqual(payload.feedback.groups[0].studentIds,[score.studentId]);
   assert.equal(payload.perStudent.scores[0].score,8);
   assert.equal((await p.worksheetQuestionAnalysis.findUniqueOrThrow({where:{id:saved.id}})).narrative,dirty);
+});
+
+test('首次仅补评：保存评分，但不生成全班总结或分析时间', async (t) => {
+  const db = await openTempDb();
+  const fake = await startFakeCoze(`只看一位学生。<classnode-scores>${JSON.stringify({ scores: [{ student: ZHANG, score: 8, reason: '思路清楚', advice: '补一个分支' }] })}</classnode-scores>`);
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const agent = await makeAgent(db.prisma, 'coze', fake.base);
+  const { worksheet, classroom, participants } = await seed(db.prisma, { analysisAgentId: agent.id, node: DRAWING_AI });
+  const srv = await withServer(db.prisma);
+  t.after(() => srv.close());
+  await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+  const run = await fetch(`${runUrl(srv.base, worksheet.id, 'q3', classroom.id)}&only=${participants[0]}`, { method: 'POST' });
+  assert.equal(run.status, 200, await run.clone().text());
+  assert.equal((await run.json()).narrative, null);
+  const stored = await db.prisma.worksheetQuestionAnalysis.findFirstOrThrow({ where: { classroomId: classroom.id } });
+  assert.equal(stored.narrative, null);
+  assert.equal(stored.analyzedAt, null);
+  const response = await db.prisma.worksheetResponse.findFirstOrThrow({ where: { classroomId: classroom.id } });
+  assert.equal((await gradeOf(db.prisma, response.id)).score, 8);
+});
+
+test('只更新全班分析：自动评价开关回传，模型返回的评分不能给未评分作品写分', async (t) => {
+  const db = await openTempDb();
+  const fake = await startFakeCoze(`整体分析已更新。<classnode-scores>${JSON.stringify({ scores: [{ student: ZHANG, score: 8, reason: '思路清楚', advice: '补一个分支' }] })}</classnode-scores>`);
+  t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
+  const p = db.prisma;
+  const agent = await makeAgent(p, 'coze', fake.base);
+  const node = JSON.parse(JSON.stringify(DRAWING_AI));
+  node.data.studentAiReviewEnabled = true;
+  const { worksheet, classroom } = await seed(p, { analysisAgentId: agent.id, node });
+  const srv = await withServer(p);
+  t.after(() => srv.close());
+  const payload = await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
+  assert.equal((await payload.json()).studentAiReviewEnabled, true);
+  const response = await p.worksheetResponse.findFirstOrThrow({ where: { classroomId: classroom.id } });
+  const before = await gradeOf(p, response.id);
+  const run = await fetch(`${runUrl(srv.base, worksheet.id, 'q3', classroom.id)}&analysisOnly=true`, { method: 'POST' });
+  assert.equal(run.status, 200, await run.clone().text());
+  assert.equal((await run.json()).narrative, '整体分析已更新。');
+  assert.deepEqual(await gradeOf(p, response.id), before);
 });

@@ -1131,6 +1131,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         }
 
         // 同一学生重复连接时，断开旧连接，保留新连接
+        if (!socket.connected) return;
         const connKey = `${classroom.id}:${classroomStudent.id}`;
         const oldSocketId = activeConnections.get(connKey);
         if (oldSocketId && oldSocketId !== socket.id) {
@@ -1139,6 +1140,10 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         }
 
         // 记录新连接
+        // 在数据库等待之前登记身份，确保此时退出也能正确释放在线记录。
+        socket.data.classroomId = classroom.id;
+        socket.data.studentId = classroomStudent.id;
+        socket.data.isTeacher = false;
         activeConnections.set(connKey, socket.id);
 
         // 更新学生状态
@@ -1149,6 +1154,8 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           },
           data: { status: 'online' },
         });
+
+        if (!socket.connected || activeConnections.get(connKey) !== socket.id) return;
 
         socket.join(`classroom:${classroom.id}`);
         socket.join(`participant:${classroom.id}:${classroomStudent.id}`);

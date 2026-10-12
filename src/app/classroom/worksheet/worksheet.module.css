@@ -3209,3 +3209,49 @@
 }
 .matchItemSelected .matchHandle::after,
 .matchItemLinked .matchHandle::after { background: var(--ws-accent); }
+
+.reviewHistory { margin: 16px 0; padding: 16px; border: 1px solid #d7e1ed; border-radius: 12px; background: rgba(255,255,255,.75); box-shadow: 0 2px 6px #34547708; color: #435b76; }
+.reviewHistoryHeading { margin: 0 0 12px; font-size: .9375rem; font-weight: 600; }
+.reviewRevision { margin-top: 8px; border: 1px solid #e0e7ef; border-radius: 10px; background: #fff; overflow: hidden; }
+.reviewRevisionSummary { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; list-style: none; }
+.reviewRevisionSummary::-webkit-details-marker { display: none; }
+.reviewRevisionSummary:hover { background: #f7faff; }
+.reviewRevisionSummary:focus-visible { outline: 2px solid #648ab2; outline-offset: -2px; }
+.reviewRevisionIdentity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: .875rem; }
+.reviewRevisionIdentity time { font-size: .8125rem; color: #7a8da1; }
+.reviewRevisionResult { flex-shrink: 0; font-size: .8125rem; }
+.reviewRevisionChevron { display: inline-flex; flex-shrink: 0; color: #7a8da1; transition: transform .18s ease; }
+.reviewRevision[open] .reviewRevisionChevron { transform: rotate(90deg); }
+.reviewRevisionBody { padding: 14px; border-top: 1px solid #e0e7ef; }
+.reviewRevision p { white-space: pre-wrap; line-height: 1.7; }
+@media (max-width: 480px) { .reviewRevisionSummary { gap: 8px; flex-wrap: wrap; } .reviewRevisionResult { max-width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .reviewRevisionChevron { transition: none; } }
+
+.reviewFailure { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 20px; margin-top: 16px; }
+.reviewFailure p { flex: 1 1 220px; margin: 0; overflow-wrap: anywhere; }
+.reviewFailureHint { display: block; margin-top: 4px; font-size: .875rem; color: #657b95; }
+.reviewFailure button { flex: 0 0 auto; white-space: nowrap; }
+
+.reviewTiming { display: block; font-size: .8125rem; line-height: 1.6; color: #7a8da1; font-weight: 400; }
+.reviewRevisionBody > .reviewTiming { margin: 0 0 10px; }
+.reviewReward { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 3px; vertical-align: middle; }
+.reviewStatus { display: flex; align-items: center; gap: 10px; margin: 14px 0; color: #657b95; font-size: .875rem; min-height: 30px; }
+.reviewStatus strong { color: #365f90; font-variant-numeric: tabular-nums; }
+.thinkingDots { display: inline-flex; gap: 4px; }
+.thinkingDots i { width: 6px; height: 6px; border-radius: 50%; background: #648ab2; animation: reviewThinking 1.4s ease-in-out infinite; }
+.thinkingDots i:nth-child(2) { animation-delay: .18s; }
+.thinkingDots i:nth-child(3) { animation-delay: .36s; }
+@keyframes reviewThinking { 0%, 70%, 100% { opacity: .4; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .thinkingDots i, .submitButton .spinner { animation: none; } }
+.reviewThinkingCard { gap: 14px; padding: 14px 18px; border: 1px solid #dbe8f4; border-radius: 14px; background: linear-gradient(110deg, #edf6ff, #fafcff); }
+.reviewThinkingBuddy { position: relative; flex: 0 0 50px; height: 54px; display: flex; align-items: center; justify-content: center; }
+.reviewThinkingBuddy img { width: 38px; height: 38px; border-radius: 11px; animation: reviewBuddyFloat 2.8s ease-in-out infinite; }
+.reviewThinkingBuddy > i { position: absolute; right: -2px; top: 0; color: #e4ae46; font-size: 15px; font-style: normal; animation: reviewSparkle 2.4s ease-in-out infinite; }
+.reviewThinkingBuddy > i:last-child { left: -3px; right: auto; top: auto; bottom: 1px; color: #86add0; font-size: 11px; animation-delay: .8s; }
+.reviewThinkingCopy { display: grid; gap: 5px; min-width: 0; }
+.reviewThinkingCopy > strong { font-size: .875rem; font-weight: 600; line-height: 1.6; }
+.reviewThinkingCopy > span:not(.thinkingDots) { font-size: .75rem; color: #71859c; line-height: 1.6; }
+.reviewThinkingCopy .thinkingDots { height: 8px; align-items: center; margin-top: 2px; }
+@keyframes reviewBuddyFloat { 0%,100% { transform: translateY(2px); } 50% { transform: translateY(-3px); } }
+@keyframes reviewSparkle { 0%,100% { opacity: .35; transform: scale(.75); } 50% { opacity: 1; transform: scale(1.15); } }
+@media (prefers-reduced-motion: reduce) { .reviewThinkingBuddy img, .reviewThinkingBuddy > i { animation: none; } }

@@ -124,6 +124,33 @@ const TABLES: Array<{ name: string; createTable: string; indexes: Array<{ name: 
       { name: 'WorksheetQuestionAnalysis_classroomId_worksheetId_questionId_key', sql: `CREATE UNIQUE INDEX "WorksheetQuestionAnalysis_classroomId_worksheetId_questionId_key" ON "WorksheetQuestionAnalysis"("classroomId", "worksheetId", "questionId");` },
     ],
   },
+  {
+    name: 'WorksheetAnswerReview',
+    createTable: `CREATE TABLE "WorksheetAnswerReview" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "answerId" TEXT NOT NULL,
+    "requestId" TEXT NOT NULL,
+    "generation" TEXT NOT NULL,
+    "value" JSONB,
+    "question" JSONB NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'submitted',
+    "source" TEXT NOT NULL DEFAULT 'student',
+    "score" REAL,
+    "maxScore" REAL NOT NULL,
+    "unit" TEXT NOT NULL,
+    "reason" TEXT,
+    "advice" TEXT,
+    "error" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "evaluatedAt" DATETIME,
+    "evaluationDurationMs" INTEGER,
+    CONSTRAINT "WorksheetAnswerReview_answerId_fkey" FOREIGN KEY ("answerId") REFERENCES "WorksheetAnswer" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);`,
+    indexes: [
+      { name: 'WorksheetAnswerReview_requestId_key', sql: `CREATE UNIQUE INDEX "WorksheetAnswerReview_requestId_key" ON "WorksheetAnswerReview"("requestId");` },
+      { name: 'WorksheetAnswerReview_answerId_createdAt_idx', sql: `CREATE INDEX "WorksheetAnswerReview_answerId_createdAt_idx" ON "WorksheetAnswerReview"("answerId", "createdAt");` },
+    ],
+  },
 ];
 
 /**
@@ -168,6 +195,10 @@ export async function ensureWorksheetTables(
       await prisma.$executeRawUnsafe(index.sql);
       indexesCreated.push(index.name);
     }
+  }
+  const reviewColumns = await prisma.$queryRawUnsafe<{ name: string }[]>('PRAGMA table_info("WorksheetAnswerReview")');
+  if (!reviewColumns.some(column => column.name === 'evaluationDurationMs')) {
+    await prisma.$executeRawUnsafe('ALTER TABLE "WorksheetAnswerReview" ADD COLUMN "evaluationDurationMs" INTEGER');
   }
   if (created.length > 0) console.log(`[server] 学习单表已创建：${created.join(', ')}`);
   if (indexesCreated.length > 0) console.log(`[server] 学习单索引已创建：${indexesCreated.join(', ')}`);

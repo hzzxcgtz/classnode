@@ -2564,14 +2564,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       {!gridFullscreen && (<>
       <div className="teacher-header">
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-          <button onClick={() => router.push('/teacher')}
-            style={{
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              padding: '6px 8px', borderRadius: 8, marginTop: 2, flexShrink: 0,
-              color: 'var(--text-secondary)', transition: 'all 0.12s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
+          <button type="button" className="worksheet-editor-back" aria-label="返回教师首页" onClick={() => router.push('/teacher')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
           </button>
           <div>

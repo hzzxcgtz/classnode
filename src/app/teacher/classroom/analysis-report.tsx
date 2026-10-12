@@ -14,8 +14,8 @@ function StudentGroupHint({ students, onOpenStudent }: { students: { id: string;
   const id = useId();
   const popup = useRef<HTMLSpanElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const keepOpen = () => { if (closeTimer.current) clearTimeout(closeTimer.current); };
-  const closeSoon = () => { keepOpen(); closeTimer.current = setTimeout(() => setPosition(null), 180); };
+  const keepOpen = () => { if (closeTimer.current) clearTimeout(closeTimer.current); closeTimer.current = null; };
+  const closeSoon = () => { keepOpen(); closeTimer.current = setTimeout(() => setPosition(null), 500); };
   useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
   const show = () => {
     keepOpen();
@@ -28,13 +28,24 @@ function StudentGroupHint({ students, onOpenStudent }: { students: { id: string;
   useEffect(() => {
     if (!position) return;
     const close = () => setPosition(null);
+    const followPointer = (event: PointerEvent) => {
+      const trigger = button.current?.getBoundingClientRect();
+      const dialog = popup.current?.getBoundingClientRect();
+      if (!trigger || !dialog) return;
+      const inside = (rect: DOMRect) => event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+      const bridge = event.clientX >= Math.min(trigger.left, dialog.left) && event.clientX <= Math.max(trigger.right, dialog.right)
+        && event.clientY >= Math.min(trigger.top, dialog.top) && event.clientY <= Math.max(trigger.bottom, dialog.bottom);
+      if (inside(trigger) || inside(dialog) || bridge) keepOpen();
+      else if (!closeTimer.current) closeSoon();
+    };
     const outside = (event: PointerEvent) => {
       if (!button.current?.contains(event.target as Node) && !popup.current?.contains(event.target as Node)) close();
     };
     document.addEventListener('pointerdown', outside);
+    document.addEventListener('pointermove', followPointer);
     window.addEventListener('scroll', close, true);
     window.addEventListener('resize', close);
-    return () => { document.removeEventListener('pointerdown', outside); window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); };
+    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('pointermove', followPointer); window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); };
   }, [position]);
   return <span className={styles.group} onMouseEnter={show} onMouseLeave={closeSoon}>
     <button ref={button} type="button" className={styles.trigger} onFocus={show} onBlur={event => { if (!popup.current?.contains(event.relatedTarget as Node | null)) closeSoon(); }} onClick={show}

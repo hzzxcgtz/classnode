@@ -4,15 +4,14 @@
 // 直接写 `React.CSSProperties` 会 `tsc` 报「找不到名称 React」。惯例见 `worksheet-panel.tsx:4`。
 // ★ 2026-09-29：`Fragment` 是**具名** import（不是 `React.Fragment`）—— 段头行与它下面的题行
 // 是同一层里的兄弟节点，key 只能挂在 Fragment 上。同目录的 `analysis-panel.tsx` 也是这么引 hook 的。
+import { TeacherPendingText } from '@/components/teacher-pending-text';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 import { api } from '@/lib/api';
-import { isNotFound } from '@/lib/http-error';
-import { activeWorksheetAnalysisTask, hasCompletedWorksheetAnalysis, startWorksheetAnalysisTask, WORKSHEET_ANALYSIS_STARTED_EVENT, type BackgroundAnalysisTask } from '@/lib/worksheet-analysis-background';
-import { worksheetAnalysisProgressLabel } from '@/lib/worksheet-analysis-progress';
+import { activeWorksheetAnalysisTask, hasCompletedWorksheetAnalysis, WORKSHEET_ANALYSIS_STARTED_EVENT } from '@/lib/worksheet-analysis-background';
 import { indexQuestions, isGradedType, questionAggregate } from './worksheet-drawer-state';
 import { buildWorksheetMatrix, matrixHeadline, questionTallies, rowTally, uncoveredCount, type CellState, type MatrixHeadline, type MatrixRow } from './worksheet-matrix';
-import { questionTypeNickname } from '@/lib/worksheet-questions';
+import { questionTypeNickname, questionTypeLabel } from '@/lib/worksheet-questions';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 import { ParticipantAnswers } from './worksheet-drawer';
 import { showsAgentAnalysis } from './worksheet-question-stats';
@@ -132,6 +131,7 @@ export function MatrixOverlay({
         questionId: item.node.id,
         heading: item.heading,
         typeLabel: questionTypeNickname(item.node.type),
+        formalTypeLabel: questionTypeLabel(item.node.type),
         aggregate: questionAggregate(rows),
         analysisAvailable: showsAgentAnalysis(item.node),
         manual: !isGradedType(item.node.type) || item.node.autoGrade === false,
@@ -195,14 +195,7 @@ export function MatrixOverlay({
     setAnalysisTarget(null);
     setView('question');
   };
-  const openAnalysis = (worksheetId: string, questionId: string) => {
-    navigate({ view: 'question', worksheetId, questionId, analysis: true });
-    setQuestionWorksheetId(worksheetId);
-    setQuestionTarget({ worksheetId, questionId });
-    setAnalysisTarget({ worksheetId, questionId });
-    setAnalysisJumpCount(count => count + 1);
-    setView('question');
-  };
+
 
   return (
     <div data-overscroll-guard="" className={styles.overlay}>
@@ -245,7 +238,6 @@ export function MatrixOverlay({
                 classroomId={classroomId}
                 avatarSvgByParticipantId={avatarSvgByParticipantId}
                 onOpenQuestion={openQuestion}
-                onOpenAnalysis={openAnalysis}
                 onOpenParticipant={openParticipant}
               />
             ))}
@@ -311,14 +303,13 @@ export function MatrixOverlay({
                             <span className={styles.questionNavMeta}>
                               <small>已交 {item.aggregate.submitted}/{item.aggregate.total}</small>
                               <strong data-tone={item.manual ? 'neutral' : (item.aggregate.accuracy ?? 100) < 60 ? 'warning' : 'good'}>
-                                {item.manual ? '主观题' : item.aggregate.graded > 0 ? `${item.aggregate.accuracy}%` : '待判分'}
+                                {item.manual ? item.formalTypeLabel : item.aggregate.graded > 0 ? `${item.aggregate.accuracy}%` : '待判分'}
                               </strong>
                             </span>
                           </button>
                           {item.analysisAvailable && <div className={styles.questionNavAnalysis}>
-                            <AnalysisTrigger classroomId={classroomId} worksheetId={item.worksheetId}
-                              row={item} analyzed={worksheet.analyzedQuestionIds.includes(item.questionId)} compact
-                              onOpen={() => openAnalysis(item.worksheetId, item.questionId)} />
+                            <AnalysisStatus classroomId={classroomId} worksheetId={item.worksheetId}
+                              row={item} analyzed={worksheet.analyzedQuestionIds.includes(item.questionId)} />
                           </div>}
                         </div>
                       );
@@ -354,7 +345,7 @@ export function MatrixOverlay({
 
 /** 一块 = 一份学习单。 */
 function MatrixBlock({
-  sheet, title, nodes, live, liveTrustedAfter, classroomId, avatarSvgByParticipantId, onOpenQuestion, onOpenParticipant, onOpenAnalysis,
+  sheet, title, nodes, live, liveTrustedAfter, classroomId, avatarSvgByParticipantId, onOpenQuestion, onOpenParticipant,
 }: {
   sheet: WorksheetBoard['worksheets'][number];
   title: string;
@@ -365,7 +356,6 @@ function MatrixBlock({
   avatarSvgByParticipantId: Record<string, string>;
   onOpenQuestion: (worksheetId: string, questionId: string) => void;
   onOpenParticipant: (participantId: string, questionId?: string) => void;
-  onOpenAnalysis: (worksheetId: string, questionId: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'attention' | 'manual'>('all');
@@ -492,8 +482,7 @@ function MatrixBlock({
                     </button>
                     <div className={styles.matrixQuestionMeta}>
                       <span>{row.typeLabel}</span>
-                      <AnalysisTrigger classroomId={classroomId} worksheetId={sheet.id} row={row} compact
-                        onOpen={() => onOpenAnalysis(sheet.id, row.questionId)} />
+                      <AnalysisStatus classroomId={classroomId} worksheetId={sheet.id} row={row} analyzed={sheet.analyzedQuestionIds.includes(row.questionId)} />
                     </div>
                   </th>
                   {participants.map((participant) => {
@@ -536,93 +525,36 @@ function MatrixBlock({
 }
 
 /** 第一次点击静默启动后台分析；完成后同一位置变成结果入口。 */
-function AnalysisTrigger({ classroomId, worksheetId, row, onOpen, analyzed, compact = false }: {
+function AnalysisStatus({ classroomId, worksheetId, row, analyzed }: {
   classroomId: string;
   worksheetId: string;
-  row: Pick<MatrixRow, 'questionId' | 'heading'>;
-  onOpen: () => void;
+  row: Pick<MatrixRow, 'questionId'>;
   analyzed?: boolean;
-  compact?: boolean;
 }) {
-  const [checking, setChecking] = useState(false);
-  const [ready, setReady] = useState(() => Boolean(analyzed) || hasCompletedWorksheetAnalysis(classroomId, worksheetId, row.questionId));
+  const [ready, setReady] = useState(() => analyzed ?? hasCompletedWorksheetAnalysis(classroomId, worksheetId, row.questionId));
   const [, setTick] = useState(0);
   const task = activeWorksheetAnalysisTask(classroomId, worksheetId, row.questionId);
-
-  // 页面重新进入后也要识别服务端已经保存的 AI 结果，不能只依赖本次会话的内存标记。
   useEffect(() => {
-    if (analyzed !== undefined) { if (analyzed) setReady(true); return; }
-    if (ready || task) return;
+    if (analyzed !== undefined) { setReady(analyzed); return; }
     let alive = true;
     void api.getWorksheetAnalysis(classroomId, worksheetId, row.questionId)
-      .then((stored) => { if (alive && stored.narrative) setReady(true); })
-      .catch(() => { /* 404 表示尚未分析；入口保持初始状态即可。 */ });
+      .then(stored => { if (alive) setReady(Boolean(stored.narrative)); }).catch(() => {});
     return () => { alive = false; };
-  }, [classroomId, worksheetId, row.questionId, ready, task, analyzed]);
-
+  }, [classroomId, worksheetId, row.questionId, analyzed]);
   useEffect(() => {
     const started = () => setTick(value => value + 1);
     window.addEventListener(WORKSHEET_ANALYSIS_STARTED_EVENT, started);
     return () => window.removeEventListener(WORKSHEET_ANALYSIS_STARTED_EVENT, started);
   }, []);
-
-  const watch = (backgroundTask: BackgroundAnalysisTask) => {
-    setTick((value) => value + 1);
-    void backgroundTask.promise
-      .then(() => setReady(true))
-      .catch(() => setReady(false))
-      .finally(() => setTick((value) => value + 1));
-  };
-
   useEffect(() => {
     if (!task) return;
     let alive = true;
-    const timer = window.setInterval(() => setTick((value) => value + 1), 500);
-    void task.promise
-      .then(() => { if (alive) setReady(true); })
-      .catch(() => { /* 顶层 Toast 已经说明失败原因。 */ })
-      .finally(() => { if (alive) setTick((value) => value + 1); });
-    return () => { alive = false; window.clearInterval(timer); };
+    void task.promise.then(() => { if (alive) setReady(true); }).catch(() => {}).finally(() => { if (alive) setTick(value => value + 1); });
+    return () => { alive = false; };
   }, [task]);
-
-  const handleClick = async () => {
-    if (task) return;
-    if (ready) { onOpen(); return; }
-    setChecking(true);
-    try {
-      const stored = await api.getWorksheetAnalysis(classroomId, worksheetId, row.questionId);
-      if (stored.narrative) {
-        setReady(true);
-        onOpen();
-        return;
-      }
-    } catch (error) {
-      // 404 = 从未分析；其它读取错误也交给完整后台流程统一报告，避免按钮停在死状态。
-      if (!isNotFound(error)) { /* 后台请求会给出可见错误。 */ }
-    }
-    watch(startWorksheetAnalysisTask({
-      classroomId, worksheetId, questionId: row.questionId, questionLabel: row.heading,
-    }));
-    setChecking(false);
-  };
-
-  let text = 'AI 分析';
-  let buttonState = 'idle';
-  if (checking) { text = '检查中…'; buttonState = 'running'; }
-  else if (task) {
-    buttonState = 'running';
-    const elapsed = Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000));
-    text = compact ? `分析中 ${elapsed}s` : worksheetAnalysisProgressLabel(task.stage, elapsed);
-  } else if (ready) { text = compact ? '查看分析' : '查看 AI 分析'; buttonState = 'ready'; }
-
-  return (
-    <button type="button" onClick={() => void handleClick()} disabled={checking || Boolean(task)}
-      data-state={buttonState} className={styles.analysisButton}
-      title={task ? '分析正在后台进行，可以离开当前页面' : ready ? '查看已保存结果，也可以重新分析' : '静默启动本题的 AI 分析'}>
-      {task && <span className={styles.analysisSpinner} aria-hidden="true" />}
-      {text}
-    </button>
-  );
+  return <span className={styles.analysisStatus} data-state={task ? 'running' : ready ? 'ready' : 'idle'} role="status">
+    <span aria-hidden="true">●</span> <TeacherPendingText active={Boolean(task)}>{task ? 'AI 分析中' : ready ? '已分析' : '未分析'}</TeacherPendingText>
+  </span>;
 }
 
 /** 三档颜色。**只有三档** —— 对错不在这里（规格 §3.4）。 */

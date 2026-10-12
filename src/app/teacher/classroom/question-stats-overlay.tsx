@@ -12,7 +12,7 @@ import { questionStats, showsAgentAnalysis, type MatrixCell, type StatsRow } fro
 import { questionTypeNickname, supportsAiScoring } from '@/lib/worksheet-questions';
 import styles from './question-stats-overlay.module.css';
 import { BlankDistribution, OrderDistribution } from './question-type-distributions';
-import { QuestionContentPreview } from './question-content-preview';
+import { QuestionContentPreview, QuestionTypeBadge } from './question-content-preview';
 import { OptionDistribution } from './question-option-distribution';
 import { useWorksheetAnalysis } from './analysis-panel';
 import { QuestionAnalysisSection } from './question-analysis-section';
@@ -136,7 +136,7 @@ function emphasizeNumbers(text: string): React.ReactNode {
 }
 
 /** 一行小标题。 */
-function Section({ title, children, note }: { title: string; children: React.ReactNode; note?: string }) {
+function Section({ title, children, note }: { title: React.ReactNode; children: React.ReactNode; note?: string }) {
   return (
     <section className={styles.section}>
       <h4>
@@ -169,6 +169,8 @@ export function QuestionStatsOverlay({
   const nodes = nodesByWorksheet[worksheetId] ?? null;
   const node = nodes ? indexQuestions(nodes).byId.get(questionId) ?? null : null;
   const heading = nodes ? indexQuestions(nodes).headingOf(questionId) : null;
+  const analysisState = useWorksheetAnalysis(classroomId, worksheetId, questionId, mode, Boolean(node && showsAgentAnalysis(node)));
+  const subjective = Boolean(node && supportsAiScoring(node));
 
   const stats = useMemo(() => {
     if (!node || !worksheet) return null;
@@ -181,7 +183,7 @@ export function QuestionStatsOverlay({
         participantId: participant.participantId,
         // 小组 / 高级模式下这里是**一个组一行参与者** —— 取组名，`student.name` 会是 undefined。
         participantName: participant.name,
-        status: row.status,
+        status: subjective && analysisState.payload?.entries.some(entry => entry.studentId === participant.participantId) ? 'submitted' : row.status,
         isCorrect: row.isCorrect,
         gradeState: row.gradeState,
         value: row.value,
@@ -191,16 +193,12 @@ export function QuestionStatsOverlay({
       };
     });
     return questionStats(node, rows);
-  }, [node, worksheet, questionId]);
-
-  const analysisState = useWorksheetAnalysis(classroomId, worksheetId, questionId, mode, Boolean(node && showsAgentAnalysis(node)));
-  const subjective = Boolean(node && supportsAiScoring(node));
+  }, [node, worksheet, questionId, subjective, analysisState.payload]);
   const scoring = analysisState.payload?.aiScoring;
   const validScores = scoring?.enabled
     ? (analysisState.payload?.perStudent?.scores ?? []).filter(item =>
       typeof item.score === 'number' && Number.isFinite(item.score) && item.score >= 0 && item.score <= scoring.maxScore
-      && worksheet?.participants.some(participant => participant.participantId === item.studentId
-        && participant.answerRows.some(row => row.questionId === questionId && row.status === 'submitted')))
+      && analysisState.payload?.entries.some(entry => entry.studentId === item.studentId))
     : [];
   const average = validScores.length
     ? Number((validScores.reduce((sum, item) => sum + item.score!, 0) / validScores.length).toFixed(1)) : null;
@@ -318,9 +316,12 @@ export function QuestionStatsOverlay({
                 </Section>}
 
                 <div className={styles.insightRail}>
-                  {node && <Section title="题目内容"><QuestionContentPreview node={node} /></Section>}
+                  {node && <Section title={<>题目内容<QuestionTypeBadge node={node} /></>}><QuestionContentPreview node={node} showType={false} /></Section>}
                   <Section title="课堂观察">
-                    {stats.insights.length > 0 ? (
+                    {subjective ? <ul className={styles.insightList}>
+                      <li data-tone="neutral"><span>已收到 <strong>{stats.submitted}</strong> {unit}的作品，尚有 <strong>{stats.total - stats.submitted}</strong> {unit}未提交。</span></li>
+                      {validScores.length > 0 && <li data-tone="neutral"><span>AI 已完成 <strong>{validScores.length}</strong> {unit}的评价，分数与建议显示在下方。</span></li>}
+                    </ul> : stats.insights.length > 0 ? (
                       <ul className={styles.insightList}>
                         {stats.insights.map((insight, index) => (
                           <li key={index} data-tone={insight.level}>

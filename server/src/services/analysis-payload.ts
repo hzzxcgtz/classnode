@@ -346,6 +346,7 @@ export const ANSWER_TEXT_MAX = 800;
  * `flattenAnswerable`，对拍用例钉着与前端逐字相同）。
  */
 export interface QuestionMeta {
+  studentAiReviewEnabled?: boolean;
   questionId: string;
   typeLabel: string;
   prompt: string;
@@ -374,9 +375,9 @@ export interface QuestionMeta {
 }
 
 /** 超长就截断并附一句说明。 */
-function truncate(text: string): string {
-  if (text.length <= ANSWER_TEXT_MAX) return text;
-  return `${text.slice(0, ANSWER_TEXT_MAX)}\n（已截断：原文共 ${text.length} 字，只带出前 ${ANSWER_TEXT_MAX} 字）`;
+function truncate(text: string, limit = ANSWER_TEXT_MAX): string {
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}\n（已截断：原文共 ${text.length} 字，只带出前 ${limit} 字）`;
 }
 
 function gradeLabel(state: AnalyzeEntry['gradeState']): string | null {
@@ -425,7 +426,7 @@ function localStatsLine(entries: AnalyzeEntry[]): string {
  */
 export function buildTextDocument(
   question: QuestionMeta, entries: AnalyzeEntry[], labels: Map<string, string>,
-  covered: number, total: number,
+  covered: number, total: number, textLimit = ANSWER_TEXT_MAX,
 ): string {
   const head = [
     `${question.heading} · ${question.typeLabel}`,
@@ -446,7 +447,7 @@ export function buildTextDocument(
     if (entry.kind === 'photo') return `【${label}】（照片作答，见联系表）`;
     const raw = entry.text ?? '';
     if (raw.trim() === '') return `【${label}】（空白）`;
-    return `【${label}】\n${truncate(raw)}`;
+    return `【${label}】\n${truncate(raw, textLimit)}`;
   });
   return `${head}\n\n${body.join('\n\n')}\n`;
 }
@@ -617,6 +618,7 @@ export function layoutSheets(entries: AnalyzeEntry[], labels: Map<string, string
 
 /** 一道题的聚合载荷。图**不在**里面 —— 它是派生物，走单独的端点按需渲染。 */
 export interface AnalysisPayload {
+  studentAiReviewEnabled?: boolean;
   questionId: string;
   questionLabel: string;
   typeLabel: string;
@@ -703,6 +705,7 @@ export function payloadLabels(entries: AnalyzeEntry[], participants: Participant
 export function buildAnalysisPayload(input: {
   question: QuestionMeta; entries: AnalyzeEntry[]; total: number; knobs: SheetKnobs;
   participants: Participant[];
+  textLimit?: number;
 }): AnalysisPayload {
   const { question, entries, total, participants } = input;
   const knobs = question.photoWriting && entries.some(entry => entry.kind === 'photo')
@@ -744,9 +747,10 @@ export function buildAnalysisPayload(input: {
     scorableLabels: entries.filter((entry) => entry.kind !== 'unknown').map((entry) => labels.get(entry.studentId)!),
     unscorableIds: entries.filter((entry) => entry.kind === 'unknown').map((entry) => entry.studentId),
     // 形态是 image 时不给文档（一张联系表就是全部内容）；mixed 两样都给。
-    text: payloadKind === 'image' ? null : buildTextDocument(question, entries, labels, entries.length, total),
+    text: payloadKind === 'image' ? null : buildTextDocument(question, entries, labels, entries.length, total, input.textLimit),
     sheetLayouts: payloadKind === 'text' ? [] : layoutSheets(entries, labels, knobs),
     knobs,
+    studentAiReviewEnabled: question.studentAiReviewEnabled === true,
     aiScoring: question.aiScoring ?? { enabled: false, maxScore: 10, unit: '分', criteria: '' },
   };
 }

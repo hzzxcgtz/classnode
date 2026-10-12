@@ -14,12 +14,11 @@ import {
   pointsUnitLabel,
   DEFAULT_HALF_STEP,
   DEFAULT_REWARD_STEP,
-  DEFAULT_REWARD_STYLE,
   REWARD_STYLE_OPTIONS,
 } from '@/lib/worksheet-reward';
 import { QuestionCard } from './question-card';
 import { TaskCard } from './task-card';
-import { dropIndexAt, editorRenderBlocks, hoverPreviewSize, placeHoverPreview, scoreSummary } from './worksheet-editor-core';
+import { dropIndexAt, editorRenderBlocks, placeHoverPreview, scoreSummary } from './worksheet-editor-core';
 import { TASK_TYPE } from '@/lib/worksheet-questions';
 import { WorksheetPreviewModal } from './preview-modal';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
@@ -31,7 +30,7 @@ import {
 } from '@/lib/worksheet-backgrounds';
 // ★ 2026-09-27：卡片透度的选项表。⚠️ 它是**学生端读的那一份**（`surfaceAlphas` 也在那儿）——
 // 在这里再写一遍三档的名字，改了那边这边不报错，而教师选了「极透」学生那边可能没变。
-import { WORKSHEET_SURFACE_OPTIONS } from '@/lib/worksheet-surface';
+import { WORKSHEET_SURFACE_OPTIONS, surfaceAlphas } from '@/lib/worksheet-surface';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 // 纯符号（常量与类型）**一律从内核取**，不从 `use-worksheet-editor` 转手。
@@ -665,7 +664,7 @@ function WorksheetEditorBody() {
               <div className="worksheet-editor-canvas-head">
                 <div>
                   <span>任务 {activeBlock.task.index + 1}</span>
-                  <h2>{activeQuestion ? '编辑题目' : '编辑任务'}</h2>
+                  {!activeQuestion && <h2>编辑任务</h2>}
                 </div>
                 {activeQuestion && <span>第 {activeQuestion.label} 题 / 共 {totals.questions} 题</span>}
               </div>
@@ -690,7 +689,7 @@ function WorksheetEditorBody() {
           ) : activeQuestion ? (
             <>
               <div className="worksheet-editor-canvas-head">
-                <div><span>独立题目</span><h2>编辑题目</h2></div>
+                <div><span>独立题目</span></div>
                 <span>第 {activeQuestion.label} 题 / 共 {totals.questions} 题</span>
               </div>
               {renderQuestionCard(activeQuestion)}
@@ -737,7 +736,6 @@ function WorksheetEditorBody() {
             if (result.ok) { setSettingsOpen(false); return null; }
             return result.message;
           }}
-          hasId={Boolean(worksheetId)}
         />
       )}
 
@@ -845,7 +843,7 @@ function AddQuestionPicker({ onPick, onClose }: {
  */
 const HOVER_PREVIEW_DELAY_MS = 450;
 
-function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
+function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
   settings: WorksheetSettings;
   onSettingsChange: (patch: Partial<WorksheetSettings>) => void;
   onClose: () => void;
@@ -857,8 +855,6 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
    * 把它丢给页面顶上那条横幅，教师在这个弹窗里就什么也看不到（他刚点的按钮只闪了一下）。
    */
   onSave: () => Promise<string | null>;
-  /** 这份学习单在服务端有没有行。没有 ⇒ 「保存设置」会连同整份一起创建（见 `saveSettings`）。 */
-  hasId: boolean;
 }) {
   /**
    * ★ 2026-09-27：这一层自己的两个瞬时状态。
@@ -908,7 +904,8 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
     previewTimer.current = window.setTimeout(() => {
       previewTimer.current = null;
       const viewport = { width: window.innerWidth, height: window.innerHeight };
-      const size = hoverPreviewSize(viewport);
+      const width = Math.max(1, Math.min(320, viewport.width - 32, (viewport.height - 32) * 164 / 220));
+      const size = { width, height: width * 220 / 164 };
       const anchored = placeHoverPreview(element.getBoundingClientRect(), size, viewport);
       setPreview({ src, name, ...anchored, ...size });
     }, HOVER_PREVIEW_DELAY_MS);
@@ -921,9 +918,9 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
    * ⚠️ `pointercancel` 也要收（系统手势抢走指针时），不然计时器会在别处落地。
    */
   const previewHandlers = (src: string | null, name: string) => ({
-    onPointerEnter: (event: ReactPointerEvent<HTMLLabelElement>) => {
-      if (event.pointerType !== 'mouse' || !src) return;
-      startPreview(event.currentTarget, src, name);
+    onPointerEnter: (event: ReactPointerEvent<HTMLElement>) => {
+      if (event.pointerType !== 'mouse') return;
+      startPreview(event.currentTarget, src ?? '', name);
     },
     onPointerLeave: cancelPreview,
     onPointerCancel: cancelPreview,
@@ -940,8 +937,13 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
 
   // 每个形式的符号与量词都从那一份取值域里取（规格 §9.2：星星/花朵论「个/朵」、
   // 分数论「分」、对错没有步长）。这里**不写**任何一档的字面量。
-  const currentStyle = REWARD_STYLE_OPTIONS.find(option => option.value === settings.rewardStyle)
-    ?? REWARD_STYLE_OPTIONS.find(option => option.value === DEFAULT_REWARD_STYLE)!;
+  const selectedBackground = WORKSHEET_BACKGROUND_OPTIONS.find(option => option.id === settings.backgroundTheme);
+  const backgroundPreviewUrl = settings.backgroundTheme === 'custom'
+    ? settings.backgroundImageUrl ? worksheetAssetUrl(settings.backgroundImageUrl) : null
+    : selectedBackground?.url ?? null;
+  const portraitPreviewUrl = settings.backgroundTheme === 'custom'
+    ? settings.backgroundPortraitImageUrl ? worksheetAssetUrl(settings.backgroundPortraitImageUrl) : backgroundPreviewUrl
+    : selectedBackground?.portraitUrl ?? backgroundPreviewUrl;
 
   // ★ M7b：分析型智能体的候选。**在模态挂载时按需取**（`{settingsOpen && <SettingsModal/>}`
   // ⇒ 挂载 = 打开）—— 这个列表只有打开设置才用得上，跟着页面一起取是白取。
@@ -997,7 +999,6 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
             {/* ⚠️ 这句要与窗里**真的有**的段逐字对得上：原来说的是「作答规则与学生奖励」，
                 而窗里同时还装着「课堂分析」与「外观」两段（★ 2026-09-30 起外观挪到了最后）。
                 「使用说明」这一格已经搬出去了，所以它不在这句话里。 */}
-            <p>作答规则、学生奖励，以及学生端的外观。</p>
           </div>
           <button type="button" onClick={onClose} aria-label="关闭学习单设置">×</button>
         </div>
@@ -1018,7 +1019,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
         */}
         <div className="worksheet-settings-body">
           <section className="worksheet-settings-section">
-            <div className="worksheet-settings-section-head"><div><strong>作答规则</strong><em>决定学生提交后的行为和看板数据。</em></div></div>
+            <div className="worksheet-settings-section-head"><div><strong>作答规则</strong></div></div>
             <fieldset className="worksheet-answer-mode">
               <legend>题目开放方式</legend>
               {/*
@@ -1037,7 +1038,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
                   { value: 'question-step', title: '按小题分步', note: '做完一题开下一题' },
                   // ★ 第四档：**教师**推进（前两档是学生交卷推进）。
                   // 控制界面在看板头部的「学习单 ⋯ 逐题开放」里（`W ORKSHEET_MENU_ITEMS`）。
-                  { value: 'manual', title: '手动逐题开放', note: '你在看板上逐题开' },
+                  { value: 'manual', title: '手动开放', note: '教师逐题开放' },
                 ].map(option => (
                   <label key={option.value} className={settings.answerMode === option.value ? 'is-selected' : ''}>
                     <input
@@ -1050,16 +1051,16 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
                   </label>
                 ))}
               </div>
-              <p>分步模式只提示“后面还有内容”，不会提前显示后续任务名称和题目。</p>
             </fieldset>
             {/* ⚠️ 上面那 3 张卡 + 下面 2 个开关是这一段的主体；顺序不许再动 ——
                 开关紧跟在「开放方式」后面，因为「自动评分」与「提交后可以修改」
                 都是**提交之后**才起作用的两条规则。 */}
+            <div className="worksheet-settings-switches">
             <label className="worksheet-settings-switch">
               <span className="worksheet-settings-switch-icon" aria-hidden="true">✓</span>
               <span className="worksheet-settings-switch-copy">
-                <strong>自动评分</strong>
-                <em>{settings.autoGrade ? '已开启：看板显示对错与正确率。' : '已关闭：只统计作答进度，不显示正确率。'}</em>
+                <strong>客观题自动判分</strong>
+                <em>{settings.autoGrade ? '显示对错与正确率' : '只统计作答进度'}</em>
               </span>
               <span className="worksheet-editor-autograde-control">
                 <input type="checkbox" checked={settings.autoGrade} onChange={event => onSettingsChange({ autoGrade: event.target.checked })} aria-label="自动评分" />
@@ -1071,57 +1072,25 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
               <span className="worksheet-settings-switch-icon" aria-hidden="true">↻</span>
               <span className="worksheet-settings-switch-copy">
                 <strong>提交后可以修改</strong>
-                <em>{settings.allowResubmit ? '已开启：学生可修改并重新提交。' : '已关闭：提交后即定稿，不能再修改。'}</em>
+                <em>普通题可修改；AI 评价题按次数控制</em>
               </span>
               <span className="worksheet-editor-autograde-control">
                 <input type="checkbox" checked={settings.allowResubmit} onChange={event => onSettingsChange({ allowResubmit: event.target.checked })} aria-label="提交后可以修改" />
                 <span aria-hidden="true" />
               </span>
             </label>
-          </section>
-        {/* 奖励形式（规格 §9.2）。🔴 它是**这一张单**的配置，不是全局设置 ——
-            用户 2026-09-23 的裁定：「教师在编辑学习单时可以选择得分制还是奖励小花、五角星」。
-            放在「自动评分」下面也是刻意的：关掉自动评分就没有判分，也就没有奖励
-            （规格 §9.3），两行挨着才看得出这层依赖。 */}
-        {/* `fieldset` + `legend` 而不是「一段标签 + 一排按钮」：这是一组单选，读屏要能
-            念出「奖励形式」这个组名。每个选项都是 `label`，所以点文字或图标都能选中。 */}
-          <section className="worksheet-settings-section">
-            <div className="worksheet-settings-section-head"><div><strong>学生奖励</strong><em>只改变学生端的呈现，不影响教师看板统计。</em></div></div>
-            <fieldset className="worksheet-editor-reward">
-              <legend className="worksheet-editor-reward-legend">奖励形式</legend>
-              <div className="worksheet-editor-reward-options">
-                {REWARD_STYLE_OPTIONS.map(option => (
-                  <label key={option.value} className={`worksheet-editor-reward-option${settings.rewardStyle === option.value ? ' is-selected' : ''}`}>
-                    <input
-                      type="radio"
-                      name="worksheet-reward-style"
-                      checked={settings.rewardStyle === option.value}
-                      onChange={() => onSettingsChange({ rewardStyle: option.value })}
-                    />
-                    <span className="worksheet-editor-reward-glyph" aria-hidden="true">
-                      <RewardIcon kind={option.value} state={settings.rewardStyle === option.value ? 'earned' : 'empty'} size={56} />
-                    </span>
-                    <span>{option.label}</span>
-                  </label>
-                ))}
-              </div>
-              <em className="worksheet-editor-switch-note">{currentStyle.hint}</em>
-            </fieldset>
-
-            <p className="worksheet-settings-notice">
-              奖励显示在学生每道题旁和顶部累计处。关闭自动评分后不发奖励；问答、绘图等主观题也不自动发放。
-            </p>
+            </div>
           </section>
         {/* ★ M7b：分析型智能体（学习单级 —— 用户 2026-09-25 裁定 4）。
             🔴 候选只列 `purpose === 'analysis'` 的，而且**由服务端过滤**（`?purpose=analysis`）。
             🔴 **默认是「不指定」**：默认指定一个等于「默认把全班作业发给第三方 AI」。
             🔴 平台提示必须**在配的时候就**看到 —— 否则教师会在用的那一刻才发现绘图题发不出去。 */}
-          <section className="worksheet-settings-section">
-            <div className="worksheet-settings-section-head"><div><strong>课堂分析</strong><em>可选。用于看板中的小题 AI 分析。</em></div></div>
+          <section className="worksheet-settings-section worksheet-settings-analysis">
+            <div className="worksheet-settings-section-head"><div><strong>分析智能体</strong></div></div>
             <label className="worksheet-editor-field">
-              <span>分析型智能体</span>
               <select
                 className="input"
+                aria-label="分析型智能体"
                 value={settings.analysisAgentId ?? ''}
                 onChange={event => onSettingsChange({ analysisAgentId: event.target.value || null })}
               >
@@ -1133,36 +1102,51 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
               {/* ★ 2026-09-30：这句原来有 47 个字（两行）；砍掉「当前仅支持 Coze，
                   绘图题也需要通过 Coze 分析」那半句 —— 它在**配错平台**的时候才会用到，
                   而那时教师看到的是下拉里没有候选，去智能体管理那一页自然会看见。 */}
-              <em className="worksheet-settings-help">没有候选时，去「智能体管理」新建一个、把用途设为「分析」。</em>
+              {analysisAgents.length === 0 && <em className="worksheet-settings-help">暂无分析智能体，请先到「智能体管理」添加。</em>}
             </label>
           </section>
-          {/*
-            ★ 2026-09-30（教师）：「整个页面太长了」——这一段**收成一行摘要**。
-            它是全窗最占地方的一段（13 张卡 × 2 列 ≈ 一整屏），而一张单只定一次。
-            ⚠️ 用原生 `<details>` 而不是自己写开关态：本页已有两处先例（表格粘贴、
-              自制背景图要求），不用管键盘；而摘要行**必须写出当前选的是哪一个**
-              —— 不开那一段时它是唯一能看见的东西（名字取自 `worksheetBackgroundLabel`，
-              有用例钉着，见那个函数的注释）。
-            ⚠️ `open` 由浏览器自己管：教师这次开了、下次进来还是收着的（没有存「上次开没开」）。
-              那是刻意的 —— 一个「记住我上次展开了外观」的偏好会在下次悄悄把一屏撑开。
-          */}
-          <details className="worksheet-settings-section worksheet-settings-collapse">
-            <summary>
-              <span className="worksheet-settings-collapse-title">
-                <strong>学生端主题背景</strong>
-                <em>不影响题目内容</em>
-              </span>
-              <span className="worksheet-settings-collapse-value">
-                当前：{worksheetBackgroundLabel(settings.backgroundTheme)}
-              </span>
-              <span className="worksheet-settings-collapse-hint">展开挑选</span>
-            </summary>
+        {/* 奖励形式（规格 §9.2）。🔴 它是**这一张单**的配置，不是全局设置 ——
+            用户 2026-09-23 的裁定：「教师在编辑学习单时可以选择得分制还是奖励小花、五角星」。
+            放在「自动评分」下面也是刻意的：关掉自动评分就没有判分，也就没有奖励
+            （规格 §9.3），两行挨着才看得出这层依赖。 */}
+        {/* `fieldset` + `legend` 而不是「一段标签 + 一排按钮」：这是一组单选，读屏要能
+            念出「奖励形式」这个组名。每个选项都是 `label`，所以点文字或图标都能选中。 */}
+          <section className="worksheet-settings-section">
+            <div className="worksheet-settings-section-head"><div><strong>学生奖励</strong></div></div>
+            <fieldset className="worksheet-editor-reward">
+              <legend className="worksheet-editor-reward-legend">奖励形式</legend>
+              <div className="worksheet-editor-reward-options">
+                {REWARD_STYLE_OPTIONS.map(option => (
+                  <label key={option.value} className={`worksheet-editor-reward-option${settings.rewardStyle === option.value ? ' is-selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="worksheet-reward-style"
+                      checked={settings.rewardStyle === option.value}
+                      onChange={() => onSettingsChange({ rewardStyle: option.value })}
+                    />
+                    {option.value === 'points' ? (
+                      <><strong className="worksheet-editor-reward-points">分数</strong><span>直接计分</span></>
+                    ) : (
+                      <><span className="worksheet-editor-reward-glyph" aria-hidden="true">
+                        <RewardIcon kind={option.value} state={settings.rewardStyle === option.value ? 'earned' : 'empty'} size={36} />
+                      </span><span>{option.label}</span></>
+                    )}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+          </section>
+          <section className="worksheet-settings-section worksheet-settings-background">
+            <div className="worksheet-settings-background-heading">
+              <strong>学生端主题背景</strong>
+              <span className="worksheet-settings-collapse-value">当前：{worksheetBackgroundLabel(settings.backgroundTheme)}</span>
+            </div>
             <div className="worksheet-background-grid" role="radiogroup" aria-label="学习单主题背景">
               {WORKSHEET_BACKGROUND_OPTIONS.map(option => (
                 <label
                   key={option.id}
                   className={`worksheet-background-option${settings.backgroundTheme === option.id ? ' is-selected' : ''}`}
-                  {...previewHandlers(option.url, option.name)}
                 >
                   <input
                     type="radio"
@@ -1182,7 +1166,6 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
 
               <label
                 className={`worksheet-background-option worksheet-background-upload${settings.backgroundTheme === 'custom' ? ' is-selected' : ''}`}
-                {...previewHandlers(settings.backgroundImageUrl, '我的背景')}
               >
                 <input
                   type="file"
@@ -1233,25 +1216,15 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
                 <li>优先 WebP，建议不超过 300 KB，最大上传 5 MB。</li>
               </ul>
             </details>
-          </details>
-          <section className="worksheet-settings-section">
-            <div className="worksheet-settings-section-head">
-              <div>
-                {/* ★ 2026-09-30：这句从 40 字压到 22 字（下面那三张卡自己会说明差别）。 */}
-                <strong>卡片透度</strong>
-                <em>卡片透一点，背景图更明显；越透，文字对比度越低。</em>
+            <div className="worksheet-settings-appearance-preview">
+            <div className="worksheet-settings-background-current" aria-label="当前学生端背景预览"
+              {...previewHandlers(portraitPreviewUrl, worksheetBackgroundLabel(settings.backgroundTheme))}>
+              <div className="worksheet-settings-background-scene" style={{ backgroundColor: selectedBackground?.swatch ?? '#f8fafc', backgroundImage: portraitPreviewUrl ? `url(${portraitPreviewUrl})` : undefined }}>
+                <div className="worksheet-settings-background-card" style={{ backgroundColor: `rgba(255,255,255,${surfaceAlphas(settings.surfaceOpacity).card})` }}><strong>学生端预览</strong><span aria-hidden="true" /><span aria-hidden="true" /></div>
               </div>
             </div>
-            {/* ★ 2026-09-27（教师）：「学生页面的学习单区域可以增加一些透明度，让漂亮的背景图片
-                更明显一些，也可以在学习单设置中增加几档透明度供选择。」
-                ⚠️ 选项从 `WORKSHEET_SURFACE_OPTIONS` 遍历，**不在这里写字面量** ——
-                   那一份同时是学生端读的数值表（`surfaceAlphas`），加一档只改那一个文件。
-                ⚠️ 复用「评分方式」那一组控件（`.worksheet-editor-scoring-options`）：
-                   同一页里两套长得不一样的单选卡比少几条 CSS 糟得多（那条理由写在
-                   `globals.css` 的题型控件那一节）。 */}
-            {/* ★ 2026-09-30：三档并排成**一行**（原来是 2 列 2 行 ⇒ 三张卡里有一张独占
-                第二行）。`is-row` 只在这一个宿主上生效 —— 那个类同时被题型编辑器
-                「评分方式」用（`globals.css` 题型控件那一节），不能全局改列数。 */}
+            <div className="worksheet-settings-opacity-controls">
+              <div className="worksheet-settings-section-head worksheet-settings-opacity-heading"><strong>卡片透度</strong></div>
             <div className="worksheet-editor-scoring-options is-row" role="radiogroup" aria-label="卡片透度">
               {WORKSHEET_SURFACE_OPTIONS.map(option => (
                 <label key={option.id} className={settings.surfaceOpacity === option.id ? 'is-selected' : ''}>
@@ -1264,6 +1237,8 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
                   <span><strong>{option.name}</strong><em>{option.description}</em></span>
                 </label>
               ))}
+            </div>
+            </div>
             </div>
           </section>
         {/*
@@ -1287,11 +1262,6 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
           <p className="worksheet-settings-error" role="alert">设置没有存上：{saveError}</p>
         )}
         <div className="worksheet-settings-footer">
-          <span>
-            {hasId
-              ? '这一页的设置由「保存设置」提交；题目与标题的改动仍由顶栏「保存」提交。'
-              : '这份学习单还没保存过，点「保存设置」会连同题目一起创建。'}
-          </span>
           <button type="button" className="btn btn-primary" onClick={() => void submit()} disabled={saving}>
             {saving ? '保存中…' : '保存设置'}
           </button>
@@ -1306,12 +1276,15 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave, hasId }: {
              它一旦吃到指针事件就会自己把自己关掉（`pointerleave` 在卡片上触发）。 */}
       {preview && createPortal(
         <div
-          className="worksheet-background-hover-preview"
+          className="worksheet-background-hover-preview worksheet-ipad-hover"
           aria-hidden="true"
-          style={{ left: preview.left, top: preview.top, width: preview.width }}
+          style={{ left: preview.left, top: preview.top, width: preview.width, height: preview.height }}
         >
-          <img src={worksheetAssetUrl(preview.src)} alt="" width={preview.width} height={preview.height} />
-          <span>{preview.name}</span>
+          <div className="worksheet-settings-background-current worksheet-ipad-hover-frame" style={{ transform: `scale(${preview.width / 164})` }}>
+            <div className="worksheet-settings-background-scene" style={{ backgroundColor: selectedBackground?.swatch ?? '#f8fafc', backgroundImage: preview.src ? `url(${worksheetAssetUrl(preview.src)})` : undefined }}>
+              <div className="worksheet-settings-background-card" style={{ backgroundColor: `rgba(255,255,255,${surfaceAlphas(settings.surfaceOpacity).card})` }}><strong>学生端预览</strong><span /><span /></div>
+            </div>
+          </div>
         </div>,
         document.body,
       )}

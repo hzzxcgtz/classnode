@@ -1,4 +1,6 @@
 'use client';
+import { TeacherPendingText } from '@/components/teacher-pending-text';
+import { TeacherReviewHistory } from './answer-review-history';
 
 import { useEffect, useMemo, useState } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
@@ -464,7 +466,7 @@ function QuestionAnalysisState({ classroomId, worksheetId, questionId, initially
 
   return (
     <span className={styles.aiAnalysisState} data-ready={ready ? 'true' : 'false'}>
-      <i aria-hidden />{task && !ready ? 'AI 分析中' : ready ? 'AI 已生成' : 'AI 未生成'}
+      <i aria-hidden /><TeacherPendingText active={Boolean(task && !ready)}>{task && !ready ? 'AI 分析中' : ready ? 'AI 已生成' : 'AI 未生成'}</TeacherPendingText>
     </span>
   );
 }
@@ -701,6 +703,7 @@ export function ParticipantAnswers({
                         <div className={styles.answerPanel}>
                           <span className={styles.answerLabel}>学生作答与答案对照</span>
                           <AnswerViewBody node={node} value={row?.value} />
+                          {(node.type === 'short-answer' || node.type === 'drawing') && <TeacherReviewHistory classroomId={board.classroomId} worksheetId={worksheet.id} participantId={participantId} node={node} />}
                         </div>
                         {outcome.canReview && (
                           <div className={styles.actionRow}>

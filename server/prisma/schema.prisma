@@ -597,8 +597,32 @@ model WorksheetAnswer {
   savedAt      DateTime? // **最近一次保存**的时刻。⚠️ 提交**不推进它**（见下方写入侧注释）
   saveCount    Int?      // 保存过几次
 
+  reviews WorksheetAnswerReview[]
   response WorksheetResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
 
   @@unique([responseId, questionId])
   @@index([responseId])
+}
+
+/// Immutable submitted work and the evaluation of that exact revision.
+model WorksheetAnswerReview {
+  id String @id @default(uuid())
+  answerId String
+  requestId String @unique
+  generation String
+  value Json?
+  question Json
+  status String @default("submitted")
+  source String @default("student")
+  score Float?
+  maxScore Float
+  unit String
+  reason String?
+  advice String?
+  error String?
+  createdAt DateTime @default(now())
+  evaluatedAt DateTime?
+  evaluationDurationMs Int?
+  answer WorksheetAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  @@index([answerId, createdAt])
 }

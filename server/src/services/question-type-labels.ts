@@ -19,7 +19,7 @@ export const QUESTION_TYPE_LABELS: Readonly<Record<string, string>> = {
   'order': '排序题',
   'match': '连线题',
   'categorize': '归类题',
-  'short-answer': '问答题',
+  'short-answer': '表达题',
   'drawing': '绘图题',
 };
 
@@ -42,7 +42,7 @@ export const QUESTION_TYPE_NICKNAMES: Readonly<Record<string, string>> = {
   'order': '顺序高手',
   'match': '巧手连线',
   'categorize': '分类达人',
-  'short-answer': '妙语问答',
+  'short-answer': '自由表达',
   'drawing': '创意画板',
 };
 

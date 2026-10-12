@@ -107,6 +107,7 @@ export interface UseWorksheetAnswersOptions {
    * state 里（`worksheet-panel.tsx` 的 `load` 就是这么做的），不要现 map 一份。
    */
   savedAnswers: SavedAnswerRow[];
+  reviewedAnswers?: SavedAnswerRow[];
   generation?: WorksheetGeneration;
   setToast: Dispatch<SetStateAction<ChatToast | null>>;
   /**
@@ -187,6 +188,7 @@ export function useWorksheetAnswers({
   worksheetId,
   questions,
   savedAnswers,
+  reviewedAnswers,
   generation,
   setToast,
   answersLocked,
@@ -203,6 +205,13 @@ export function useWorksheetAnswers({
   const [pendingCount, setPendingCount] = useState(0);
   const [offline, setOffline] = useState(false);
   const [debouncing, setDebouncing] = useState(false);
+  useEffect(() => {
+    if (!reviewedAnswers) return;
+    setScores(prev => ({ ...prev, ...Object.fromEntries(reviewedAnswers.map(r => [r.questionId, scoreFromWire(r)])) }));
+    setGradeStates(prev => ({ ...prev, ...Object.fromEntries(reviewedAnswers.map(r => [r.questionId, r.gradeState ?? null])) }));
+  }, [reviewedAnswers]);
+  const submissionRequests = useRef<Record<string, string>>({});
+  const submittingRef = useRef(new Set<string>());
 
   /** 队列的**内存权威**。`localStorage` 是它的镜像（每写必同步）。 */
   const pendingRef = useRef<WorksheetQueueItem[]>([]);
@@ -726,7 +735,8 @@ export function useWorksheetAnswers({
    */
   const submit = useCallback(async (node: WorksheetQuestionNode) => {
     const target = worksheetIdRef.current;
-    if (!target) return;
+    if (!target || submittingRef.current.has(node.id)) return;
+    submittingRef.current.add(node.id);
     setSubmitting((prev) => ({ ...prev, [node.id]: true }));
     try {
       // ★ M5a：锁定期**不发 flush** —— 那一步是 PUT，而 PUT 锁定期必然吃 409。
@@ -756,7 +766,7 @@ export function useWorksheetAnswers({
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json', ...getStudentSessionAuthorization() },
-          body: JSON.stringify({ questionId: node.id, generation: generationFor(generationRef.current, node.id) }),
+          body: JSON.stringify({ questionId: node.id, generation: generationFor(generationRef.current, node.id), requestId: submissionRequests.current[node.id] ??= `submit_${Date.now()}_${Math.random().toString(36).slice(2)}` }),
         });
       } catch {
         // 提交失败**不进队列**：作答本身已经在服务端了（上面刚 flush 过），学生再点一次即可，
@@ -772,6 +782,9 @@ export function useWorksheetAnswers({
         // ⚠️ 读失败**不**当 0 分：`scoreFromWire(null)` 是 `null`（没判分），
         // 学生只是少一个奖励，而不是被判错（见那个函数的注释）。
         const payload = await res.json().catch(() => null);
+        delete submissionRequests.current[node.id];
+        window.dispatchEvent(new CustomEvent('worksheet-review-refresh', { detail: { worksheetId: target } }));
+        if (payload?.reviewStatus === 'pending') setToastRef.current({ msg: '作品已提交，AI 正在评价', type: 'info' });
         const awardedScore = scoreFromWire(payload);
         setScores((prev) => ({ ...prev, [node.id]: awardedScore }));
         const gradeState = payload?.gradeState === 'correct' || payload?.gradeState === 'partial' || payload?.gradeState === 'incorrect'
@@ -805,6 +818,7 @@ export function useWorksheetAnswers({
         type: 'error',
       });
     } finally {
+      submittingRef.current.delete(node.id);
       setSubmitting((prev) => ({ ...prev, [node.id]: false }));
     }
   }, [flush]);

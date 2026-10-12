@@ -232,6 +232,12 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
 
   const handleSwitchIdentity = () => {
     if (waitingAI) return;
+    // 当前设备已退出旧身份；实时快照仍会保留其他设备的登录状态。
+    if (selectedStudent) setOnlineStudentIds(previous => {
+      const next = new Set(previous);
+      next.delete(selectedStudent.id);
+      return next;
+    });
     // 断开当前连接
     const o = optionsRef.current;
     o.chatConnectionGenerationRef.current += 1;
@@ -522,6 +528,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 仅在首次挂载恢复 URL 中的本地会话
 
   useEffect(() => {
+    let cancelled = false;
     if (step === 'identity' && classroom?.id) {
       api.getClassroomStudents(classroom.id).then(data => {
         setStudents(data);
@@ -535,6 +542,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
       // 连接状态监听 socket，获取已登录学生列表
       (async () => {
         const { io } = await import('socket.io-client');
+        if (cancelled) return;
         const statusSocketRef = optionsRef.current.statusSocketRef;
         if (statusSocketRef.current) statusSocketRef.current.disconnect();
         const sk = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
@@ -545,6 +553,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     }
     // 离开身份选择页时断开状态监听
     return () => {
+      cancelled = true;
       const statusSocketRef = optionsRef.current.statusSocketRef;
       if (statusSocketRef.current) {
         statusSocketRef.current.disconnect();

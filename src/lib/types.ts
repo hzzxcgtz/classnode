@@ -558,6 +558,10 @@ export interface WorksheetAnalysisFeedback {
 }
 
 export interface WorksheetAnalysisPayload {
+  /** 正在进行个人 AI 评价的参与者。保留上次有效评分，直到新评价完成。 */
+  pendingReviewIds?: string[];
+  /** 当前题目是否开启学生提交后自动评价。 */
+  studentAiReviewEnabled?: boolean;
   /** 与成绩独立，班级问题名单和所有题型的个人建议。旧结果可能没有。 */
   feedback?: WorksheetAnalysisFeedback | null;
   // ⚠️ **没有 `worksheetId` / `computedAt`** —— 服务端的 `payloadResponse` 回的是

@@ -9,9 +9,10 @@
 .emptyResult {
   display: grid;
   place-items: center;
-  min-height: 150px;
-  padding: 24px;
-  border: 1px dashed #c9d7e6;
+  min-height: 80px;
+  gap: 8px;
+  padding: 20px;
+  border: 1px solid #e0e8f1;
   border-radius: 14px;
   background: #f8fbfe;
   color: #60758d;
@@ -24,6 +25,8 @@
   margin: 0 auto;
   background: #fff;
 }
+.emptyResult span { font-size: .875rem; }
+.analysisNotice { padding: 12px 16px; margin: 12px 0; border-radius: 10px; background: #f5f8fc; color: #60758d; font-size: .875rem; line-height: 1.6; }
 
 .resultText,
 .payloadText { margin: 0; word-break: break-word; color: #34485e; font: inherit; font-size: .9rem; line-height: 1.85; }
@@ -86,16 +89,7 @@
 .scoreHeader strong { font-size: 0.94rem; }
 .scoreHeader > div span { color: #6f8297; font-size: 0.75rem; }
 
-.aiScoreNotice {
-  padding: 4px 8px;
-  border: 1px solid #e4d7b9;
-  border-radius: 999px;
-  background: #fbf7ee;
-  color: #876521;
-  font-size: 0.75rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
+
 
 .scoreCriteria {
   padding: 10px 16px;
@@ -248,34 +242,17 @@
 .scoreMissing {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  align-items: baseline;
+  gap: 6px 18px;
   margin: 0 0 12px;
-  padding: 10px 14px;
-  border: 1px solid #e4d7b9;
-  border-radius: 10px;
-  background: #fbf7ee;
-  color: #876521;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fff7e8;
+  border-left: 3px solid #d9ad55;
+  color: #865e19;
   font-size: 0.78rem;
   line-height: 1.6;
 }
-.scoreMissing strong { color: #6b4d14; }
-.scoreMissing span { color: #9a8354; }
-
-/* 「只补这 N 人」那颗按钮 —— 与提示条同一族颜色，尺寸按本仓的点击下限来。 */
-.scoreMissingAction {
-  min-height: 32px;
-  padding: 4px 12px;
-  border: 1px solid #d9c294;
-  border-radius: 8px;
-  background: #fff;
-  color: #7a5a1d;
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.scoreMissingAction:hover { background: #fdfaf3; }
+.scoreMissing strong { color: #6f4910; }
 
 /*
  * ★ 2026-10-07：评分行旁边的「第 N 格 · 代号」—— 教师拿它与上方联系表核对
@@ -339,4 +316,40 @@
 .scoreHeader:hover .scoreToggleClosed,
 .scoreHeader:hover .scoreToggleOpen { background: #e7f0f8; border-color: #7e9fbd; }
 
-.scoreFullMarks { display: inline-flex; align-items: center; gap: 4px; line-height: 1; }
+
+.actions { flex-wrap: wrap; align-items: flex-start; }
+
+.actions .actionHint, .actions .actionWarning { flex-basis: 100%; }
+
+.actionButton svg { flex-shrink: 0; }
+.actionSpinner { animation: actionSpin .9s linear infinite; }
+@keyframes actionSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .actionSpinner { animation: none; } }
+
+.reviewPending { display: block; margin-top: 6px; color: #587796; font-size: .75rem; font-weight: 500; }
+
+.reportPending {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  padding: 16px;
+}
+.reportPendingDots { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.reportPendingDots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7d9fbe;
+  animation: reportPendingDot 1.4s ease-in-out infinite;
+}
+.reportPendingDots i:nth-child(2) { animation-delay: .18s; }
+.reportPendingDots i:nth-child(3) { animation-delay: .36s; }
+@keyframes reportPendingDot {
+  0%, 70%, 100% { transform: translateY(0); opacity: .45; }
+  35% { transform: translateY(-3px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reportPendingDots i { animation: none; }
+}

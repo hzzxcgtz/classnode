@@ -109,7 +109,7 @@ export function answerGradeFromAiScore(
 ): { isCorrect: boolean; gradeState: 'correct' | 'partial' | 'incorrect'; score: number } {
   const ratio = aiMaxScore > 0 ? aiScore / aiMaxScore : 0;
   const bounded = Number.isFinite(ratio) ? ratio : 0;
-  const score = Math.max(0, Math.min(full, Math.round(bounded * full)));
+  const score = Math.max(0, Math.min(full, (aiMaxScore === full ? aiScore : Math.round(bounded * full))));
   const gradeState = score >= full ? 'correct' : score <= 0 ? 'incorrect' : 'partial';
   return { isCorrect: gradeState === 'correct', gradeState, score };
 }
@@ -155,6 +155,7 @@ export function parseAiAnalysisResult(
    *   只在「本轮名单里**唯一**」时认它；不唯一就不认（那个人进 `missing`）。
    */
   entries: Array<{ studentId: string; anonLabel: string; name?: string }>,
+  options: { allowScoreOnly?: boolean } = {},
 ): { narrative: string; perStudent: StoredAiScoring | null; missing: string[] } | { error: string } {
   if (typeof raw !== 'string') return { error: '模型没有返回可用内容' };
   const separated = extractAnalysisProtocol(raw);
@@ -169,7 +170,7 @@ export function parseAiAnalysisResult(
   const rows = data && typeof data === 'object' ? (data as { scores?: unknown }).scores : null;
   const blockScores = Array.isArray(rows) ? rows : null;
   const narrative = separated.narrative;
-  if (!narrative) return { error: '模型没有返回可用内容' };
+  if (!narrative && !options.allowScoreOnly) return { error: '模型没有返回可用内容' };
 
   const byLabel = new Map(entries.map((entry) => [entry.anonLabel, entry.studentId]));
   /*

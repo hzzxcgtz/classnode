@@ -82,8 +82,13 @@ svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width:
 .maintenance-label { color: var(--muted); }
 .folder-actions { display: flex; gap: 8px; }
 .folder-actions .btn { font-size: 11px; padding: 5px 9px; }
-.repo-links { display: flex; gap: 12px; margin-top: 17px; }
-.repo-links button { font-size: 10px; color: var(--muted); background: none; border: 0; padding: 0; }
+.repo-links { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--separator); }
+.repo-links button { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: var(--text); background: transparent; border: 0; border-radius: 5px; padding: 4px 9px; transition: background-color .15s; }
+.repo-links button:hover { background: var(--surface); }
+.repo-links button:active { background: var(--separator); }
+.repo-links button[data-open="gitcode"] { color: #df513b; }
+.repo-links img { width: 20px; height: 20px; object-fit: contain; border-radius: 50%; }
+.repo-links svg { width: 11px; height: 11px; color: var(--muted); }
 .footer { flex-shrink: 0; border-top: 1px solid var(--border); background: var(--footer); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .footer p { font-size: 10px; color: var(--muted); line-height: 1.6; margin: 0; }
 .footer .btn { font-size: 11px; }
@@ -130,6 +135,8 @@ svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width:
   .btn.copied { background: #2a4130; color: #9dceac; border-color: #5d8869; }
   .service-error { background: #3a3225; border-color: #796442; }
   .service-error h2 { color: #e4bd83; }
+  .repo-links button[data-open="gitcode"] { color: #ff826b; }
+  .repo-links img { background: #fff; }
 }
 @media (max-width: 490px) {
   .content { padding: 18px 18px 16px; }
@@ -167,7 +174,10 @@ svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width:
       <div class="setting"><div class="setting-label">管理员密码<small>忘记密码时可在本机重置</small></div><button class="btn" id="resetButton" disabled>重置密码…</button></div>
     </div>
     <div class="maintenance"><span class="maintenance-label">本机文件</span><div class="folder-actions"><button class="btn" data-folder="data">打开数据目录</button><button class="btn" data-folder="logs">打开日志目录</button></div></div>
-    <div class="repo-links"><button data-open="gitcode">GitCode 源码交流 ↗</button><button data-open="github">GitHub ↗</button></div>
+    <nav class="repo-links" aria-label="源码交流">
+      <button data-open="gitcode" aria-label="打开 GitCode 源码交流"><img src="gitcode_logo.png" alt=""><span>GitCode 源码交流</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 11 12 4M5 4h7v7"/></svg></button>
+      <button data-open="github" aria-label="打开 GitHub 仓库"><img src="github_logo.png" alt=""><span>GitHub</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 11 12 4M5 4h7v7"/></svg></button>
+    </nav>
   </div>
   <footer class="footer"><p>关闭窗口后，服务仍在后台运行。<br>从<span id="trayLabel">菜单栏</span>可重新打开控制面板。</p><button class="btn" id="exitButton">退出并停止服务…</button></footer>
 </main>

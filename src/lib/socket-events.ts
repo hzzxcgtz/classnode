@@ -48,6 +48,7 @@ export interface ServerToClientEvents {
   'allow-export-changed': (data: { allow: boolean }) => void;
   'follow-ups-changed': (data: { allow: boolean }) => void;
   // 教师端 PUT /:id/modules/:moduleKey 后向 classroom:<id> 与 teacher:<id> 双发。
+  'classroom-materials-changed': (data: { classroomId: string; revision: number }) => void;
   'module-state-changed': (data: { moduleKey: string; state: string }) => void;
   'avatar-rewarded': (data: { tokens: number }) => void;
   'online-students': (data: { classroomId: string; studentIds: string[] }) => void;

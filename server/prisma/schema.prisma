@@ -147,6 +147,9 @@ model Classroom {
   id        String   @id @default(uuid())
   code      String?  @unique // 4位互动码（结束课堂时置空以回收）
   title     String?  // 课堂标题
+  /// 学伴每次切换后的上下文起点，键为 classroom 或小组 ID；历史消息仍保留。
+  agentContextStarts Json?
+  materialsRevision Int @default(0)
   mode      String   @default("standard") // standard / advanced
   status    String   @default("active") // active / paused / ended
   allowStudentStop Boolean @default(true)

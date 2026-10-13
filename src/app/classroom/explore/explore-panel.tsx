@@ -110,7 +110,12 @@ export interface ExplorePanelProps extends ModulePanelProps {
  *   3. **提交顺序**：`armed` 为真（= postMessage 监听已挂好）之前不创建 iframe，
  *      见 `use-explore-bridge.ts` 的预审 6a 注释。
  */
-export function ExplorePanel({ active, classroom, session, toast, setToast, wsRef, demand }: ExplorePanelProps) {
+export function ExplorePanel(props: ExplorePanelProps) {
+  const webapp = effectiveGroupWebapp(props.classroom, props.session);
+  return <ExplorePanelContent key={webapp?.id ?? 'none'} {...props} />;
+}
+
+function ExplorePanelContent({ active, classroom, session, toast, setToast, wsRef, demand }: ExplorePanelProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   /** 第几次加载。重试按钮 +1 ⇒ iframe 换 key 重挂（监听不受影响，它挂在 window 上）。 */
   const [reloadKey, setReloadKey] = useState(0);
@@ -146,6 +151,10 @@ export function ExplorePanel({ active, classroom, session, toast, setToast, wsRe
   // 学生端的开销是零，而不是「推了再说」。
   const pendingRef = useRef<WebappEvent[]>([]);
   const flushTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (flushTimerRef.current !== null) window.clearTimeout(flushTimerRef.current);
+    pendingRef.current = [];
+  }, []);
   /**
    * `watching` 的 ref 镜像：上报的三个回调**都不是**每次渲染重建的（`useCallback` 的依赖
    * 里没有 `watching`），它们读到的必须是**当下**的值，所以经 ref 读，不经闭包。

@@ -1,3 +1,4 @@
+import { ensureClassroomMaterialColumns } from './classroom-material-schema.js';
 import type { PrismaClient } from "@prisma/client";
 import { migrateClassroomParticipants } from './participant-migration.js';
 import { ensureGroupMaterials } from './group-materials-migration.js';
@@ -318,6 +319,7 @@ export async function migrateLegacyDatabase(prisma: PrismaClient, backupDatabase
       console.log('[server] Added allowStudentAsk column to Classroom');
     }
     // M5a：课堂级「锁定作答」。默认未锁定 ⇒ `DEFAULT 0`（布尔列的先例见上面几行）。
+    await ensureClassroomMaterialColumns(prisma);
     if (!classroomColNames.includes('answersLocked')) {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "answersLocked" BOOLEAN NOT NULL DEFAULT 0`);
       console.log('[server] Added answersLocked column to Classroom');

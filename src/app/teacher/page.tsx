@@ -8,7 +8,7 @@ import { getApiBaseUrl, getClassroomPort } from "@/lib/api-base";
 import { QRCodeSVG } from "qrcode.react";
 import QRCode from "qrcode";
 import { Toast, TeacherPageHeader, TeacherLoadingState } from "@/lib/components";
-import type { ActiveClassroom, AgentSummary, ClassroomSettingsGroup } from "@/lib/types";
+import type { ActiveClassroom, AgentSummary, WebappSummary } from "@/lib/types";
 import { classroomMaterialsInUse } from "@/lib/classroom-material";
 import type { Socket } from "socket.io-client";
 
@@ -22,9 +22,11 @@ export default function TeacherDashboard() {
   const [settingsModalClassroom, setSettingsModalClassroom] =
     useState<ActiveClassroom | null>(null);
   const [editTitle, setEditTitle] = useState("");
-  const [editGroups, setEditGroups] = useState<ClassroomSettingsGroup[]>([]);
-  const [allAgents, setAllAgents] = useState<AgentSummary[]>([]);
-  const [editAgentId, setEditAgentId] = useState("");
+  const [materialChoices, setMaterialChoices] = useState<{ agents: AgentSummary[]; webapps: WebappSummary[] }>({ agents: [], webapps: [] });
+  const [choicesLoading, setChoicesLoading] = useState(false);
+  const [choicesError, setChoicesError] = useState("");
+  const [editMaterials, setEditMaterials] = useState<Record<string, { agentId: string; webappId: string }>>({});
+  const settingsLoadRef = useRef(0);
   const [qrCodeClassroom, setQrCodeClassroom] = useState<ActiveClassroom | null>(null);
   const [studentUrl, setStudentUrl] = useState("");
   const [toast, setToast] = useState<{
@@ -176,24 +178,23 @@ export default function TeacherDashboard() {
   };
 
   const openSettings = async (cr: ActiveClassroom) => {
+    const generation = ++settingsLoadRef.current;
     setSettingsModalClassroom(cr);
     setEditTitle(cr.title || "");
-    const groups = cr.groups.map((g) => ({
-      id: g.id,
-      name: g.name,
-      agentId: g.agent?.id || "",
-    }));
-    setEditGroups(groups);
-    // 标准/分组模式：取第一个 classroomAgent 作为当前选中的智能体
-    const currentAgentId =
-      cr.classroomAgents?.[0]?.agent?.id || groups[0]?.agentId || "";
-    setEditAgentId(currentAgentId);
-    try {
-      const agents = await api.getAgents();
-      setAllAgents(agents);
-    } catch (error) {
-      setToast({ msg: `智能体列表加载失败：${error instanceof Error ? error.message : "请求异常"}`, type: "error" });
-    }
+    setEditMaterials(cr.mode === "advanced"
+      ? Object.fromEntries(cr.groups.map(g => [g.id, { agentId: g.agent?.id ?? "", webappId: g.webapp?.id ?? "" }]))
+      : { classroom: { agentId: cr.classroomAgents[0]?.agent?.id ?? "", webappId: cr.webapps?.[0]?.id ?? "" } });
+    setMaterialChoices({ agents: [], webapps: [] });
+    setChoicesError("");
+    setChoicesLoading(true);
+    const results = await Promise.allSettled([api.getAgents(), api.getWebapps()]);
+    if (generation !== settingsLoadRef.current) return;
+    setMaterialChoices({
+      agents: results[0].status === "fulfilled" ? results[0].value.filter(a => a.enabled && a.purpose !== "analysis") : [],
+      webapps: results[1].status === "fulfilled" ? results[1].value : [],
+    });
+    if (results.some(result => result.status === "rejected")) setChoicesError("部分可选内容加载失败，请关闭弹窗后重试；仍可修改课堂名称。");
+    setChoicesLoading(false);
   };
 
   const handleSaveSettings = async () => {
@@ -201,9 +202,19 @@ export default function TeacherDashboard() {
     settingsSavingRef.current = true;
     setSavingSettings(true);
     try {
-      await api.updateClassroomSettings(settingsModalClassroom.id, {
-        title: editTitle,
-      });
+      const changes = (scope: string, currentAgent: string, currentWebapp: string) => {
+        const edit = editMaterials[scope];
+        return {
+          ...(edit?.agentId && edit.agentId !== currentAgent ? { agentId: edit.agentId } : {}),
+          ...(edit?.webappId && edit.webappId !== currentWebapp ? { webappId: edit.webappId } : {}),
+        };
+      };
+      const cr = settingsModalClassroom;
+      const materialChanges = cr.mode === "advanced"
+        ? { groups: cr.groups.map(g => ({ id: g.id, ...changes(g.id, g.agent?.id ?? "", g.webapp?.id ?? "") }))
+          .filter(g => g.agentId || g.webappId) }
+        : changes("classroom", cr.classroomAgents[0]?.agent?.id ?? "", cr.webapps?.[0]?.id ?? "");
+      await api.updateClassroomSettings(cr.id, { title: editTitle, ...materialChanges });
       setSettingsModalClassroom(null);
       await loadData();
       setToast({ msg: "课堂设置已保存", type: "success" });
@@ -1204,12 +1215,12 @@ export default function TeacherDashboard() {
                     margin: "2px 0 0",
                   }}
                 >
-                  可修改课堂名称，其余内容创建后不可更改
+                  可修改名称、探究网页和智能学伴，学习单不可更换
                 </p>
               </div>
             </div>
             {/* 弹窗内容 */}
-            <div style={{ padding: "20px 28px" }}>
+            <div style={{ padding: "20px 28px", overflowY: "auto", maxHeight: "60vh" }}>
               {/* 课堂名称 */}
               <div style={{ marginBottom: 20 }}>
                 <label
@@ -1264,377 +1275,83 @@ export default function TeacherDashboard() {
                 />
               </div>
 
-              {/* 当前智能体（只读展示）- 高级模式不显示，仅展示下方小组智能体 */}
-              {allAgents.length > 0 &&
-                settingsModalClassroom?.mode !== "advanced" && (
-                  <div>
-                    <label
-                      style={{
-                        fontSize: "0.875rem",
-                        fontWeight: 600,
-                        color: "#475569",
-                        marginBottom: 6,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      >
-                        <rect x="4" y="4" width="16" height="16" rx="3" />
-                        <path d="M9 12h6" />
-                        <path d="M12 9v6" />
-                      </svg>
-                      AI智能体
-                      <span
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "var(--text-muted)",
-                          fontWeight: 400,
-                          marginLeft: 4,
-                        }}
-                      >
-                        （创建后不可更改）
+              {choicesError && <p role="alert" style={{ color: "#b45309", fontSize: "0.813rem" }}>{choicesError}</p>}
+              {/* 当前关联来自课堂数据；可选材料另外加载，高级模式按组更换。 */}
+              {(() => {
+                const materials = classroomMaterialsInUse({
+                  mode: settingsModalClassroom.mode,
+                  groups: settingsModalClassroom.groups,
+                  agents: settingsModalClassroom.classroomAgents.map((ca) => ca.agent).filter(Boolean),
+                  webapps: settingsModalClassroom.webapps,
+                  worksheets: settingsModalClassroom.worksheets,
+                });
+                const sections = [
+                  { key: "worksheets", label: "学习单", items: materials.worksheets },
+                  { key: "webapps", label: "探究网页", items: materials.webapps },
+                  { key: "agents", label: "智能学伴", items: materials.agents },
+                ];
+                const classroomWebapps = settingsModalClassroom.webapps ?? [];
+                const trimmedCount = settingsModalClassroom.mode === "advanced"
+                  ? 0
+                  : Math.max(0, classroomWebapps.length - 1);
+
+                return sections.map(({ key, label, items }) => (
+                  <section key={key} aria-label={label} style={{ marginTop: 20 }}>
+                    <div style={{
+                      fontSize: "0.875rem", fontWeight: 600, color: "#475569",
+                      marginBottom: 6, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4,
+                    }}>
+                      {label}
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 400 }}>
+                        {key === "worksheets" ? "（创建后不可更改）" : "（可更换）"}
                       </span>
-                    </label>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 6,
-                        opacity: 0.7,
-                      }}
-                    >
-                      {(() => {
-                        const agent = allAgents.find(
-                          (a) => a.id === editAgentId,
-                        );
-                        if (!agent)
+                    </div>
+                    {key !== "worksheets" ? (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {(settingsModalClassroom.mode === "advanced"
+                          ? settingsModalClassroom.groups.map(g => ({ scope: g.id, name: g.name, material: key === "agents" ? g.agent : g.webapp }))
+                          : [{ scope: "classroom", name: "", material: items[0]?.material }]
+                        ).map(({ scope, name, material }) => {
+                          const field = key === "agents" ? "agentId" : "webappId";
+                          const choices = key === "agents" ? materialChoices.agents : materialChoices.webapps;
+                          const value = editMaterials[scope]?.[field] ?? "";
                           return (
-                            <span
-                              style={{ fontSize: "0.813rem", color: "var(--text-muted)" }}
-                            >
-                              未配置
-                            </span>
+                            <label key={scope} style={{ display: "grid", gap: 4, fontSize: "0.813rem" }}>
+                              {name && <span>{name}</span>}
+                              <select aria-label={`${name ? `${name} · ` : ""}${label}`}
+                                value={value} disabled={choicesLoading || savingSettings || choices.length === 0}
+                                onChange={e => setEditMaterials(prev => ({ ...prev, [scope]: { ...prev[scope], [field]: e.target.value } }))}
+                                style={{ width: "100%", minWidth: 0, padding: "10px 12px", borderRadius: 8,
+                                  border: "1px solid var(--card-border)", background: "#f8fafc", color: "#475569" }}>
+                                <option value="" disabled>未关联</option>
+                                {material && !choices.some(c => c.id === material.id) && (
+                                  <option value={material.id}>{"name" in material ? material.name : material.title}（当前关联）</option>
+                                )}
+                                {choices.map(choice => <option key={choice.id} value={choice.id}>{choice.name}</option>)}
+                              </select>
+                            </label>
                           );
-                        const logoUrl = agent.logo
-                          ? agent.logo.startsWith("/")
-                            ? `${getApiBaseUrl()}${agent.logo}`
-                            : agent.logo
-                          : null;
-                        return (
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                              padding: "6px 12px",
-                              borderRadius: 8,
-                              border: "1px solid var(--card-border)",
-                              background: "#f8fafc",
-                              fontSize: "0.813rem",
-                              color: 'var(--text-secondary, #475569)',
-                            }}
-                          >
-                            {logoUrl ? (
-                              <img
-                                src={logoUrl}
-                                alt=""
-                                style={{
-                                  width: 20,
-                                  height: 20,
-                                  borderRadius: 4,
-                                  objectFit: "cover",
-                                }}
-                              />
-                            ) : (
-                              <div
-                                style={{
-                                  width: 20,
-                                  height: 20,
-                                  borderRadius: 4,
-                                  background:
-                                    "linear-gradient(135deg, var(--primary), var(--primary-dark))",
-                                  color: "white",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  fontSize: "0.75rem",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {agent.name[0]}
-                              </div>
-                            )}
-                            <span>{agent.name}</span>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                )}
-
-              {/* 高级模式：小组智能体列表（只读） */}
-              {settingsModalClassroom?.mode === "advanced" &&
-                editGroups.length > 0 && (
-                  <div>
-                    <div
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#475569",
-                        marginBottom: 10,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      >
-                        <rect x="2" y="3" width="6" height="6" rx="1" />
-                        <rect x="16" y="3" width="6" height="6" rx="1" />
-                        <rect x="9" y="15" width="6" height="6" rx="1" />
-                      </svg>
-                      小组智能体
-                      <span
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "var(--text-muted)",
-                          fontWeight: 400,
-                          marginLeft: 4,
-                        }}
-                      >
-                        （创建后不可更改）
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        background: "#f8fafc",
-                        borderRadius: 10,
-                        border: "1px solid #eef2f6",
-                        padding: "12px 14px",
-                        opacity: 0.7,
-                      }}
-                    >
-                      {editGroups.map((g, idx: number) => {
-                        const agent = allAgents.find(
-                          (a) => a.id === g.agentId,
-                        );
-                        const logoUrl = agent?.logo
-                          ? agent.logo.startsWith("/")
-                            ? `${getApiBaseUrl()}${agent.logo}`
-                            : agent.logo
-                          : null;
-                        return (
-                          <div
-                            key={g.id}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 10,
-                              padding: "8px 0",
-                              borderBottom:
-                                idx < editGroups.length - 1
-                                  ? "1px solid #eef2f6"
-                                  : "none",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: 24,
-                                height: 24,
-                                borderRadius: 6,
-                                background: "var(--primary)",
-                                color: "white",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontSize: "0.75rem",
-                                fontWeight: 700,
-                                flexShrink: 0,
-                              }}
-                            >
-                              {idx + 1}
-                            </div>
-                            <span
-                              style={{
-                                fontSize: "0.813rem",
-                                fontWeight: 500,
-                                color: "#0f172a",
-                                minWidth: 70,
-                                flexShrink: 0,
-                              }}
-                            >
-                              {g.name}
-                            </span>
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                border: "1px solid var(--card-border)",
-                                background: "white",
-                                fontSize: "0.813rem",
-                                color: 'var(--text-secondary, #475569)',
-                              }}
-                            >
-                              {logoUrl ? (
-                                <img
-                                  src={logoUrl}
-                                  alt=""
-                                  style={{
-                                    width: 20,
-                                    height: 20,
-                                    borderRadius: 4,
-                                    objectFit: "cover",
-                                  }}
-                                />
-                              ) : (
-                                <div
-                                  style={{
-                                    width: 20,
-                                    height: 20,
-                                    borderRadius: 4,
-                                    background:
-                                      "linear-gradient(135deg, var(--primary), var(--primary-dark))",
-                                    color: "white",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    fontSize: "0.75rem",
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  {agent?.name?.[0] || "?"}
-                                </div>
-                              )}
-                              <span>{agent?.name || "未配置"}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              {/* 探究网页（只读展示）。
-                  ⚠️ 不放在上面那两个 `allAgents.length > 0` / `mode === 'advanced'` 条件里：
-                  网页与「有没有加载到智能体」「是哪种模式」都无关，被哪个条件包住都会让
-                  某类课堂的网页**无声地**不显示。 */}
-              <div style={{ marginTop: 20 }}>
-                <label
-                  style={{
-                    fontSize: "0.875rem",
-                    fontWeight: 600,
-                    color: "#475569",
-                    marginBottom: 6,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  >
-                    <circle cx="12" cy="12" r="9" />
-                    <line x1="3" y1="12" x2="21" y2="12" />
-                    <path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" />
-                  </svg>
-                  探究网页
-                  <span
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "var(--text-muted)",
-                      fontWeight: 400,
-                      marginLeft: 4,
-                    }}
-                  >
-                    （创建后不可更改）
-                  </span>
-                </label>
-                {(() => {
-                  // 🔴 **权威来源随模式变**（与 `effectiveGroupWebapp`、服务端
-                  // `resolveMaterialTargetId` 同一条规矩）：高级模式下探究网页的权威来源是
-                  // **各组**，课堂级那张关联表在该模式下服务端**根本不写**（spec §4.3）
-                  // ⇒ 只读 `webapps` 恒为空、这里显示「未关联」而其实每个组都配了。
-                  // 用户 2026-09-23：「这部分显示为空白，其实已经有关联了」。
-                  const materials = classroomMaterialsInUse({
-                    mode: settingsModalClassroom.mode,
-                    groups: settingsModalClassroom.groups,
-                    agents: settingsModalClassroom.classroomAgents.map((ca) => ca.agent).filter(Boolean),
-                    webapps: settingsModalClassroom.webapps,
-                    worksheets: settingsModalClassroom.worksheets,
-                  }).webapps;
-
-                  if (materials.length === 0) {
-                    return (
+                        })}
+                        <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", lineHeight: 1.6 }}>
+                          {key === "agents" ? "更换后开始新的对话上下文，旧聊天记录保留。回答生成中暂不能更换。"
+                            : "更换后学生将打开新网页，旧网页未保存的输入和操作状态会丢失，历史活动记录保留。"}
+                        </span>
+                      </div>
+                    ) : items.length === 0 ? (
                       <span style={{ fontSize: "0.813rem", color: "var(--text-muted)" }}>
-                        {/* 两种模式的「没有」不是同一件事：高级模式是「一个组都没配」，
-                            课堂级那张表在该模式下压根不被读。 */}
-                        {settingsModalClassroom.mode === "advanced"
-                          ? "各组均未配置探究网页"
-                          : "未关联"}
+                        {settingsModalClassroom.mode === "advanced" ? `各组均未配置${label}` : "未关联"}
                       </span>
-                    );
-                  }
-
-                  // 多选时代留下的课堂可能挂着多条。这种情况必须**当面说清**：
-                  // 保存设置时服务端会把多余的裁掉（并写服务端日志），
-                  // 教师有权在按下保存之前知道这一次保存会顺带删掉什么。
-                  // ⚠️ 只对**课堂级**这条路径说：高级模式下网页按组配置，保存时不会被裁。
-                  const classroomWebapps = settingsModalClassroom.webapps ?? [];
-                  const trimmedCount = settingsModalClassroom.mode === "advanced"
-                    ? 0
-                    : Math.max(0, classroomWebapps.length - 1);
-
-                  return (
-                    <>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 6,
-                          opacity: 0.7,
-                        }}
-                      >
-                        {materials.map(({ material, groupNames }) => (
-                          <div
-                            key={material.id}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                              padding: "6px 12px",
-                              borderRadius: 8,
-                              border: "1px solid var(--card-border)",
-                              background: "#f8fafc",
-                              fontSize: "0.813rem",
-                              color: 'var(--text-secondary, #475569)',
-                            }}
-                          >
-                            <span>{material.name}</span>
-                            {/* 高级模式下同一类不止一个 —— 光看名字不知道为什么有多个。 */}
+                    ) : (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {items.map(({ material, groupNames }) => (
+                          <div key={material.id} style={{
+                            display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6,
+                            padding: "6px 12px", borderRadius: 8,
+                            border: "1px solid var(--card-border)", background: "#f8fafc",
+                            fontSize: "0.813rem", color: "var(--text-secondary, #475569)",
+                            maxWidth: "100%", overflowWrap: "anywhere",
+                          }}>
+                            <span>{"name" in material ? material.name : material.title}</span>
                             {groupNames.length > 0 && (
                               <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
                                 {groupNames.join("、")}
@@ -1643,29 +1360,21 @@ export default function TeacherDashboard() {
                           </div>
                         ))}
                       </div>
-                      {trimmedCount > 0 && (
-                        <div
-                          role="alert"
-                          style={{
-                            marginTop: 8,
-                            fontSize: "0.75rem",
-                            color: "#92400e",
-                            background: "#faf4eb",
-                            border: "1px solid #fde68a",
-                            borderRadius: 8,
-                            padding: "8px 12px",
-                            lineHeight: 1.6,
-                          }}
-                        >
-                          本课堂关联了 {classroomWebapps.length} 个探究网页，只有第一个（
-                          {classroomWebapps[0].name}）会生效。保存设置后，另外 {trimmedCount}{" "}
-                          个关联会被自动移除（服务端日志会记录删除了哪些）。
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
+                    )}
+                    {key === "webapps" && trimmedCount > 0 && (
+                      <div role="alert" style={{
+                        marginTop: 8, fontSize: "0.75rem", color: "#92400e", background: "#faf4eb",
+                        border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", lineHeight: 1.6,
+                      }}>
+                        本课堂关联了 {classroomWebapps.length} 个探究网页，只有第一个（
+                        {classroomWebapps[0].name}）会生效。保存设置后，另外 {trimmedCount}{" "}
+                        个关联会被自动移除（服务端日志会记录删除了哪些）。
+                      </div>
+                    )}
+                  </section>
+                ));
+              })()}
+
             </div>
             {/* 弹窗底部按钮 */}
             <div

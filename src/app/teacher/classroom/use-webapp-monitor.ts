@@ -96,7 +96,7 @@ export function tileCaption(
  *      tick 里交替，万一有一帧漏进来，按 studentId 建格会凭空多出一块图墙格子 ——
  *      所以名册之外的直接丢掉。
  */
-export function useWebappMonitor({ classroomId, roster, webapps, focusStudentId, needsExploreFrames }: {
+export function useWebappMonitor({ classroomId, roster, webapps, expectedWebappIds, focusStudentId, needsExploreFrames }: {
   classroomId: string;
   /** 本课堂**名册**（`classroom.students`）：只用来丢掉名册外的帧，不驱动渲染。 */
   roster: readonly ClassroomCardStudent[];
@@ -106,6 +106,7 @@ export function useWebappMonitor({ classroomId, roster, webapps, focusStudentId,
    * ⚠️ 不进订阅 effect 的依赖：它变化时重挂会多一对 watch/unwatch，而重挂期间的那几帧会丢。
    */
   webapps: readonly ClassroomWebappSummary[];
+  expectedWebappIds: Record<string, string | null>;
   /**
    * 教师**点开**了哪个学生的探究详情（`null` = 没点开）。
    *
@@ -133,6 +134,12 @@ export function useWebappMonitor({ classroomId, roster, webapps, focusStudentId,
    * 名册的 ref 镜像：下面那两个订阅回调**不是**每次渲染重建的（重建会在切换途中漏事件），
    * 所以它们读到的必须是当下名册，经 ref 读而不是经闭包。
    */
+  const expectedRef = useRef(expectedWebappIds);
+  expectedRef.current = expectedWebappIds;
+  const expectedKey = JSON.stringify(expectedWebappIds);
+  useEffect(() => {
+    setStates(prev => Object.fromEntries(Object.entries(prev).filter(([studentId, state]) => expectedRef.current[studentId] === state.webappId)));
+  }, [expectedKey]);
   const rosterRef = useRef<Set<string>>(new Set());
   useEffect(() => { rosterRef.current = new Set(roster.map(s => s.id)); }, [roster]);
 
@@ -151,7 +158,7 @@ export function useWebappMonitor({ classroomId, roster, webapps, focusStudentId,
     };
 
     const unsubFrame = on('webapp-student-frame', data => {
-      if (!rosterRef.current.has(data.studentId)) return;
+      if (!rosterRef.current.has(data.studentId) || expectedRef.current[data.studentId] !== data.webappId) return;
       merge(data.studentId, prev => ({
         ...prev,
         dataUrl: data.dataUrl,
@@ -164,7 +171,7 @@ export function useWebappMonitor({ classroomId, roster, webapps, focusStudentId,
     // 文字档：服务端把它收成了**当前状态**（不是事件流），所以这里就是覆盖式地存下来，
     // 不做任何累积 —— 累积会让「这个学生现在滚到哪」变成一个要遍历历史才能回答的问题。
     const unsubPresence = on('webapp-student-presence', data => {
-      if (!rosterRef.current.has(data.studentId)) return;
+      if (!rosterRef.current.has(data.studentId) || expectedRef.current[data.studentId] !== data.webappId) return;
       merge(data.studentId, prev => ({
         ...prev,
         webappId: data.webappId,
@@ -180,7 +187,7 @@ export function useWebappMonitor({ classroomId, roster, webapps, focusStudentId,
     });
 
     const unsubCaptureBlocked = on('webapp-student-capture-blocked', data => {
-      if (!rosterRef.current.has(data.studentId)) return;
+      if (!rosterRef.current.has(data.studentId) || expectedRef.current[data.studentId] !== data.webappId) return;
       // 只置真、不置假：这台设备**这一节课**就是拍不出来了（SDK 已退避）。
       // 学生刷新页面后 SDK 会重来，但那是新的一轮 —— 那时他若成功，帧会到达，
       // 图墙自然就显示画面了（caption 只在没有帧时才用得上）。
@@ -218,5 +225,5 @@ export function useWebappMonitor({ classroomId, roster, webapps, focusStudentId,
     return () => { emit('focus-webapp-student', { classroomId, studentId: null }); };
   }, [classroomId, focusStudentId, emit]);
 
-  return states;
+  return Object.fromEntries(Object.entries(states).filter(([studentId, state]) => expectedWebappIds[studentId] === state.webappId));
 }

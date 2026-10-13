@@ -1,3 +1,4 @@
+import { beginMaterialEdit, endMaterialEdit, hasClassroomRequests } from '../services/classroom-material-edit.js';
 import { Router, type RequestHandler } from 'express';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { createStudentToken, getStudentSession } from '../middleware/student-auth.js';
@@ -1112,6 +1113,7 @@ router.get('/code/:code', async (req, res) => {
       id: classroom.id,
       code: classroom.code,
       title: classroom.title,
+      materialsRevision: classroom.materialsRevision,
       mode: classroom.mode,
       status: classroom.status,
       // ★ M5a：课堂级「锁定作答」。学生端读它来显示锁定态（与 `status` 同一条通道）。
@@ -1283,46 +1285,106 @@ router.post('/:id/end', async (req, res) => {
   }
 });
 
-/**
- * 更新课堂设置。
- *
- * 🔴 **只有课堂名称可以改，其余一律只读**。参与班级、参与模式、智能体、探究网页都是
- * 创建时冻结的：课堂已经开在学生面前了，中途换班级或换智能体等于换了另一堂课，
- * 历史对话与统计（`Interaction` 按参与者记）会对不上。
- *
- * 所以这里**只读 `title`** —— body 里其它字段不是「没校验」，是**不采用**：
- * 前端把它们渲染成只读展示，服务端则根本不看。两边都拦，任一被绕过都不会改到数据。
- *
- * 顺带对齐一次探究网页的单选约束（见 `trimExtraClassroomWebapps`）：多选时代留下的
- * 多余关联在这里裁掉，删了什么写进服务端日志。
- */
+/** 名称、学伴、网页可修改；学习单、模式、班级始终冻结。 */
 router.put('/:id/settings', async (req, res) => {
+  const id = req.params.id;
+  if (!beginMaterialEdit(id)) return res.status(409).json({ error: '课堂设置正在保存，请稍后重试' });
+  class SettingsError extends Error {
+    constructor(message: string, public status = 400) { super(message); }
+  }
   try {
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new SettingsError('课堂设置参数无效');
+    const allowed = new Set(['title', 'agentId', 'webappId', 'groups']);
+    if (Object.keys(body).some(key => !allowed.has(key))) throw new SettingsError('学习单、班级和课堂模式创建后不可更改');
+    if (body.title !== undefined && typeof body.title !== 'string') throw new SettingsError('课堂名称参数无效');
     const prisma: PrismaClient = req.app.get('prisma');
-    const { title } = req.body;
-
-    const dropped = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.classroom.update({
-        where: { id: req.params.id },
-        data: { title: title || null },
+    const changed = await prisma.$transaction(async (tx) => {
+      const classroom = await tx.classroom.findUnique({
+        where: { id }, include: {
+          classroomAgents: true,
+          webapps: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+          groups: { include: { materials: true } },
+        },
       });
-      return trimExtraClassroomWebapps(tx, req.params.id);
+      if (!classroom) throw new SettingsError('课堂不存在', 404);
+      if (!['active', 'paused'].includes(classroom.status)) throw new SettingsError('已结束的课堂不能更换内容', 409);
+      const patches: Array<{ scope: string; groupId?: string; kind: 'agent' | 'webapp'; targetId: string }> = [];
+      const addPatch = (scope: string, kind: 'agent' | 'webapp', raw: unknown, current: string | undefined, groupId?: string) => {
+        if (raw === undefined) return;
+        if (typeof raw !== 'string' || !raw.trim()) throw new SettingsError('请选择有效的智能学伴或探究网页');
+        if (raw !== current) patches.push({ scope, kind, targetId: raw, groupId });
+      };
+      if (classroom.mode === 'advanced') {
+        if (body.agentId !== undefined || body.webappId !== undefined) throw new SettingsError('高级模式请按小组更换内容');
+        if (body.groups !== undefined) {
+          if (!Array.isArray(body.groups)) throw new SettingsError('小组参数无效');
+          const seen = new Set<string>();
+          for (const input of body.groups) {
+            if (!input || typeof input !== 'object' || Object.keys(input).some(key => !['id', 'agentId', 'webappId'].includes(key))) {
+              throw new SettingsError('小组仅允许更换智能学伴和探究网页');
+            }
+            const group = classroom.groups.find(g => g.id === input.id);
+            if (!group || seen.has(input.id)) throw new SettingsError('小组不属于本课堂或重复提交');
+            seen.add(input.id);
+            for (const kind of ['agent', 'webapp'] as const) {
+              addPatch(group.id, kind, input[`${kind}Id`], group.materials.find(m => m.kind === kind)?.targetId, group.id);
+            }
+          }
+        }
+      } else {
+        if (body.groups !== undefined) throw new SettingsError('此模式请更换课堂级内容');
+        addPatch('classroom', 'agent', body.agentId, classroom.classroomAgents[0]?.agentId);
+        addPatch('classroom', 'webapp', body.webappId, classroom.webapps[0]?.webappId);
+      }
+      if (patches.some(p => p.kind === 'agent') && hasClassroomRequests(id)) {
+        throw new SettingsError('有学生的回答正在生成，请等回答结束后再更换智能学伴', 409);
+      }
+      // 全部验证通过才写入，任何失败都回滚名称与关联修改。
+      for (const patch of patches) {
+        if (patch.kind === 'agent') {
+          const agent = await tx.agent.findUnique({ where: { id: patch.targetId } });
+          if (!agent || !agent.enabled || agent.purpose === 'analysis') throw new SettingsError('所选智能学伴不存在、已停用或属于分析型');
+        } else if (!await tx.webapp.findUnique({ where: { id: patch.targetId } })) {
+          throw new SettingsError('所选探究网页已不存在');
+        }
+      }
+      const starts: Record<string, string> = classroom.agentContextStarts && typeof classroom.agentContextStarts === 'object'
+        && !Array.isArray(classroom.agentContextStarts) ? { ...classroom.agentContextStarts } as Record<string, string> : {};
+      for (const patch of patches) {
+        if (patch.groupId) {
+          await tx.classroomGroupMaterial.upsert({
+            where: { groupId_kind: { groupId: patch.groupId, kind: patch.kind } },
+            create: { groupId: patch.groupId, kind: patch.kind, targetId: patch.targetId },
+            update: { targetId: patch.targetId },
+          });
+        } else if (patch.kind === 'agent') {
+          await tx.classroomAgent.deleteMany({ where: { classroomId: id } });
+          await tx.classroomAgent.create({ data: { classroomId: id, agentId: patch.targetId } });
+        } else {
+          await tx.classroomWebapp.deleteMany({ where: { classroomId: id } });
+          await tx.classroomWebapp.create({ data: { classroomId: id, webappId: patch.targetId } });
+        }
+        if (patch.kind === 'agent') starts[patch.scope] = new Date().toISOString();
+      }
+      const updated = await tx.classroom.update({ where: { id }, data: {
+        materialsRevision: { increment: 1 },
+        ...(body.title !== undefined ? { title: body.title || null } : {}),
+        ...(patches.some(p => p.kind === 'agent') ? { agentContextStarts: starts } : {}),
+      } });
+      const dropped = await trimExtraClassroomWebapps(tx, id);
+      return { materialsChanged: patches.length > 0, revision: updated.materialsRevision, dropped };
     });
-
-    // ⚠️ 日志在**事务提交之后**才写：写在事务里的话，一次回滚会留下一句没发生过的「已裁剪」。
-    // 内容必须如实 —— 删了哪几条、留下了哪个，让「网页怎么少了一个」能查。
-    if (dropped.length > 0) {
-      console.warn(
-        `[Classroom] 课堂 ${req.params.id} 保存设置时裁剪了 ${dropped.length} 条多余的探究网页关联：` +
-        `删除 ${dropped.map(link => link.webappId).join(', ')}（探究网页为单选，保存后只保留第一位）`,
-      );
-    }
-
-    res.json({ success: true });
+    if (changed.dropped.length > 0) console.warn(`[Classroom] 课堂 ${id} 裁剪多余网页关联：${changed.dropped.map(link => link.webappId).join(', ')}`);
+    const io = req.app.get('io');
+    io.to(`classroom:${id}`).emit('classroom-materials-changed', { classroomId: id, revision: changed.revision });
+    io.to(`teacher:${id}`).emit('classroom-materials-changed', { classroomId: id, revision: changed.revision });
+    res.json({ success: true, materialsChanged: changed.materialsChanged });
   } catch (error) {
+    if (error instanceof SettingsError) return res.status(error.status).json({ error: error.message });
     console.error('Update classroom settings error:', error);
     res.status(500).json({ error: '更新课堂设置失败' });
-  }
+  } finally { endMaterialEdit(id); }
 });
 
 // 暂停课堂

@@ -284,12 +284,11 @@ export const api = {
     request<{ enabled: boolean; width: number; frameIntervalMs: number; detailIntervalMs: number | null }>(`/api/classroom/${id}/webapp-capture`, { method: 'POST', body: JSON.stringify(body) }),
   getHistory: () => request<ClassroomHistoryItem[]>('/api/classroom/history/all'),
   getAllClassrooms: () => request<DashboardClassroom[]>('/api/classroom/all'),
-  // 🔴 **只有课堂名称可以改**（服务端只读 `title`，其余字段不采用）。这条签名只收
-  // `title`，是为了让「不能改别的」在调用处就是编译期事实，而不是服务端悄悄忽略。
-  // 顺带：保存时服务端会把该课堂多余的探究网页关联裁到只剩第一个（单选约束），
-  // 删了哪些记录在服务端日志里。
-  updateClassroomSettings: (id: string, data: { title?: string }) =>
-    request(`/api/classroom/${id}/settings`, { method: 'PUT', body: JSON.stringify(data) }),
+  // 学习单、模式与班级冻结；高级模式通过 groups 按组更换学伴与网页。
+  updateClassroomSettings: (id: string, data: {
+    title?: string; agentId?: string; webappId?: string;
+    groups?: Array<{ id: string; agentId?: string; webappId?: string }>;
+  }) => request(`/api/classroom/${id}/settings`, { method: 'PUT', body: JSON.stringify(data) }),
   // 三态用 PUT 而非 toggle：没有「取反」语义，PUT 幂等、带目标态、可重试。
   // 成功时服务端已向 classroom:<id> 与 teacher:<id> 双发 module-state-changed。
   setClassroomModuleState: (id: string, moduleKey: ClassroomModuleKey, state: ClassroomModuleState) =>

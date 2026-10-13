@@ -31,7 +31,7 @@ import { COMPANION_MENU_ITEMS, HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerCon
 // 浮层是这一屏的第三个「按学习单看全班」的工具。
 import { normalizeOpenQuestions } from '@/lib/worksheet-answer-mode';
 import { WorksheetOpenOverlay } from './worksheet-open-overlay';
-import { effectiveGroupAgent, effectiveGroupWorksheet } from '@/lib/classroom-material';
+import { effectiveGroupAgent, effectiveGroupWorksheet, effectiveGroupWebapp } from '@/lib/classroom-material';
 import { AgentNavigationIcon, ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navigation-icons';
 import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleSetting, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
@@ -1440,6 +1440,7 @@ function ClassroomBoardContent() {
     // 所以另一台教师机（或本机另一个标签页）改态时这里立刻跟上，不必等轮询。
     // 载荷是线缆上的值，先过类型守卫 —— 非法 key/state 直接忽略，不写进本地三元素数组。
     // 连 null / undefined 都会走到这里，所以不能直接解构（解构会先抛错，守卫就没机会跑）。
+    const unsubMaterials = on('classroom-materials-changed', () => { void loadClassroom(); });
     const unsub15 = on('module-state-changed', (data) => {
       const { moduleKey, state } = data ?? {};
       if (!isClassroomModuleKey(moduleKey) || !isClassroomModuleState(state)) return;
@@ -1487,7 +1488,7 @@ function ClassroomBoardContent() {
       setWorksheetOpen((prev) => ({ ...prev, [worksheetId]: questionIds }));
     });
 
-    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsub16?.(); unsub18?.(); unsub19?.(); unsub20?.(); };
+    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsubMaterials?.(); unsub16?.(); unsub18?.(); unsub19?.(); unsub20?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: StudentSummary) => {
@@ -1833,6 +1834,7 @@ function ClassroomBoardContent() {
     classroomId: id,
     roster: classroom?.students ?? [],
     webapps: classroom?.webapps ?? [],
+    expectedWebappIds: Object.fromEntries((classroom?.students ?? []).map(s => [s.id, effectiveGroupWebapp(classroom, s)?.id ?? null])),
     focusStudentId: exploreDetailId,
     needsExploreFrames: boardMode === 'follow' || assignModule === 'explore',
   });

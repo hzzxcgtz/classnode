@@ -114,6 +114,7 @@ export interface RelatedWorksheet {
 
 export interface ClassroomSummary {
   id: string;
+  materialsRevision?: number;
   code: string | null;
   title: string | null;
   mode: 'standard' | 'group' | 'advanced';
@@ -332,7 +333,7 @@ export interface WorksheetUsage {
    * 服务端拼好的整句中文。⚠️ **弹窗不直接用这句**：它是一段给一行字用的整段话，
    * 把三样引用压成一个逗号串，而弹窗要列清单、要点名是哪几间课堂。
    * （历史：它曾经含「请先从这些课堂或小组中移除后再试」，而本仓**没有「移除」这个端点**
-   * ——课堂设置只有标题可改。那句误导已从 `routes/worksheets.ts` 的 `describeUsage` 里删掉。）
+   * ——课堂设置仍不允许更换学习单。那句误导已从 `routes/worksheets.ts` 的 `describeUsage` 里删掉。）
    */
   message: string;
 }
@@ -1050,6 +1051,7 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
 
 export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'students'> {
   agents: AgentSummary[];
+  worksheets?: WorksheetMaterialSummary[];
   /**
    * 各组的材料（`GET /code/:code` 与 `join-classroom` 的 `joined` 事件）。
    *

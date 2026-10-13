@@ -1,3 +1,4 @@
+import { mergeMaterialSnapshot } from '@/lib/classroom-material-snapshot';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { api, setStudentSessionToken } from '@/lib/api';
@@ -105,6 +106,20 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   const [teacherNotifBubble, setTeacherNotifBubble] = useState<string | null>(null);
   const [blacklisted, setBlacklisted] = useState(false);
   const joiningRef = useRef(false);
+  const materialClassroomRef = useRef(classroom);
+  materialClassroomRef.current = classroom;
+  const previousAgentRef = useRef<{ participantId: string; agentId: string | null } | null>(null);
+  const effectiveAgentId = effectiveGroupAgent(classroom, selectedStudent)?.id ?? null;
+  useEffect(() => {
+    const participantId = selectedStudent?.id;
+    const previous = previousAgentRef.current;
+    if (participantId && previous?.participantId === participantId && previous.agentId !== effectiveAgentId) {
+      setMessages(prev => prev.map(m => m.role === 'assistant' ? { ...m, followUps: undefined } : m));
+      setToast({ msg: '老师已更换智能学伴，新对话不会使用之前的聊天上下文。', type: 'info' });
+    }
+    previousAgentRef.current = participantId ? { participantId, agentId: effectiveAgentId } : null;
+  }, [selectedStudent?.id, effectiveAgentId]);
+
 
   async function loadClassroom(classroomCode?: string, sessionStudentId?: string) {
     try {
@@ -372,8 +387,11 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
         // 两个展示点是同一个函数）。原来这里也有自己的一份「找组、回落课堂级」。
         // ⚠️ 轮询这一路**两个方向都会写**（停用后又被启用要能恢复），与 `loadClassroom` 那条
         // 「只置位、不清除」不同 —— 这里靠下面的陈旧守卫防止用旧快照把新值写回去。
+        setClassroom(prev => mergeMaterialSnapshot(prev, cr));
         const freshAgentDisabled = effectiveGroupAgent(cr, { groupId })?.enabled === false;
-        setAgentDisabled((prev) => (prev === flagsAtRequest.agentDisabled ? freshAgentDisabled : prev));
+        if ((cr.materialsRevision ?? 0) >= (materialClassroomRef.current?.materialsRevision ?? 0)) {
+          setAgentDisabled((prev) => (prev === flagsAtRequest.agentDisabled ? freshAgentDisabled : prev));
+        }
         const freshPaused = cr.status === 'paused';
         setPaused((prev) => (prev === flagsAtRequest.paused ? freshPaused : prev));
         // ★ M5a：锁定态走**同一条**陈旧守卫 —— 同一份快照、同一个 RTT，
@@ -462,6 +480,8 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   // 顺序写反会在首帧直接抛 ReferenceError，而不是静默退化成「没有 socket 的聊天页」。
   const { startChatSession } = useChatSocket({
     code,
+    selectedStudent,
+    classroom,
     router: options.router,
     SOCKET_URL,
     wsRef: options.wsRef,

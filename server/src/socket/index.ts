@@ -1,3 +1,4 @@
+import { beginClassroomRequest, endClassroomRequest, agentContextStart, agentHistoryWhere } from '../services/classroom-material-edit.js';
 import { createHash } from 'node:crypto';
 import { maintenanceBusy, trackDataTask } from '../services/data-maintenance.js';
 import { Server, Socket } from 'socket.io';
@@ -1732,9 +1733,14 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
     // 学生发送消息（流式）
     onManaged('send-message', async (input: SendMessageData) => {
       const requestKey = `${socket.data.classroomId}:${socket.data.studentId}`;
+      const requestClassroomId = socket.data.classroomId as string;
       const owner = Symbol();
       const pendingRequest = participantRequests.get(requestKey);
       if (pendingRequest) { socket.emit('ai-busy', { error: '上一条回答尚未结束，请稍后再发', keepWaiting: pendingRequest.socketId === socket.id }); return; }
+      if (!beginClassroomRequest(requestClassroomId)) {
+        socket.emit('ai-error', { error: '老师正在更换课堂内容，请稍后再试' });
+        return;
+      }
       participantRequests.set(requestKey, { owner, socketId: socket.id });
       const abortController = new AbortController();
       const streamKey = socket.id;
@@ -1943,8 +1949,10 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         // AI Proxy call (流式)
         // 先取历史再存消息，确保 additional_messages 不含当前消息，避免重复
+        const contextStart = agentContextStart(classroom.agentContextStarts,
+          classroom.mode === 'advanced' ? (classroomStudent.groupId ?? '') : 'classroom');
         const pastMessages = await prisma.message.findMany({
-          where: { studentId: classroomStudent.id },
+          where: agentHistoryWhere(classroomStudent.id, agent.id, contextStart),
           orderBy: { createdAt: 'desc' },
           take: 30,
         });
@@ -1970,6 +1978,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
             studentId: classroomStudent.id,
             content: data.content,
             role: 'user',
+            agentId: agent.id,
             displayName: anonymizer.anonymize(studentName),
             fileUrls: data.fileUrls?.length ? JSON.stringify(data.fileUrls) : undefined,
             fileNames: data.fileNames?.length ? JSON.stringify(data.fileNames) : undefined,
@@ -2000,7 +2009,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         // 智谱清言 / 文心使用对话上下文 ID 维护记忆，从内存中恢复
         const platformNeedsConvId = ['coze', 'zhipuai', 'wenxin'].includes(agent.platform);
-        const platformConvKey = `${classroom.id}:${data.studentId}:${agent.id}`;
+        const platformConvKey = `${classroom.id}:${data.studentId}:${agent.id}:${contextStart?.toISOString() ?? "initial"}`;
         const storedConversation = platformConversations.get(platformConvKey);
         const platformConvId = storedConversation?.conversationId;
         // ★ 收口（2026-09-25）：从前这里自己 `decrypt(agent.apiKey)` —— 它是 7 处之一，
@@ -2208,6 +2217,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         if (activeStreams.get(streamKey) === abortController) activeStreams.delete(streamKey);
         if (abortController.signal.aborted && socket.data.classroomId) io.to(`teacher:${socket.data.classroomId}`).emit('student-thinking', { studentId: socket.data.studentId, status: false });
         if (participantRequests.get(requestKey)?.owner === owner) participantRequests.delete(requestKey);
+        endClassroomRequest(requestClassroomId);
       }
     });
 

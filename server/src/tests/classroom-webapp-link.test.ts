@@ -17,7 +17,7 @@ import { createTeacherSession } from '../middleware/auth.js';
  * 创建课堂 / 保存课堂设置的**规则**：三件套（AI 智能体 / 探究网页 / 学习单）、
  * 参与班级、以及「探究网页单选」这条约束在三条路径上的落地。
  *   · `POST /create`、`POST /create-advanced` —— 只关联第一个网页；
- *   · `PUT /:id/settings` —— 把历史遗留的多余关联裁到一个，且**只允许改课堂名称**。
+ *   · `PUT /:id/settings` —— 把历史遗留的多余关联裁到一个，并支持更换学伴与网页，学习单仍冻结。
  *
  * ★ 2026-09-29：也管「创建课堂」的另一条规则 —— **三个模块的初始态是「开放」**
  *（两条创建路径都要种，见下面那条用例）。放在本文件的理由只有一个：这里已经有
@@ -74,6 +74,7 @@ async function startServer(t: { after: (fn: () => void) => void }, prisma: Prism
   const app = express();
   app.use(express.json());
   app.set('prisma', prisma);
+  app.set('io', { to: () => ({ emit: () => {} }) });
   app.use('/api/classroom', classroomRoutes);
   const server = createServer(app);
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -416,7 +417,7 @@ test('高级模式：组级网页落库，课堂级不写（与标准模式不�
 });
 
 // ---------------------------------------------------------------------------
-// PUT /:id/settings —— 只允许改课堂名称 + 裁剪多余的网页关联。
+// PUT /:id/settings —— 冻结字段拒绝 + 兼容历史网页单选裁剪。
 // ---------------------------------------------------------------------------
 
 /** 造一个「多选时代」的课堂：直接写三行关联，`createdAt` 递增以固定「谁是第一个」。 */
@@ -475,7 +476,7 @@ test('保存设置：只有一条关联时不动它（阴性对照 —— 别把
   assert.deepEqual(links.map(link => link.webappId), [webapps[1].id], '唯一的那条关联必须原样留着');
 });
 
-test('保存设置：除课堂名称外的字段一律不采用（body 里塞了也不改）', async (t) => {
+test('保存设置：冻结字段显式拒绝，名称和关联全部保留', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
   const { cls, agent, webapps } = await seed(db.prisma, 2);
@@ -487,7 +488,7 @@ test('保存设置：除课堂名称外的字段一律不采用（body 里塞了
   });
   const classroom = await created.json() as { id: string };
 
-  // 恶意/过期的客户端把「想改的东西」全塞进来 —— 服务端只应认 title。
+  // 冻结字段不再静默忽略，整次请求应拒绝。
   const res = await server.put(`/api/classroom/${classroom.id}/settings`, {
     title: '新名',
     classIds: [],
@@ -495,13 +496,13 @@ test('保存设置：除课堂名称外的字段一律不采用（body 里塞了
     mode: 'advanced',
     webappIds: [webapps[1].id],
   });
-  assert.equal(res.status, 200, JSON.stringify(await res.json()));
+  assert.equal(res.status, 400, JSON.stringify(await res.json()));
 
   const after = await db.prisma.classroom.findUniqueOrThrow({
     where: { id: classroom.id },
     include: { classroomAgents: true, classes: true, webapps: true },
   });
-  assert.equal(after.title, '新名');
+  assert.equal(after.title, '原名');
   assert.equal(after.mode, 'standard', '课堂模式不可改');
   assert.deepEqual(after.classroomAgents.map(a => a.agentId), [agent.id], '智能体不可改');
   assert.deepEqual(after.classes.map(c => c.classId), [cls.id], '参与班级不可改');

@@ -111,6 +111,10 @@ router.get('/:classroomId/conversations', async (req, res) => {
     for (const ca of classroom.classroomAgents) {
       agentMap[ca.agent.id] = ca.agent.name;
     }
+    // 已更换的学伴不在当前关联中，仍按历史消息里的 ID 解析名字。
+    const historicalAgentIds = [...new Set(students.flatMap(s => s.messages.map(m => m.agentId).filter((id): id is string => !!id)))];
+    const historicalAgents = await prisma.agent.findMany({ where: { id: { in: historicalAgentIds } }, select: { id: true, name: true } });
+    for (const agent of historicalAgents) agentMap[agent.id] = agent.name;
 
     const report = {
       title: classroom.title || '课堂对话汇总',

@@ -1,3 +1,5 @@
+import { mergeMaterialSnapshot } from '@/lib/classroom-material-snapshot';
+import { effectiveGroupAgent } from '@/lib/classroom-material';
 import { useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Socket } from 'socket.io-client';
@@ -19,6 +21,8 @@ import type {
 interface ChatSocketOptions {
   // 组件内读取的值
   code: string;
+  selectedStudent: ClassroomStudentSummary | null;
+  classroom: StudentClassroom | null;
   router: { push: (href: string) => void };
   SOCKET_URL: string;
   // 组件内声明的 ref（同一批 ref 在 page.tsx 的其它逻辑里仍在用，因此由外部传入）
@@ -110,7 +114,10 @@ export function useChatSocket(options: ChatSocketOptions) {
         api.getClassroomByCode(joinCode)
           .then((cr) => {
             if (generation !== optionsRef.current.chatConnectionGenerationRef.current) return;
-            optionsRef.current.setClassroom((prev) => prev ? { ...prev, modules: cr.modules } : prev);
+            optionsRef.current.setClassroom((prev) => {
+              const merged = mergeMaterialSnapshot(prev, cr);
+              return merged ? { ...merged, modules: cr.modules } : merged;
+            });
           })
           .catch(() => { /* 尽力而为的补读：socket 自有错误出口，这里不打扰学生 */ });
       });
@@ -433,6 +440,17 @@ export function useChatSocket(options: ChatSocketOptions) {
       //      却丢掉，是该窗口唯一的缺口）。两条兜底都只合并 modules。
       // 设计 §4.4 要求实时，这条不能省。
       // 载荷是线缆上的值，先过类型守卫 —— 连 null / undefined 都会走到这里，所以不能直接解构。
+      socket.on('classroom-materials-changed', () => {
+        api.getClassroomByCode(joinCode).then(cr => {
+          if (generation !== optionsRef.current.chatConnectionGenerationRef.current) return;
+          const current = optionsRef.current.classroom;
+          if (current && (cr.materialsRevision ?? 0) < (current.materialsRevision ?? 0)) return;
+          optionsRef.current.setClassroom(prev => mergeMaterialSnapshot(prev, cr));
+          optionsRef.current.setAgentDisabled(effectiveGroupAgent(cr, { groupId: optionsRef.current.selectedStudent?.groupId })?.enabled === false);
+
+        }).catch(() => { /* 15 秒轮询会重试 */ });
+      });
+
       socket.on('module-state-changed', (data: ModuleStateEvent) => {
         const { moduleKey, state } = data ?? {};
         if (!isClassroomModuleKey(moduleKey) || !isClassroomModuleState(state)) return;

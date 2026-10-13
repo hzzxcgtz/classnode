@@ -33,11 +33,11 @@ for (const pauseAt of ['membership', 'online-write']) {
     };
     setupSocketHandlers(io as unknown as Server, prisma as unknown as PrismaClient);
     function socket(id: string) {
-      const handlers = new Map<string, (...args: any[]) => any>();
-      const emitted: { event: string; payload: any }[] = [];
+      const handlers = new Map<string, (...args: unknown[]) => unknown>();
+      const emitted: { event: string; payload: unknown }[] = [];
       const value = { id, connected: true, data: {}, rooms: new Set<string>(), handshake: { headers: {} },
-        on: (event: string, handler: (...args: any[]) => any) => handlers.set(event, handler),
-        emit: (event: string, payload: any) => emitted.push({ event, payload }),
+        on: (event: string, handler: (...args: unknown[]) => unknown) => handlers.set(event, handler),
+        emit: (event: string, payload: unknown) => emitted.push({ event, payload }),
         join: () => {}, leave: () => {},
       };
       connect(value);
@@ -52,7 +52,9 @@ for (const pauseAt of ['membership', 'online-write']) {
     await join;
     const observer = socket('switch-observer');
     observer.handlers.get('listen-classroom-status')!('switch-room');
-    assert.deepEqual(observer.emitted.find(item => item.event === 'online-students')?.payload.studentIds, []);
+    const onlineStatus = observer.emitted.find(item => item.event === 'online-students')?.payload;
+    assert.ok(onlineStatus && typeof onlineStatus === 'object' && 'studentIds' in onlineStatus);
+    assert.deepEqual(onlineStatus.studentIds, []);
     assert.equal(broadcasts.includes('student-online'), false);
   });
 }

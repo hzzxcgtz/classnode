@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import systemRoutes from '../routes/system.js';
 import { worksheetAccessGate, worksheetRoutes } from '../routes/worksheets.js';
 import { createStudentToken } from '../middleware/student-auth.js';
@@ -44,7 +44,7 @@ test('真实提交：幂等、失败重试、次数、稿件隔离、奖励替�
   const other = await db.classroomStudent.create({ data: { classroomId: room.id, type: 'student' } });
   await db.classroomWorksheet.create({ data: { classroomId: room.id, worksheetId: sheet.id } });
   const app = express(); app.use(express.json()); app.set('prisma', db);
-  const events: Array<{ room: string; name: string; payload: any }> = [];
+  const events: Array<{ room: string; name: string; payload: unknown }> = [];
   app.set('io', { to: (room: string) => ({ emit: (name: string, payload: unknown) => events.push({ room, name, payload }) }) });
   let score = 8.5, fail = false, calls = 0, release: (() => void) | undefined;
   const messages: string[] = [];
@@ -93,7 +93,7 @@ test('真实提交：幂等、失败重试、次数、稿件隔离、奖励替�
   assert.equal(teacherAfterReview.perStudent.scores[0].score, 8.5);
   assert.equal(teacherAfterReview.perStudent.scores[0].advice, '你可以补充细节。');
   assert.equal(teacherAfterReview.narrative, null, '个人评分不会自动生成全班报告');
-  assert.ok(events.some(event => event.room === `teacher:${room.id}` && event.name === 'worksheet-analysis-updated' && event.payload.worksheetId === sheet.id));
+  assert.ok(events.some(event => event.room === `teacher:${room.id}` && event.name === 'worksheet-analysis-updated' && event.payload !== null && typeof event.payload === 'object' && 'worksheetId' in event.payload && event.payload.worksheetId === sheet.id));
   const own = await (await call('GET', '/answers')).json();
   assert.equal(own.rows[0].aiReferenceScore.score, 8.5);
   assert.equal((await call('GET', '/reviews?classroomId=' + room.id + '&participantId=' + person.id)).status, 403);
@@ -125,13 +125,13 @@ test('真实提交：幂等、失败重试、次数、稿件隔离、奖励替�
   assert.equal(teacherHistory.reviews.length, 2);
   assert.ok(!JSON.stringify(teacherHistory).includes('rubricText'));
   // Older failures cannot overwrite a newer successful submission.
-  const oldFailure = await db.worksheetAnswerReview.create({ data: { answerId: r1.answerId, requestId: 'old_failed_snapshot', generation: r1.generation, value: r1.value, question: r1.question as any, status: 'failed', source: 'student', maxScore: 10, unit: r1.unit, createdAt: new Date(0) } });
+  const oldFailure = await db.worksheetAnswerReview.create({ data: { answerId: r1.answerId, requestId: 'old_failed_snapshot', generation: r1.generation, value: r1.value, question: r1.question as Prisma.InputJsonValue, status: 'failed', source: 'student', maxScore: 10, unit: r1.unit, createdAt: new Date(0) } });
   const oldHistory = await (await call('GET', '/answers/reviews')).json();
   assert.equal(oldHistory.reviews.find((r: { id: string }) => r.id === oldFailure.id).canRetry, false, '过期失败稿不应提供可点击重试入口');
   assert.equal((await call('POST', '/answers/reviews', { reviewId: oldFailure.id })).status, 409);
   assert.equal((await db.worksheetAnswer.findUnique({ where: { id: r1.answerId } }))?.score, 6);
   await db.worksheetAnswerReview.delete({ where: { id: oldFailure.id } });
-  const interrupted = await db.worksheetAnswerReview.create({ data: { answerId: r1.answerId, requestId: 'restart_interrupted', generation: r1.generation, value: r1.value, question: r1.question as any, status: 'pending', source: 'student', maxScore: 10, unit: r1.unit } });
+  const interrupted = await db.worksheetAnswerReview.create({ data: { answerId: r1.answerId, requestId: 'restart_interrupted', generation: r1.generation, value: r1.value, question: r1.question as Prisma.InputJsonValue, status: 'pending', source: 'student', maxScore: 10, unit: r1.unit } });
   assert.equal((await recoverInterruptedReviews(db)).count, 1);
   assert.equal((await db.worksheetAnswerReview.findUniqueOrThrow({ where: { id: interrupted.id } })).status, 'failed', '无需学生读取历史，启动恢复即可清理任务状态');
   await db.worksheetAnswerReview.delete({ where: { id: interrupted.id } });
@@ -187,7 +187,7 @@ test('真实提交：幂等、失败重试、次数、稿件隔离、奖励替�
   assert.equal(updatedHistory.reviews[0].source, 'teacher');
   assert.equal(updatedHistory.reviews[0].score, 2);
   assert.ok(updatedHistory.reviews.some((review: { source: string }) => review.source === 'student'));
-  assert.ok(events.some(event => event.room === `classroom:${room.id}` && event.name === 'worksheet-analysis-updated' && event.payload.worksheetId === sheet.id));
+  assert.ok(events.some(event => event.room === `classroom:${room.id}` && event.name === 'worksheet-analysis-updated' && event.payload !== null && typeof event.payload === 'object' && 'worksheetId' in event.payload && event.payload.worksheetId === sheet.id));
   assert.equal(await db.worksheetAnswerReview.count({ where: { source: 'student', status: 'succeeded' } }), 2, '教师重新评分不占学生评价次数');
 
   // Teacher regrading follows the same configuration guard as student evaluation.

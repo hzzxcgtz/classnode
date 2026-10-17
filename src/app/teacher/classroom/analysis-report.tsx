@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useId, useRef, useState } from 'react';
 import { Markdown } from '@/lib/markdown';
 import type { WorksheetAnalysisPayload } from '@/lib/types';
 import { normalizeWorksheetAnalysisMarkdown } from '@/lib/worksheet-analysis-markdown';
@@ -9,51 +8,25 @@ import styles from './analysis-report.module.css';
 import { classReportContent, reportStudentLabel } from '@/lib/worksheet-class-report';
 
 function StudentGroupHint({ students, onOpenStudent }: { students: { id: string; name: string }[]; onOpenStudent?: (id: string) => void }) {
-  const [position, setPosition] = useState<{left:number;top:number;above:boolean;width:number} | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const id = useId();
-  const popup = useRef<HTMLSpanElement>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const keepOpen = () => { if (closeTimer.current) clearTimeout(closeTimer.current); closeTimer.current = null; };
-  const closeSoon = () => { keepOpen(); closeTimer.current = setTimeout(() => setPosition(null), 500); };
-  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
-  const show = () => {
-    keepOpen();
-    const rect = button.current?.getBoundingClientRect();
-    if (!rect) return;
-    const width = Math.min(280, window.innerWidth - 24);
-    const above = window.innerHeight - rect.bottom < 220 && rect.top > 220;
-    setPosition({ left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)), top: above ? rect.top - 8 : rect.bottom + 8, above, width });
-  };
-  useEffect(() => {
-    if (!position) return;
-    const close = () => setPosition(null);
-    const followPointer = (event: PointerEvent) => {
-      const trigger = button.current?.getBoundingClientRect();
-      const dialog = popup.current?.getBoundingClientRect();
-      if (!trigger || !dialog) return;
-      const inside = (rect: DOMRect) => event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
-      const bridge = event.clientX >= Math.min(trigger.left, dialog.left) && event.clientX <= Math.max(trigger.right, dialog.right)
-        && event.clientY >= Math.min(trigger.top, dialog.top) && event.clientY <= Math.max(trigger.bottom, dialog.bottom);
-      if (inside(trigger) || inside(dialog) || bridge) keepOpen();
-      else if (!closeTimer.current) closeSoon();
-    };
-    const outside = (event: PointerEvent) => {
-      if (!button.current?.contains(event.target as Node) && !popup.current?.contains(event.target as Node)) close();
-    };
-    document.addEventListener('pointerdown', outside);
-    document.addEventListener('pointermove', followPointer);
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
-    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('pointermove', followPointer); window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); };
-  }, [position]);
-  return <span className={styles.group} onMouseEnter={show} onMouseLeave={closeSoon}>
-    <button ref={button} type="button" className={styles.trigger} onFocus={show} onBlur={event => { if (!popup.current?.contains(event.relatedTarget as Node | null)) closeSoon(); }} onClick={show}
-      onKeyDown={event => { if (event.key === 'Escape') setPosition(null); }} aria-controls={position ? id : undefined} aria-haspopup="dialog" aria-label={`${reportStudentLabel(students.map(student => student.name))}，查看${students.length}位同学名单`} aria-expanded={Boolean(position)}>
+  return <span className={styles.group} onKeyDown={event => {
+    if (event.key === 'Escape' && expanded) {
+      event.stopPropagation();
+      setExpanded(false);
+      button.current?.focus();
+    }
+  }}>
+    <button ref={button} type="button" className={styles.trigger} onClick={() => setExpanded(value => !value)}
+      aria-controls={expanded ? id : undefined} aria-label={`${reportStudentLabel(students.map(student => student.name))}，${expanded ? '收起' : '展开'}${students.length}位同学名单`} aria-expanded={expanded}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="9" cy="7" r="3" /><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 4v2" /></svg>
       {reportStudentLabel(students.map(student => student.name))}
+      <svg className={styles.chevron} width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true" style={{transform: expanded ? 'rotate(180deg)' : undefined}}><path d="m3 4.5 3 3 3-3" /></svg>
     </button>
-    {position && createPortal(<span ref={popup} id={id} role="dialog" aria-label="相关同学" onMouseEnter={keepOpen} onMouseLeave={closeSoon} onFocus={keepOpen} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) closeSoon(); }} onKeyDown={event => { if (event.key === 'Escape') { button.current?.focus(); setPosition(null); } }} className={styles.tooltip} style={{left:position.left,top:position.top,width:position.width,transform:position.above?'translateY(-100%)':undefined}}><strong>相关同学</strong><span className={styles.studentList}>{students.map(student => onOpenStudent ? <button key={student.id} type="button" className={styles.studentLink} title={`查看${student.name}的本题作答`} onClick={() => { setPosition(null); onOpenStudent(student.id); }}>{student.name}</button> : <span key={student.id}>{student.name}</span>)}</span></span>, document.body)}
+    {expanded && <span id={id} className={styles.studentList}>{students.map(student => onOpenStudent
+      ? <button key={student.id} type="button" className={styles.studentLink} title={`查看${student.name}的本题作答`} onClick={() => { setExpanded(false); onOpenStudent(student.id); }}>{student.name}</button>
+      : <span key={student.id} className={styles.studentName}>{student.name}</span>)}</span>}
   </span>;
 }
 

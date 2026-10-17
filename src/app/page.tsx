@@ -22,8 +22,10 @@ export default function StudentHomePage() {
 
   useEffect(() => {
     api.health().then(() => setServerOnline(true)).catch(() => setServerOnline(false));
-    const timer = window.setTimeout(() => inputRefs.current[0]?.focus(), 500);
-    return () => window.clearTimeout(timer);
+    // 仅在还没有操作任何控件时聚焦，避免延迟抢走教师入口的焦点。
+    if (document.activeElement === document.body) {
+      inputRefs.current[0]?.focus({ preventScroll: true });
+    }
   }, []);
 
   const fullCode = digits.join('');
@@ -97,7 +99,7 @@ export default function StudentHomePage() {
   };
 
   return (
-    <form action="/classroom" method="get" onSubmit={handleSubmit}
+    <div
       style={{
         minHeight: '100vh', display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
@@ -114,20 +116,22 @@ export default function StudentHomePage() {
       </div>
 
       {/* 教师入口：<a> 标签不需要 JS，点击即跳转 */}
-      <a href="/teacher"
+      <a href="/teacher/"
         style={{
           position: 'absolute', bottom: 24, right: 24,
           background: 'rgba(255,255,255,0.1)',
           color: 'rgba(255,255,255,0.6)',
           border: '1px solid rgba(255,255,255,0.15)',
-          padding: '6px 14px', borderRadius: 6, fontSize: "0.75rem",
+          padding: '10px 14px', minHeight: 44, display: 'inline-flex', alignItems: 'center',
+          borderRadius: 6, fontSize: "0.75rem", touchAction: 'manipulation',
           textDecoration: 'none',
         }}
       >
         教师入口
       </a>
 
-      <div style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 400, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+      <form action="/classroom" method="get" onSubmit={handleSubmit}
+        style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 400, width: '100%', margin: 0, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           {logoErr ? (
             <div style={{ width: 96, height: 96, borderRadius: 20, margin: '0 auto 16px', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: "2.25rem" }}>支</div>
@@ -191,7 +195,7 @@ export default function StudentHomePage() {
         >
           {loading ? '验证中...' : '进入课堂'}
         </button>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 }

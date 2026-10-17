@@ -33,7 +33,7 @@
     '<li><a href="' + home("#change") + '">缘起</a></li>' +
     '<li><a href="' + home("#vibe") + '">Vibe Coding</a></li>' +
     '<li><a href="' + home("#works") + '">作品</a></li>' +
-    '<li><a href="classnode.html">支点课堂</a></li>' +
+    '<li><a href="classnode.html" class="nav-classnode">支点课堂</a></li>' +
     '<li><a href="' + home("#about") + '">关于</a></li>' +
     "</ul>" +
     '<div class="nav-right">' +

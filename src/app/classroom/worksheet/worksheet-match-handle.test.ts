@@ -80,8 +80,8 @@ test('② 句柄**有**指针事件（写了 pointer-events: none 就会掉进�
 });
 
 test('③ 半圆凸起朝向另一列，且包含实心圆点', () => {
-  assert.equal(effective(ruleBodies('.matchHandle'), 'width'), '26px');
-  assert.equal(effective(ruleBodies('.matchHandle'), 'height'), '26px');
+  assert.equal(effective(ruleBodies('.matchHandle'), 'width'), '12px');
+  assert.equal(effective(ruleBodies('.matchHandle'), 'height'), '12px');
   assert.equal(effective(ruleBodies('.matchHandle'), 'box-sizing'), 'border-box');
   assert.equal(effective(ruleBodies('.matchColumnLeft .matchHandle::before'), 'border-left'), '0');
   assert.equal(effective(ruleBodies('.matchColumnRight .matchHandle::before'), 'border-right'), '0');

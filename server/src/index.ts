@@ -2,7 +2,7 @@ import { recoverInterruptedReviews } from './services/individual-review.js';
 import express from 'express';
 import { createServer, type ServerResponse } from 'http';
 import { Server } from 'socket.io';
-import { PrismaClient } from '@prisma/client';
+import { createDatabaseClient } from './services/database-client.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -39,7 +39,7 @@ import { resolveWebappPort, startWebappHost, webappsRoot } from './services/weba
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const prisma = new PrismaClient();
+const prisma = createDatabaseClient();
 
 async function main() {
   recoverInterruptedMaintenance();

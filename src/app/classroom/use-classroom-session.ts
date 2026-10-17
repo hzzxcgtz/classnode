@@ -111,6 +111,11 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   const previousAgentRef = useRef<{ participantId: string; agentId: string | null } | null>(null);
   const effectiveAgentId = effectiveGroupAgent(classroom, selectedStudent)?.id ?? null;
   useEffect(() => {
+    // 恢复身份时课堂/小组信息尚未加载，不能把初始 null 当成原先的学伴。
+    if (!classroom || !selectedStudent || ((classroom.mode === 'group' || classroom.mode === 'advanced') && !selectedStudent.groupId)) {
+      previousAgentRef.current = null;
+      return;
+    }
     const participantId = selectedStudent?.id;
     const previous = previousAgentRef.current;
     if (participantId && previous?.participantId === participantId && previous.agentId !== effectiveAgentId) {
@@ -118,7 +123,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
       setToast({ msg: '老师已更换智能学伴，新对话不会使用之前的聊天上下文。', type: 'info' });
     }
     previousAgentRef.current = participantId ? { participantId, agentId: effectiveAgentId } : null;
-  }, [selectedStudent?.id, effectiveAgentId]);
+  }, [classroom, selectedStudent, effectiveAgentId]);
 
 
   async function loadClassroom(classroomCode?: string, sessionStudentId?: string) {
@@ -143,6 +148,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
         try {
           const sts = await api.getClassroomStudents(cr.id);
           const myStudent = sts.find((student) => student.id === sessionStudentId);
+          if (myStudent) setSelectedStudent(myStudent);
           if (effectiveGroupAgent(cr, myStudent)?.enabled === false) setAgentDisabled(true);
         } catch {}
       } else {

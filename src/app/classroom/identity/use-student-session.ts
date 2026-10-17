@@ -22,10 +22,14 @@ interface StudentSessionOptions {
 
 export function useStudentSession(options: StudentSessionOptions) {
   const optionsRef = useRef(options);
+  const restorationStarted = useRef(false);
   useEffect(() => { optionsRef.current = options; });
 
   // 首次渲染时一次性读取 URL 并处理全部逻辑，消除时序竞争
   const restoreSessionFromUrl = async (now: number) => {
+    // 开发模式会重跑挂载 effect。重复续领会使第一份 token 失效，并重建面板。
+    if (restorationStarted.current) return;
+    restorationStarted.current = true;
     const o = optionsRef.current;
     let codeFromUrl = '';
     try {
@@ -55,7 +59,7 @@ export function useStudentSession(options: StudentSessionOptions) {
         try { localStorage.removeItem(`chat_session_${codeFromUrl}`); } catch {}
       }
     }
-    o.loadClassroom(codeFromUrl, sessionData?.studentId).then(async (cr) => {
+    await o.loadClassroom(codeFromUrl, sessionData?.studentId).then(async (cr) => {
       if (!cr) {
         if (sessionData) {
           try { localStorage.removeItem(`chat_session_${codeFromUrl}`); } catch {}
@@ -88,6 +92,16 @@ export function useStudentSession(options: StudentSessionOptions) {
         // 刷新后的落点与身份确认一致：门户，而不是上次待着的模块 —— 首页三张卡片的态
         // 每次都由服务端最新数据重新算，学生一眼看到「今天能做什么」。
         o.setStep('home');
+        // 身份与分组决定学习单的选择，不能排在通知、聊天记录和头像库之后。
+        const restoredStudent = cr.id ? api.getClassroomStudents(cr.id).then(async (students) => {
+          const cur = students.find((student) => student.id === sessionData!.studentId);
+          if (!cur) return;
+          o.setSelectedStudent(cur);
+          if (cur.studentId) {
+            const tokens = await api.getStudentTokens(cur.id);
+            o.setAvatarTokenCount(tokens.tokens || 0);
+          } else o.setAvatarTokenCount(0);
+        }).catch(() => {}) : Promise.resolve();
         // 从数据库加载教师通知（持久化后可导出，且刷新不丢失）
         if (cr.id) {
           try {
@@ -109,25 +123,16 @@ export function useStudentSession(options: StudentSessionOptions) {
         o.startChatSession(sessionData.studentId, sessionData.studentName, codeFromUrl, sessionData.token);
         // 恢复头像数据 + token
         try {
-          const [avData, avTeacherData, stsData, tokenData] = await Promise.all([
+          const [avData, avTeacherData] = await Promise.all([
             api.getAvatarsAll('student'),
             api.getAvatars('student'),
-            cr.id ? api.getClassroomStudents(cr.id) : Promise.resolve([]),
-            Promise.resolve({ tokens: 0 }),
           ]);
           const m: Record<number, string> = {};
           avData.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); });
           o.setAvatarSvgs(m);
           o.setAllStudentAvatars(avTeacherData);
-          const cur = stsData.find((student) => student.id === sessionData!.studentId);
-          if (cur) {
-            o.setSelectedStudent(cur);
-            if (cur.studentId) {
-              const tokenData = await api.getStudentTokens(cur.id);
-              o.setAvatarTokenCount(tokenData.tokens || 0);
-            } else o.setAvatarTokenCount(0);
-          }
         } catch {}
+        await restoredStudent;
       } else {
         o.setStep('identity');
       }

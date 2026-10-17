@@ -3,12 +3,11 @@
 .trigger svg { flex: none; align-self: center; }
 .trigger:hover { background: #dceaf4; border-color: #acc6da; }
 .trigger:focus-visible { outline: 2px solid #7996b1; outline-offset: 2px; border-radius: 3px; }
-.tooltip { position: fixed; z-index: 99999; box-sizing: border-box; max-height: calc(100vh - 24px); overflow: auto; padding: 10px 12px; border: 1px solid #ccdce9; border-radius: 9px; background: #fff; box-shadow: 0 6px 20px rgb(35 55 75 / 15%); color: #3d536a; font-family: inherit; font-size: .76rem; line-height: 1.65; white-space: normal; }
-.tooltip strong { display: block; margin-bottom: 3px; font-size: 0.75rem; color: #71859a; }
-.tooltip span { overflow-wrap: anywhere; }
 .unverified { color: #8a7356; font-size: max(12px, .85em); }
 
-.studentList { display: flex; flex-wrap: wrap; gap: 4px 8px; }
-.studentLink { border: 0; border-radius: 4px; padding: 3px 6px; background: #eaf2f8; color: #426a8c; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.studentList { display: inline; padding: 0 3px; border-left: 2px solid #ccdce9; margin-right: 5px; }
+.chevron { transition: transform .15s ease; }
+.studentName { display: inline-block; margin: 2px 3px; color: #426a8c; font-size: max(12px, .82em); }
+.studentLink { display: inline-block; margin: 2px 3px; font-size: max(12px, .82em); border: 0; border-radius: 4px; padding: 3px 6px; background: #eaf2f8; color: #426a8c; font-family: inherit; line-height: 1.6; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .studentLink:hover { background: #dceaf4; }
 .studentLink:focus-visible { outline: 2px solid #7996b1; outline-offset: 2px; }

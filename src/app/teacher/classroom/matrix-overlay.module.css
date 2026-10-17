@@ -569,7 +569,7 @@
 }
 
 .questionNavTitle { gap: 3px; }
-.questionNavTitle strong { overflow: hidden; font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
+.questionNavTitle strong { display: block; min-width: 0; max-width: 100%; overflow: hidden; font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
 .questionNavTitle small { color: #8292a4; font-size: 0.75rem; }
 .questionNavMeta { align-items: flex-end; gap: 3px; text-align: right; }
 .questionNavMeta small { color: #8292a4; font-size: 0.75rem; white-space: nowrap; }
@@ -862,7 +862,7 @@
 .questionNavAnalysis .analysisButton:focus { outline: 2px solid #7996b1; outline-offset: 2px; }
 
 .questionNavRow .questionNavSelect { grid-column: 1; grid-row: 1; min-width: 0; }
-.questionNavRow .questionNavMeta { grid-column: 1 / -1; grid-row: 2; flex-direction: row; align-items: center; gap: 12px; text-align: left; }
+.questionNavRow .questionNavMeta { grid-column: 1 / -1; grid-row: 2; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px 12px; text-align: left; }
 
 /* 题目按钮本身覆盖整张卡片；分析按钮作为同级独立入口。 */
 .questionNavRow { position: relative; display: block; padding: 0; }

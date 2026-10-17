@@ -1,13 +1,14 @@
 'use client';
 
 import { TeacherPendingText } from '@/components/teacher-pending-text';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import { isNotFound } from '@/lib/http-error';
 import type { WorksheetAnalysisPayload } from '@/lib/types';
 import { moduleCountUnit } from './worksheet-tile-state';
-import { activeWorksheetAnalysisTask, startWorksheetAnalysisTask, WORKSHEET_ANALYSIS_STARTED_EVENT, type AnalysisAction } from '@/lib/worksheet-analysis-background';
+import { activeWorksheetAnalysisTask, startWorksheetAnalysisTask, stopWorksheetAnalysisTask, forgetWorksheetAnalysis, WORKSHEET_ANALYSIS_STARTED_EVENT, type AnalysisAction } from '@/lib/worksheet-analysis-background';
 import { worksheetAnalysisProgressLabel } from '@/lib/worksheet-analysis-progress';
 import { localizeLegacyLabels } from '@/lib/worksheet-analysis-cells';
 import { AnalysisReport } from './analysis-report';
@@ -43,6 +44,11 @@ export interface WorksheetAnalysisState {
   activeAction?: AnalysisAction | null;
   runStage: AnalysisRunStage;
   runElapsedSeconds: number;
+  runMessage?: string | null;
+  stopping?: boolean;
+  clearing?: boolean;
+  stop?: () => Promise<void>;
+  clear?: (kind: 'grades' | 'result', participantIds?: string[]) => Promise<boolean>;
   error: string | null;
   /** 联系表的图没取回来（服务端缺 sharp 时回 503）。没有它，界面上只有一个**坏图**。 */
   sheetFailed: boolean;
@@ -77,6 +83,9 @@ export function useWorksheetAnalysis(
   const [operation, setOperation] = useState<AnalysisOperation>(null);
   const [runStage, setRunStage] = useState<AnalysisRunStage>(null);
   const [runElapsedSeconds, setRunElapsedSeconds] = useState(0);
+  const [runMessage, setRunMessage] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sheetFailed, setSheetFailed] = useState(false);
   const busy = operation !== null;
@@ -95,6 +104,7 @@ export function useWorksheetAnalysis(
     setOperation('analyzing');
     setActiveAction(task.action);
     setRunStage(task.stage);
+    setRunMessage(task.message ?? null);
     setRunElapsedSeconds(Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000)));
     void task.promise
       .then(async (out) => {
@@ -107,8 +117,13 @@ export function useWorksheetAnalysis(
           if (alive) setPayload((prev) => (prev ? { ...prev, ...out } : prev));
         }
       })
-      .catch((e: unknown) => {
+      .catch(async (e: unknown) => {
         if (alive) setError(e instanceof Error ? e.message : '分析失败');
+        // 前几批可能已成功，后续失败时仍需显示实际已保存的评分。
+        try {
+          const refreshed = await api.getWorksheetAnalysis(classroomId, worksheetId, questionId);
+          if (alive) setPayload(refreshed);
+        } catch {}
       })
       .finally(() => {
         if (!alive) return;
@@ -125,6 +140,7 @@ export function useWorksheetAnalysis(
       const task = activeWorksheetAnalysisTask(classroomId, worksheetId, questionId);
       if (!task) return;
       setRunStage(task.stage);
+      setRunMessage(task.message ?? null);
       setRunElapsedSeconds(Math.max(0, Math.floor((Date.now() - task.startedAt) / 1000)));
     };
     updateProgress();
@@ -183,6 +199,7 @@ export function useWorksheetAnalysis(
     setActiveAction(regrade ? 'regrade' : incremental || only?.length ? 'incremental' : 'analysis');
     setRunStage('preparing');
     setRunElapsedSeconds(0);
+    setRunMessage(null);
     setError(null);
     try {
       const task = startWorksheetAnalysisTask({
@@ -201,9 +218,9 @@ export function useWorksheetAnalysis(
       // 让“结果已返回”这一阶段能被人看见；不影响请求本身，也不伪造网络进度。
       await new Promise<void>((resolve) => window.setTimeout(resolve, 450));
     } catch (e) {
-      // 失败保留已有报告；等待状态结束后恢复显示。
-      // （服务端也没写库；两边都不动，才叫「失败不丢东西」）。
+      // 保留已有报告，并回读前几批可能已成功保存的评分。
       setError(e instanceof Error ? e.message : '分析失败');
+      try { setPayload(await api.getWorksheetAnalysis(classroomId, worksheetId, questionId)); } catch {}
     } finally {
       ownedRun.current = false;
       setRunStage(null);
@@ -211,9 +228,27 @@ export function useWorksheetAnalysis(
     }
   }, [classroomId, worksheetId, questionId, payload?.questionLabel]);
 
+  const stop = async () => {
+    setStopping(true);
+    try { await stopWorksheetAnalysisTask(classroomId, worksheetId, questionId); }
+    catch (e) { setError(e instanceof Error ? e.message : '停止失败，请重试'); }
+    finally { setStopping(false); }
+  };
+  const clear = async (kind: 'grades' | 'result', participantIds?: string[]) => {
+    setClearing(true);
+    setError(null);
+    try {
+      await api.clearWorksheetAnalysis(classroomId, worksheetId, questionId, kind, participantIds);
+      if (kind === 'result') forgetWorksheetAnalysis(classroomId, worksheetId, questionId);
+      await load();
+      return true;
+    } catch (e) { setError(e instanceof Error ? e.message : '清除失败，请重试'); return false; }
+    finally { setClearing(false); }
+  };
+
   return {
-    payload, loading, busy, operation, activeAction, runStage, runElapsedSeconds,
-    error, sheetFailed,
+    payload, loading, busy, operation, activeAction, runStage, runElapsedSeconds, runMessage,
+    error, sheetFailed, stopping, clearing, stop, clear,
     markSheetFailed: useCallback(() => setSheetFailed(true), []),
     run,
     unit: moduleCountUnit(mode),
@@ -222,6 +257,7 @@ export function useWorksheetAnalysis(
 
 /** 状态条那两行（过期警告 / 错误）。两处宿主共用。 */
 export function AnalysisBanners({ state }: { state: WorksheetAnalysisState }) {
+  const stopped = state.error?.startsWith('分析已停止');
   return (
     <>
       {/* 「算完之后又有人交了」—— 服务端算的，必须显眼。否则教师会把一份不完整的名单当成当前的。 */}
@@ -231,7 +267,7 @@ export function AnalysisBanners({ state }: { state: WorksheetAnalysisState }) {
         </div>
       )}
       {state.error && (
-        <div role="alert" style={{ padding: '8px 18px', background: '#f8eeee', borderBottom: '1px solid #fca5a5', color: '#b91c1c', fontSize: '0.82rem', flex: '0 0 auto' }}>
+        <div role={stopped ? 'status' : 'alert'} style={{ padding: '8px 18px', background: stopped ? '#edf5ff' : '#f8eeee', borderBottom: `1px solid ${stopped ? '#d7e5f4' : '#fca5a5'}`, color: stopped ? '#315f8c' : '#b91c1c', fontSize: '0.82rem', flex: '0 0 auto' }}>
           {state.error}
         </div>
       )}
@@ -270,7 +306,12 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 }) {
   const { payload, loading, sheetFailed } = state;
   const sheets = payload?.sheetLayouts ?? [];
-  const generatingReport = state.busy && state.activeAction === 'analysis';
+  const generatingReport = state.busy && state.activeAction !== 'incremental';
+  const pendingMessage = state.runMessage || (state.activeAction === 'incremental'
+    ? '正在补评未评学生，请稍等…'
+    : state.activeAction === 'regrade'
+      ? `正在${worksheetAnalysisActions(payload).regradeLabel}，请稍等…`
+      : `正在${worksheetAnalysisActions(payload).primaryLabel}，请稍等…`);
   const [showDetails, setShowDetails] = useState(false);
 
   /**
@@ -388,12 +429,12 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
         </section>
       )}
 
-      {!loading && generatingReport && <div className={`${styles.analysisNotice} ${styles.reportPending}`} role="status">
+      {state.busy && <div className={`${styles.analysisNotice} ${styles.reportPending}`} role="status">
         <span className={styles.reportPendingDots} aria-hidden="true"><i /><i /><i /></span>
-        <TeacherPendingText>正在生成全班分析，请稍等…</TeacherPendingText>
+        <TeacherPendingText>{pendingMessage}</TeacherPendingText>
       </div>}
 
-      {!loading && payload && payload.covered > 0 && !payload.narrative && !generatingReport && (
+      {!loading && !state.busy && payload && payload.covered > 0 && !payload.narrative && (
         <div className={styles.analysisNotice}>{payload.perStudent?.scores.length ? '学生个人评价已更新。需要了解全班情况时，可生成全班分析。' : '已收到学生作品。可生成全班分析，查看整体情况。'}</div>
       )}
 
@@ -469,25 +510,137 @@ function AnalysisActionIcon({ action, pending = false, supplement = false }: { a
   </svg>;
 }
 
+function StudentScoreClearDialog({ payload, selected, onSelect, clearing, error, onClear, onClose, restoreFocus }: {
+  payload: WorksheetAnalysisPayload | null;
+  selected: string[];
+  onSelect: (id: string, checked: boolean) => void;
+  clearing: boolean;
+  error: string | null;
+  onClear: () => void;
+  onClose: () => void;
+  restoreFocus: HTMLElement | null;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+  useEffect(() => {
+    cancelRef.current?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      if (event.key === 'Escape') {
+        event.preventDefault(); event.stopPropagation();
+        if (dialog.getAttribute('aria-busy') !== 'true') onClose();
+      } else if (event.key === 'Tab') {
+        const controls = [...dialog.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button')].filter(control => !control.matches(':disabled'));
+        const first = controls[0], last = controls[controls.length - 1];
+        if (!first) { event.preventDefault(); dialog.focus(); }
+        else if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', handleKey, true);
+    return () => { document.removeEventListener('keydown', handleKey, true); restoreFocus?.focus(); };
+  }, [onClose, restoreFocus]);
+  return createPortal(
+    <div className={styles.selectionBackdrop} data-overscroll-guard="" onClick={event => { if (event.target === event.currentTarget && !clearing) onClose(); }}>
+      <div ref={dialogRef} className={styles.selectionDialog} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} aria-busy={clearing} tabIndex={-1}>
+        <header className={styles.selectionHeader}>
+          <h3 id={titleId}>选择学生清除 AI 评分</h3>
+          <button type="button" aria-label="关闭学生选择窗口" disabled={clearing} onClick={onClose}>×</button>
+        </header>
+        <p id={descriptionId} className={styles.selectionDescription}>仅清除所选学生的本题 AI 评分与评价，保留学生作答。</p>
+        <fieldset className={styles.studentSelection} disabled={clearing}>
+          <legend className={styles.selectionLegend}>选择学生</legend>
+          {(payload?.entries ?? []).map(entry => <label key={entry.studentId} data-selected={selected.includes(entry.studentId)}><input type="checkbox" checked={selected.includes(entry.studentId)} onChange={event => onSelect(entry.studentId, event.target.checked)} />{payload?.participantNames?.[entry.studentId] ?? entry.anonLabel}</label>)}
+        </fieldset>
+        {error && <p className={styles.selectionError} role="alert">{error}</p>}
+        <footer className={styles.selectionFooter}>
+          <span>已选 {selected.length} 人</span>
+          <button ref={cancelRef} type="button" className={styles.actionButton} disabled={clearing} onClick={onClose}>取消</button>
+          <button type="button" className={`${styles.actionButton} ${styles.dangerButton}`} disabled={clearing || !selected.length} onClick={onClear}>{clearing ? '正在清除…' : '清除所选评分'}</button>
+        </footer>
+      </div>
+    </div>, document.body,
+  );
+}
+
 /** 结果窗底部：查看结果后可以直接重新分析，不再出现发送内容确认步骤。 */
 export function AnalysisActions({ state, compact = false }: { state: WorksheetAnalysisState; compact?: boolean }) {
   const { payload, busy, operation, activeAction, runStage, runElapsedSeconds } = state;
-  const actions = worksheetAnalysisActions(payload);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const clearMenuRef = useRef<HTMLDetailsElement>(null);
+  const closeSelection = useCallback(() => { setSelecting(false); setSelected([]); setSelectionError(null); }, []);
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      const menu = clearMenuRef.current;
+      if (menu?.open && event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      const menu = clearMenuRef.current;
+      if (event.key === 'Escape' && menu?.open) {
+        event.preventDefault();
+        event.stopPropagation();
+        menu.open = false;
+        menu.querySelector('summary')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape, true);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape, true);
+    };
+  }, []);
+  useEffect(() => {
+    setSelected([]); setSelecting(false);
+    if (clearMenuRef.current) clearMenuRef.current.open = false;
+  }, [payload?.questionId]);
+  const clear = async (kind: 'grades' | 'result', ids?: string[]) => {
+    if (clearMenuRef.current) clearMenuRef.current.open = false;
+    const scope = ids ? `选中的 ${ids.length} 位学生` : '全班学生';
+    const message = kind === 'result' ? '清除本题的班级分析结果？学生作答和已有评分将保留。'
+      : `清除本题${scope}的 AI 评分与评价？学生作答保留，已发放的本题评分奖励也会移除。`;
+    if (!window.confirm(message)) return;
+    setSelectionError(null);
+    if (await state.clear?.(kind, ids)) { setSelected([]); setSelecting(false); }
+    else if (ids) setSelectionError('评分未能清除，请重试。');
+  };
+  const actions = worksheetAnalysisActions(payload, busy ? activeAction ?? 'analysis' : null);
   if (payload?.covered === 0 && !busy) return null;
   const labelFor = (action: AnalysisAction, label: string) => operation === 'analyzing' && runStage && (activeAction ?? 'analysis') === action
     ? worksheetAnalysisProgressLabel(runStage, runElapsedSeconds) : label;
 
   return (
-    <div className={`${styles.actions} ${compact ? styles.compactActions : ''}`}>
-      {payload?.aiScoring.enabled && actions.ungradedCount > 0 && <button type="button" className={styles.actionButton} disabled={busy || !payload.canSend.ok} onClick={() => void state.run(undefined, false, true)}><AnalysisActionIcon action="incremental" pending={busy && activeAction === 'incremental'} />{labelFor('incremental', `补评未评学生（${actions.ungradedCount}）`)}</button>}
-      <button type="button" disabled={!payload?.canSend.ok || busy}
+    <div className={`${styles.actions} ${compact ? styles.compactActions : ''}`} aria-busy={state.clearing || undefined}>
+      <fieldset className={styles.operationButtons} disabled={state.clearing}>
+      {actions.showSupplement && <button type="button" className={styles.actionButton} disabled={busy || !payload?.canSend.ok} onClick={() => void state.run(undefined, false, true)}><AnalysisActionIcon action="incremental" pending={busy && activeAction === 'incremental'} />{labelFor('incremental', `补评未评学生（${actions.ungradedCount}）`)}</button>}
+      {actions.showAnalysis && <button type="button" disabled={!payload?.canSend.ok || busy}
         onClick={() => void state.run(undefined, false, false, actions.automatic)}
         title={payload && !payload.canSend.ok ? payload.canSend.reason : '分析会在后台执行，完成后自动保存'}
         className={styles.actionButton}>
         <AnalysisActionIcon action="analysis" supplement={actions.ungradedCount > 0} pending={busy && (activeAction ?? 'analysis') === 'analysis'} />
         {labelFor('analysis', actions.primaryLabel)}
-      </button>
-      {payload?.aiScoring.enabled && actions.canRegrade && <button type="button" className={styles.actionButton} disabled={busy || !payload.canSend.ok} onClick={() => { if (window.confirm('重新评分会替换本班已有 AI 评分，并按差额调整奖励。是否继续？')) void state.run(undefined, true); }}><AnalysisActionIcon action="regrade" pending={busy && activeAction === 'regrade'} />{labelFor('regrade', '重评并更新班级分析')}</button>}
+      </button>}
+      {actions.showRegrade && <button type="button" className={styles.actionButton} disabled={busy || !payload?.canSend.ok} onClick={() => { if (window.confirm('重新评分会替换本班已有 AI 评分，并按差额调整奖励。是否继续？')) void state.run(undefined, true); }}><AnalysisActionIcon action="regrade" pending={busy && activeAction === 'regrade'} />{labelFor('regrade', actions.regradeLabel)}</button>}
+      {busy && state.stop && <button type="button" className={`${styles.actionButton} ${styles.dangerButton}`} disabled={state.stopping} onClick={() => void state.stop?.()}>{state.stopping ? '正在停止…' : '停止'}</button>}
+      {!busy && state.clear && <details className={styles.clearMenu} ref={clearMenuRef}>
+        <summary className={styles.actionButton}>{state.clearing ? '正在清除…' : '清除数据'}<svg className={styles.clearChevron} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></summary>
+        <div className={styles.clearOptions}>
+          <span>仅操作当前题，保留学生作答</span>
+          {actions.canClearAiScores && <button type="button" onClick={() => void clear('grades')}>清除全班 AI 评分</button>}
+          {actions.canClearAiScores && <button type="button" onClick={() => { if (clearMenuRef.current) clearMenuRef.current.open = false; setSelected([]); setSelectionError(null); setSelecting(true); }}>选择学生清除 AI 评分</button>}
+          <button type="button" onClick={() => void clear('result')}>清除班级分析结果</button>
+        </div>
+      </details>}
+      </fieldset>
+      {!busy && actions.canClearAiScores && selecting && <StudentScoreClearDialog payload={payload} selected={selected}
+        onSelect={(id, checked) => setSelected(ids => checked ? [...ids, id] : ids.filter(value => value !== id))}
+        clearing={state.clearing === true} error={selectionError} onClear={() => void clear('grades', selected)}
+        onClose={closeSelection} restoreFocus={clearMenuRef.current?.querySelector('summary') ?? null} />}
             {/* 不可点时必须**说出来为什么** —— 只灰掉一个按钮，教师不知道该去哪儿修 */}
       {payload && !payload.canSend.ok && (
         <span className={styles.actionWarning}>{payload.canSend.reason}</span>

@@ -114,6 +114,10 @@ export function answerGradeFromAiScore(
   return { isCorrect: gradeState === 'correct', gradeState, score };
 }
 
+export function supportsAiScoring(node: Pick<QuestionNode, 'type'>): boolean {
+  return node.type === 'short-answer' || node.type === 'drawing';
+}
+
 export function aiScoringConfigOf(node: QuestionNode, unit = '分'): AiScoringConfig {
   // ★ 2026-10-09（教师裁定）：「填空题简化 —— 所有空都不涉及 AI 评分；想让学生自由写就用
   //    **问答题**。删 `'ai'` 与 `'none'` 两档。」⇒ 逐空 AI 那一支（`fillParts`）整个删掉。
@@ -121,7 +125,7 @@ export function aiScoringConfigOf(node: QuestionNode, unit = '分'): AiScoringCo
   //    （`worksheet-questions.ts`）本来就只把 `'auto'` 的空计入命中，这里再把 AI 那条路
   //    摘掉，两处就只剩同一条口径 —— 面板与学生端也不会再显示它们那份旧 AI 分数。
   //    教师要去编辑器里给那些空补答案键（编辑器逐空提示）。
-  const subjective = node.type === 'short-answer' || node.type === 'drawing';
+  const subjective = supportsAiScoring(node);
   const enabled = subjective && node.data.aiScoringEnabled === true;
   const rawMax = node.data.aiScoringMaxScore;
   const configuredMax = typeof rawMax === 'number' && Number.isInteger(rawMax) && rawMax >= 1 && rawMax <= AI_SCORE_MAX

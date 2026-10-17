@@ -883,6 +883,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
     setLoad({ kind: 'loading' });
     (async () => {
       const auth = { ...getStudentSessionAuthorization() };
@@ -895,11 +896,11 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
         //     那正是这次要修的那个症状，只是换了个成因。宁可整块报错 + 给一个重试按钮
         //     （下面那个 `error` 卡片），也不要让他看着空白以为自己白写了。
         const [viewRes, rowsRes] = await Promise.all([
-          fetch(`${base}/student-view`, { credentials: 'include', headers: auth }),
+          fetch(`${base}/student-view`, { credentials: 'include', headers: auth, signal: controller.signal }),
           // ⚠️ 与 `student-view` **分两条路**（不是把那五列塞进 `student-view` 的响应体）：
           // 理由写在服务端 `GET /:id/answers` 的注释里 —— 一句话是「那条响应体被一条
           // 对整串做 `!includes('answers')` 的红线用例守着，红线不该为新功能让路」。
-          fetch(`${base}/answers`, { credentials: 'include', headers: auth }),
+          fetch(`${base}/answers`, { credentials: 'include', headers: auth, signal: controller.signal }),
         ]);
         if (cancelled) return;
         if (!viewRes.ok || !rowsRes.ok) {
@@ -982,12 +983,19 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             aiAdvice: parseAiAdvice(rowsData),
           },
         });
+        // 历史记录不是打开学习单的前置条件，也不必为了它重读题目与作答。
+        void fetch(`${base}/answers/reviews`, { credentials: 'include', headers: auth })
+          .then(async response => {
+            if (!response.ok) return;
+            const history = await response.json();
+            if (!cancelled) setReviews(history.reviews ?? []);
+          }).catch(() => { /* 后续反馈轮询会再次读取。 */ });
       } catch {
         if (!cancelled) setLoad({ kind: 'error', message: '网络不太好，学习单没能读出来' });
       }
     })();
-    return () => { cancelled = true; };
-  }, [worksheetId, reloadToken]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [worksheetId, session?.id, reloadToken]);
 
   // 只更新AI反馈；保留答案数组引用，避免刷新建议时覆盖学生正在编辑的草稿。
   useEffect(() => {
@@ -1021,7 +1029,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
     window.addEventListener('worksheet-review-refresh', submitted);
     window.addEventListener('focus', visible);
     document.addEventListener('visibilitychange', visible);
-    if (active) void refresh();
+    // 首次加载已并行读取题目和作答；不要在挂载时再发一轮相同请求。
     return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener('worksheet-review-refresh', submitted); unsubscribe(); window.removeEventListener('focus', visible); document.removeEventListener('visibilitychange', visible); };
   }, [worksheetId, session?.id, active, reloadToken]);
 

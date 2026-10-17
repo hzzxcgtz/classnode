@@ -80,7 +80,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const changePwdRef = useRef(false);
   const logoutRef = useRef(false);
   const pwdCloseTimerRef = useRef<number | null>(null);
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return typeof window !== 'undefined' && localStorage.getItem('teacher_sidebar_collapsed') === 'true'; }
     catch { return false; }

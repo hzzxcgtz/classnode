@@ -530,12 +530,12 @@ export default function AvatarsPage() {
                         <span style={{ width: 3, height: 12, borderRadius: 2, background: 'var(--primary)', display: 'inline-block' }} />
                         男孩头像 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: "0.75rem" }}>（{randomPool.slice(0, 10).filter((_, i) => selectedRandom.has(i)).length} 已选）</span>
                       </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 72px))', gap: 8, justifyContent: 'center' }}>
                         {randomPool.slice(0, 10).map((av, i: number) => (
                           <div key={i}
                             onClick={() => { setSelectedRandom(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; }); }}
                             style={{
-                              width: 72, padding: 6, textAlign: 'center',
+                              width: '100%', padding: 6, textAlign: 'center',
                               borderRadius: 10, border: `2px solid ${selectedRandom.has(i) ? 'var(--primary)' : '#e2e8f0'}`,
                               background: selectedRandom.has(i) ? '#f8faff' : 'white',
                               cursor: 'pointer', transition: 'all 0.12s',
@@ -551,14 +551,14 @@ export default function AvatarsPage() {
                         <span style={{ width: 3, height: 12, borderRadius: 2, background: '#e91e63', display: 'inline-block' }} />
                         女孩头像 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: "0.75rem" }}>（{randomPool.slice(10, 20).filter((_, i) => selectedRandom.has(i + 10)).length} 已选）</span>
                       </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 72px))', gap: 8, justifyContent: 'center' }}>
                         {randomPool.slice(10, 20).map((av, i: number) => {
                           const idx = i + 10;
                           return (
                             <div key={idx}
                               onClick={() => { setSelectedRandom(prev => { const n = new Set(prev); if (n.has(idx)) n.delete(idx); else n.add(idx); return n; }); }}
                               style={{
-                                width: 72, padding: 6, textAlign: 'center',
+                                width: '100%', padding: 6, textAlign: 'center',
                                 borderRadius: 10, border: `2px solid ${selectedRandom.has(idx) ? 'var(--primary)' : '#e2e8f0'}`,
                                 background: selectedRandom.has(idx) ? '#f8faff' : 'white',
                                 cursor: 'pointer', transition: 'all 0.12s',

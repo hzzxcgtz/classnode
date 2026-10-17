@@ -34,15 +34,22 @@ async function request<T>(path: string, options?: RequestInit, timeoutMs?: numbe
   const url = `${getApiBaseUrl()}${path}`;
   const controller = timeoutMs === undefined ? null : new AbortController();
   const timer = controller === null ? null : window.setTimeout(() => controller.abort(), timeoutMs);
+  const forwardAbort = () => controller?.abort();
+  if (controller && options?.signal) {
+    options.signal.addEventListener('abort', forwardAbort, { once: true });
+    if (options.signal.aborted) forwardAbort();
+  }
   try {
-    return await requestOnce<T>(path, url, options, controller?.signal);
+    const signal = controller?.signal ?? options?.signal ?? undefined;
+    return await requestOnce<T>(path, url, options, signal);
   } catch (error) {
-    if (controller !== null && error instanceof DOMException && error.name === 'AbortError') {
+    if (controller?.signal.aborted && !options?.signal?.aborted && error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('等了很久都没收到回音（像是连接断了）—— 可以刷新页面看看结果有没有存下来，或者再试一次');
     }
     throw error;
   } finally {
     if (timer !== null) window.clearTimeout(timer);
+    options?.signal?.removeEventListener('abort', forwardAbort);
   }
 }
 
@@ -550,10 +557,10 @@ export const api = {
    * 🔴 `classroomId` 是**必填**的：同一份学习单可以被多个课堂引用（`/usage` 就统计这件事），
    * 服务端不许猜 —— 猜错的后果是把**别的班**的数据当成这个班的给教师看。
    */
-  computeWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string) =>
+  computeWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string, operationId?: string, signal?: AbortSignal) =>
     request<WorksheetAnalysisPayload>(
       `/api/worksheets/${worksheetId}/analysis/${questionId}?classroomId=${encodeURIComponent(classroomId)}`,
-      { method: 'POST' }),
+      { method: 'POST', body: JSON.stringify({ operationId }), signal }),
   /** 读已存的载荷（没算过 ⇒ 404）。 */
   getWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string) =>
     request<WorksheetAnalysisPayload>(
@@ -567,7 +574,7 @@ export const api = {
    * ⚠️ 补跑**只补分、不动整体解读**（服务端那条规矩）—— 少发几个人还有一个好处：
    *    联系表上的小标签更不容易被模型看串。
    */
-  runWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string, only?: string[], regrade = false, analysisOnly = false) =>
+  runWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string, only?: string[], regrade = false, analysisOnly = false, operationId?: string, signal?: AbortSignal) =>
     request<{
       narrative: string | null;
       analyzedAt: string | null;
@@ -579,8 +586,12 @@ export const api = {
     }>(
       `/api/worksheets/${worksheetId}/analysis/${questionId}/run?classroomId=${encodeURIComponent(classroomId)}`
       + (only && only.length > 0 ? `&only=${encodeURIComponent(only.join(','))}` : '') + (regrade ? '&regrade=true' : '') + (analysisOnly ? '&analysisOnly=true' : ''),
-      { method: 'POST' },
+      { method: 'POST', body: JSON.stringify({ operationId }), signal },
       ANALYSIS_REQUEST_TIMEOUT_MS),
+  stopWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string) =>
+    request<{ success: boolean }>(`/api/worksheets/${worksheetId}/analysis/${questionId}/stop?classroomId=${encodeURIComponent(classroomId)}`, { method: 'POST' }),
+  clearWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string, kind: 'grades' | 'result', participantIds?: string[]) =>
+    request<{ success: boolean }>(`/api/worksheets/${worksheetId}/analysis/${questionId}/${kind}?classroomId=${encodeURIComponent(classroomId)}`, { method: 'DELETE', body: JSON.stringify({ participantIds }) }),
   /**
    * 第 index 张联系表的图片 URL（**给 `<img src>` 用**，不走 `request`）。
    * ⚠️ 它每次请求都会重渲（服务端不存图）—— 这是「旋钮改了，旧图不会变成按旧参数画的」的代价。

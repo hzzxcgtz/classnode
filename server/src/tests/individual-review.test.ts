@@ -46,15 +46,16 @@ test('真实提交：幂等、失败重试、次数、稿件隔离、奖励替�
   const app = express(); app.use(express.json()); app.set('prisma', db);
   const events: Array<{ room: string; name: string; payload: unknown }> = [];
   app.set('io', { to: (room: string) => ({ emit: (name: string, payload: unknown) => events.push({ room, name, payload }) }) });
-  let score = 8.5, fail = false, calls = 0, release: (() => void) | undefined;
+  let score = 8.5, fail = false, omitScores = false, calls = 0, release: (() => void) | undefined;
   const messages: string[] = [];
   app.set('analysisProxy', async (_agent: unknown, message: string) => {
     calls++; messages.push(message);
     if (release === undefined) await new Promise<void>(resolve => { release = resolve; });
     if (fail) return { success: false, error: '测试失败' };
+    if (omitScores) return { success: true, content: '作品具体，建议补充细节。' };
     const label = message.match(/请给下面这些学生评分：([^。]+)/)?.[1]?.split('、')[0] ?? message.match(/【(未命名参与者[^｜】]*)/)?.[1];
     assert.ok(label, message);
-    return { success: true, content: `${message.includes('【调用模式：个人评价】') ? '' : '### 核心结论\n作品具体。\n'}<classnode-scores>${JSON.stringify({ scores: [{ student: label, score, reason: '你写清楚了事情。', advice: '你可以补充细节。' }] })}</classnode-scores>` };
+    return { success: true, content: `${message.includes('【调用模式：个人评价】') || message.includes('【调用模式：补评未评学生】') ? '' : '### 核心结论\n作品具体。\n'}<classnode-scores>${JSON.stringify({ scores: [{ student: label, score, reason: '你写清楚了事情。', advice: '你可以补充细节。' }] })}</classnode-scores>` };
   });
   app.use('/api/system', systemRoutes);
   app.use('/api/worksheets', worksheetAccessGate, worksheetRoutes);
@@ -209,7 +210,14 @@ test('真实提交：幂等、失败重试、次数、稿件隔离、奖励替�
   await call('POST', analysisPath, {}, '');
   const classBefore = await db.worksheetQuestionAnalysis.findFirstOrThrow();
   score = 4;
+  omitScores = true;
+  const missingScore = await call('POST', `/analysis/q/run?classroomId=${room.id}&only=${other.id}`, {}, '');
+  assert.equal(missingScore.status, 502, '仅返回文字建议不能当作补评成功');
+  assert.match((await missingScore.json()).error, /未返回可用评分/);
+  assert.deepEqual((await db.worksheetQuestionAnalysis.findFirstOrThrow()).perStudent, classBefore.perStudent);
+  omitScores = false;
   assert.equal((await call('POST', `/analysis/q/run?classroomId=${room.id}&only=${other.id}`, {}, '')).status, 200);
+  assert.match(messages.at(-1)!, /【调用模式：补评未评学生】/);
   const late = await db.worksheetAnswer.findFirstOrThrow({ where: { response: { participantId: other.id } } });
   assert.equal(late.score, 4);
   assert.equal((await db.worksheetAnswer.findUnique({ where: { id: r1.answerId } }))?.score, 2);

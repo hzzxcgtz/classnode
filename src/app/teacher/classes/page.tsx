@@ -92,7 +92,9 @@ export default function ClassesPage() {
 
   async function loadClasses() {
     try {
-      const data = await api.getClasses();
+      const data = (await api.getClasses()).sort((a, b) =>
+        a.name.localeCompare(b.name, 'zh-CN', { numeric: true }),
+      );
       setClasses(data);
       if (data.length > 0) {
         // 如果已选中某班级且仍在列表中，保持选中；否则选第一个

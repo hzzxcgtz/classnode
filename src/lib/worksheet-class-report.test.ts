@@ -2,6 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { classReportContent, reportStudentLabel } from './worksheet-class-report.ts';
 const entries = [{studentId:'a',anonLabel:'张伟#1'},{studentId:'b',anonLabel:'张伟#2'}];
+test('名单链接标题含完整学生标签时不生成嵌套链接或露出地址', () => {
+  const report = classReportContent('优秀作答：[张伟#2](#classnode-group-g2)，方法清晰。', entries, {a:'张伟',b:'张伟'});
+  assert.equal(report.text, '优秀作答：[张伟#2](#classnode-group-g2)，方法清晰。');
+  assert.deepEqual(report.groups, []);
+});
+test('名单链接后重复展开的姓名或名单链接被移除，实质作答依据保留', () => {
+  for (const list of ['张伟#1、张伟#2等', '[作者](#classnode-group-g2)、[同学](#classnode-group-g3)等']) {
+    const report = classReportContent(`典型问题：[相关同学](#classnode-group-g1)（${list}）把钝角分错。`, entries, {a:'张伟',b:'张伟'});
+    assert.equal(report.text, '典型问题：[相关同学](#classnode-group-g1)把钝角分错。');
+  }
+  const report = classReportContent('[相关同学](#classnode-group-g1)（把最大角120°误判为锐角）', entries, {});
+  assert.equal(report.text, '[相关同学](#classnode-group-g1)（把最大角120°误判为锐角）');
+});
 test('班级正文隐藏历史完整标签，悬停名单仍唯一对应学生', () => {
   const report = classReportContent('张伟#2 漏写单位，张伟#1 计算正确。', entries, {a:'张伟',b:'张伟'});
   assert.ok(!report.text.includes('张伟') && !report.text.includes('#1') && !report.text.includes('#2'));

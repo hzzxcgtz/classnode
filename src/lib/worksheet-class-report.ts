@@ -27,6 +27,20 @@ export function classReportContent(text: string, entries: readonly { studentId: 
       groups.push({ id: row.id, studentIds: [...new Set(ids.map((ids: string[]) => ids[0]))] as string[] });
     }
   }
+  // 已有名单链接必须整体隔离；替换链接标题里的姓名会生成嵌套链接，露出内部地址。
+  content = content.replace(/\[[^\]\n]*\]\(#classnode-group-[\w-]+\)/g, link => {
+    const marker = `\uE000${slots.length}\uE001`;
+    slots.push(link);
+    return marker;
+  });
+  // 只移除名单链接后纯粹重复列姓名的括号，保留带作答依据等实质内容的括号。
+  content = content.replace(/(\uE000\d+\uE001)[ \t]*[（(]([^()（）\n]*)[）)]/g, (whole, marker: string, list: string) => {
+    let remainder = list.replace(/\uE000\d+\uE001/g, '');
+    for (const label of [...replacements.keys()].sort((a, b) => b.length - a.length)) {
+      remainder = remainder.split(label).join('');
+    }
+    return remainder.replace(/[\s、，,；;和与及等]/g, '') === '' ? marker : whole;
+  });
   // 先替换完整标签，避免姓名把“姓名#学号”切开。占位符避免新链接又被姓名替换。
   for (const [label, ids] of [...replacements].sort((a, b) => b[0].length - a[0].length)) {
     if (!content.includes(label)) continue;

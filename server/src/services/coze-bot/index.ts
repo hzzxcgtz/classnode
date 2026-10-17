@@ -98,6 +98,7 @@ export class CozeBot {
       history?: EnterMessage[];
       /** 非流式对话的轮询等待秒数；普通对话默认 30 秒。 */
       pollTimeoutSeconds?: number;
+      signal?: AbortSignal;
     }
   ): Promise<{ content: string; conversationId: string; chatId: string }> {
     const messages: EnterMessage[] = [];
@@ -125,32 +126,43 @@ export class CozeBot {
       stream: false,
     };
 
+    options.signal?.throwIfAborted();
     const chat = await this.chats.create(options.conversationId, req);
+    let onAbort: (() => void) | undefined;
+    const cancelled = new Promise<never>((_, reject) => {
+      if (!options.signal) return;
+      onAbort = () => {
+        void this.chats.cancel(chat.conversation_id, chat.id).catch(() => {});
+        reject(options.signal!.reason ?? new Error('分析已停止'));
+      };
+      options.signal.addEventListener('abort', onAbort, { once: true });
+      if (options.signal.aborted) onAbort();
+    });
+    try {
+      // 轮询直到完成
+      const completed = await Promise.race([this.chats.pollUntilCompleted(
+        chat.conversation_id,
+        chat.id,
+        options.pollTimeoutSeconds,
+        options.signal,
+      ), cancelled]);
 
-    // 轮询直到完成
-    const completed = await this.chats.pollUntilCompleted(
-      chat.conversation_id,
-      chat.id,
-      options.pollTimeoutSeconds
-    );
+      const chatMessages = await Promise.race([this.chats.getMessages(
+        completed.conversation_id,
+        completed.id
+      ), cancelled]);
 
-    // 获取回复消息
-    const chatMessages = await this.chats.getMessages(
-      completed.conversation_id,
-      completed.id
-    );
+      const answer = chatMessages
+        .filter(m => m.type === 'answer' && m.role === 'assistant')
+        .map(m => m.content)
+        .join('');
 
-    // 提取最后的 answer
-    const answer = chatMessages
-      .filter(m => m.type === 'answer' && m.role === 'assistant')
-      .map(m => m.content)
-      .join('');
-
-    return {
-      content: answer,
-      conversationId: completed.conversation_id,
-      chatId: completed.id,
-    };
+      return {
+        content: answer,
+        conversationId: completed.conversation_id,
+        chatId: completed.id,
+      };
+    } finally { if (onAbort) options.signal?.removeEventListener('abort', onAbort); }
   }
 
   /**

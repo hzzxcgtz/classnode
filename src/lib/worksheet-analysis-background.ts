@@ -9,7 +9,7 @@ export const WORKSHEET_ANALYSIS_STARTED_EVENT = 'classnode:worksheet-analysis-st
 export const WORKSHEET_ANALYSIS_NOTICE_EVENT = 'classnode:worksheet-analysis-notice';
 
 export interface WorksheetAnalysisNotice {
-  type: 'success' | 'error';
+  type: 'success' | 'error' | 'info';
   message: string;
   classroomId: string;
   worksheetId: string;
@@ -32,6 +32,10 @@ export interface BackgroundAnalysisTask {
   startedAt: number;
   stage: BackgroundAnalysisStage;
   action: AnalysisAction;
+  message?: string;
+  controller: AbortController;
+  stopping?: boolean;
+  stopPromise?: Promise<void>;
   promise: Promise<AnalysisResult>;
 }
 
@@ -70,14 +74,20 @@ export function startWorksheetAnalysisTask(input: {
   const existing = tasks.get(key);
   if (existing) return existing;
 
-  const task = {
+  const task: BackgroundAnalysisTask = {
     key,
     startedAt: Date.now(),
+    controller: new AbortController(),
     stage: 'preparing' as BackgroundAnalysisStage,
     action: (input.regrade ? 'regrade' : input.incremental || input.only?.length ? 'incremental' : 'analysis') as AnalysisAction,
     promise: null as unknown as Promise<AnalysisResult>,
   };
-  const promise = api.computeWorksheetAnalysis(classroomId, worksheetId, questionId)
+  const operationId = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const checkStopped = async () => {
+    if (task.stopping) { await task.stopPromise; throw new Error('分析已停止，已保存的评分保留'); }
+    if (task.controller.signal.aborted) throw new Error('分析已停止，已保存的评分保留');
+  };
+  const promise = api.computeWorksheetAnalysis(classroomId, worksheetId, questionId, operationId, task.controller.signal)
     .then((payload) => {
       if (!payload.canSend.ok) throw new Error(payload.canSend.reason);
       task.stage = 'sending';
@@ -85,26 +95,34 @@ export function startWorksheetAnalysisTask(input: {
         if (tasks.get(key) === task && task.stage === 'sending') task.stage = 'analyzing';
       }, 900);
       return runWorksheetAnalysisSteps(payload, input,
-        options => api.runWorksheetAnalysis(classroomId, worksheetId, questionId, options.only, options.regrade, options.analysisOnly),
-        () => api.computeWorksheetAnalysis(classroomId, worksheetId, questionId));
+        async options => {
+          await checkStopped();
+          const result = await api.runWorksheetAnalysis(classroomId, worksheetId, questionId, options.only, options.regrade, options.analysisOnly, operationId, task.controller.signal);
+          await checkStopped();
+          return result;
+        },
+        async () => { await checkStopped(); return api.computeWorksheetAnalysis(classroomId, worksheetId, questionId, operationId, task.controller.signal); },
+        message => { task.message = message; });
     })
     .then(async (result) => {
+      await checkStopped();
       task.stage = 'finalizing';
       // 给“正在保存结果”一个可见但很短的阶段；结果已经由服务端落库，这里只等待界面呈现。
       await new Promise<void>((resolve) => window.setTimeout(resolve, 350));
+      await checkStopped();
       announce({
         type: 'success', classroomId, worksheetId, questionId,
-        message: `${questionLabel || '本题'}的 AI 分析已完成并自动保存`,
+        message: `${questionLabel || '本题'}的${task.action === 'incremental' ? '补评' : 'AI 分析'}已完成并自动保存`,
       });
       completed.add(key);
       return result;
     })
     .catch((error: unknown) => {
       announce({
-        type: 'error', classroomId, worksheetId, questionId,
-        message: `${questionLabel || '本题'}的 AI 分析失败：${error instanceof Error ? error.message : '请求异常'}`,
+        type: task.stopping ? 'info' : 'error', classroomId, worksheetId, questionId,
+        message: task.stopping ? '分析已停止，已保存的评分保留' : `${questionLabel || '本题'}的 AI 分析失败：${error instanceof Error ? error.message : '请求异常'}`,
       });
-      throw error;
+      throw task.stopping ? new Error('分析已停止，已保存的评分保留') : error;
     })
     .finally(() => {
       if (tasks.get(key) === task) tasks.delete(key);
@@ -113,6 +131,24 @@ export function startWorksheetAnalysisTask(input: {
   tasks.set(key, task);
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(WORKSHEET_ANALYSIS_STARTED_EVENT));
   return task;
+}
+
+export async function stopWorksheetAnalysisTask(classroomId: string, worksheetId: string, questionId: string): Promise<void> {
+  const task = activeWorksheetAnalysisTask(classroomId, worksheetId, questionId);
+  if (task?.stopPromise) return task.stopPromise;
+  if (task) task.stopping = true;
+  const promise = api.stopWorksheetAnalysis(classroomId, worksheetId, questionId).then(() => {
+    task?.controller.abort();
+  }).catch(error => {
+    if (task) { task.stopping = false; task.stopPromise = undefined; }
+    throw error;
+  });
+  if (task) task.stopPromise = promise;
+  return promise;
+}
+
+export function forgetWorksheetAnalysis(classroomId: string, worksheetId: string, questionId: string): void {
+  completed.delete(taskKey(classroomId, worksheetId, questionId));
 }
 
 export function activeWorksheetAnalysisTask(

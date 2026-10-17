@@ -242,10 +242,13 @@ export class ChatAPI {
   async pollUntilCompleted(
     conversationId: string,
     chatId: string,
-    timeoutSeconds = 30
+    timeoutSeconds = 30,
+    signal?: AbortSignal,
   ): Promise<ChatData> {
     for (let i = 0; i < timeoutSeconds; i++) {
+      signal?.throwIfAborted();
       const chat = await this.retrieve(conversationId, chatId);
+      signal?.throwIfAborted();
       if (chat.status === 'completed') return chat;
       if (chat.status === 'failed') {
         throw new Error(

@@ -11,7 +11,7 @@ import { api } from '@/lib/api';
 import { activeWorksheetAnalysisTask, hasCompletedWorksheetAnalysis, WORKSHEET_ANALYSIS_STARTED_EVENT } from '@/lib/worksheet-analysis-background';
 import { indexQuestions, isGradedType, questionAggregate } from './worksheet-drawer-state';
 import { buildWorksheetMatrix, matrixHeadline, questionTallies, rowTally, uncoveredCount, type CellState, type MatrixHeadline, type MatrixRow } from './worksheet-matrix';
-import { questionTypeNickname, questionTypeLabel } from '@/lib/worksheet-questions';
+import { questionTypeNickname } from '@/lib/worksheet-questions';
 import type { ParticipantWorksheetProgress } from './worksheet-tile-state';
 import { ParticipantAnswers } from './worksheet-drawer';
 import { showsAgentAnalysis } from './worksheet-question-stats';
@@ -130,8 +130,8 @@ export function MatrixOverlay({
         worksheetTitle: worksheet.title,
         questionId: item.node.id,
         heading: item.heading,
+        title: [item.heading, item.node.prompt.replace(/\s+/g, ' ').trim()].filter(Boolean).join(' · '),
         typeLabel: questionTypeNickname(item.node.type),
-        formalTypeLabel: questionTypeLabel(item.node.type),
         aggregate: questionAggregate(rows),
         analysisAvailable: showsAgentAnalysis(item.node),
         manual: !isGradedType(item.node.type) || item.node.autoGrade === false,
@@ -298,13 +298,14 @@ export function MatrixOverlay({
                           <button type="button" className={styles.questionNavSelect}
                             onClick={() => openQuestion(item.worksheetId, item.questionId)}>
                             <span className={styles.questionNavTitle}>
-                              <strong>{item.heading}</strong>
+                              <strong title={item.title}>{item.title}</strong>
                             </span>
                             <span className={styles.questionNavMeta}>
                               <small>已交 {item.aggregate.submitted}/{item.aggregate.total}</small>
-                              <strong data-tone={item.manual ? 'neutral' : (item.aggregate.accuracy ?? 100) < 60 ? 'warning' : 'good'}>
-                                {item.manual ? item.formalTypeLabel : item.aggregate.graded > 0 ? `${item.aggregate.accuracy}%` : '待判分'}
-                              </strong>
+                              <strong>{item.typeLabel}</strong>
+                              {!item.manual && <strong data-tone={(item.aggregate.accuracy ?? 100) < 60 ? 'warning' : 'good'}>
+                                {item.aggregate.graded > 0 ? `${item.aggregate.accuracy}%` : '待判分'}
+                              </strong>}
                             </span>
                           </button>
                           {item.analysisAvailable && <div className={styles.questionNavAnalysis}>

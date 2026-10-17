@@ -121,6 +121,23 @@ nav.scrolled { border-bottom-color: var(--border); }
 .nav-menu a.active::after { width: 100%; }
 .nav-menu a.active { color: var(--accent); }
 
+.nav-menu a.nav-classnode {
+  padding: 8px 14px;
+  border: 1px solid var(--accent-glow);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.nav-menu a.nav-classnode:hover,
+.nav-menu a.nav-classnode.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.nav-menu a.nav-classnode::after { display: none; }
+
 .nav-right { display: flex; align-items: center; gap: 14px; }
 
 /* Theme Toggle */

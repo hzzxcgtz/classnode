@@ -3,6 +3,7 @@ import { extractAnalysisProtocol } from '../services/analysis-protocol.js';
 import { recordAnalysisUsage } from '../services/analysis-usage.js';
 import { parseAnalysisFeedback, readAnalysisFeedback, mergeAnalysisFeedback } from '../services/analysis-feedback.js';
 import { readAnswerGeneration, advanceAnswerGeneration, answerGenerationFor, type AnswerGeneration } from '../services/answer-generation.js';
+import { analysisOperationKey, beginAnalysisOperation, resumeAnalysisOperation, stopAnalysisOperation, type AnalysisOperation } from '../services/analysis-operation.js';
 import crypto from 'crypto';
 import { readFile } from 'node:fs/promises';
 import { Router } from 'express';
@@ -67,7 +68,7 @@ import { labelsRenderOk, renderSheets } from '../services/analysis-render.js';
 // ★ M7b：编排层的三个纯函数（平台闸门 / 消息构造 / 解读归一化）
 import { analysisGateOf, buildAnalysisMessage, normalizeNarrative } from '../services/analysis-agent.js';
 import {
-  aiScoringConfigOf, answerGradeFromAiScore, mergeAiScoring, parseAiAnalysisResult,
+  aiScoringConfigOf, supportsAiScoring, answerGradeFromAiScore, mergeAiScoring, parseAiAnalysisResult,
   readStoredAiScoring, readStudentAiReferenceScore,
 } from '../services/analysis-scoring.js';
 // ★ M7b：**全仓唯一一处 fetch 到第三方**
@@ -145,13 +146,13 @@ export const worksheetAccessGate: RequestHandler = (req, res, next) => {
 const mutationEvents = new WeakMap<Request, Array<() => void>>();
 const mutationQueues = new WeakMap<PrismaClient, Promise<void>>();
 /** Serialize worksheet writes and defer HTTP responses/events until DB commit. */
-function worksheetMutation(handler: (req: Request, res: Response, db: PrismaClient) => Promise<unknown>) {
+function worksheetMutation(handler: (req: Request, res: Response, db: PrismaClient) => Promise<unknown>, serialize = true) {
   return async (req: Request, res: Response) => {
     const prisma: PrismaClient = req.app.get('prisma');
-    const previous = mutationQueues.get(prisma) || Promise.resolve();
+    const previous = serialize ? mutationQueues.get(prisma) || Promise.resolve() : Promise.resolve();
     let release!: () => void;
     const current = new Promise<void>(resolve => { release = resolve; });
-    mutationQueues.set(prisma, current);
+    if (serialize) mutationQueues.set(prisma, current);
     await previous;
     let status = 200;
     let payload: unknown;
@@ -1487,7 +1488,7 @@ async function payloadResponse(
   // 有没有指定智能体 · 那个智能体启没启用 · 平台收不收得了这份载荷的形态。
   // 前端只管把 `canSend.reason` **逐字**说出来，不复述这些规则。
   const worksheet = await prisma.worksheet.findUnique({
-    where: { id: worksheetId }, select: { settings: true },
+    where: { id: worksheetId }, select: { settings: true, content: true },
   });
   const settings = normalizeSettings((worksheet?.settings ?? {}) as Record<string, unknown>);
   const analysisAgentId = (settings as Record<string, unknown>).analysisAgentId;
@@ -1555,7 +1556,9 @@ async function payloadResponse(
       return latest ? { ...row, advice: latest.advice } : row;
     }) };
   }
-  return { ...payload, labeled, stale, ...analysis, narrative: analysis.narrative === null ? null : extractAnalysisProtocol(analysis.narrative).narrative, analysisDurationMs, perStudent, pendingReviewIds: [...pendingReviewIds], feedback, participantNames, analysisAgent, canSend };
+  const node = worksheet ? findQuestion(worksheet.content, payload.questionId) : null;
+  const canClearAiScores = node ? supportsAiScoring(node) : false;
+  return { ...payload, labeled, stale, ...analysis, narrative: analysis.narrative === null ? null : extractAnalysisProtocol(analysis.narrative).narrative, analysisDurationMs, perStudent, pendingReviewIds: [...pendingReviewIds], feedback, participantNames, analysisAgent, canSend, canClearAiScores };
 }
 
 router.post('/:id/analysis/:questionId', async (req, res) => {
@@ -1568,6 +1571,9 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
     const target = await loadAnalysisTarget(prisma, classroomId, worksheetId, questionId);
     if (!target.ok) return res.status(target.status).json({ error: target.error });
 
+    const operationId = typeof req.body?.operationId === 'string' ? req.body.operationId : '';
+    const operation = operationId ? beginAnalysisOperation(prisma, analysisOperationKey(classroomId, worksheetId, questionId), operationId) : null;
+
     const participants = await loadAnalysisParticipants(prisma, classroomId, worksheetId);
     const answers = await loadAnalysisAnswers(prisma, classroomId, worksheetId);
     const entries = selectAnalyzeEntries(answers, participants, questionId, target.node);
@@ -1575,6 +1581,7 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
     const meta = analysisQuestionMeta(target.node, target.heading, target.scoringUnit);
     const payload = buildAnalysisPayload({ question: meta, entries, total: participants.length, knobs, participants });
 
+    operation?.controller.signal.throwIfAborted();
     await prisma.worksheetQuestionAnalysis.upsert({
       where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
       // ⚠️ 只写 `aggregate` + `totalCount`：`payloadKind` 与「已交数」都从 `aggregate` 推得出来，
@@ -1706,6 +1713,7 @@ router.get('/:id/analysis/:questionId/sheet/:index', async (req, res) => {
  * 于是「界面上原本那段解读」不会因为一次失败而消失（那是**静默**的）。
  */
 router.post('/:id/analysis/:questionId/run', async (req, res) => {
+  let operation: AnalysisOperation | undefined;
   try {
     const analysisStartedAt = Date.now();
     const prisma: PrismaClient = req.app.get('prisma');
@@ -1716,6 +1724,10 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
 
     const target = await loadAnalysisTarget(prisma, classroomId, worksheetId, questionId);
     if (!target.ok) return res.status(target.status).json({ error: target.error });
+    const operationKey = analysisOperationKey(classroomId, worksheetId, questionId);
+    operation = typeof req.body?.operationId === 'string' && req.body.operationId
+      ? resumeAnalysisOperation(prisma, operationKey, req.body.operationId)
+      : beginAnalysisOperation(prisma, operationKey, crypto.randomUUID());
 
     const automaticReview = individualReviewSettings(target.node).enabled;
     if (automaticReview && (req.query.regrade === 'true' || req.query.only !== undefined)) {
@@ -1835,7 +1847,9 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     // 不传 conversationId：每次分析都要一个新会话，两次分析之间不该串上下文。
     const agentConfig = toAgentConfig(agent, agent.credential);
     const proxy = (req.app.get('analysisProxy') as typeof proxyAnalysisRequest | undefined) ?? proxyAnalysisRequest;
-    const result = await proxy(agentConfig, buildAnalysisMessage(payload, labeled), images);
+    operation.controller.signal.throwIfAborted();
+    const result = await proxy(agentConfig, buildAnalysisMessage(payload, labeled, scoped ? 'supplement' : 'class'), images, operation.controller.signal);
+    operation.controller.signal.throwIfAborted();
     if (!result.success) return res.status(502).json({ error: result.error ?? '分析失败' });
     /*
      * ★ 2026-10-07：**只认可评的那些人** —— 名单外（这一版读不出作答的）就算模型硬编了一行，
@@ -1847,15 +1861,19 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const nameOfParticipant = new Map(participants.map((participant) => [participant.participantId, participant.name]));
     const parsedFeedback = parseAnalysisFeedback(result.content ?? '', payload.entries);
     const parsed = parseAiAnalysisResult(
-      parsedFeedback.narrative,
+      result.content ?? '',
       payload.aiScoring,
       payload.entries
         .filter((entry) => scorable.has(entry.anonLabel))
         .map((entry) => ({ ...entry, name: nameOfParticipant.get(entry.studentId) })),
+      { allowScoreOnly: scoped },
     );
     if ('error' in parsed) return res.status(502).json({ error: parsed.error });
+    if (scoped && payload.scorableLabels.length > 0 && !parsed.perStudent?.scores.some(score => score.score !== null)) {
+      return res.status(502).json({ error: 'AI 未返回可用评分，补评未完成；已有评分保留，请重试。' });
+    }
     const narrative = normalizeNarrative(parsed.narrative);
-    if (narrative === '') {
+    if (narrative === '' && !scoped) {
       // 🔴 **空解读不写库** —— 写进去的后果是「界面上原本那段解读消失了」，而没有任何报错。
       return res.status(502).json({ error: '模型没有返回可用的解读（未写入）' });
     }
@@ -1871,6 +1889,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const studentIds = allEntries.map((entry) => entry.studentId);
     const changedAnswers: Array<{ participantId: string; answer: AnswerRow }> = [];
     const { perStudent, feedback, analyzedAt, analysisDurationMs, archived } = await prisma.$transaction(async tx => {
+      operation!.controller.signal.throwIfAborted();
       const existing = await tx.worksheetQuestionAnalysis.findUnique({
         where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
         select: { perStudent: true, agentId: true, narrative: true, computedAt: true },
@@ -1949,6 +1968,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
         : Math.max(0, Date.now() - analysisStartedAt);
       const storedResult = { ...(perStudent ?? previousResult), analysisDurationMs, analysisFeedback: feedback, analysisUsage: recordAnalysisUsage(existing?.perStudent, existing?.agentId ?? null, existing?.narrative ?? null, agent.id, (result.content ?? '').length) };
       const analyzedAt = scoped ? row.analyzedAt : new Date();
+      operation!.controller.signal.throwIfAborted();
       await tx.worksheetQuestionAnalysis.update({
         where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
         // ⚠️ 只动 AI 结果字段。`aggregate`/`totalCount`/`computedAt` 一个字都不动。
@@ -1976,6 +1996,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
           await tx.worksheetAnswerReview.create({ data: { answerId: frozen.id, requestId: crypto.randomUUID(), generation: answerGenerationFor(generation, questionId), value: frozen.value === null ? Prisma.DbNull : frozen.value as Prisma.InputJsonValue, question: { node: target.node, heading: target.heading, agentId: agent.id } as unknown as Prisma.InputJsonValue, status: 'succeeded', source: 'teacher', score: score.score, maxScore: payload.aiScoring.maxScore, unit: payload.aiScoring.unit, reason: score.reason, advice: score.advice, evaluatedAt: new Date(), evaluationDurationMs: Math.max(0, Date.now() - analysisStartedAt) } });
         }
       }
+      operation!.controller.signal.throwIfAborted();
       return { perStudent, feedback, analyzedAt, analysisDurationMs, archived: false };
     });
 
@@ -2000,10 +2021,75 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
       missingThisRun: parsed.missing,
     });
   } catch (error) {
+    if (operation?.controller.signal.aborted || (error instanceof Error && error.message.startsWith('分析已停止'))) return res.status(409).json({ error: '分析已停止，已保存的评分保留' });
     console.error('[worksheets] 分析失败:', error);
     res.status(500).json({ error: '分析失败' });
   }
 });
+
+router.post('/:id/analysis/:questionId/stop', async (req, res) => {
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const classroomId = readClassroomIdQuery(req.query.classroomId);
+    if (!classroomId) return res.status(400).json({ error: '缺少 classroomId' });
+    const target = await loadAnalysisTarget(prisma, classroomId, req.params.id, req.params.questionId);
+    if (!target.ok) return res.status(target.status).json({ error: target.error });
+    stopAnalysisOperation(prisma, analysisOperationKey(classroomId, req.params.id, req.params.questionId));
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[worksheets] 停止分析失败:', error);
+    res.status(500).json({ error: '停止失败，请重试' });
+  }
+});
+
+router.delete('/:id/analysis/:questionId/:kind', worksheetMutation(async (req, res, prisma) => {
+  const { id: worksheetId, questionId, kind } = req.params;
+  if (kind !== 'grades' && kind !== 'result') return res.status(404).json({ error: '操作不存在' });
+  const classroomId = readClassroomIdQuery(req.query.classroomId);
+  if (!classroomId) return res.status(400).json({ error: '缺少 classroomId' });
+  const target = await loadAnalysisTarget(prisma, classroomId, worksheetId, questionId);
+  if (!target.ok) return res.status(target.status).json({ error: target.error });
+  if (kind === 'grades' && !supportsAiScoring(target.node)) return res.status(409).json({ error: '客观题的直接打分不能清除；只能清除班级分析结果' });
+  const participants = await loadAnalysisParticipants(prisma, classroomId, worksheetId);
+  const raw = req.body?.participantIds;
+  if (kind === 'result' && raw !== undefined) return res.status(400).json({ error: '班级分析结果不按学生清除' });
+  if (raw !== undefined && (!Array.isArray(raw) || !raw.length || raw.some(id => typeof id !== 'string' || !participants.some(p => p.participantId === id)))) {
+    return res.status(400).json({ error: '请选择本题所属课堂的学生' });
+  }
+  const ids: string[] = raw === undefined ? participants.map(p => p.participantId) : [...new Set(raw as string[])];
+  stopAnalysisOperation(req.app.get('prisma'), analysisOperationKey(classroomId, worksheetId, questionId));
+  const row = await prisma.worksheetQuestionAnalysis.findUnique({ where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } } });
+  const metadata = row?.perStudent && typeof row.perStudent === 'object' && !Array.isArray(row.perStudent) ? row.perStudent as Record<string, unknown> : {};
+  if (kind === 'grades') {
+    // Keep answer generations unchanged: clearing scores must not invalidate students' drafts.
+    // Superseding review rows below prevents in-flight individual evaluations from writing back.
+    const answers = await prisma.worksheetAnswer.findMany({ where: { questionId, response: { classroomId, worksheetId, participantId: { in: ids } } }, include: { response: { select: { participantId: true } } } });
+    await prisma.worksheetAnswer.updateMany({ where: { id: { in: answers.map(a => a.id) } }, data: { score: null, gradeState: null, isCorrect: null } });
+    await prisma.worksheetAnswerReview.updateMany({ where: { answerId: { in: answers.map(a => a.id) } }, data: { status: 'superseded', score: null, reason: null, advice: null, error: '教师已清除评分' } });
+    const scores = Array.isArray(metadata.scores) ? metadata.scores.filter(s => s && typeof s === 'object' && !ids.includes((s as Record<string, unknown>).studentId as string)) : [];
+    metadata.scores = scores;
+    metadata.missing = entriesFromAggregate(row?.aggregate).map(e => e.studentId).filter(id => !scores.some(s => (s as Record<string, unknown>).studentId === id && (s as Record<string, unknown>).score !== null));
+    const feedback = readAnalysisFeedback(metadata, participants.map(p => p.participantId));
+    if (feedback) metadata.analysisFeedback = { ...feedback, students: feedback.students.filter(s => !ids.includes(s.studentId)) };
+    for (const answer of answers) mutationEvents.get(req)!.push(() => broadcastAnswerUpdate(req, { classroomId, participantId: answer.response.participantId }, { ...answer, score: null, gradeState: null, isCorrect: null }));
+  } else {
+    metadata.analysisDurationMs = null;
+    metadata.analysisFeedback = null;
+  }
+  if (row) await prisma.worksheetQuestionAnalysis.update({ where: { id: row.id }, data: {
+    perStudent: metadata as Prisma.InputJsonValue,
+    aggregate: entriesToAggregate(selectAnalyzeEntries(await loadAnalysisAnswers(prisma, classroomId, worksheetId), participants, questionId, target.node)) as unknown as Prisma.InputJsonValue,
+    totalCount: participants.length,
+    // Invalidate snapshots held by a request started before this clear.
+    computedAt: new Date(Math.max(Date.now(), row.computedAt.getTime() + 1)),
+    ...(kind === 'result' ? { narrative: null, analyzedAt: null } : {}),
+  } });
+  mutationEvents.get(req)!.push(() => {
+    req.app.get('io')?.to(`teacher:${classroomId}`).emit('worksheet-analysis-updated', { worksheetId });
+    req.app.get('io')?.to(`classroom:${classroomId}`).emit('worksheet-analysis-updated', { worksheetId });
+  });
+  res.json({ success: true });
+}));
 
 // ── 学生端 ──────────────────────────────────────────────────────────
 //
@@ -2742,6 +2828,7 @@ router.get('/:id/student-view', async (req, res) => {
  * ——顺手建一个 `WorksheetResponse` 会让教师看板把一个什么都没做的学生
  * 显示成「已开始作答」，而这条路径只是打开面板而已。
  */
+// 读取保留事务快照，但不排在全局保存/提交队列后面。
 router.get('/:id/answers', worksheetMutation(async (req, res, database) => {
   try {
     const ctx = await requireOwnWorksheet(req, res, database);
@@ -2826,7 +2913,7 @@ router.get('/:id/answers', worksheetMutation(async (req, res, database) => {
     console.error('[worksheets] 读取学生作答失败:', error);
     throw error;
   }
-}));
+}, false));
 
 /**
  * 保存单题（学生端防抖 1.5s 调一次）。**幂等**：同一个 `(参与者, 学习单, 题)`

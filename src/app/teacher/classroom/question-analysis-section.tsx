@@ -23,7 +23,7 @@ export function QuestionAnalysisSection({ classroomId, worksheetId, questionId, 
     ? Math.max(1, Math.round(durationMs / 1000)) : null;
   const duration = seconds === null ? '耗时未记录' : seconds < 60
     ? `耗时 ${seconds} 秒` : `耗时 ${Math.floor(seconds / 60)} 分${seconds % 60 ? ` ${seconds % 60} 秒` : ''}`;
-  const status = state.busy ? 'AI 分析中（后台继续）' : ready
+  const status = ready
     ? `${timestamp ? `上次分析：${timestamp}` : '分析时间未记录'} · ${duration}` : '尚未进行 AI 分析';
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export function QuestionAnalysisSection({ classroomId, worksheetId, questionId, 
   return <section ref={region} aria-label="本题 AI 分析">
     <div className={styles.inlineAnalysis}>
     <header className={styles.analysisResultHeader}>
-      <span><strong className={styles.analysisHeading}>AI 分析</strong><TeacherPendingText active={state.busy}>{status}</TeacherPendingText></span>
+      <span><strong className={styles.analysisHeading}>AI 分析</strong>{!state.busy && <TeacherPendingText active={false}>{status}</TeacherPendingText>}</span>
       <div className={styles.inlineAnalysisActions}><AnalysisActions state={state} compact /></div>
     </header>
       <AnalysisBanners state={state} />

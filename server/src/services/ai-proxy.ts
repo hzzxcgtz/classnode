@@ -1196,6 +1196,7 @@ export async function proxyAnalysisRequest(
   agent: AgentConfig,
   message: string,
   images: Buffer[],
+  signal?: AbortSignal,
 ): Promise<{ success: boolean; content?: string; error?: string }> {
   if (images.length > 0 && agent.platform !== 'coze') {
     return {
@@ -1209,10 +1210,12 @@ export async function proxyAnalysisRequest(
   // ⚠️ 这里**刻意不调** `anonymizer.anonymize(...)` —— 见上面第 1 条。
   try {
     const coze = createCozeBot(agent);
+    signal?.throwIfAborted();
     const history: EnterMessage[] = [];
     if (images.length > 0) {
       const items: CozeMultimodalItem[] = [{ type: 'text', text: message }];
       for (const [index, buffer] of images.entries()) {
+        signal?.throwIfAborted();
         const file = await coze.file.uploadBuffer(buffer, `analysis-${index}.png`);
         items.push({ type: 'image', file_id: file.id });
       }
@@ -1237,6 +1240,7 @@ export async function proxyAnalysisRequest(
       // 分析载荷比学生日常对话更大，Pro 模型也可能需要更长推理时间。
       // 这里只延长分析专用链路；普通学生对话仍使用 CozeBot 的 30 秒默认值。
       pollTimeoutSeconds: ANALYSIS_POLL_TIMEOUT_SECONDS,
+      signal,
     });
     return { success: true, content: result.content };
   } catch (error: unknown) {

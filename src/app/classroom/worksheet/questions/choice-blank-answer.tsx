@@ -242,7 +242,7 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
           <PromptText
           text={node.prompt}
           runs={runs}
-          placeholder={<span className={styles.placeholder}>（这道题的题干还没写）</span>}
+          placeholder={<span className={styles.placeholder}>（尚未填写任务要求）</span>}
           // ★ 2026-09-28（教师）：表格域 —— 表在题干里那个 `{表格域}` 标记处画
           //（不再固定在题干之后）。判据「有没有标记」在 PromptText 里，是纯文本的。
           table={node.data.table}
@@ -255,11 +255,11 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
           }}
           />
         </div>
-      {promptImage && <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="题目配图" />}
+      {promptImage && <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="任务配图" />}
       {settings.some(setting => setting.mode === 'pool') ? (
         <div className={styles.choicePoolArea}>
           <p className={styles.choicePoolHint}>
-            {disabled ? '待选词会显示在题干下方' : '先选一个词，再点上方的填空域；也可以直接拖进去'}
+            {disabled ? '待选词会显示在任务要求下方' : '先选一个词，再点上方的填空域；也可以直接拖进去'}
           </p>
           <div className={styles.choicePool} aria-label="待选词">
             {available.map((word, index) => wordButton(word, `${WORD_PREFIX}pool:${index}`))}

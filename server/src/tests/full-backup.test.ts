@@ -372,3 +372,37 @@ test('refusing an external live WAL preserves that WAL and its committed writes'
     assert.equal((await f.prisma.setting.findUnique({ where: { key: 'external-committed' } }))?.value, 'must survive');
   } finally { await other?.$disconnect(); await f.close(); }
 });
+
+
+test('successful restore keeps only its latest safety copy and preserves other backup sources; failures retain all copies', async () => {
+  const f = await fixture();
+  try {
+    const manual = await createFullBackup(f.prisma);
+    const imported = await createFullBackup(f.prisma, 'imported');
+    const reset = await createFullBackup(f.prisma, 'safety-reset');
+    const old = await createFullBackup(f.prisma, 'safety-restore');
+    await assert.rejects(restoreFullBackup(f.prisma, manual, {
+      afterReplace: async () => { throw new Error('retention failure probe'); },
+    }), /retention failure probe/);
+    assert.ok(fs.existsSync(old));
+    const copies = fs.readdirSync(dataPaths().backups).filter(name => name.endsWith('.meta') &&
+      JSON.parse(fs.readFileSync(path.join(dataPaths().backups, name), 'utf8')).source === 'safety-restore');
+    assert.equal(copies.length, 2);
+    const first = await restoreFullBackup(f.prisma, manual);
+    assert.deepEqual(first.warnings, []);
+    assert.ok(!fs.existsSync(old));
+    assert.ok(!fs.existsSync(old + '.meta'));
+    const firstPath = path.join(dataPaths().backups, first.safetyBackup);
+    // Restoring the retained safety copy itself must also work before it is retired.
+    const second = await restoreFullBackup(f.prisma, firstPath);
+    assert.deepEqual(second.warnings, []);
+    assert.ok(!fs.existsSync(firstPath));
+    const remaining = fs.readdirSync(dataPaths().backups).filter(name => name.endsWith('.meta') &&
+      JSON.parse(fs.readFileSync(path.join(dataPaths().backups, name), 'utf8')).source === 'safety-restore');
+    assert.deepEqual(remaining, [second.safetyBackup + '.meta']);
+    for (const file of [manual, imported, reset]) {
+      assert.ok(fs.existsSync(file));
+      assert.ok(fs.existsSync(file + '.meta'));
+    }
+  } finally { await f.close(); }
+});

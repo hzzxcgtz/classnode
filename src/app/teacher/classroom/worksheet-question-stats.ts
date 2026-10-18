@@ -432,7 +432,7 @@ function buildInsights(input: {
 
   // ① 交卷情况（**总是**有话说 —— 它是所有百分比的分母）。
   if (submitted === 0) {
-    return [{ level: 'info', text: `全班 ${total} 人，还没有人交这道题。` }];
+    return [{ level: 'info', text: `全班 ${total} 人，还没有人交这项任务。` }];
   }
   if (submitted < total) {
     out.push({ level: 'info', text: `${total} 人中已交 ${submitted} 人，还有 ${total - submitted} 人没交。` });
@@ -446,14 +446,14 @@ function buildInsights(input: {
     out.push({
       level,
       text: `已判 ${graded} 人：全对 ${correct} 人、部分给分 ${partial} 人、答错 ${wrong} 人（正确率 ${accuracy}%）。`
-        + (accuracy < 30 ? '这道题偏难。' : ''),
+        + (accuracy < 30 ? '这项任务偏难。' : ''),
     });
   } else if (noVerdict > 0) {
     // 主观题 / 关闭自动判分 —— **不许**编一个百分比出来。
-    out.push({ level: 'info', text: `已交 ${submitted} 人；这道题没有自动评分，不统计正确率。` });
+    out.push({ level: 'info', text: `已交 ${submitted} 人；这项任务没有自动评分，不统计正确率。` });
   }
   if (node.type === 'short-answer' || node.type === 'open-ended' || node.type === 'drawing') {
-    out.push({ level: 'info', text: '这道题的答案需要人来读 —— 下面可以交给智能体分析。' });
+    out.push({ level: 'info', text: '这项任务的答案需要人来读 —— 下面可以交给智能体分析。' });
   }
 
   // ③ 分布里最突出的一件事（**每种题型各说各的**）。

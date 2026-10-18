@@ -193,7 +193,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
       const height = solid.height;
       // 一条线都没有、两栏也空 ⇒ 如实说（题面本身就是空的）。
       if (view.left.length === 0 && view.right.length === 0) {
-        return <span style={{ fontSize: '0.813rem', color: FAINT }}>这一题没有可显示的连线</span>;
+        return <span style={{ fontSize: '0.813rem', color: FAINT }}>这项任务没有可显示的连线</span>;
       }
       const wrong = solid.lines.filter((line) => !line.ok).length;
       return (

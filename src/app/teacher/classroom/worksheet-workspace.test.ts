@@ -19,7 +19,7 @@ test('顶部学习单菜单挂完整工作区，学生卡片挂单人抽屉', ()
 test('统一工作区提供总览、按学生、按题目三个平级视图', () => {
   assert.match(workspace, /\['overview', '学习单矩阵'\]/);
   assert.match(workspace, /\['student', '按学生查看'\]/);
-  assert.match(workspace, /\['question', '按题目查看'\]/);
+  assert.match(workspace, /\['question', '按任务查看'\]/);
 });
 
 test('矩阵以题目为行、参与者为列，并让交叉格直达对应学生与题目', () => {
@@ -36,7 +36,7 @@ test('题目统计和 AI 分析以内嵌模式呈现，不再产生第二层业�
   assert.doesNotMatch(questionStats, /onClick=\{onOpenAnalysis\}/);
 });
 
-test('按题目查看采用常驻题目导航与右侧详情，不再先开题目列表再进入详情页', () => {
+test('按任务查看采用常驻题目导航与右侧详情，不再先开题目列表再进入详情页', () => {
   assert.match(workspace, /questionSplit/);
   assert.match(workspace, /questionSidebar/);
   assert.match(workspace, /questionDetailPanel/);

@@ -55,7 +55,7 @@ export function FillBody({ node, draft, onChange, disabled }: FillBodyProps) {
   if (draft.texts.length === 0) {
     // 多空形状但一个空都没有（教师建了题还没填）⇒ 服务端对这道题恒判错。
     // 画一句实话，而不是画一个填了也不会有分的框。
-    return <p className={styles.cardNote}>（这道题还没有空）</p>;
+    return <p className={styles.cardNote}>（这项任务还没有空）</p>;
   }
 
   const multiple = draft.texts.length > 1;

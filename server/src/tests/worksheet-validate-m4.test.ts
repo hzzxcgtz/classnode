@@ -67,7 +67,7 @@ test('🔴 每个可判分的题型，空 data 都必须被拒绝（漏写分支
   // 而「键在、内容是空的」对绘图题**就是正确行为**，本用例无法也不该在这里判它。
   // ⚠️ 别顺手把 `drawing: () => {}` 改成 `drawing: () => { errors.push('…') }` 来让它从
   // EXEMPT 里挪出来：绘图题在 `newQuestion` 里的 `data` 是 `{}` ⇒ 那等于**新建的绘图题
-  // 永远存不下去**，而那句错误文案说的是「题干不能为空」（一个说得通但与真实原因无关的提示）。
+  // 永远存不下去**，而那句错误文案说的是「任务要求不能为空」（一个说得通但与真实原因无关的提示）。
   // ── 豁免表：**两类理由，别混在一起读** ────────────────────────────────
   //   ① 「空 data 就是它的**正确形状**」：主观题 / 绘图题（没有答案要配）、
   //      任务容器（它**根本不是一道题**，裁定 ①a —— 拿「题」的尺子量它本身就错了）；
@@ -105,7 +105,7 @@ test('🔴 每个可判分的题型，空 data 都必须被拒绝（漏写分支
 
 test('旧开放题允许空 data，但仍校验题干', () => {
   accepted('open-ended', {});
-  assert.deepEqual(validateQuestion({ ...node('open-ended', {}), prompt: '  ' }), ['题干不能为空']);
+  assert.deepEqual(validateQuestion({ ...node('open-ended', {}), prompt: '  ' }), ['任务要求不能为空']);
 });
 
 test('★ M4b：绘图题**必须**接受空 data（它没有答案要配，data 恒为 {}）', () => {
@@ -115,10 +115,10 @@ test('★ M4b：绘图题**必须**接受空 data（它没有答案要配，data
   // ⚠️ 连一个**非空**的 data 也照收：绘图题的 data 今天没有约定字段，服务端不该替它立规矩。
   // （它不可能是答案的载体 —— 学生的笔迹在 `WorksheetAnswer.value` 里，不在 `data` 里。）
   accepted('drawing', { whatever: 1 });
-  // 反向对照：公共那条「题干不能为空」对它**照样**生效 —— 豁免的只是它自己那一支校验器。
+  // 反向对照：公共那条「任务要求不能为空」对它**照样**生效 —— 豁免的只是它自己那一支校验器。
   assert.deepEqual(
     validateQuestion({ id: 'q', type: 'drawing', prompt: '  ', inputMode: 'keyboard', data: {}, children: [] }),
-    ['题干不能为空'],
+    ['任务要求不能为空'],
   );
 });
 
@@ -128,7 +128,7 @@ test('题干为空是公共检查：所有**可作答的**题型都拦（含主�
   // 他改的是任务名。这一条在 `worksheet-task.test.ts` 里正面钉着。
   for (const type of QUESTION_TYPES.filter((t) => t !== 'task')) {
     const empty: QuestionNode = { id: 'q', type, prompt: '   ', inputMode: 'keyboard', data: {}, children: [] };
-    assert.ok(validateQuestion(empty).includes('题干不能为空'), `题型「${type}」的空题干没被拦下`);
+    assert.ok(validateQuestion(empty).includes('任务要求不能为空'), `题型「${type}」的空题干没被拦下`);
   }
 });
 
@@ -339,7 +339,7 @@ test('主观题：只要题干在就算通过（它真的没有别的字段要�
   accepted('short-answer', { explanation: '参考答案要点' });
   assert.deepEqual(
     validateQuestion({ id: 'q', type: 'short-answer', prompt: '  ', inputMode: 'keyboard', data: {}, children: [] }),
-    ['题干不能为空'],
+    ['任务要求不能为空'],
   );
 });
 

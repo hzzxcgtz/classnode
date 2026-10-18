@@ -2714,7 +2714,7 @@ export function editorRenderBlocks(nodes: WorksheetQuestionNode[]): EditorBlock[
  * ⇒ 于是那套中文序号机制（`nextTaskTitle` / `taskNumeral` / `numeralValue`）**整块删掉**：
  *    它没有第二个调用点，留着就是一段「看着还在生效」的死代码。
  */
-export const NEW_TASK_TITLE = '新任务标题';
+export const NEW_TASK_TITLE = '新主题标题';
 
 /** 一个新任务容器：**空的是合法的**（教师 2026-09-25 裁定），所以不预置小题。 */
 export function newTask(): WorksheetQuestionNode {

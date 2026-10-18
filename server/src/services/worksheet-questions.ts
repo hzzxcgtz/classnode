@@ -1445,14 +1445,14 @@ export function questionTextFor(node: { prompt: string; data: Record<string, unk
  */
 function findTableError(data: Record<string, unknown>, prompt: string): string | null {
   const marks = tableMarkCount(prompt);
-  if (marks > 1) return `题干里有 ${marks} 处「${TABLE_MARK_TEXT}」—— 一道题只能放一张表格`;
+  if (marks > 1) return `任务要求里有 ${marks} 处「${TABLE_MARK_TEXT}」—— 一项任务只能放一张表格`;
   const raw = data.table;
   if (raw === undefined || raw === null) return null;
   // 🔴 有表但没有标记 ⇒ **学生看不到这张表**（渲染与投影都由标记决定）。
   //    这是「看不见的内容」，必须响亮地拒 —— 而不是让它静静地躺在库里。
-  if (marks === 0) return `题干里没有「${TABLE_MARK_TEXT}」标记，学生看不到这道题的表格 —— 请用工具栏的「表格域」把它插进题干`;
+  if (marks === 0) return `任务要求里没有「${TABLE_MARK_TEXT}」标记，学生看不到这项任务的表格 —— 请用工具栏的「表格域」把它插进任务要求`;
   if (tableBlankCount(raw) === 0 && tableRowList(raw).length === 0) return null;
-  if (typeof raw !== 'object' || Array.isArray(raw)) return '这道题的表格结构读不出来';
+  if (typeof raw !== 'object' || Array.isArray(raw)) return '这项任务的表格结构读不出来';
   const rows = tableRowList(raw);
   // ⚠️ 「有键但没有行」当成没有表 —— 与客户端 `readTableFor` 同一条判据
   if (rows.length === 0) return null;
@@ -1577,7 +1577,7 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
    */
   task: (node, errors) => {
     const children = node.children ?? [];
-    if (children.some((child) => child.type === 'task')) errors.push('任务里不能再嵌套任务');
+    if (children.some((child) => child.type === 'task')) errors.push('主题里不能再嵌套主题');
   },
   'single-choice': (node, errors) => {
     if (node.data.choiceMode !== 'multiple') {
@@ -1724,7 +1724,7 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
  */
 export function validateQuestion(node: QuestionNode): string[] {
   const errors: string[] = [];
-  if (node.type !== 'task' && !node.prompt.trim()) errors.push('题干不能为空');
+  if (node.type !== 'task' && !node.prompt.trim()) errors.push('任务要求不能为空');
   VALIDATORS[node.type](node, errors);
   return errors;
 }

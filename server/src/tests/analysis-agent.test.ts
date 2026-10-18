@@ -52,7 +52,7 @@ const drawingPayloadOf = (kind: 'text' | 'image' | 'mixed', drawingStarter: bool
  * 那句话（产品文案）。**逐字钉住是有意的**：它进的是发给模型的提示词，
  * 改字就等于改评价口径 —— 而「改字」这件事本身不会让任何别的用例变红。
  */
-const STARTER_NOTE_HEAD = /注意：本题的图里有教师预先给出的「初始图」内容/;
+const STARTER_NOTE_HEAD = /注意：当前任务的图里有教师预先给出的「初始图」内容/;
 const STARTER_NOTE_CORE = /不要把初始图当作学生的成果/;
 
 test('★ 平台能力：只有 coze 收得了图（其余三个都不行，各有逐字证据）', () => {

@@ -22,7 +22,7 @@ export class DrawingErrorBoundary extends Component<{
     if (!this.state.error) return this.props.children;
     return (
       <div role="alert" style={{ padding: 16 }}>
-        <p>{this.props.toolLabel}暂时无法加载，其他题目可以继续作答。</p>
+        <p>{this.props.toolLabel}暂时无法加载，其他任务可以继续作答。</p>
         <p>请将下面的错误信息告知老师：</p>
         <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
           {this.state.error.name}: {this.state.error.message}

@@ -157,7 +157,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
           <div className="worksheet-editor-drawing-heading">
             <div>
               <h5 id={`drawing-background-${node.id}`}><EditorIcon kind="background" />图片底图</h5>
-              <p>可上传题图作为不可修改的底层；学生只能在图片上方作答。</p>
+              <p>可上传材料图片作为不可修改的底层；学生只能在图片上方作答。</p>
             </div>
           </div>
           <div className="worksheet-editor-drawing-swatches">
@@ -167,7 +167,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
               data-checked={background.preset === 'custom' ? '1' : '0'}
               aria-pressed={background.preset === 'custom'}
               disabled={uploading}
-              title="上传本题的图片底图"
+              title="上传当前任务的图片底图"
               onClick={() => inputRef.current?.click()}
             >
               <span
@@ -303,7 +303,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
           ) : tool === 'math' ? (
             <>
               <p className="worksheet-editor-drawing-note">
-                在这里绘制题目底图。学生能看到它，但不能选中、移动、旋转或删除其中的对象。
+                在这里绘制任务底图。学生能看到它，但不能选中、移动、旋转或删除其中的对象。
               </p>
               <div className="worksheet-editor-starter-canvas">
                 <MathDrawing

@@ -197,7 +197,7 @@ export function MathInsertDialog({ onClose, onCopied }: {
         <header className="worksheet-editor-math-head">
           <div>
             <h2 id="worksheet-math-title">插入公式</h2>
-            <p>写好后点「复制」，再到任何输入框里粘贴（题干、选项、答案、表格都行）。</p>
+            <p>写好后点「复制」，再到任何输入框里粘贴（任务要求、选项、答案、表格都行）。</p>
           </div>
           {/* 设计规范：关闭按钮始终位于右上角。 */}
           <button type="button" className="worksheet-editor-math-close" onClick={onClose} aria-label="关闭">✕</button>

@@ -635,7 +635,7 @@ function BackupManager() {
       const result = await api.restoreBackup(name);
       if (result.warnings?.length) window.alert('恢复成功。\n' + result.warnings.join('\n'));
       setRestoreTarget(null);
-      setToast({ msg: '数据恢复成功！页面将重新加载。', type: 'success' });
+      setToast({ msg: '数据恢复成功，恢复前的数据已自动备份。页面将重新加载。', type: 'success' });
       window.location.reload();
     } catch (error: unknown) {
       setToast({ msg: '恢复失败: ' + getErrorMessage(error, '请求异常'), type: 'error' });
@@ -759,7 +759,16 @@ function BackupManager() {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
-                  <span style={{ fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 500, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={b.name}>{b.name}</div>
+                    {(b.source === 'safety-restore' || b.source === 'safety-reset') && (
+                      <div style={{ marginTop: 4, fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                        {b.source === 'safety-restore'
+                          ? '恢复操作前自动保存的数据。需要找回覆盖前的数据时，可恢复此备份。'
+                          : '系统初始化前自动保存的数据。需要找回清空前的数据时，可恢复此备份。'}
+                      </div>
+                    )}
+                  </div>
                   {b.source === 'imported' ? (
                     <span style={{
                       fontSize: "0.75rem", fontWeight: 600, padding: '1px 6px', borderRadius: 4,
@@ -768,8 +777,8 @@ function BackupManager() {
                   ) : (
                     <span style={{
                       fontSize: "0.75rem", fontWeight: 600, padding: '1px 6px', borderRadius: 4,
-                      background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', flexShrink: 0,
-                    }}>本机</span>
+                      background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', flexShrink: 0, whiteSpace: 'nowrap',
+                    }}>{b.source === 'safety-restore' ? '恢复前备份' : b.source === 'safety-reset' ? '初始化前备份' : '本机'}</span>
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -832,8 +841,11 @@ function BackupManager() {
               padding: 12, borderRadius: 8, background: '#f8eeee', border: '1px solid #fecaca',
               fontSize: "0.813rem", color: '#934e4e', lineHeight: 1.6, marginBottom: 20,
             }}>
-              <strong>⚠ 警告：</strong>恢复操作将<strong>覆盖</strong>当前数据库、密钥和备份包含的资产。系统会自动保留操作前完整备份。旧版备份缺少的资产仅能沿用本机文件。
+              <strong>⚠ 警告：</strong>恢复操作将<strong>覆盖</strong>当前数据库、密钥和备份包含的资产。旧版备份缺少的资产仅能沿用本机文件。
             </div>
+            <p style={{ fontSize: '0.813rem', color: '#475569', lineHeight: 1.6, margin: '0 0 20px' }}>
+              恢复前会自动备份当前数据，标注为<strong>“恢复前备份”</strong>。恢复成功后，这类备份只保留最近一份；手动和导入的备份不受影响。如需找回覆盖前的数据，可恢复这份自动备份。
+            </p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setRestoreTarget(null)} disabled={restoring}
                 style={{ fontSize: "0.875rem", padding: '7px 16px' }}>取消</button>

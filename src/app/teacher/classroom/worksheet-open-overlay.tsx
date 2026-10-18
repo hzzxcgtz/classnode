@@ -111,9 +111,9 @@ export function WorksheetOpenOverlay({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h3 id="worksheet-open-title" style={{ margin: 0 }}>逐题开放</h3>
+            <h3 id="worksheet-open-title" style={{ margin: 0 }}>逐项开放</h3>
             <p style={{ margin: '3px 0 0', fontSize: "0.8125rem", color: 'var(--text-secondary, #475569)' }}>
-              开一题，全班立刻能看见并作答；收回只是让学生看不见，已交的答案不会丢。
+              开放一项任务，全班立刻能看见并作答；收回只是让学生看不见，已交的答案不会丢。
             </p>
           </div>
           {/* 🔴 分母与分子都要写出来：一份没有分母的进度会被读成「就这些题」。 */}
@@ -151,7 +151,7 @@ export function WorksheetOpenOverlay({
                           title={`开放「${nextQuestion.heading}」`}
                           onClick={() => onChange(row.id, [...row.openIds, nextQuestion.node.id])}
                         >
-                          开放下一题（{nextQuestion.heading}）
+                          开放下一项任务（{nextQuestion.heading}）
                         </button>
                       )}
                       {!nextQuestion && row.questions.length > 0 && (
@@ -166,7 +166,7 @@ export function WorksheetOpenOverlay({
                 </div>
 
                 {row.questions.length === 0 ? (
-                  <p style={{ margin: 0, fontSize: "0.8125rem", color: 'var(--text-muted, #64748b)' }}>这张单还没有可作答的题。</p>
+                  <p style={{ margin: 0, fontSize: "0.8125rem", color: 'var(--text-muted, #64748b)' }}>这张单还没有可作答的任务。</p>
                 ) : (
                   <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {row.questions.map(({ node, heading }) => {
@@ -184,7 +184,7 @@ export function WorksheetOpenOverlay({
                             {/* ★ 2026-09-30：题干认公式（判空仍然用 `trim()`）。 */}
                             {node.prompt.trim()
                               ? <PromptText text={node.prompt} placeholder="" />
-                              : '（题干为空）'}
+                              : '（任务要求为空）'}
                           </span>
                           {isOpen ? (
                             <button
@@ -192,7 +192,7 @@ export function WorksheetOpenOverlay({
                               className="btn btn-secondary"
                               disabled={busy || !row.managed}
                               style={{ flex: '0 0 auto', padding: '3px 10px', fontSize: "0.875rem" }}
-                              title="收回这一题（学生将看不到它，已交的答案不会丢）"
+                              title="收回这项任务（学生将看不到它，已交的答案不会丢）"
                               onClick={() => onChange(row.id, row.openIds.filter((id) => id !== node.id))}
                             >
                               收回
@@ -203,7 +203,7 @@ export function WorksheetOpenOverlay({
                               className="btn btn-secondary"
                               disabled={busy || !row.managed}
                               style={{ flex: '0 0 auto', padding: '3px 10px', fontSize: "0.875rem" }}
-                              title={row.managed ? '开放这一题' : '这张单不是「手动逐题开放」，开放也不会生效'}
+                              title={row.managed ? '开放这项任务' : '这张单不是「手动逐项开放」，开放也不会生效'}
                               onClick={() => onChange(row.id, [...row.openIds, node.id])}
                             >
                               开放
@@ -227,7 +227,7 @@ export function WorksheetOpenOverlay({
 /** 四档在**教师这一屏**里的说法（与学生端设置面板的用词一致）。 */
 const ANSWER_MODE_LABEL: Record<string, string> = {
   open: '开放式',
-  'task-step': '按任务分步',
-  'question-step': '按小题分步',
-  manual: '手动逐题开放',
+  'task-step': '按主题开放',
+  'question-step': '按任务开放',
+  manual: '手动逐项开放',
 };

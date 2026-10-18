@@ -5,7 +5,7 @@
  *（教师手动逐题开放）。加一档要改四处，**每一处漏改都不报错**：
  *   · 归一化（三份内联副本）；
  *   · 闸门分支；
- *   · 末尾「怎么解锁」那句提示（漏改 ⇒ 手动档对学生说「完成当前小题后继续解锁」）；
+ *   · 末尾「怎么解锁」那句提示（漏改 ⇒ 手动档对学生说「完成当前任务后继续解锁」）；
  *   · 「谁推进」这件事（学生交卷推进 vs 老师手动推进）。
  *
  * ⚠️ 跑法：`node --test src/lib/worksheet-answer-mode.test.ts`（类型擦除直接加载 `.ts`，
@@ -78,7 +78,7 @@ test('按任务分步：只放行到「第一个还有没交的题」的那个�
   const first = answerModeView({ groups: GROUPS, statuses: {}, answerMode: 'task-step', openQuestions: [] });
   assert.deepEqual(ids(first), ['a', 'b'], '第一个任务里全是空的 ⇒ 只给第一段');
   assert.equal(first.hiddenCount, 1);
-  assert.equal(first.unlockHint, '完成当前任务后继续解锁');
+  assert.equal(first.unlockHint, '完成当前主题后继续解锁');
 
   const second = answerModeView({
     groups: GROUPS, statuses: { a: SUBMITTED_STATUS, b: SUBMITTED_STATUS }, answerMode: 'task-step', openQuestions: [],
@@ -100,7 +100,7 @@ test('按小题分步：放行到第一道没交的题（含它），再往后�
   const none = answerModeView({ groups: GROUPS, statuses: {}, answerMode: 'question-step', openQuestions: [] });
   assert.deepEqual(ids(none), ['a']);
   assert.equal(none.hiddenCount, 2);
-  assert.equal(none.unlockHint, '完成当前小题后继续解锁');
+  assert.equal(none.unlockHint, '完成当前任务后继续解锁');
 
   const one = answerModeView({
     groups: GROUPS, statuses: { a: SUBMITTED_STATUS }, answerMode: 'question-step', openQuestions: [],
@@ -126,7 +126,7 @@ test('🔴 手动档**不看 `statuses`**（这是它与两种分步唯一的、
   assert.deepEqual(ids(nothing), ['b'], '一道都没交时，开着的 b 照样能作答');
   assert.deepEqual(ids(everything), ['b'], '全交完也一样 —— 交没交都不算数');
   assert.equal(nothing.hiddenCount, 2);
-  assert.equal(nothing.unlockHint, '老师还没开放后面的题');
+  assert.equal(nothing.unlockHint, '后续任务等待老师开放');
 });
 
 test('🔴 手动档：跳着开也照**题目顺序**排（不按开放顺序重排）', () => {
@@ -148,7 +148,7 @@ test('🔴 手动档：一道都没开 ⇒ 什么都不显示，但**不是**「
   // 学生那一屏要靠这个数说「后面还有 3 道小题」—— 少了它，屏幕上就是一片空白
   //（那种「看着像加载失败」的状态正是本仓最防的）。
   assert.equal(view.hiddenCount, 3);
-  assert.equal(view.unlockHint, '老师还没开放后面的题');
+  assert.equal(view.unlockHint, '后续任务等待老师开放');
 });
 
 test('手动档：清单里那些**已不存在的题 id** 无害（老师删了题之后库里的残留）', () => {
@@ -171,7 +171,7 @@ test('没有题目的学习单：四档都不炸，隐藏数恒为 0', () => {
 
 test('🔴 四档各自那句解锁提示**互不相同**（加第五档时漏改就会红）', () => {
   // 这是本条用例真正的用途：`manual` 是第四档，而它最容易的漏改就是复用
-  // 「完成当前小题后继续解锁」—— 一句学生**做不到**的假话。
+  // 「完成当前任务后继续解锁」—— 一句学生**做不到**的假话。
   const hints = WORKSHEET_ANSWER_MODES.map(unlockHintFor);
   assert.equal(hints[0], '', '开放式没有「解锁」可言 ⇒ 空串（不渲染那半句）');
   assert.equal(new Set(hints.slice(1)).size, hints.length - 1, `三档的提示语撞了：${hints.join(' / ')}`);

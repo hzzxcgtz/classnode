@@ -35,7 +35,7 @@ export interface WorksheetSurfaceOption {
  * 默认档是 `soft`（通透），见 `DEFAULT_WORKSHEET_SURFACE`。
  */
 export const WORKSHEET_SURFACE_OPTIONS: readonly WorksheetSurfaceOption[] = [
-  { id: 'opaque', name: '清晰', description: '卡片不透明，题干最清楚' },
+  { id: 'opaque', name: '清晰', description: '卡片不透明，任务要求最清楚' },
   { id: 'soft', name: '通透', description: '背景透出来一点' },
   { id: 'clear', name: '极透', description: '背景最明显，文字的对比度会低一些' },
 ] as const;

@@ -113,7 +113,7 @@ export function startWorksheetAnalysisTask(input: {
       await checkStopped();
       announce({
         type: 'success', classroomId, worksheetId, questionId,
-        message: `${questionLabel || '本题'}的${task.action === 'incremental' ? '补评' : 'AI 分析'}已完成并自动保存`,
+        message: `${questionLabel || '当前任务'}的${task.action === 'incremental' ? '补评' : 'AI 分析'}已完成并自动保存`,
       });
       if (result.narrative?.trim()) completed.add(key);
       else completed.delete(key);
@@ -123,7 +123,7 @@ export function startWorksheetAnalysisTask(input: {
     .catch((error: unknown) => {
       announce({
         type: task.stopping ? 'info' : 'error', classroomId, worksheetId, questionId,
-        message: task.stopping ? '分析已停止，已保存的评分保留' : `${questionLabel || '本题'}的 AI 分析失败：${error instanceof Error ? error.message : '请求异常'}`,
+        message: task.stopping ? '分析已停止，已保存的评分保留' : `${questionLabel || '当前任务'}的 AI 分析失败：${error instanceof Error ? error.message : '请求异常'}`,
       });
       throw task.stopping ? new Error('分析已停止，已保存的评分保留') : error;
     })

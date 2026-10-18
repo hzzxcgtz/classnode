@@ -752,10 +752,10 @@ export function useWorksheetAnswers({
         // ★ M5a 第三档：课堂被锁定 ⇒ 也不是网络问题。
         setToastRef.current({
           msg: answersLockedRef.current
-            ? '这一题有还没保存的改动，锁定期间只能提交已保存的内容'
+            ? '这项任务有还没保存的改动，锁定期间只能提交已保存的内容'
             : sessionExpiredRef.current
               ? sessionExpiredMessage()
-              : '这一题还没保存成功，先等网络恢复再提交',
+              : '这项任务还没保存成功，先等网络恢复再提交',
           type: answersLockedRef.current || sessionExpiredRef.current ? 'error' : 'info',
         });
         return;
@@ -771,7 +771,7 @@ export function useWorksheetAnswers({
       } catch {
         // 提交失败**不进队列**：作答本身已经在服务端了（上面刚 flush 过），学生再点一次即可，
         // 没有任何数据会因此丢掉。所以这里只是提示，不改队列 —— 与保存那条路刻意不同。
-        setToastRef.current({ msg: '网络不太好，这一题没提交上，再点一次试试', type: 'error' });
+        setToastRef.current({ msg: '网络不太好，这项任务没提交上，再点一次试试', type: 'error' });
         return;
       }
       if (res.ok) {
@@ -814,7 +814,7 @@ export function useWorksheetAnswers({
       setToastRef.current({
         msg: res.status === 401
           ? sessionExpiredMessage()
-          : message || (res.status >= 500 ? '服务端出了点问题，这一题没提交上，再点一次试试' : `提交失败（错误 ${res.status}）`),
+          : message || (res.status >= 500 ? '服务端出了点问题，这项任务没提交上，再点一次试试' : `提交失败（错误 ${res.status}）`),
         type: 'error',
       });
     } finally {

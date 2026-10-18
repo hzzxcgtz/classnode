@@ -201,11 +201,11 @@ export function MatrixOverlay({
     <div data-overscroll-guard="" className={styles.overlay}>
       <div className={styles.topbar}>
         <div className={styles.titleBlock}>
-          <h2>学习单答题情况</h2>
-          <p>从全班总览进入学生或题目详情，所有查看都在这一层完成</p>
+          <h2>学习单作答情况</h2>
+          <p>从全班总览进入学生或任务详情，所有查看都在这一层完成</p>
         </div>
         <nav className={styles.viewTabs} aria-label="学习单查看方式">
-          {([['overview', '学习单矩阵'], ['student', '按学生查看'], ['question', '按题目查看']] as const).map(([value, label]) => (
+          {([['overview', '学习单矩阵'], ['student', '按学生查看'], ['question', '按任务查看']] as const).map(([value, label]) => (
             <button key={value} type="button" data-active={view === value}
               onClick={() => { if (value === view) return; navigate({ view: value, participantId: selectedParticipantId, worksheetId: selectedQuestionTarget?.worksheetId, questionId: value === 'question' ? selectedQuestionTarget?.questionId : undefined }); setView(value); setAnalysisTarget(null); if (value !== 'question') setQuestionTarget(null); }}>
               {label}
@@ -283,7 +283,7 @@ export function MatrixOverlay({
         ) : (
           <div className={`${styles.workspaceSplit} ${styles.questionSplit}`}>
             <aside className={`${styles.workspaceSidebar} ${styles.questionSidebar}`}>
-              <div className={styles.sidebarHeading}>题目</div>
+              <div className={styles.sidebarHeading}>任务</div>
               {board.worksheets.map((worksheet) => {
                 const options = questionOptions.filter((item) => item.worksheetId === worksheet.id);
                 if (options.length === 0) return null;
@@ -318,7 +318,7 @@ export function MatrixOverlay({
                   </section>
                 );
               })}
-              {questionOptions.length === 0 && <div className={styles.sidebarEmpty}>这份学习单还没有题目</div>}
+              {questionOptions.length === 0 && <div className={styles.sidebarEmpty}>这份学习单还没有任务</div>}
             </aside>
             <main className={styles.questionDetailPanel}>
               {selectedQuestionTarget ? (
@@ -335,7 +335,7 @@ export function MatrixOverlay({
                   onOpenStudent={id => openParticipant(id, selectedQuestionTarget.questionId)}
                   expandAnalysis={Boolean(analysisTarget)}
                 />
-              ) : <div className={styles.emptyState}>从左侧选择一道题查看详情</div>}
+              ) : <div className={styles.emptyState}>从左侧选择一项任务查看详情</div>}
             </main>
           </div>
         )}
@@ -360,7 +360,7 @@ function MatrixBlock({
 }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'attention' | 'manual'>('all');
-  if (!nodes) return <div className={styles.emptyState}>《{title}》正在读取题目…</div>;
+  if (!nodes) return <div className={styles.emptyState}>《{title}》正在读取任务…</div>;
 
   const rows = buildWorksheetMatrix(sheet, nodes, live, liveTrustedAfter);
   // 🔴 **不再在这里早退**（独立审查抓到的）：原先 `rows.length === 0` 直接 return 一句自己写的文案，
@@ -422,15 +422,15 @@ function MatrixBlock({
                 : '暂无判分结果'}</span>
             {focusDetail.aggregate.submitted > 0 && focusDetail.aggregate.submitted < 3 && <span>样本较少</span>}
             <button type="button" className={styles.focusAction}
-              onClick={() => onOpenQuestion(sheet.id, focusRow.questionId)}>查看该题</button>
-          </>) : <span>当前没有需要优先关注的题目</span>}
+              onClick={() => onOpenQuestion(sheet.id, focusRow.questionId)}>查看该任务</button>
+          </>) : <span>当前没有需要优先关注的任务</span>}
         </div>
       </div>
 
       <div className={styles.toolbar}>
         <input className={styles.search} value={query} onChange={(event) => setQuery(event.target.value)}
           placeholder="搜索学生或小组" aria-label="搜索学生或小组" />
-        <button type="button" className={styles.filterButton} data-active={filter === 'all'} onClick={() => setFilter('all')}>全部题目 {rows.length}</button>
+        <button type="button" className={styles.filterButton} data-active={filter === 'all'} onClick={() => setFilter('all')}>全部任务 {rows.length}</button>
         <button type="button" className={styles.filterButton} data-active={filter === 'attention'} onClick={() => setFilter('attention')}>需要关注 {attentionCount}</button>
         <button type="button" className={styles.filterButton} data-active={filter === 'manual'} onClick={() => setFilter('manual')}>主观题 {manualCount}</button>
         <div className={styles.legend} aria-label="状态图例">
@@ -444,7 +444,7 @@ function MatrixBlock({
 
       <div className={styles.tableShell}>
         {participants.length === 0 || visibleRows.length === 0 ? (
-          <div className={styles.noMatches}>{participants.length === 0 ? '没有找到匹配的学生或小组。' : '这个筛选条件下暂时没有题目。'}</div>
+          <div className={styles.noMatches}>{participants.length === 0 ? '没有找到匹配的学生或小组。' : '这个筛选条件下暂时没有任务。'}</div>
         ) : (
           <table className={styles.table} style={{ '--student-count': participants.length } as CSSProperties}>
             <colgroup>
@@ -454,7 +454,7 @@ function MatrixBlock({
             </colgroup>
             <thead>
               <tr>
-                <th className={`${styles.corner} ${styles.matrixQuestionCorner}`}>题目 / 学生</th>
+                <th className={`${styles.corner} ${styles.matrixQuestionCorner}`}>任务 / 学生</th>
                 {participants.map((participant) => (
                   <th key={participant.participantId} className={styles.participantHead} scope="col">
                     <button type="button" className={styles.participantHeadButton}
@@ -477,7 +477,7 @@ function MatrixBlock({
                 return <tr key={row.questionId}>
                   <th scope="row" className={styles.matrixQuestionHead} data-stuck={row.questionId === stuckId}>
                     <button type="button" className={styles.questionHeadButton}
-                      title={`${row.heading} · ${row.typeLabel} · ${row.prompt || '题干为空'}`}
+                      title={`${row.heading} · ${row.typeLabel} · ${row.prompt || '任务要求为空'}`}
                       onClick={() => onOpenQuestion(sheet.id, row.questionId)}>
                       <strong>{row.heading}</strong>
                     </button>
@@ -506,7 +506,7 @@ function MatrixBlock({
             </tbody>
             <tfoot>
               <tr>
-                <th className={styles.matrixFooterLabel}>完成题数</th>
+                <th className={styles.matrixFooterLabel}>完成任务数</th>
                 {participants.map((participant) => {
                   const submitted = visibleRows.filter(row => row.cells[participant.participantId] === 'submitted').length;
                   return <td key={participant.participantId} className={styles.matrixFooterCell}>
@@ -588,7 +588,7 @@ const CELL_LABEL: Record<CellState, string> = {
  */
 function headlineText(headline: MatrixHeadline): string {
   switch (headline.kind) {
-    case 'no-questions': return '这份学习单还没有题目';
+    case 'no-questions': return '这份学习单还没有任务';
     case 'no-participants': return '还没有人加入';
     case 'all-submitted': return '全部交齐';
     case 'not-started': return '全班还没开始';

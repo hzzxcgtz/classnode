@@ -287,8 +287,8 @@ export function shouldFlushOnLockChange(wasLocked: boolean, isLocked: boolean, p
  */
 export function permanentFailureMessage(status: number, serverMessage?: string | null): string {
   if (serverMessage) return serverMessage;
-  if (status === 409) return '老师已设置本题提交后不可修改，这一题这次没能保存';
-  return `这一题没能保存（错误 ${status}），请告诉老师`;
+  if (status === 409) return '老师已设置当前任务提交后不可修改，这项任务这次没能保存';
+  return `这项任务没能保存（错误 ${status}），请告诉老师`;
 }
 
 /**
@@ -311,7 +311,7 @@ export function permanentFailureMessage(status: number, serverMessage?: string |
  * 它是写给教师的，照抄过来就是上面那句谎话。
  */
 export function sessionExpiredMessage(): string {
-  return '登录状态过期了，刷新一下页面就好 —— 你答过的题都还在，刷新后会自动重发';
+  return '登录状态过期了，刷新一下页面就好 —— 你已完成的任务都还在，刷新后会自动重发';
 }
 
 // ── 服务端回读的水合（「学生做了一半刷新页面后，做好的题没了」）──────────────
@@ -482,7 +482,7 @@ export function hydrateAnswers(
     drafts[row.questionId] = draftFromValue(node, row.value);
     // ⚠️ 不认识的 `status` 落到 **`draft`**（保守的一侧）：反过来落到 `submitted`
     // 会给出一道**在学生眼里改不动**的题（`allowResubmit: false` 时界面会收起输入控件
-    // 并显示「老师已设置本题提交后不可修改」），而服务端其实还收得下他的改动。
+    // 并显示「老师已设置当前任务提交后不可修改」），而服务端其实还收得下他的改动。
     statuses[row.questionId] = row.status === 'submitted' ? 'submitted' : 'draft';
     // ⚠️ 传**整行**（不是 `row.isCorrect`）：`score` 优先、`isCorrect` 兜底，
     // 旧行（A1 没回填 `score`）因此仍然画得出奖励。顺序的理由写在 `scoreFromWire` 上。

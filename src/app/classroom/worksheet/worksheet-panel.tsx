@@ -417,7 +417,7 @@ export function WorksheetQuestionList({
   if (groups.length === 0) {
     return (
       <div className={styles.questions} data-interactive={interactive ? '1' : '0'}>
-        <p className={styles.cardNote}>这份学习单还没有题目。</p>
+        <p className={styles.cardNote}>这份学习单还没有任务。</p>
       </div>
     );
   }
@@ -670,7 +670,7 @@ export function WorksheetQuestionList({
               <PromptText
                 text={node.prompt}
                 runs={promptRuns}
-                placeholder={<span className={styles.placeholder}>（这道题的题干还没写）</span>}
+                placeholder={<span className={styles.placeholder}>（尚未填写任务要求）</span>}
                 // ★ 2026-09-26：填空题的空**就在题干里**（教师裁定），所以输入框由题干
                 // 这一份渲染器画 —— 而不是像原来那样在题干**下面**再画一排。
                 // ⚠️ 绑定**恒给**（不是「有草稿才给」）：教师端的「学生端预览」走的是
@@ -680,7 +680,7 @@ export function WorksheetQuestionList({
               />
             </div>
             {promptImage && (
-              <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="题目配图" />
+              <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="任务配图" />
             )}
 
             {/* ★ M4a/D2：作答区**一个分派器**（6 个作答体 + 判断题/单选/多选合成一个）。
@@ -791,7 +791,7 @@ export function WorksheetQuestionList({
       {hiddenQuestionCount > 0 && (
         <div className={styles.lockedTail}>
           <span aria-hidden="true">🔒</span>
-          <strong>后面还有 {hiddenQuestionCount} 道小题</strong>
+          <strong>后续还有 {hiddenQuestionCount} 项任务</strong>
           {/* ⚠️ 那半句解锁说明**由判据层给**（`view.unlockHint`）—— 在这里写三元就会在
               加档时漏掉一处，而漏掉的那一档对学生说的是一句做不到的事。 */}
           <span>{view.unlockHint}</span>
@@ -1156,7 +1156,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
         <>
           <div className={styles.topbar} data-offline={answers.offline ? '1' : '0'}>
             <div className={styles.title}>{load.worksheet.title || '学习单'}</div>
-            <div className={styles.progress} aria-label={`已完成 ${submittedCount} 题，共 ${total} 题`}>
+            <div className={styles.progress} aria-label={`已完成 ${submittedCount} 项任务，共 ${total} 项任务`}>
               <span className={styles.progressMap}>
                 {load.worksheet.groups.map((group, groupIndex) => (
                   <span className={styles.progressGroup} key={`${groupIndex}:${group.title ?? ''}`}>

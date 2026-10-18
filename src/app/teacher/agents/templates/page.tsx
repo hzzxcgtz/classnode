@@ -60,7 +60,7 @@ export default function AnalysisTemplatesPage() {
         <button type="button" className="btn btn-primary" disabled={!text || copying} onClick={() => { void copy(); }}>{copying ? '复制中…' : '一键复制完整提示词'}</button>
         <a className="btn btn-secondary" href={selected.file} download={`${selected.id}.md`}>下载 MD</a>
       </div>
-      <p className={styles.hint}>模板 v{ANALYSIS_PROMPT_VERSION} 按学科和学段分别提供具体评价方法，选择一份配置即可。日常在学习单填写参考作答、评价标准与本题分析重点，无需逐题修改模板。新版需复制到外部分析智能体后生效；不会自动更新平台已有配置。复制时不会带入分区说明。</p>
+      <p className={styles.hint}>模板 v{ANALYSIS_PROMPT_VERSION} 按学科和学段分别提供具体评价方法，选择一份配置即可。日常在学习单填写参考作答、评价标准与当前任务分析重点，无需逐项修改模板。新版需复制到外部分析智能体后生效；不会自动更新平台已有配置。复制时不会带入分区说明。</p>
     </section>
     <section className={styles.panel} aria-busy={!text && !error}>
       <div className={styles.heading}><h2>{selected.title}</h2><div className={styles.tabs} aria-label="模板显示方式">

@@ -372,7 +372,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
     node.type === 'true-false'
       ? null
       : isChoiceQuestion(node)
-        ? { title: '选项', hint: gradedOn ? '拖动左侧把手调整顺序，点右侧圆点设置答案。' : '拖动左侧把手调整顺序；本题收集学生选择，不设置正确答案。' }
+        ? { title: '选项', hint: gradedOn ? '拖动左侧把手调整顺序，点右侧圆点设置答案。' : '拖动左侧把手调整顺序；当前任务收集学生选择，不设置正确答案。' }
         : isBlankType
           // ★ 2026-10-06：「填空域与表格域会自动同步」与「表格域作答设置」那一块里的
           // 「表格里的空与题干里的空是同一批」是同一个事实（表格域不出现时这句还是错的）⇒ 删这边半句。
@@ -427,8 +427,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
     <div className="worksheet-editor-block worksheet-editor-analysis-focus">
       <div className="worksheet-editor-block-head">
         <div>
-          <h4><EditorIcon kind="content" /><label htmlFor={`analysis-focus-${node.id}`}>本题分析重点（选填）</label></h4>
-          <p id={`analysis-focus-help-${node.id}`}>告诉 AI 本次最希望关注什么，以及哪些方面暂不重点分析。不填时根据题目要求和评价依据选择重点；本项不改变评分标准和给分条件。</p>
+          <h4><EditorIcon kind="content" /><label htmlFor={`analysis-focus-${node.id}`}>当前任务分析重点（选填）</label></h4>
+          <p id={`analysis-focus-help-${node.id}`}>告诉 AI 本次最希望关注什么，以及哪些方面暂不重点分析。不填时根据任务要求和评价依据选择重点；本项不改变评分标准和给分条件。</p>
         </div>
       </div>
       <textarea id={`analysis-focus-${node.id}`} className="input worksheet-editor-evaluation-input" rows={3} maxLength={1200}
@@ -478,7 +478,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           className="worksheet-editor-question-summary"
           onClick={focusedMode ? undefined : onToggle}
           aria-expanded={expanded}
-          title={focusedMode ? undefined : (expanded ? '收起这道题' : '展开这道题')}
+          title={focusedMode ? undefined : (expanded ? '收起这项任务' : '展开这项任务')}
         >
           {/*
             ★ 2026-09-26（教师）：「这个为什么会重复？」—— 摘要行原来也印了一遍题干，
@@ -486,7 +486,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             「这是第几题 · 什么题型 · 多少分」这三件**题面里没有**的事。
             ⚠️ 别再把题干挪回来：重复一次不会报错，只会让人以为有两道一样的题。
           */}
-          <span className="worksheet-editor-question-index">{focusedMode && node.type === 'drawing' ? `第 ${badgeLabel} 题` : badgeLabel}</span>
+          <span className="worksheet-editor-question-index">{focusedMode && node.type === 'drawing' ? `第 ${badgeLabel} 项任务` : badgeLabel}</span>
           {focusedMode ? (
             <span className="worksheet-editor-question-heading-copy">
               <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(node.type)}</span>{typeLabel}</strong>
@@ -525,8 +525,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             type="button"
             className="worksheet-editor-icon-button is-danger"
             onClick={onRemove}
-            title="删除这道题"
-            aria-label="删除这道题"
+            title="删除这项任务"
+            aria-label="删除这项任务"
           >
             {/* ★ 2026-10-05：这个垃圾桶搬去了 `editor-icons.tsx` —— 教师要求
                 「删除统一用垃圾桶图标」，于是它成了全编辑页的那一个图标，不再是本文件私有的内联 SVG。 */}
@@ -569,7 +569,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
       <section className="worksheet-editor-question-section is-prompt">
         <div className="worksheet-editor-section-head">
           <div>
-            <h3><EditorIcon kind="content" />题目与作答</h3>
+            <h3><EditorIcon kind="content" />任务与作答</h3>
           </div>
           <span>必填</span>
         </div>
@@ -580,7 +580,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
               {/* ⚠️ 这个「题干」标题是**新的层级**要的：以前它在卡片头部下面，与
                   「题目内容 / 写清学生需要完成什么」是同一句话说两次，所以当时删掉了。
                   现在「题目内容」是容器的名字、块要有自己的名字，它不再重复。 */}
-              <h4><EditorIcon kind="prompt" />题干{node.type === 'drawing' && <span className="drawing-required">*</span>}</h4>
+              <h4><EditorIcon kind="prompt" />任务要求{node.type === 'drawing' && <span className="drawing-required">*</span>}</h4>
             </div>
           </div>
           <PromptEditor
@@ -718,7 +718,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                     <div className="worksheet-editor-block-head">
                       <div>
                         <h4><EditorIcon kind="grading" /><label htmlFor={`evaluation-rubric-${node.id}`}>评价标准{aiScoringEnabled ? '（必填）' : '（选填）'}</label></h4>
-                        <p id={`evaluation-rubric-help-${node.id}`}>说明本题看重哪些表现、怎样算达到要求。关闭评分时用于定性分析；开启评分时，请写清各项给分条件。</p>
+                        <p id={`evaluation-rubric-help-${node.id}`}>说明当前任务看重哪些表现、怎样算达到要求。关闭评分时用于定性分析；开启评分时，请写清各项给分条件。</p>
                       </div>
                     </div>
                       <textarea
@@ -819,7 +819,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                         </div>
                         {node.data.studentAiReviewEnabled === true && <>
                           <div className="worksheet-editor-review-quota">
-                            <label htmlFor={`ai-review-limit-${node.id}`}>每人每题评价次数</label>
+                            <label htmlFor={`ai-review-limit-${node.id}`}>每人每项任务评价次数</label>
                             <div className="worksheet-editor-ai-scoring-stepper">
                               <button type="button" disabled={(Number(node.data.aiReviewLimit) || 1) <= 1} onClick={() => onDataChange({ aiReviewLimit: Math.max(1, (Number(node.data.aiReviewLimit) || 1) - 1) })} aria-label="减少评价次数">−</button>
                               <input id={`ai-review-limit-${node.id}`} type="number" min={1} max={20} step={1} value={typeof node.data.aiReviewLimit === 'number' ? node.data.aiReviewLimit : 1} onChange={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 1 && value <= 20) onDataChange({ aiReviewLimit: value }); }} />
@@ -868,7 +868,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                             aria-label={`增加 1 ${pointsUnit}`}
                           >+</button>
                         </div>
-                        <p className="worksheet-editor-review-help">本题满分，AI 按评分标准评定。</p>
+                        <p className="worksheet-editor-review-help">当前任务满分，AI 按评分标准评定。</p>
                       </div>
                     </div>
                     {node.data.studentAiReviewEnabled === true && <p className="worksheet-editor-ai-template-note">使用前，请将分析智能体的提示词更新为模板中的三种调用模式说明。评价次数默认 1 次。评价期间不能修改；次数用完后定稿，增加次数可解锁。</p>}
@@ -877,7 +877,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                           对错标记），所以原来那句「仅供参考，不会覆盖教师评价」已经不成立了。
                           ⚠️ 这里**没有**「教师改分」入口（教师端唯一改答案的动作是「已查看」），
                           所以「覆盖」这件事不存在；真正要提醒教师的是「这个分会算进成绩」。 */}
-                      AI 评分会计入成绩 · 本题满分 <span className="worksheet-editor-ai-score-value">{aiScoringMaxScore} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>
+                      AI 评分会计入成绩 · 当前任务满分 <span className="worksheet-editor-ai-score-value">{aiScoringMaxScore} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>
                       {pointsUnit === '分' ? '，分数最多保留一位小数。' : '，奖励按整数发放。'}
                     </p>
                   </div>
@@ -924,7 +924,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
               {/* ⚠️ 徽章里**不写「自动评分」** —— 卡片标题就是它（原来那句
                   `gradingStatus`（「自动评分 · 最高 1 颗星星」）是给**折叠态那一行**用的，
                   那里没有标题，所以不能直接搬过来）。 */}
-              {gradedOn && <span className="worksheet-editor-points-badge">本题满分 {explicitFillScoring ? fillTotals.total : maximumPoints} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>}
+              {gradedOn && <span className="worksheet-editor-points-badge">当前任务满分 {explicitFillScoring ? fillTotals.total : maximumPoints} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>}
               <label><input type="radio" checked={gradedOn} onChange={() => onAutoGradeChange(true)} name={`worksheet-purpose-${node.id}`} /> 有答案，自动评分</label>
               <label><input type="radio" checked={!gradedOn} onChange={() => onAutoGradeChange(false)} name={`worksheet-purpose-${node.id}`} /> 无标准答案，收集信息</label>
             </div>
@@ -1071,7 +1071,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             <PromptText
               text={node.prompt}
               runs={promptRuns}
-              placeholder="（题干还没写）"
+              placeholder="（任务要求还没写）"
               table={node.data.table}
             />
           </div>
@@ -1079,7 +1079,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             <img
               className="worksheet-editor-question-preview-image"
               src={worksheetAssetUrl(promptImage)}
-              alt="题干配图预览"
+              alt="任务要求配图预览"
             />
           )}
           <QuestionInput node={node} draft={undefined} disabled />
@@ -1174,7 +1174,7 @@ function FillPointsRow({ node, inheritedPoints, pointsUnit, rewardStyle, onPoint
           min={1}
           max={POINTS_MAX}
           value={value}
-          aria-label="这一题的分值"
+          aria-label="这项任务的分值"
           onChange={event => setValue(event.target.value)}
         />
         <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />
@@ -1265,8 +1265,8 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rewardStyle, re
     // 档，不是不计分）。不写这一句，他就会去找一个不存在的选项，或者干脆留下 0。
     ? `「全对给几分」必须是 ${POINTS_FULL_MIN} 以上（${POINTS_FULL_MIN}–${POINTS_MAX} 的整数）——`
       // ⚠️ 这段字是**教师看到的原文**（`<p>` 里渲染，不走 markdown）⇒ 不许出现 `**` 这类记号。
-      + ` 填 0 的话，答对这道题的学生会看到红叉：他答对了，却一分都没有。`
-      + ` 今天没有「这题不计分」这个设置 —— 两个框都留空只表示跟随学习单的档`
+      + ` 填 0 的话，答对这项任务的学生会看到红叉：他答对了，却一分都没有。`
+      + ` 今天没有「这项任务不计分」这个设置 —— 两个框都留空只表示跟随学习单的档`
       + `（${inheritedPoints.full} / ${inheritedPoints.half}），不是不计分。`
     : halfInvalid
       // 这一条同时覆盖两种来路：

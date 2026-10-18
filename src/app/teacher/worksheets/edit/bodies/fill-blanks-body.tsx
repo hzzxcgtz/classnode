@@ -269,7 +269,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
       {slots.length === 0 ? (
         <div className="worksheet-editor-blank-empty">
           <strong>还没有填空的位置</strong>
-          <span>把光标放到题干的目标位置再点“{BLANK_MARK_TEXT}”；或者在上面加一张表格、把某几格标成「填空」。</span>
+          <span>把光标放到任务要求的目标位置再点“{BLANK_MARK_TEXT}”；或者在上面加一张表格、把某几格标成「填空」。</span>
         </div>
       ) : (
         <div className="worksheet-editor-fill-mode-list">
@@ -370,7 +370,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
               //**还有几个空压根不算分**（老数据），以及教师该怎么办。
               <p className="worksheet-editor-legacy-grading-note">
                 有 {legacyBlankCount} 个空还是旧版的「AI 评分 / 不评分」，它们<strong>不计分</strong>、
-                也算不进「本题满分」—— 请给这些空填上答案（想让学生自由写，请改用<strong>表达题</strong>）。
+                也算不进「当前任务满分」—— 请给这些空填上答案（想让学生自由写，请改用<strong>表达题</strong>）。
               </p>
             )}
             <p className="worksheet-editor-compact-note">
@@ -408,7 +408,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
             {node.type === 'fill-blank' && !explicitGrading && node.data.fillScoring !== 'per-blank' && (
               <p className="worksheet-editor-compact-note worksheet-editor-fill-legacy-note">
                 <span>
-                  这道题还是旧口径「整题给分」：所有空都答对才得 {inheritScore} {pointsUnit}。
+                  这项任务还是旧口径「整题给分」：所有空都答对才得 {inheritScore} {pointsUnit}。
                   改成逐空给分后，每个空先按 {inheritScore} {pointsUnit} 填好，可以再逐个调整。
                 </span>
                 <button

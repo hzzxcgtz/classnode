@@ -119,7 +119,7 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
           <div>
             <h3 id="worksheet-preview-title">学生端预览</h3>
             <p>
-             按 iPad {orientation === 'portrait' ? '竖屏' : '横屏'}尺寸渲染，共 {questionCount} 题。可以试填、绘图或选择照片，测试内容不保存，不调用 AI。
+             按 iPad {orientation === 'portrait' ? '竖屏' : '横屏'}尺寸渲染，共 {questionCount} 项任务。可以试填、绘图或选择照片，测试内容不保存，不调用 AI。
             </p>
           </div>
           <div className="worksheet-editor-preview-orientation" role="group" aria-label="预览方向">

@@ -36,13 +36,13 @@ test('each school stage and subject has one complete standalone Markdown prompt'
     assert.match(text, /重要的词、句使用 Markdown \*\*加粗\*\*/);
     assert.match(text, /不添加“一、班级分析”等总标题/);
     assert.match(text, /### .+的评价方法/);
-    assert.match(text, /只选本题适用的评价方法/);
+    assert.match(text, /只选当前任务适用的评价方法/);
     assert.doesNotMatch(text, /## 学习任务观察指引/);
     assert.match(text, /信息收集/);
-    assert.match(text, /不按交互题型猜测是否评分/);
-    assert.match(text, /本题分析重点/);
+    assert.match(text, /不按交互作答形式猜测是否评分/);
+    assert.match(text, /当前任务分析重点/);
     assert.match(text, /不强制字数、句数或 emoji 数量/);
-    assert.match(text, /简单题可以合并段落/);
+    assert.match(text, /简单任务可以合并段落/);
     assert.match(text, /证据不足时明确说明/);
     assert.match(text, /不把 AI 润色后的内容冒充学生原话/);
     assert.match(text, /单人实例只关联该学生/);

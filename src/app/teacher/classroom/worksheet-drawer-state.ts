@@ -832,7 +832,7 @@ export function clearConfirmText(
     total === 0
       // ⚠️ 0 行时说清楚「没东西可清」，而不是印一句「共 0 题：0 题已提交、0 题作答中」。
       ? '这个学生在这份学习单上还没有任何作答记录。'
-      : `共 ${total} 题有作答记录：${submitted} 题已提交、${draft} 题作答中。`,
+      : `共 ${total} 项任务有作答记录：${submitted} 项任务已提交、${draft} 项任务作答中。`,
   ];
   if (reward > 0 && rewardText) {
     lines.push(`奖励（${rewardText}）由判分派生，会一并归零。`);

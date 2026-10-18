@@ -94,24 +94,24 @@ test('聚焦编辑器在同一页连续显示题目内容与评分设置', () =>
 
   assert.doesNotMatch(source, /worksheet-editor-panel-tabs/, '整页编辑不应再出现页签导航');
   assert.doesNotMatch(source, /activeEditorPanel/, '整页编辑不应保留页签状态');
-  assert.match(source, /题目与作答/, '题目编辑区域必须点名题目与作答');
+  assert.match(source, /任务与作答/, '题目编辑区域必须点名任务与作答');
   assert.match(
     source,
     /<section className="worksheet-editor-question-section is-prompt">/,
-    '题目与作答区域必须直接显示',
+    '任务与作答区域必须直接显示',
   );
   const promptSection = source.indexOf('<section className="worksheet-editor-question-section is-prompt">');
   const gradingSection = source.indexOf('<section className="worksheet-editor-question-section is-grading">');
-  assert.ok(gradingSection > promptSection, '评分设置必须排在题目与作答区域之后并直接显示');
+  assert.ok(gradingSection > promptSection, '评分设置必须排在任务与作答区域之后并直接显示');
   assert.match(source, /<h4><EditorIcon[^>]*\/>分值设置<\/h4>/, '评分区应使用唯一的“分值设置”标题');
   assert.doesNotMatch(source, /<strong>得分规则<\/strong>/, '分值控件内部不应重复“得分规则”标题');
 });
 
-test('任务说明默认折叠，避免每道题上方常驻一块低频输入框', () => {
+test('主题说明默认折叠，避免每道题上方常驻一块低频输入框', () => {
   const source = fs.readFileSync(path.join(EDITOR_DIR, 'task-card.tsx'), 'utf8');
 
   assert.match(source, /<details className="worksheet-editor-task-desc-details">/);
-  assert.match(source, /<span>任务说明<\/span>/);
+  assert.match(source, /<span>主题说明<\/span>/);
   assert.match(source, /'已填写' : '选填'/);
 });
 
@@ -121,7 +121,7 @@ test('教师编辑页的侧栏、编辑区标题和题目徽章共用全卷连�
 
   assert.match(page, /worksheet-editor-outline-number">\{row\.label\}/,
     '任务侧栏仍在使用任务内下标');
-  assert.match(page, /第 \{activeQuestion\.label\} 题 \/ 共 \{totals\.questions\} 题/,
+  assert.match(page, /第 \{activeQuestion\.label\} 项任务 \/ 共 \{totals\.questions\} 项任务/,
     '编辑区标题仍显示任务内“第 N 题 / 共 N 题”');
   assert.match(page, /label=\{row\.label\}/, '题目卡没有收到全卷连续题号');
   assert.match(card, /const badgeLabel = label \|\| heading/,

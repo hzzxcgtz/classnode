@@ -72,13 +72,13 @@ function stateLine(state: WorksheetTileState): string {
       /* ★ 2026-10-07（教师）：「正在做第 11 题，**后面要补上题型**」⇒ 题号后面带上题型。 */
       return state.number === null
         ? '正在作答'
-        : `正在做第 ${state.number} 题${state.typeLabel ? ` · ${state.typeLabel}` : ''}`;
+        : `正在做第 ${state.number} 项任务${state.typeLabel ? ` · ${state.typeLabel}` : ''}`;
     case 'stuck':
       return state.number === null
         ? `停住了 · ${state.minutes} 分钟`
-        : `停在第 ${state.number} 题${state.typeLabel ? ` · ${state.typeLabel}` : ''} · ${state.minutes} 分钟`;
+        : `停在第 ${state.number} 项任务${state.typeLabel ? ` · ${state.typeLabel}` : ''} · ${state.minutes} 分钟`;
     case 'all-submitted':
-      return `${state.cells.length} 题已全部提交`;
+      return `${state.cells.length} 项任务已全部提交`;
     default:
       return '';
   }
@@ -113,7 +113,7 @@ export function WorksheetTileContent({ state, answer, compact }: {
     case 'loading':
       return placeholder('…', '学习单内容还没加载到', compact);
     case 'empty':
-      return placeholder('这份学习单还没有题目', '老师还没有出题', compact);
+      return placeholder('这份学习单还没有任务', '老师还没有布置任务', compact);
     // 「还没收到」而不是「还没开始作答」：看板只能看到**打开之后**发生的作答
     // （读端点有，但**格子没有消费它** —— 数据源仍然只有广播，见
     // `worksheet-tile-state.ts` 里 `WorksheetTileState` 那一段的更正），

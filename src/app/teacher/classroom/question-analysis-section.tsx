@@ -35,7 +35,7 @@ export function QuestionAnalysisSection({ classroomId, worksheetId, questionId, 
     return () => window.cancelAnimationFrame(frame);
   }, [initiallyExpanded, state.loading]);
 
-  return <section ref={region} aria-label="本题 AI 分析">
+  return <section ref={region} aria-label="当前任务 AI 分析">
     <div className={styles.inlineAnalysis}>
     <header className={styles.analysisResultHeader}>
       <span><strong className={styles.analysisHeading}>AI 分析</strong>{!state.busy && <TeacherPendingText active={false}>{status}</TeacherPendingText>}</span>

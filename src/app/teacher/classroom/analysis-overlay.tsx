@@ -51,12 +51,12 @@ export function AnalysisOverlay({
         <div className={styles.heading}>
           <div className={styles.eyebrow}>AI 分析</div>
           <div id="analysis-dialog-title" className={styles.title}>
-            {payload ? `${payload.questionLabel} · ${payload.typeLabel}` : '正在读取题目信息'}
+            {payload ? `${payload.questionLabel} · ${payload.typeLabel}` : '正在读取任务信息'}
           </div>
           <div className={styles.prompt}>
             {/* ★ 2026-09-30：题干认公式。⚠️ 三层：还没有载荷 / 载荷里题干为空 / 有题干。 */}
             {payload
-              ? (payload.prompt ? <PromptText text={payload.prompt} placeholder="" /> : '（题干为空）')
+              ? (payload.prompt ? <PromptText text={payload.prompt} placeholder="" /> : '（任务要求为空）')
               : '正在读取…'}
           </div>
         </div>
@@ -67,7 +67,7 @@ export function AnalysisOverlay({
         <button type="button" onClick={onClose}
           title={busy ? '关闭后任务仍会在后台继续' : undefined}
           className={styles.closeButton}>
-          {embedded ? '返回本题统计' : busy ? '关闭（后台继续）' : '关闭'}
+          {embedded ? '返回当前任务统计' : busy ? '关闭（后台继续）' : '关闭'}
         </button>
       </div>
 

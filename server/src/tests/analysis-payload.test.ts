@@ -268,9 +268,9 @@ test('缺伪名时回落成参与者 id（不抛、不留空）', () => {
   assert.match(doc, /pX/);
 });
 
-test('题干为空时不留一个空洞（写「（题干为空）」）', () => {
+test('任务要求为空时不留一个空洞（写「（任务要求为空）」）', () => {
   const doc = buildTextDocument({ ...meta, prompt: '' }, [], docLabels, 0, 3);
-  assert.match(doc, /题干为空/);
+  assert.match(doc, /任务要求为空/);
 });
 
 /* ── Task 4：联系表的排版与旋钮 ───────────────────────────────────────── */

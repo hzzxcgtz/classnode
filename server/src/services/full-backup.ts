@@ -9,7 +9,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { getEncryptionKey, decryptWithKey, isEncrypted, reloadEncryptionKey } from './crypto.js';
 import { resolveDatabasePath } from './database-upgrade.js';
 import { safeExtractZip } from './upload-security.js';
-import { reserveBackupFile } from './backup-filename.js';
+import { isBackupFilename, reserveBackupFile } from './backup-filename.js';
 
 const require = createRequire(import.meta.url);
 const execute = promisify(execFile);
@@ -241,6 +241,30 @@ async function promote(prisma: PrismaClient, staging: string, candidate: string,
   hooks.committed?.();
 }
 
+/** Only retire restore safety copies after a successful promotion; user backups stay untouched. */
+function pruneRestoreBackups(keep: string, warnings: string[]): void {
+  const directory = path.dirname(keep);
+  try {
+    for (const name of fs.readdirSync(directory)) {
+      const file = path.join(directory, name);
+      if (!isBackupFilename(name) || file === keep) continue;
+      const meta = file + '.meta';
+      if (!fs.lstatSync(file).isFile() || !fs.existsSync(meta) || !fs.lstatSync(meta).isFile()) continue;
+      let source: unknown;
+      try { source = JSON.parse(fs.readFileSync(meta, 'utf8')).source; } catch { continue; }
+      if (source !== 'safety-restore') continue;
+      try {
+        fs.unlinkSync(file);
+        fs.unlinkSync(meta);
+      } catch {
+        warnings.push('数据已恢复，但部分旧的恢复前备份未能清理，可在历史列表中手动删除。');
+      }
+    }
+  } catch {
+    warnings.push('数据已恢复，但旧的恢复前备份未能清理，可在历史列表中手动删除。');
+  }
+}
+
 export async function restoreFullBackup(prisma: PrismaClient, file: string, hooks: RestoreHooks = {}): Promise<{ safetyBackup: string; warnings: string[] }> {
   await assertLiveDatabase(prisma);
   const staging = workspace();
@@ -288,6 +312,7 @@ export async function restoreFullBackup(prisma: PrismaClient, file: string, hook
     await client.$disconnect();
     const safetyBackup = await createFullBackup(prisma, 'safety-restore');
     await promote(prisma, staging, candidate, key, hooks);
+    pruneRestoreBackups(safetyBackup, warnings);
     return { safetyBackup: path.basename(safetyBackup), warnings };
   } finally { await client?.$disconnect(); cleanupWorkspace(staging); }
 }

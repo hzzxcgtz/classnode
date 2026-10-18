@@ -177,7 +177,7 @@ function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.Rea
                 ))}
               </div>
             )}
-          {view.hasTable && <Line color={FAINT}>（这道题带表格）</Line>}
+          {view.hasTable && <Line color={FAINT}>（这项任务带表格）</Line>}
         </>
       );
     }

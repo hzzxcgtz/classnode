@@ -12,12 +12,17 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { classroomMaterialsInUse } from '../../../lib/classroom-material.ts';
+import type { AgentSummary, ClassroomWebappSummary, WorksheetMaterialSummary } from '../../../lib/types';
 import {
   COMPANION_MENU_ITEMS, HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerControlGroups, headerControls, headerLayout, type HeaderControlId, type HeaderLayoutInput,
 } from './header-controls.ts';
 
 /** 一个「什么都正常」的课堂：标准模式、进行中、未暂停、跟随、非全屏、不忙。 */
 const BASE: HeaderLayoutInput = {
+  hasWorksheet: true,
+  hasWebapp: true,
+  hasAgent: true,
   mode: 'standard',
   status: 'active',
   paused: false,
@@ -48,10 +53,39 @@ function stripText(controls: ReturnType<typeof headerControls>) {
 
 /* ── 1. 清单本身：有哪些、按什么顺序、怎么分组 ─────────────────────── */
 
+test('模块控制入口覆盖全部材料组合，无材料时不留下空分组', () => {
+  const buttons: HeaderControlId[] = ['worksheet-menu', 'explore-settings', 'companion-menu'];
+  const otherControls = headerControls(BASE).filter(item => item.kind !== 'module');
+  for (let mask = 0; mask < 8; mask++) {
+    const controls = headerControls({ ...BASE, hasWorksheet: Boolean(mask & 1), hasWebapp: Boolean(mask & 2), hasAgent: Boolean(mask & 4) });
+    assert.deepEqual(controls.filter(item => item.kind === 'module').map(item => item.id), buttons.filter((_, index) => Boolean(mask & (1 << index))));
+    assert.deepEqual(controls.filter(item => item.kind !== 'module'), otherControls);
+    assert.ok(headerControlGroups(controls).every(group => group.length > 0));
+  }
+});
+
+test('课堂控制按材料关联显示，隐藏模块仍可控制，高级模式只认组级材料', () => {
+  const agent = { id: 'agent' } as AgentSummary;
+  const webapp = { id: 'webapp' } as ClassroomWebappSummary;
+  const worksheet = { id: 'worksheet' } as WorksheetMaterialSummary;
+  const moduleIds = (materials: Parameters<typeof classroomMaterialsInUse>[0]) => {
+    const used = classroomMaterialsInUse(materials);
+    return headerControls({ ...BASE, hasWorksheet: used.worksheets.length > 0, hasWebapp: used.webapps.length > 0, hasAgent: used.agents.length > 0 })
+      .filter(item => item.kind === 'module').map(item => item.id);
+  };
+  for (const mode of ['standard', 'group']) {
+    assert.deepEqual(moduleIds({ mode, worksheets: [worksheet], modules: [{ moduleKey: 'learning-sheet', state: 'hidden' }] }), ['worksheet-menu']);
+    assert.deepEqual(moduleIds({ mode, agents: [agent], webapps: [webapp] }), ['explore-settings', 'companion-menu']);
+  }
+  const advanced = { mode: 'advanced', agents: [agent], webapps: [webapp], worksheets: [worksheet] };
+  assert.deepEqual(moduleIds({ ...advanced, groups: [] }), [], '高级模式不使用课堂级残留材料');
+  assert.deepEqual(moduleIds({ ...advanced, groups: [{ id: 'empty' }, { id: 'one', worksheet }, { id: 'two', agent }] }), ['worksheet-menu', 'companion-menu']);
+});
+
 test('🔴 标准模式 + 跟随：正好这八个控件，按**教师定死的三组**排', () => {
   // ★ 2026-09-30（教师第三轮）：「这个分类我认为是这样分：暂停课堂和锁定作答是一类，
-  // 全体消息、全屏、模块状态是一类，学习单、探究空间和智能学伴是一类，并且按这个顺序。」
-  // ⚠️ 顺序**变了**：全屏与模块状态原来一个在第 5 位、一个在最后，现在都并进第二组。
+  // 全体消息、全屏、学习模块是一类，学习单、探究空间和智能学伴是一类，并且按这个顺序。」
+  // ⚠️ 顺序**变了**：全屏与学习模块原来一个在第 5 位、一个在最后，现在都并进第二组。
   assert.deepEqual(stripText(headerControls(BASE)), [
     // ① 课堂状态
     'pause=暂停课堂',
@@ -59,7 +93,7 @@ test('🔴 标准模式 + 跟随：正好这八个控件，按**教师定死的�
     // ② 对全班 / 整屏起作用
     'notify=全体消息',
     'fullscreen=全屏',
-    'module-state=模块状态',
+    'module-state=学习模块',
     // ③ 三个模块各自的入口
     'worksheet-menu=学习单',
     'explore-settings=探究空间',
@@ -115,9 +149,9 @@ test('🔴 学习单 / 矩阵 已经合成一个下拉：不再有那两个各�
 });
 
 test('🔴 学习单下拉：三个查看入口在前，一个课堂控制动作在后', () => {
-  // ★ 2026-09-30：「逐题开放」并进来成了第三项。前两项是**看**，第三项**当着全班改**
+  // ★ 2026-09-30：「逐项开放」并进来成了第三项。前两项是**看**，第三项**当着全班改**
   // 学生屏幕上有什么 —— 顺序不是随手排的，改的人要能一眼分清。
-  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.label), ['学习单矩阵', '按学生查看', '按题目查看', '逐题开放']);
+  assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.label), ['学习单矩阵', '按学生查看', '按任务查看', '逐项开放']);
   assert.deepEqual(WORKSHEET_MENU_ITEMS.map((item) => item.id), ['overview', 'student', 'question', 'open']);
   // ⚠️ 三项的 id 必须互不相同 —— 相同的话菜单里点哪一项都会开同一个东西，而屏幕上不报错。
   assert.equal(new Set(WORKSHEET_MENU_ITEMS.map((item) => item.id)).size, WORKSHEET_MENU_ITEMS.length);
@@ -158,7 +192,7 @@ test('🔴 同步分组：课堂**已结束**时没有它（阴性对照：进�
 });
 
 test('⚠️ 同步分组：`paused` 的课堂仍然有它（暂停 ≠ 结束）', () => {
-  // 暂停只是停了学生的三件套，分组仍然是活的 —— 写成「非 active 就没有」会让教师
+  // 暂停只是停了学生的学习模块，分组仍然是活的 —— 写成「非 active 就没有」会让教师
   // 在一个暂停的课堂里改完分组名却同步不过去。
   assert.ok(ids({ mode: 'group', status: 'paused' }).indexOf('sync-groups') !== -1);
 });
@@ -283,15 +317,15 @@ test('⚠️ 非设置项没有浮层（`popup: null`）—— 别给普通按�
 /* ── 7. 悬浮说明（原来写死在 JSX 里的那几句）────────────────────── */
 
 test('🔴 关键悬浮说明与两个分析维度一致（它们是唯一的解释来源）', () => {
-  assert.equal(control('pause').title, '暂停后学生无法使用三件套中的任何功能');
+  assert.equal(control('pause').title, '暂停后学生无法使用学习模块中的任何功能');
   assert.equal(control('lock').title, '停笔：学生不能再修改答案，但仍然可以交卷');
   assert.equal(control('sync-groups', { mode: 'group' }).title, '把当前班级的分组名称和成员同步到正在进行的课堂');
-  assert.equal(control('worksheet-menu').title, '按题分析全班，或按学生分析整份学习单');
+  assert.equal(control('worksheet-menu').title, '按任务分析全班，或按学生分析整份学习单');
   assert.equal(control('fullscreen').title, '全屏显示学生面板');
   // 那两项各自的悬浮说明在 `WORKSHEET_MENU_ITEMS` 里（它们不是头部的控件）。
-  assert.equal(WORKSHEET_MENU_ITEMS[0].title, '用学生 × 题目的矩阵查看全班进度，并快速进入详情');
+  assert.equal(WORKSHEET_MENU_ITEMS[0].title, '用学生 × 任务的矩阵查看全班进度，并快速进入详情');
   assert.equal(WORKSHEET_MENU_ITEMS[1].title, '查看某个学生或小组整份学习单的完成情况');
-  assert.equal(WORKSHEET_MENU_ITEMS[2].title, '查看某一道题的全班统计与具体作答');
+  assert.equal(WORKSHEET_MENU_ITEMS[2].title, '查看某一项任务的全班统计与具体作答');
 });
 
 /* ── 8. `headerLayout`：头部那几段显不显示 ─────────────────────── */

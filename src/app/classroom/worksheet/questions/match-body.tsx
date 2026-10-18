@@ -263,7 +263,7 @@ export function MatchBody({ node, draft, onChange, disabled, correctBlanks }: Ma
   }, [drag.draggingId]);
 
   if (left.length === 0 || right.length === 0) {
-    return <p className={styles.cardNote}>（这道题还没有条目）</p>;
+    return <p className={styles.cardNote}>（这项任务还没有条目）</p>;
   }
 
   return (

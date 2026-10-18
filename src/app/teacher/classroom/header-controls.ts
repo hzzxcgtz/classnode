@@ -97,7 +97,7 @@ export const WORKSHEET_MENU_ITEMS: ReadonlyArray<{ id: 'overview' | 'student' | 
   {
     id: 'overview',
     label: '学习单矩阵',
-    title: '用学生 × 题目的矩阵查看全班进度，并快速进入详情',
+    title: '用学生 × 任务的矩阵查看全班进度，并快速进入详情',
   },
   {
     id: 'student',
@@ -106,13 +106,13 @@ export const WORKSHEET_MENU_ITEMS: ReadonlyArray<{ id: 'overview' | 'student' | 
   },
   {
     id: 'question',
-    label: '按题目查看',
-    title: '查看某一道题的全班统计与具体作答',
+    label: '按任务查看',
+    title: '查看某一项任务的全班统计与具体作答',
   },
   {
     id: 'open',
-    label: '逐题开放',
-    title: '手动决定学生此刻能做哪几道题（学习单设成「手动逐题开放」时才生效）',
+    label: '逐项开放',
+    title: '选择向学生开放的任务（学习单设为「手动开放」时生效）',
   },
 ];
 
@@ -144,6 +144,10 @@ export interface HeaderControl {
 }
 
 export interface HeaderLayoutInput {
+  /** 是否实际关联该模块的材料；高级模式按各组材料合并判断，与临时开放/隐藏状态无关。 */
+  hasWorksheet: boolean;
+  hasWebapp: boolean;
+  hasAgent: boolean;
   /** 课堂模式。只认 `'group'` / `'advanced'`（其余按标准模式处理）。 */
   mode: string;
   /** 课堂状态。`'ended'` 时同步分组不再出现。 */
@@ -227,7 +231,7 @@ export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
   const controls: HeaderControl[] = [
     // ── ① 课堂状态：两个开关。它们会**当着全班**改学生屏幕上有什么。
     build('pause', 'state', busyPause ? '更新中...' : input.paused ? '恢复课堂' : '暂停课堂', {
-      title: '暂停后学生无法使用三件套中的任何功能',
+      title: '暂停后学生无法使用学习模块中的任何功能',
       active: input.paused,
       disabled: anyBusy,
     }),
@@ -266,7 +270,7 @@ export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
   //（`page.tsx` 的全屏头部）—— 跟着这条一起改，否则跟随模式下它会**编造**一句
   //「全班都在智能学伴」。
   controls.push(build('fullscreen', 'global', '全屏', { title: '全屏显示学生面板' }));
-  controls.push(build('module-state', 'global', '模块状态', {
+  controls.push(build('module-state', 'global', '学习模块', {
     popup: 'menu', expanded: input.modulesOpen,
   }));
 
@@ -279,16 +283,16 @@ export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
   // ★ 2026-09-29（教师）：原来的「学习单」与「矩阵」两个按钮合成**这一个下拉**
   //（里面的三项见 `WORKSHEET_MENU_ITEMS`）。合并的理由就是教师那句话本身：
   // 两者是「按学习单看全班」的两面，摆成两个并列按钮时教师分不出该按哪个。
-  controls.push(build('worksheet-menu', 'module', '学习单', {
-    title: '按题分析全班，或按学生分析整份学习单',
+  if (input.hasWorksheet) controls.push(build('worksheet-menu', 'module', '学习单', {
+    title: '按任务分析全班，或按学生分析整份学习单',
     popup: 'menu', expanded: input.worksheetMenuOpen,
   }));
-  controls.push(build('explore-settings', 'module', '探究空间', {
+  if (input.hasWebapp) controls.push(build('explore-settings', 'module', '探究空间', {
     title: '探究空间的设置：学生网页画面的采集',
     popup: 'dialog', expanded: input.exploreOpen,
   }));
   // ★ 2026-09-29（教师）：智能学伴改成**下拉**：对话分析（词云弹窗）+ 设置（四项能力开关）。
-  controls.push(build('companion-menu', 'module', '智能学伴', {
+  if (input.hasAgent) controls.push(build('companion-menu', 'module', '智能学伴', {
     title: '智能学伴：对话分析 / 设置',
     popup: 'menu', expanded: input.companionMenuOpen,
   }));

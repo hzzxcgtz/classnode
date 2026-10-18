@@ -189,9 +189,9 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
   const canPasteQuestion = isChoiceQuestion(node) || node.type === 'order'
     || node.type === 'true-false' || supportsBlankSlots;
   /** 这个按钮的说明文字按题型给（四种题型认的东西不一样，一句通用的话会说错三种）。 */
-  const pasteTitle = node.type === 'order' ? '粘贴一整道排序题（题干与条目一起识别）'
-    : isChoiceQuestion(node) ? '粘贴一整道选择题（题干与选项一起识别）'
-      : node.type === 'true-false' ? '粘贴一整道判断题（整段作题干）'
+  const pasteTitle = node.type === 'order' ? '粘贴一整道排序题（任务要求与条目一起识别）'
+    : isChoiceQuestion(node) ? '粘贴一整道选择题（任务要求与选项一起识别）'
+      : node.type === 'true-false' ? '粘贴一整道判断题（整段作任务要求）'
         : '粘贴一整道填空题（括号与下划线会认成填空域）';
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -667,7 +667,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
       <div className="worksheet-editor-rich-box">
         <div
           className="worksheet-editor-formatbar"
-          aria-label="题干文字格式"
+          aria-label="任务要求文字格式"
           // ⚠️ 捕获阶段：要在**任何**控件把焦点拿走之前量。理由见 `pendingRangeRef`。
           onMouseDownCapture={() => {
             const el = editableRef.current;
@@ -703,7 +703,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
                 onClick={() => setColorOpen(open => !open)}
                 aria-haspopup="listbox"
                 aria-expanded={colorOpen}
-                aria-label="题干文字颜色"
+                aria-label="任务要求文字颜色"
                 title={toolbar.hasSelection ? '文字颜色' : '请先选中文字'}
               >
                 <span className="worksheet-editor-color-letter" style={{ color: toolbar.color }}>A</span>
@@ -729,7 +729,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
             </div>
           </div>
           {/* 普通填空与选择填空都需要题干内的结构化空；选择填空少了它就只有词块、没有落点。 */}
-          <div className="worksheet-editor-tool-group is-insert" role="group" aria-label="插入题目内容">
+          <div className="worksheet-editor-tool-group is-insert" role="group" aria-label="插入任务内容">
           {/* ★ 2026-09-27（教师）：「在题目内容框内增加从剪贴板粘贴类似的按钮，不要使用在选项框内
               onpaste，还是有个按钮用户使用更方便。」⇒ 从剪贴板粘一整道题（题干 + 选项一起识别）。
               ⊘ 「只在选择题上画」那条 2026-09-29 扩到了**四种题型**（教师裁定）——
@@ -740,7 +740,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
           <button
             type="button"
             title={pasteTitle}
-            aria-label="粘贴题目"
+            aria-label="粘贴任务"
             onClick={onRequestPaste}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -748,7 +748,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
               <path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2" />
               <path d="M9 12h6M9 16h4" />
             </svg>
-            粘贴题目
+            粘贴任务
           </button>
           )}
           {/* ★ 2026-09-30（教师第三轮）：「还是放回到编辑框的工具栏里边吧，否则觉得怪怪的。
@@ -778,7 +778,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
               type="button"
               disabled={tableMarkIndex(node.prompt) >= 0}
               title={tableMarkIndex(node.prompt) >= 0
-                ? '这道题已经有表格了（点题干里的 {表格域} 展开设置）'
+                ? '这项任务已经有表格了（点任务要求里的 {表格域} 展开设置）'
                 : '在光标处插入一个表格域'}
               aria-label="插入表格域"
               onMouseDown={(event) => {
@@ -830,9 +830,9 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
           contentEditable
           role="textbox"
           aria-multiline="true"
-          aria-label="题干"
+          aria-label="任务要求"
           data-empty={node.prompt.trim() ? undefined : '1'}
-          data-placeholder={supportsBlankSlots ? '输入题干，在需要学生作答的位置插入填空域。' : '例如：光合作用需要哪些条件？'}
+          data-placeholder={supportsBlankSlots ? '输入任务要求，在需要学生作答的位置插入填空域。' : '例如：光合作用需要哪些条件？'}
           onKeyDown={handlePromptKeyDown}
           onClick={handleEditableClick}
           onPaste={handlePaste}
@@ -854,7 +854,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
           放在**框外面**：它夹在工具条与正文中间的话，那个框就不像一个整体了。 */}
       {imageUrl && (
         <div className="worksheet-editor-upload-preview">
-          <img src={worksheetAssetUrl(imageUrl)} alt="题干配图预览" />
+          <img src={worksheetAssetUrl(imageUrl)} alt="任务要求配图预览" />
           <button type="button" onClick={() => onDataChange({ promptImageUrl: undefined })}>移除图片</button>
         </div>
       )}

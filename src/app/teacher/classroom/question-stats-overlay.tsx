@@ -51,7 +51,7 @@ function Matrix({ rowLabel, colLabel, rows, cols, cells }: {
   cells: MatrixCell[];
 }) {
   if (rows.length === 0 || cols.length === 0) {
-    return <div style={{ fontSize: '0.813rem', color: CHART.faint }}>这一题还没有人作答，所以没有分布可看。</div>;
+    return <div style={{ fontSize: '0.813rem', color: CHART.faint }}>这项任务还没有人作答，所以没有分布可看。</div>;
   }
   const max = Math.max(1, ...cells.map((cell) => cell.count));
   const at = (rowId: string, colId: string) => cells.filter((cell) => cell.rowId === rowId && cell.colId === colId)[0];
@@ -213,9 +213,9 @@ export function QuestionStatsOverlay({
         <div className={styles.header}>
           <div className={styles.headingRow}>
             <div className={styles.headingText}>
-              <div className={styles.eyebrow}>题目详情</div>
+              <div className={styles.eyebrow}>任务详情</div>
               <h3>
-                {node ? `${heading ? `${heading} · ` : ''}${questionTypeNickname(node.type)}` : '正在读取题目'}
+                {node ? `${heading ? `${heading} · ` : ''}${questionTypeNickname(node.type)}` : '正在读取任务'}
               </h3>
             </div>
             {!embedded && <button type="button" onClick={onClose} className={styles.closeButton}>关闭</button>}
@@ -283,7 +283,7 @@ export function QuestionStatsOverlay({
         </div>
 
         <div className={styles.body}>
-          {!node && <div style={{ color: FAINT, fontSize: '0.813rem' }}>这一题的内容还没加载到。</div>}
+          {!node && <div style={{ color: FAINT, fontSize: '0.813rem' }}>这项任务的内容还没加载到。</div>}
 
           {stats && (
             <>
@@ -293,7 +293,7 @@ export function QuestionStatsOverlay({
                 {node && !supportsAiScoring(node) && <Section title="答案分布">
                   {distribution === null && (
                     <div style={{ fontSize: '0.75rem', color: FAINT }}>
-                      这一题没有可统计的分布，或者题型修改后存在多种作答形状。
+                      这项任务没有可统计的分布，或者作答形式修改后存在多种作答形状。
                     </div>
                   )}
                   {distribution?.kind === 'options' && (
@@ -316,7 +316,7 @@ export function QuestionStatsOverlay({
                 </Section>}
 
                 <div className={styles.insightRail}>
-                  {node && <Section title={<>题目内容<QuestionTypeBadge node={node} /></>}><QuestionContentPreview node={node} showType={false} /></Section>}
+                  {node && <Section title={<>任务内容<QuestionTypeBadge node={node} /></>}><QuestionContentPreview node={node} showType={false} /></Section>}
                   <Section title="课堂观察">
                     {subjective ? <ul className={styles.insightList}>
                       <li data-tone="neutral"><span>已收到 <strong>{stats.submitted}</strong> {unit}的作品，尚有 <strong>{stats.total - stats.submitted}</strong> {unit}未提交。</span></li>

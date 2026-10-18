@@ -302,7 +302,7 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
         {options.length === 0 && (
           <span className="worksheet-editor-choice-warning" role="status">
             <strong>需要补充选项</strong>
-            这道题还没有选项。请至少添加两个供学生选择的选项。
+            这项任务还没有选项。请至少添加两个供学生选择的选项。
           </span>
         )}
         {showAnswer && options.length > 0 && (multiple ? correctKeys.length === 0 : correctKeys.length !== 1) && (

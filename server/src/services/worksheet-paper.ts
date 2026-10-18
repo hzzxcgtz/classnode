@@ -344,7 +344,7 @@ function renderQuestion(node: QuestionNode): { body: PaperInline[][]; answer: Pa
   }
 
   // 认不出的题型（老数据、手工改过的行）：题面照印，答案如实说「没有」。
-  return { body: [], answer: [], answerNote: '（这道题的答案读不出来）' };
+  return { body: [], answer: [], answerNote: '（这项任务的答案读不出来）' };
 }
 
 /** 一道题的完整纸面。 */

@@ -373,14 +373,14 @@ function normalizeNode(
   seen: Set<string>,
 ): QuestionNode | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    errors.push(`${label}：题目格式不正确`);
+    errors.push(`${label}：任务格式不正确`);
     return null;
   }
   const node = raw as Record<string, unknown>;
   const legacyOpen = node.type === 'open-ended';
   const type = legacyOpen ? 'short-answer' : typeof node.type === 'string' ? node.type : '';
   if (!QUESTION_TYPES.includes(type)) {
-    errors.push(`${label}：题型「${type || '（空）'}」不受支持`);
+    errors.push(`${label}：作答形式「${type || '（空）'}」不受支持`);
     return null;
   }
 
@@ -389,7 +389,7 @@ function normalizeNode(
   if (seen.has(id)) {
     // 重复 id 不是「小瑕疵」：`WorksheetAnswer` 的唯一键是 `(responseId, questionId)`，
     // 两道题共用 id ⇒ 学生的答案会 upsert 到同一行上，而看板与判分都以为有两道题。
-    errors.push(`${label}：题目 id 重复（${id}）`);
+    errors.push(`${label}：任务 id 重复（${id}）`);
     return null;
   }
   seen.add(id);
@@ -402,7 +402,7 @@ function normalizeNode(
     data.aiScoringEnabled = false;
     data.studentAiReviewEnabled = false;
   }
-  if (data.analysisFocus !== undefined && (typeof data.analysisFocus !== 'string' || data.analysisFocus.length > 1200)) errors.push(`${label}：本题分析重点须为 1200 字以内的文字`);
+  if (data.analysisFocus !== undefined && (typeof data.analysisFocus !== 'string' || data.analysisFocus.length > 1200)) errors.push(`${label}：当前任务分析重点须为 1200 字以内的文字`);
   if ((type === 'short-answer' || type === 'drawing') && data.aiScoringEnabled === true && !String(data.rubricText || data.aiScoringCriteria || '').trim() && !data.rubricImageUrl) errors.push(`${label}：开启 AI 评分时，请填写评价标准或上传评价标准图片，并说明给分条件`);
 
   if (data.aiReviewLimit !== undefined && (!Number.isInteger(data.aiReviewLimit) || Number(data.aiReviewLimit) < 1 || Number(data.aiReviewLimit) > 20)) errors.push(`${label}：个人评价次数须为 1–20 次`);
@@ -501,7 +501,7 @@ function parseContent(raw: unknown): { ok: true; content: WorksheetContent } | {
   const errors: string[] = [];
   const seen = new Set<string>();
   const nodes = source.nodes
-    .map((node, index) => normalizeNode(node, `第 ${index + 1} 题`, errors, seen))
+    .map((node, index) => normalizeNode(node, `第 ${index + 1} 项任务`, errors, seen))
     .filter((node): node is QuestionNode => node !== null);
 
   // ⚠️ 校验跑在**归一化之后的树**上（`flattenQuestions` 递归展开），不是在原始 JSON 上：
@@ -914,7 +914,7 @@ router.post('/:id/review', async (req, res) => {
       select: { id: true },
     });
     if (!existing) {
-      return res.status(409).json({ error: '该学生还没有作答这道题，无法标记「已查看」' });
+      return res.status(409).json({ error: '该学生还没有作答这项任务，无法标记「已查看」' });
     }
 
     // 重复调用是**刷新**而不是「第一次有效」：教师连点两次、或换台设备再看一遍都是正常
@@ -1315,11 +1315,11 @@ async function loadAnalysisTarget(
   // 再喂给 `flattenAnswerable` 会把小题数两遍。
   const items = flattenAnswerable((worksheet.content as unknown as WorksheetContent).nodes ?? []);
   const found = items.find((item) => item.node.id === questionId);
-  if (!found) return { ok: false, status: 404, error: '这道题不在学习单里' };
+  if (!found) return { ok: false, status: 404, error: '这项任务不在学习单里' };
   const node = found.node;
   const heading = found.heading;
   if (!isAnalyzableType(node.type)) {
-    return { ok: false, status: 400, error: '这个节点不是可作答题目，不能生成作答分析' };
+    return { ok: false, status: 400, error: '这个节点不是可作答任务，不能生成作答分析' };
   }
   if (!(await isWorksheetInClassroom(prisma, classroomId, worksheetId))) {
     // ⚠️ 404 而不是「回落到别的课堂」：同一份学习单可以被多个课堂引用，
@@ -1662,7 +1662,7 @@ router.get('/:id/analysis/:questionId', async (req, res) => {
     const row = await prisma.worksheetQuestionAnalysis.findUnique({
       where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
     });
-    if (!row) return res.status(404).json({ error: '这道题还没有生成过分析' });
+    if (!row) return res.status(404).json({ error: '这项任务还没有生成过分析' });
     const target = await loadAnalysisTarget(prisma, classroomId, worksheetId, questionId);
     if (!target.ok) return res.status(target.status).json({ error: target.error });
     const knobs = await loadAnalysisKnobs(prisma);
@@ -1706,7 +1706,7 @@ router.get('/:id/analysis/:questionId/sheet/:index', async (req, res) => {
       where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
       select: { aggregate: true, totalCount: true },
     });
-    if (!row) return res.status(404).json({ error: '这道题还没有生成过分析' });
+    if (!row) return res.status(404).json({ error: '这项任务还没有生成过分析' });
 
     const target = await loadAnalysisTarget(prisma, classroomId, worksheetId, questionId);
     if (!target.ok) return res.status(target.status).json({ error: target.error });
@@ -1766,13 +1766,13 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
 
     const automaticReview = individualReviewSettings(target.node).enabled;
     if (automaticReview && (req.query.regrade === 'true' || req.query.only !== undefined)) {
-      return res.status(409).json({ error: '本题已开启学生自主评价。教师只能更新全班分析；如需教师评分，请先关闭学生自主评价。' });
+      return res.status(409).json({ error: '当前任务已开启学生自主评价。教师只能更新全班分析；如需教师评分，请先关闭学生自主评价。' });
     }
 
     const row = await prisma.worksheetQuestionAnalysis.findUnique({
       where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } },
     });
-    if (!row) return res.status(404).json({ error: '这道题还没有生成过分析' });
+    if (!row) return res.status(404).json({ error: '这项任务还没有生成过分析' });
 
     // 学习单上指定的那个分析智能体（M7b 裁定 4：学习单级）
     const worksheet = await prisma.worksheet.findUnique({
@@ -2090,7 +2090,7 @@ router.delete('/:id/analysis/:questionId/:kind', worksheetMutation(async (req, r
   const raw = req.body?.participantIds;
   if (kind === 'result' && raw !== undefined) return res.status(400).json({ error: '班级分析结果不按学生清除' });
   if (raw !== undefined && (!Array.isArray(raw) || !raw.length || raw.some(id => typeof id !== 'string' || !participants.some(p => p.participantId === id)))) {
-    return res.status(400).json({ error: '请选择本题所属课堂的学生' });
+    return res.status(400).json({ error: '请选择当前任务所属课堂的学生' });
   }
   const ids: string[] = raw === undefined ? participants.map(p => p.participantId) : [...new Set(raw as string[])];
   stopAnalysisOperation(req.app.get('prisma'), analysisOperationKey(classroomId, worksheetId, questionId));
@@ -3049,7 +3049,7 @@ router.put('/:id/answers', worksheetMutation(async (req, res, database) => {
         select: { status: true },
       });
       if (current?.status === 'submitted') {
-        return res.status(409).json({ error: '老师已设置本题提交后不可修改' });
+        return res.status(409).json({ error: '老师已设置当前任务提交后不可修改' });
       }
     }
 
@@ -3179,7 +3179,7 @@ router.post('/:id/answers/submit', worksheetMutation(async (req, res, database) 
       //   关掉自动评分），它们**只可能来自 AI 写回**，提交这一下不许把它们覆盖没。
       select: { id: true, responseId: true, value: true, isCorrect: true, gradeState: true, score: true },
     });
-    if (!answer) return res.status(400).json({ error: '请先作答再提交本题' });
+    if (!answer) return res.status(400).json({ error: '请先作答再提交当前任务' });
     const reviewSettings = individualReviewSettings(node);
     const requestId = typeof body.requestId === 'string' && /^[a-zA-Z0-9_-]{8,100}$/.test(body.requestId) ? body.requestId : crypto.randomUUID();
     const duplicate = await ctx.prisma.worksheetAnswerReview.findUnique({ where: { requestId } });
@@ -3187,9 +3187,9 @@ router.post('/:id/answers/submit', worksheetMutation(async (req, res, database) 
       if (duplicate.answerId !== answer.id) return res.status(409).json({ error: '提交编号无效' });
       return res.json({ isCorrect: answer.isCorrect, gradeState: answer.gradeState, score: answer.score, reviewId: duplicate.id, reviewStatus: duplicate.status });
     }
-    if (reviewSettings.enabled && await ctx.prisma.worksheetAnswerReview.count({ where: { answerId: answer.id, status: 'pending' } })) return res.status(409).json({ error: 'AI 正在评价这一题，请等待结果' });
+    if (reviewSettings.enabled && await ctx.prisma.worksheetAnswerReview.count({ where: { answerId: answer.id, status: 'pending' } })) return res.status(409).json({ error: 'AI 正在评价这项任务，请等待结果' });
     const reviewUsed = reviewSettings.enabled ? await ctx.prisma.worksheetAnswerReview.count({ where: { answerId: answer.id, status: 'succeeded', source: 'student' } }) : 0;
-    if (reviewSettings.enabled && reviewUsed >= reviewSettings.limit) return res.status(409).json({ error: '本题的 AI 评价次数已用完', code: 'review-limit-reached' });
+    if (reviewSettings.enabled && reviewUsed >= reviewSettings.limit) return res.status(409).json({ error: '当前任务的 AI 评价次数已用完', code: 'review-limit-reached' });
 
 
     const now = new Date();

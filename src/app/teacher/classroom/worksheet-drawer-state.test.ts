@@ -1010,7 +1010,7 @@ test('★ 确认文案：说「有作答记录」而不是「共 N 题」，且�
     row({ questionId: 'q2', status: 'submitted' }),
     row({ questionId: 'q3', status: 'draft' }),
   ], 0, null);
-  assert.match(text, /共 3 题有作答记录：2 题已提交、1 题作答中/, text);
+  assert.match(text, /共 3 项任务有作答记录：2 项任务已提交、1 项任务作答中/, text);
   assert.match(text, /秋天的雨/);
   assert.match(text, /花荣/);
   assert.match(text, /不可撤销/, '🔴 破坏性操作必须写明不可撤销');

@@ -13,7 +13,7 @@
  *     教师在编辑页点「+ 添加任务」之后、还没放小题时保存，不该撞上 400。
  *   · **任务的标题允许留空**：任务只是分组 + 一段说明（裁定 ①a），「纯分组」是合法数据。
  *     ⚠️ 这一条原先**只有注释这么说**，实际被 `validateQuestion` 的公共那句
- *     「题干不能为空」挡住了 —— 三处说一套、代码做另一套。
+ *     「任务要求不能为空」挡住了 —— 三处说一套、代码做另一套。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -51,12 +51,12 @@ test('🔴 空任务是**合法**的（教师 2026-09-25 裁定：点「+ 添加
 });
 
 test('🔴 任务的标题允许留空 —— 「纯分组」是合法数据（裁定 ①a）', () => {
-  // ⚠️ 这条曾经是红的：`validateQuestion` 的公共那句「题干不能为空」对任务一样生效，
+  // ⚠️ 这条曾经是红的：`validateQuestion` 的公共那句「任务要求不能为空」对任务一样生效，
   // 而报错用的词是「题干」—— 教师改的是任务名，却收到一句说「题干」的话。
   assert.deepEqual(validateQuestion(task({ prompt: '   ' })), []);
 });
 
-test('🔴 任务里不能再嵌套任务（题号会变成三级，「重复」的优势立刻消失）', () => {
+test('🔴 主题里不能再嵌套主题（题号会变成三级，「重复」的优势立刻消失）', () => {
   const errors = validateQuestion(task({ children: [task({ id: 't_2' })] }));
   assert.ok(errors.some((message) => message.includes('嵌套')), `应当拦下嵌套任务，实际：${JSON.stringify(errors)}`);
 });
@@ -67,7 +67,7 @@ test('任务里装正常小题 ⇒ 通过（阳性对照：上面几条不是因
 
 test('题干的非空校验**对普通题型仍然生效**（别为了任务把它一起放掉）', () => {
   const blank = child('q_1');
-  assert.deepEqual(validateQuestion({ ...blank, prompt: '  ' }), ['题干不能为空']);
+  assert.deepEqual(validateQuestion({ ...blank, prompt: '  ' }), ['任务要求不能为空']);
 });
 
 /* ── 判分器 ─────────────────────────────────────────────────────────── */

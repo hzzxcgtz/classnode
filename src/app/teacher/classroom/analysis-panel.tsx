@@ -204,7 +204,7 @@ export function useWorksheetAnalysis(
     try {
       const task = startWorksheetAnalysisTask({
         classroomId, worksheetId, questionId, regrade, incremental, analysisOnly,
-        questionLabel: payload?.questionLabel ?? '本题',
+        questionLabel: payload?.questionLabel ?? '当前任务',
         ...(only && only.length > 0 ? { only } : {}),
       });
       const out = await task.promise;
@@ -450,7 +450,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
             <section className={styles.detailsPanel} aria-label="发送给 AI 的数据">
               <div className={styles.detailsHeading}>发送给 AI 的数据</div>
               {payload.payloadKind === 'mixed' && (
-                <div className={styles.notice}>本题同时包含文字与笔迹作答，以下文档和联系表分别呈现两部分数据。</div>
+                <div className={styles.notice}>当前任务同时包含文字与笔迹作答，以下文档和联系表分别呈现两部分数据。</div>
               )}
               {payload.text !== null && payload.text !== undefined && payload.text !== '' && (
                 <pre className={styles.payloadText}>{localize(payload.text)}</pre>
@@ -550,7 +550,7 @@ function StudentScoreClearDialog({ payload, selected, onSelect, clearing, error,
           <h3 id={titleId}>选择学生清除 AI 评分</h3>
           <button type="button" aria-label="关闭学生选择窗口" disabled={clearing} onClick={onClose}>×</button>
         </header>
-        <p id={descriptionId} className={styles.selectionDescription}>仅清除所选学生的本题 AI 评分与评价，保留学生作答。</p>
+        <p id={descriptionId} className={styles.selectionDescription}>仅清除所选学生的当前任务 AI 评分与评价，保留学生作答。</p>
         <fieldset className={styles.studentSelection} disabled={clearing}>
           <legend className={styles.selectionLegend}>选择学生</legend>
           {(payload?.entries ?? []).map(entry => <label key={entry.studentId} data-selected={selected.includes(entry.studentId)}><input type="checkbox" checked={selected.includes(entry.studentId)} onChange={event => onSelect(entry.studentId, event.target.checked)} />{payload?.participantNames?.[entry.studentId] ?? entry.anonLabel}</label>)}
@@ -602,8 +602,8 @@ export function AnalysisActions({ state, compact = false }: { state: WorksheetAn
   const clear = async (kind: 'grades' | 'result', ids?: string[]) => {
     if (clearMenuRef.current) clearMenuRef.current.open = false;
     const scope = ids ? `选中的 ${ids.length} 位学生` : '全班学生';
-    const message = kind === 'result' ? '清除本题的班级分析结果？学生作答和已有评分将保留。'
-      : `清除本题${scope}的 AI 评分与评价？学生作答保留，已发放的本题评分奖励也会移除。`;
+    const message = kind === 'result' ? '清除当前任务的班级分析结果？学生作答和已有评分将保留。'
+      : `清除当前任务${scope}的 AI 评分与评价？学生作答保留，已发放的当前任务评分奖励也会移除。`;
     if (!window.confirm(message)) return;
     setSelectionError(null);
     if (await state.clear?.(kind, ids)) { setSelected([]); setSelecting(false); }
@@ -630,7 +630,7 @@ export function AnalysisActions({ state, compact = false }: { state: WorksheetAn
       {!busy && state.clear && <details className={styles.clearMenu} ref={clearMenuRef}>
         <summary className={styles.actionButton}>{state.clearing ? '正在清除…' : '清除数据'}<svg className={styles.clearChevron} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></summary>
         <div className={styles.clearOptions}>
-          <span>仅操作当前题，保留学生作答</span>
+          <span>仅操作当前任务，保留学生作答</span>
           {actions.canClearAiScores && <button type="button" onClick={() => void clear('grades')}>清除全班 AI 评分</button>}
           {actions.canClearAiScores && <button type="button" onClick={() => { if (clearMenuRef.current) clearMenuRef.current.open = false; setSelected([]); setSelectionError(null); setSelecting(true); }}>选择学生清除 AI 评分</button>}
           <button type="button" onClick={() => void clear('result')}>清除班级分析结果</button>

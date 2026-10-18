@@ -31,7 +31,7 @@ import { COMPANION_MENU_ITEMS, HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerCon
 // 浮层是这一屏的第三个「按学习单看全班」的工具。
 import { normalizeOpenQuestions } from '@/lib/worksheet-answer-mode';
 import { WorksheetReleasePanel } from './worksheet-release-panel';
-import { effectiveGroupAgent, effectiveGroupWorksheet, effectiveGroupWebapp } from '@/lib/classroom-material';
+import { classroomMaterialsInUse, effectiveGroupAgent, effectiveGroupWorksheet, effectiveGroupWebapp } from '@/lib/classroom-material';
 import { AgentNavigationIcon, ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navigation-icons';
 import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleSetting, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary } from '@/lib/types';
 import type { Socket } from 'socket.io-client';
@@ -398,7 +398,7 @@ function ModuleStateMenu({ modules, busy, neverConfigured, onSelect }: {
   onSelect: (moduleKey: ClassroomModuleKey, state: ClassroomModuleState) => void;
 }) {
   return (
-    <div role="menu" aria-label="课堂模块状态" style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 80, width: 288, padding: 8, borderRadius: 12, background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 16px 40px rgba(15,23,42,0.14)' }}>
+    <div role="menu" aria-label="课堂学习模块" style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 80, width: 288, padding: 8, borderRadius: 12, background: 'white', border: '1px solid #e2e8f0', boxShadow: '0 16px 40px rgba(15,23,42,0.14)' }}>
       <div style={{ padding: '6px 10px 8px', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>课堂模块</div>
       {neverConfigured && (
         <div style={{ margin: '0 10px 8px', padding: '8px 10px', borderRadius: 8, background: '#f1f5f9', color: '#475569', fontSize: '0.75rem', lineHeight: 1.5 }}>
@@ -1560,7 +1560,7 @@ function ClassroomBoardContent() {
       wb.nodesByWorksheet[worksheet.id] ?? [], rows, scale,
     );
     const prompt = questionId
-      ? `确定清除「${participantName}」这一题的作答？\n\n此操作不可撤销。`
+      ? `确定清除「${participantName}」这项任务的作答？\n\n此操作不可撤销。`
       : clearConfirmText(participantName, worksheet.title, rows, overview.reward, overview.rewardText);
     if (!confirm(prompt)) return;
 
@@ -1571,7 +1571,7 @@ function ClassroomBoardContent() {
       refreshWorksheetBoard();
       setToast({
         msg: result.removed > 0
-          ? `已清除「${participantName}」的 ${result.removed} 题作答`
+          ? `已清除「${participantName}」的 ${result.removed} 项任务作答`
           : `「${participantName}」没有可清除的作答`,
         type: 'success',
       });
@@ -2172,6 +2172,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
    * ⇒ 现在拼一次、两处共用，并且立了一条网盯着调用点（`classroom-materials-shape.test.ts`）。
    */
   const materials = { ...classroom, agents: classroom.classroomAgents?.map((item) => item.agent) };
+  const materialsInUse = classroomMaterialsInUse(materials);
 
   const boardFilterCounts: Record<StudentBoardFilter, number> = {
     all: allDisplayCards.length,
@@ -2194,6 +2195,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
    * 搬出去只会得到一份需要 20 个回调的签名，收益为零。
    */
   const header = headerLayout({
+    hasWorksheet: materialsInUse.worksheets.length > 0,
+    hasWebapp: materialsInUse.webapps.length > 0,
+    hasAgent: materialsInUse.agents.length > 0,
     mode: classroom.mode,
     status: classroom.status,
     paused,
@@ -2492,7 +2496,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       case 'home':
         return placeholder('在首页', '学生此刻停在首页，不在任何模块里');
       case 'unknown':
-        return placeholder('…', '还没收到这个学生的模块状态');
+        return placeholder('…', '还没收到这个学生的学习模块');
       case 'mixed':
         // 组内成员各在各的模块：先把「谁在哪儿」列出来，再保留原有的全组对话预览
         // —— 列出清单不等于可以把对话藏起来（那会把一个既有的能力弄丢）。
@@ -2772,7 +2776,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                 if (item === 'overview') { openWorksheetWorkspace({ view: 'overview' }); return; }
                                 if (item === 'student') { openWorksheetWorkspace({ view: 'student' }); return; }
                                 if (item === 'question') { openWorksheetWorkspace({ view: 'question' }); return; }
-                                if (!openOverlayWorksheets.some(sheet => sheet.settings?.answerMode === 'manual')) { setToast({ msg: '请先将学习单的题目开放方式设为「手动开放」', type: 'error' }); return; }
+                                if (!openOverlayWorksheets.some(sheet => sheet.settings?.answerMode === 'manual')) { setToast({ msg: '请先将学习单的任务开放方式设为「手动开放」', type: 'error' }); return; }
                                 closeWorksheetLayer();
                                 setShowWorksheetOpen(true);
                               }}
@@ -3155,7 +3159,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                           <ModuleInitialChip module={tileModule} />
                           {tileReward && (
                             <div
-                              title="这一份学习单上他目前获得的奖励（各题得分之和）"
+                              title="这一份学习单上他目前获得的奖励（各项任务得分之和）"
                               style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 6, fontSize: "0.75rem", fontWeight: 700, background: '#faf4eb', color: '#b45309', whiteSpace: 'nowrap' }}>
                               <RewardIcon kind={tileReward.style} state="earned" size={14} />
                               {rewardAmountLabel(tileReward.style, tileReward.amount)}
@@ -3908,7 +3912,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                             <ModuleInitialChip module={tileModule} compact />
                             {tileReward && (
                               <div
-                                title="这一份学习单上他目前获得的奖励（各题得分之和）"
+                                title="这一份学习单上他目前获得的奖励（各项任务得分之和）"
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: '0 5px', borderRadius: 4, fontSize: 12, fontWeight: 700, background: '#faf4eb', color: '#b45309', whiteSpace: 'nowrap' }}>
                                 <RewardIcon kind={tileReward.style} state="earned" size={12} />
                                 {rewardAmountLabel(tileReward.style, tileReward.amount)}

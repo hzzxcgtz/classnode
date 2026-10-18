@@ -53,7 +53,7 @@ export function ChoiceBody({ node, draft, onChange, disabled, correctKeys }: Cho
   if (options.length === 0) {
     // 单选 / 多选还没有选项（教师在编辑期删光了）。说一句，而不是画一个空的作答区
     // —— 空白的作答区看起来像界面坏了。判断题走不到这里（选项是常量）。
-    return <p className={styles.cardNote}>（这道题还没有选项）</p>;
+    return <p className={styles.cardNote}>（这项任务还没有选项）</p>;
   }
 
   const toggle = (key: string) => {

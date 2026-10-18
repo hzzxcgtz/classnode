@@ -67,9 +67,9 @@ export function normalizeAnswerMode(value: unknown): WorksheetAnswerMode {
  * ⚠️ 返回值是**半句话**（渲染侧前面还要说「后面还有 N 道小题」），空串 = 不渲染那半句。
  */
 export function unlockHintFor(answerMode: WorksheetAnswerMode): string {
-  if (answerMode === 'task-step') return '完成当前任务后继续解锁';
-  if (answerMode === 'question-step') return '完成当前小题后继续解锁';
-  if (answerMode === 'manual') return '老师还没开放后面的题';
+  if (answerMode === 'task-step') return '完成当前主题后继续解锁';
+  if (answerMode === 'question-step') return '完成当前任务后继续解锁';
+  if (answerMode === 'manual') return '后续任务等待老师开放';
   return '';
 }
 

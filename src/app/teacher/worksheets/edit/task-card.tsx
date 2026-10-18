@@ -95,7 +95,7 @@ export function TaskCard({
   return (
     <section
       className="worksheet-editor-task"
-      aria-label={`任务 ${index + 1}`}
+      aria-label={`主题 ${index + 1}`}
       /* ★ 2026-09-26（spec 第 5 步）：任务自己也在**顶层**那一层（与散题同级）⇒ `data-layer=""`。 */
       data-row-id={node.id}
       data-layer=""
@@ -113,8 +113,8 @@ export function TaskCard({
           className="worksheet-editor-task-title"
           value={node.prompt}
           onChange={event => onTitleChange(event.target.value)}
-          placeholder="任务标题（可以留空）"
-          aria-label={`任务 ${index + 1} 的标题`}
+          placeholder="主题标题（可以留空）"
+          aria-label={`主题 ${index + 1} 的标题`}
         />
         {/*
           ★ 2026-09-26（spec 第 4 步）：任务容器要有**自己的身份** —— 折起来时教师只看得见
@@ -122,7 +122,7 @@ export function TaskCard({
           ⚠️ 数的是**可作答的题**，满分只算会判分的那几道（与页面头同一个函数）。
         */}
         <span className="worksheet-editor-task-totals">
-          {scoreSummary(node.children, inheritedPoints).questions} 道 · 满分 {scoreSummary(node.children, inheritedPoints).maxScore}
+          {scoreSummary(node.children, inheritedPoints).questions} 项任务 · 满分 {scoreSummary(node.children, inheritedPoints).maxScore}
         </span>
         <div className="worksheet-editor-task-tools">
           {/* ★ 2026-09-26（spec 第 5 步）：任务级的拖拽把手（与小题级同一个手势）。 */}
@@ -130,8 +130,8 @@ export function TaskCard({
             type="button"
             className="worksheet-editor-drag-handle"
             onPointerDown={onDragStart}
-            title="拖这个任务调整顺序"
-            aria-label={`拖动任务 ${index + 1} 调整顺序`}
+            title="拖这个主题调整顺序"
+            aria-label={`拖动主题 ${index + 1} 调整顺序`}
           >
             ⠿
           </button>
@@ -140,8 +140,8 @@ export function TaskCard({
             className="worksheet-editor-icon-button"
             onClick={() => onMove(-1)}
             disabled={index === 0}
-            title={index === 0 ? '已经是第一个任务' : '整个任务上移一位'}
-            aria-label="整个任务上移一位"
+            title={index === 0 ? '已经是第一个主题' : '整个主题上移一位'}
+            aria-label="整个主题上移一位"
           >
             ▲
           </button>
@@ -150,8 +150,8 @@ export function TaskCard({
             className="worksheet-editor-icon-button"
             onClick={() => onMove(1)}
             disabled={index === total - 1}
-            title={index === total - 1 ? '已经是最后一个任务' : '整个任务下移一位'}
-            aria-label="整个任务下移一位"
+            title={index === total - 1 ? '已经是最后一个主题' : '整个主题下移一位'}
+            aria-label="整个主题下移一位"
           >
             ▼
           </button>
@@ -159,8 +159,8 @@ export function TaskCard({
             type="button"
             className="worksheet-editor-icon-button is-danger"
             onClick={onRemove}
-            title="删除整个任务"
-            aria-label="删除整个任务"
+            title="删除整个主题"
+            aria-label="删除整个主题"
           >
             <TrashIcon />
           </button>
@@ -176,7 +176,7 @@ export function TaskCard({
       */}
       <details className="worksheet-editor-task-desc-details">
         <summary>
-          <span>任务说明</span>
+          <span>主题说明</span>
           <em>{typeof node.data.description === 'string' && node.data.description.trim() ? '已填写' : '选填'}</em>
         </summary>
         <label className="worksheet-editor-task-desc-field">
@@ -199,10 +199,10 @@ export function TaskCard({
         {hasChildren ? (
           <div className="worksheet-editor-task-questions">{children}</div>
         ) : (
-          <p className="worksheet-editor-task-empty">这个任务还没有小题</p>
+          <p className="worksheet-editor-task-empty">这个主题还没有任务</p>
         )}
         <button type="button" className="worksheet-editor-task-add" onClick={onAddQuestion}>
-          ＋ 添加小题
+          ＋ 添加任务
         </button>
       </div>
     </section>

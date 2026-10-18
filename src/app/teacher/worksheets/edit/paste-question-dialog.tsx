@@ -120,17 +120,17 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
     <>
       <div className="modal-overlay" onClick={onCancel} />
       <div className="worksheet-editor-dialog teacher-editor-dialog worksheet-editor-paste-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-paste-title">
-        <h3 id="worksheet-paste-title">粘贴题目</h3>
+        <h3 id="worksheet-paste-title">粘贴任务</h3>
         <p className="worksheet-editor-dialog-note">
           {splittable
-            ? `把题目原样粘进来即可：题干与${itemWord}会`
+            ? `把任务原样粘进来即可：任务要求与${itemWord}会`
             : isFill
-              ? '把整道题粘进来即可：题干里的小括号与一串下划线会变成'
-              : '把整道题粘进来即可：整段会作为'}
+              ? '把完整任务粘进来即可：任务要求里的小括号与一串下划线会变成'
+              : '把完整任务粘进来即可：整段会作为'}
           {splittable && <strong>自动分开</strong>}
           {splittable && <>，条目前缀认 <code>A.</code> <code>1、</code> <code>(1)</code> <code>（A）</code> 这几种写法。</>}
           {isFill && <><code>{BLANK_MARK_TEXT}</code>（就是学生要填的位置）。</>}
-          {!splittable && !isFill && <>题干。</>}
+          {!splittable && !isFill && <>任务要求。</>}
         </p>
 
         {/* ⚠️ `autoFocus`：这个框是**这次粘贴唯一的入口**（见文件头那段），
@@ -162,11 +162,11 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
             <div className="worksheet-editor-mode-tabs" role="radiogroup" aria-label="怎么使用这段粘贴">
               <label className={stemOnly ? '' : 'is-selected'}>
                 <input type="radio" name={`paste-mode-${node.id}`} checked={!stemOnly} onChange={() => setStemOnly(false)} />
-                <span>题干 + {itemWord}</span>
+                <span>任务要求 + {itemWord}</span>
               </label>
               <label className={stemOnly ? 'is-selected' : ''}>
                 <input type="radio" name={`paste-mode-${node.id}`} checked={stemOnly} onChange={() => setStemOnly(true)} />
-                <span>整段作题干</span>
+                <span>整段作任务要求</span>
               </label>
             </div>
           </div>
@@ -184,7 +184,7 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
               onChange={event => setFirstLineAsStem(event.target.checked)}
             />
             <span>
-              第 1 行「{(parsed.stem ?? parsed.texts[0] ?? '').slice(0, 24)}」是<strong>题目要求</strong>
+              第 1 行「{(parsed.stem ?? parsed.texts[0] ?? '').slice(0, 24)}」是<strong>任务要求</strong>
               （不勾就是第 1 个条目）
             </span>
           </label>
@@ -198,7 +198,7 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
               <div className="worksheet-editor-paste-block">
                 {/* ⚠️ 「整段替换」这四个字要写出来：教师可能以为这次粘贴是**追加**到
                     已有题干后面（那是「在光标处插入」那个按钮的语义）。 */}
-                <span className="worksheet-editor-paste-block-head">题干（整段替换）</span>
+                <span className="worksheet-editor-paste-block-head">任务要求（整段替换）</span>
                 <p>{result.stem}</p>
               </div>
             )}
@@ -262,19 +262,19 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
             {!isOrder && kept.length > 0 && <li>已选的正确答案会按位置留在第 {kept.map(slot => slot + 1).join('、')} 个选项上。</li>}
             {!isOrder && lost > 0 && <li>有 {lost} 个正确答案的位置超出了新的选项数，那个标记会被清掉，需要重新选。</li>}
             {isOrder && willReplaceOptions && <li>粘贴的条目顺序会作为<strong>正确顺序</strong>，学生看到的顺序将自动重新排列。</li>}
-            {willReplaceOptions && <li>确认后会换掉这道题<strong>现在全部 {isOrder ? orderItems.length : options.length} 个{itemWord}</strong>。</li>}
+            {willReplaceOptions && <li>确认后会换掉这项任务<strong>现在全部 {isOrder ? orderItems.length : options.length} 个{itemWord}</strong>。</li>}
             {/* 🔴 教师裁定「答案全部不作处理」⇒ 这几行**原样留在题干里**，所以要列出来。
                 不列的话教师只会看到题干末尾多出两行莫名其妙的东西，而不知道那是可以删的。 */}
             {(parsed?.notes.length ?? 0) > 0 && (
               <li>
-                下面这几行看起来是答案 / 解析 / 分值标注，<strong>没有动它们</strong>（会留在题干里）；
+                下面这几行看起来是答案 / 解析 / 分值标注，<strong>没有动它们</strong>（会留在任务要求里）；
                 不需要的话请在上面的框里删掉：{parsed?.notes.map(note => `「${note}」`).join('、')}
               </li>
             )}
             {(parsed?.poolLoose ?? 0) > 0 && (
               <li>
                 有 {parsed?.poolLoose} 处括号里只有空格分隔 —— 按<strong>待选词</strong>处理了。
-                如果那本来是一个词（例如 <code>New York</code>），请把它改回题干。
+                如果那本来是一个词（例如 <code>New York</code>），请把它改回任务要求。
               </li>
             )}
             {isFill && <li>正确答案<strong>不会</strong>从粘贴里识别，请粘完之后自己填。</li>}
@@ -284,7 +284,7 @@ export function PasteQuestionDialog({ text, node, onTextChange, onCancel, onConf
         <div className="worksheet-editor-paste-actions">
           <button type="button" className="btn btn-secondary" onClick={onCancel}>取消</button>
           <button type="button" className="btn btn-primary" disabled={!canConfirm} onClick={() => onConfirm(result)}>
-            {willReplaceOptions ? `填入题干与${itemWord}` : '填入题干'}
+            {willReplaceOptions ? `填入任务要求与${itemWord}` : '填入任务要求'}
           </button>
         </div>
       </div>

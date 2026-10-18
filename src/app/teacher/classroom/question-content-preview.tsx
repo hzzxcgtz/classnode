@@ -29,8 +29,8 @@ export function QuestionContentPreview({ node, showType = true }: { node: Worksh
   const background = node.type === 'drawing' ? readDrawingBackground(node) : null;
   return <div className={styles.preview}>
     {showType && <QuestionTypeBadge node={node} />}
-    <div className={styles.prompt}><PromptText text={node.prompt} runs={runs} table={node.data.table} placeholder="题干未填写" /></div>
-    {image && <img className={styles.image} src={worksheetAssetUrl(image)} alt="题干配图" />}
+    <div className={styles.prompt}><PromptText text={node.prompt} runs={runs} table={node.data.table} placeholder="任务要求未填写" /></div>
+    {image && <img className={styles.image} src={worksheetAssetUrl(image)} alt="任务要求配图" />}
     {options.length>0 && ['single-choice','multi-choice','true-false'].includes(node.type) && <ul className={styles.items}>{options.map(option=><li key={option.key}><b>{option.key}</b><span><PromptText text={option.text} placeholder="" />{option.imageUrl && <img className={styles.image} src={worksheetAssetUrl(option.imageUrl)} alt={`${option.key}选项配图`} />}</span></li>)}</ul>}
     {left.length>0 && <div className={styles.match}><div><small>左侧</small>{left.map(item=><p key={item.id}><PromptText text={item.text} placeholder="" /></p>)}</div><div><small>右侧</small>{right.map(item=><p key={item.id}><PromptText text={item.text} placeholder="" /></p>)}</div></div>}
     {items.length>0 && <ul className={styles.items}>{items.map((item,index)=><li key={item.id}><b>{index+1}</b><PromptText text={item.text} placeholder="" /></li>)}</ul>}
@@ -38,6 +38,6 @@ export function QuestionContentPreview({ node, showType = true }: { node: Worksh
     {choices.map((choice,index)=>choice.choices.length>0 && <div className={styles.pool} key={index}><small>第{index+1}空待选词</small>{choice.choices.map((word,i)=><span key={i}><PromptText text={word} placeholder="" /></span>)}</div>)}
     {pool.length>0 && <div className={styles.pool}><small>共用选词</small>{pool.map((word,index)=><span key={index}><PromptText text={word} placeholder="" /></span>)}</div>}
     {starter && <div className={styles.starter}><small>教师初始图</small><DrawingDocumentPreview document={starter} width={600} height={400} backgroundUrl={background?.url ?? null} /></div>}
-    {!starter && background?.preset === 'custom' && background.url && <img className={styles.image} src={worksheetAssetUrl(background.url)} alt="题目绘图底图" />}
+    {!starter && background?.preset === 'custom' && background.url && <img className={styles.image} src={worksheetAssetUrl(background.url)} alt="任务绘图底图" />}
   </div>;
 }

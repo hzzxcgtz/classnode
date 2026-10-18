@@ -262,8 +262,8 @@ test('★ rowTally：一行的计数与 questionTallies 逐字段一致（屏幕
 
 test('★ promptLabel：空题干的那句文案只在这一处', () => {
   assert.equal(promptLabel('光合作用需要什么？'), '光合作用需要什么？');
-  assert.equal(promptLabel('   '), '（这道题的题干还没写）', '全是空白也算空');
-  assert.equal(promptLabel(''), '（这道题的题干还没写）');
+  assert.equal(promptLabel('   '), '（这项任务的要求还没写）', '全是空白也算空');
+  assert.equal(promptLabel(''), '（这项任务的要求还没写）');
 });
 
 test('★ uncoveredCount：没有任何一份学习单的参与者数，且**钳在 0**', () => {

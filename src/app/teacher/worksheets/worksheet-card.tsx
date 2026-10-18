@@ -98,7 +98,7 @@ export function WorksheetCard({ worksheet, deleting, duplicating, exporting, onO
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
             </svg>
-            {worksheet.questionCount} 题
+            {worksheet.questionCount} 项任务
           </span>
           <button type="button" className="related-classrooms-chip worksheet-management-usage-chip" onClick={onShowUsage}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">

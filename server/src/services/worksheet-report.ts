@@ -245,11 +245,11 @@ export const REPORT_TEXT = {
   /** 参与者的名字两个来源都读不出来。 */
   unnamedParticipant: '（未命名）',
   /** 题干是空的。 */
-  promptMissing: '（这道题的题干还没写）',
+  promptMissing: '（这项任务的要求还没写）',
   /** 参与者的名字读不出来（`node.type` 不是字符串）。 */
   typeUnknown: '（未知题型）',
   /** `Worksheet.content` 的形状读不出来（手改过的行 / 旧版本）。 */
-  contentUnreadable: '（这份学习单的题目结构读不出来）',
+  contentUnreadable: '（这份学习单的任务结构读不出来）',
   /** 笔迹值合法、但**一根笔画都没有**。⚠️ 与「渲染不出来」是两件事（见 `inkFallback`）。 */
   inkEmpty: '（这一题没有笔画）',
   /** 探究空间表里那个网页已经不在了。 */

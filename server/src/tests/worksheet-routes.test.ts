@@ -620,7 +620,7 @@ test('🔴 I1：`points.full: 0` 拒绝保存（400 且指名道姓）；`half: 
   assert.equal(rejected.status, 400, `full: 0 必须当场拒绝，实际回了：${JSON.stringify(rejectedBody)}`);
   // 文案要**指名道姓**：教师得知道是第几题、以及错在哪一格 —— 一句笼统的
   // 「内容不合法」会让他翻遍整份单子。
-  assert.match(rejectedBody.error ?? '', /第 1 题/, '报错要点出是第几题');
+  assert.match(rejectedBody.error ?? '', /第 1 项任务/, '报错要点出是第几题');
   assert.match(rejectedBody.error ?? '', /全对/, '报错要点出是「全对」那一格（部分给分填 0 是合法的）');
 
   // 旁边有一个合法值也救不了它（0 不是「因为部分给分合法就跟着合法」）

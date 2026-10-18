@@ -886,7 +886,7 @@ export default function NewClassroomPage() {
               选择AI智能体
               {/* 三件套（AI 智能体 / 探究网页 / 学习单）每一项都是选填，至少一项即可 ——
                   这里从前写的是「必填」，与实际规则不符：只挂一个探究网页也能建课堂。 */}
-              <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 三件套任选其一</span>
+              <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 学习模块任选其一</span>
             </div>
             <GroupMaterialPicker
               label="AI 智能体"
@@ -927,7 +927,7 @@ export default function NewClassroomPage() {
           <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>
             关联探究网页
-            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 只能选一个 · 三件套任选其一</span>
+            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 只能选一个 · 学习模块任选其一</span>
           </div>
           <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', marginBottom: 12 }}>
             学生在「探究空间」里会打开这个网页。<strong style={{ fontWeight: 600 }}>一个课堂只关联一个网页</strong>；
@@ -991,7 +991,7 @@ export default function NewClassroomPage() {
           <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>
             关联学习单
-            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 只能选一份 · 三件套任选其一</span>
+            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 只能选一份 · 学习模块任选其一</span>
           </div>
           {/* ★ 2026-09-25：三句话收成一句 —— 教师说「整个页面高度有点大」，
               而「只关联一份」已经由**下拉是单选的**这件事本身说清楚了。 */}

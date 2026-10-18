@@ -207,7 +207,7 @@ export function QuestionInput({ node, draft, onChange, disabled, correctKeys, co
       />
     );
   }
-  return <p className={styles.cardNote}>（这道题的题型暂时没法在这里作答）</p>;
+  return <p className={styles.cardNote}>（这项任务的作答形式暂时没法在这里作答）</p>;
 }
 
 function PhotoBody({ draft, onChange, disabled, localOnly }: {

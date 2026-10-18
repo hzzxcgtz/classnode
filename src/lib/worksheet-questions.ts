@@ -109,7 +109,7 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   graded: boolean;
 }> = [
   // ★ 2026-09-26：紧挨着填空题排（它就是填空题的一个变体，教师找它时会先看那里）。
-  { value: 'choice-blank', label: '选择填空', nickname: '开心填空', hint: '题干里有几个空，下方给出待选词，学生拖词入空', graded: true },
+  { value: 'choice-blank', label: '选择填空', nickname: '开心填空', hint: '任务要求里有几个空，下方给出待选词，学生拖词入空', graded: true },
   { value: 'single-choice', label: '单选题', nickname: '慧眼选择', hint: '若干选项，只有一个正确答案', graded: true },
   { value: 'true-false', label: '判断题', nickname: '真假侦探', hint: '对 / 错两个选项', graded: true },
   { value: 'multi-choice', label: '多选题', nickname: '慧眼选择', hint: '若干选项，正确答案可以不止一个', graded: true },

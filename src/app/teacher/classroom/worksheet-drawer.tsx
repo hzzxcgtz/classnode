@@ -242,7 +242,7 @@ function describeHeader(
   }
   if (view.kind === 'questions') {
     const worksheet = worksheetOf(view.worksheetId);
-    return { title: worksheet ? `${worksheet.title} · 按题` : '按题', hint: '点某一题看全部作答' };
+    return { title: worksheet ? `${worksheet.title} · 按任务` : '按任务', hint: '点某项任务看全部作答' };
   }
   if (view.kind === 'question') {
     const worksheet = worksheetOf(view.worksheetId);
@@ -253,7 +253,7 @@ function describeHeader(
     // 标题写「全部作答」而不是「全班答案」：分组/高级模式下这里列的是**参与者**（是组不是人），
     // 而且「答案」在本项目里已被 §5.4 占用为「正确答案」（规格 §7.3 的原话）。
     return {
-      title: (node ? questionHeading(node, headingOf(view.questionId)) : '题目') + ` · ${participantColumnTitle(kinds)}`,
+      title: (node ? questionHeading(node, headingOf(view.questionId)) : '任务') + ` · ${participantColumnTitle(kinds)}`,
       hint: worksheet?.title ?? null,
     };
   }
@@ -332,7 +332,7 @@ export function QuestionList({
   }
   const { items } = indexQuestions(nodes);
   if (items.length === 0) {
-    return <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem' }}>这份学习单还没有题目。</div>;
+    return <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem' }}>这份学习单还没有任务。</div>;
   }
 
   const details = items.map((item) => {
@@ -359,7 +359,7 @@ export function QuestionList({
   const groups = new Map<string, typeof visible>();
   for (const item of visible) {
     const separator = item.heading.lastIndexOf(' · ');
-    const task = separator > 0 ? item.heading.slice(0, separator) : '其他题目';
+    const task = separator > 0 ? item.heading.slice(0, separator) : '其他任务';
     const group = groups.get(task) ?? [];
     group.push(item);
     groups.set(task, group);
@@ -377,9 +377,9 @@ export function QuestionList({
         <span><strong>正确情况始终按“答对人数 / 已判人数”显示</strong>，样本较少时仅作为课堂观察参考</span>
         <span>数据实时更新</span>
       </div>
-      <div className={styles.filters} aria-label="筛选题目">
+      <div className={styles.filters} aria-label="筛选任务">
         {([
-          ['all', `全部题目 ${details.length}`],
+          ['all', `全部任务 ${details.length}`],
           ['attention', `需要关注 ${attentionCount}`],
           ['manual', `主观题 ${manualCount}`],
           ['empty', `暂无作答 ${emptyCount}`],
@@ -387,10 +387,10 @@ export function QuestionList({
           <button key={value} type="button" className={styles.filterButton}
             data-active={filter === value} onClick={() => setFilter(value)}>{label}</button>
         ))}
-        <span className={styles.filterHint}>按任务顺序</span>
+        <span className={styles.filterHint}>按主题顺序</span>
       </div>
 
-      {groups.size === 0 && <div className={styles.emptyFilter}>这个筛选条件下暂时没有题目。</div>}
+      {groups.size === 0 && <div className={styles.emptyFilter}>这个筛选条件下暂时没有任务。</div>}
       {[...groups.entries()].map(([task, group]) => (
         <section key={task} className={styles.taskSection}>
           <div className={styles.taskHeader}>
@@ -419,7 +419,7 @@ export function QuestionList({
                   {/* ★ 2026-09-30：题干认公式（两处：按题分析列表 + 作答详情）。 */}
                   <p>{node.prompt
                     ? <PromptText text={node.prompt} placeholder="" />
-                    : '这道题没有填写题干'}</p>
+                    : '这项任务没有填写任务要求'}</p>
                 </span>
                 <span className={styles.rowMetric}><strong>{aggregate.submitted}/{aggregate.total}</strong><span>已提交</span></span>
                 <span className={styles.rowMetric} data-tone={attention ? 'warning' : aggregate.correct > 0 ? 'good' : undefined}>
@@ -568,7 +568,7 @@ export function ParticipantAnswers({
   }
   const { items } = indexQuestions(nodes);
   if (items.length === 0) {
-    return <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem' }}>这份学习单还没有题目。</div>;
+    return <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '0.813rem' }}>这份学习单还没有任务。</div>;
   }
 
   // ── 全貌（第 2 条）────────────────────────────────────────────────
@@ -618,7 +618,7 @@ export function ParticipantAnswers({
   const taskGroups = new Map<string, typeof visible>();
   for (const item of visible) {
     const separator = item.heading.lastIndexOf(' · ');
-    const task = separator > 0 ? item.heading.slice(0, separator) : '其他题目';
+    const task = separator > 0 ? item.heading.slice(0, separator) : '其他任务';
     const group = taskGroups.get(task) ?? [];
     group.push(item);
     taskGroups.set(task, group);
@@ -626,7 +626,7 @@ export function ParticipantAnswers({
   const allTaskGroups = new Map<string, typeof enriched>();
   for (const item of enriched) {
     const separator = item.heading.lastIndexOf(' · ');
-    const task = separator > 0 ? item.heading.slice(0, separator) : '其他题目';
+    const task = separator > 0 ? item.heading.slice(0, separator) : '其他任务';
     const group = allTaskGroups.get(task) ?? [];
     group.push(item);
     allTaskGroups.set(task, group);
@@ -641,9 +641,9 @@ export function ParticipantAnswers({
         rewardScale={scale}
         lastActivity={lastActivity}
       />
-      <div className={styles.filters} aria-label="筛选题目">
+      <div className={styles.filters} aria-label="筛选任务">
         {([
-          ['all', `全部题目 ${items.length}`],
+          ['all', `全部任务 ${items.length}`],
           ['answered', `已作答 ${answeredCount}`],
           ['attention', `待处理 ${attentionCount}`],
           ['unanswered', `未作答 ${overview.unanswered}`],
@@ -652,11 +652,11 @@ export function ParticipantAnswers({
             data-active={filter === value}
             onClick={() => setFilter(value)}>{label}</button>
         ))}
-        <span className={styles.filterHint}>展开题目可查看学生原始作答</span>
+        <span className={styles.filterHint}>展开任务可查看学生原始作答</span>
       </div>
 
       {taskGroups.size === 0 && (
-        <div className={styles.emptyFilter}>这个筛选条件下暂时没有题目。</div>
+        <div className={styles.emptyFilter}>这个筛选条件下暂时没有任务。</div>
       )}
 
       {[...taskGroups.entries()].map(([task, group]) => {
@@ -686,7 +686,7 @@ export function ParticipantAnswers({
                         {/* ★ 2026-09-30：题干认公式（两处：按题分析列表 + 作答详情）。 */}
                   <p>{node.prompt
                     ? <PromptText text={node.prompt} placeholder="" />
-                    : '这道题没有填写题干'}</p>
+                    : '这项任务没有填写任务要求'}</p>
                       </span>
                       <OutcomeMark mark={outcome.mark} status={outcome.status} />
                       <span aria-hidden className={styles.chevron}>{expanded ? '⌃' : '⌄'}</span>
@@ -715,9 +715,9 @@ export function ParticipantAnswers({
                             {outcome.reviewed && <span className={styles.reviewed}>已看</span>}
                             <button type="button" className="btn btn-ghost"
                               onClick={() => onClearQuestion(worksheet.id, participantId, node.id)}
-                              title="清除这一题的作答（不可撤销）"
+                              title="清除这项任务的作答（不可撤销）"
                               style={{ fontSize: "0.875rem", padding: '4px 9px', marginLeft: 'auto', color: '#a85d5d' }}>
-                              清除这一题
+                              清除这项任务
                             </button>
                           </div>
                         )}
@@ -758,7 +758,7 @@ function OverviewRow({
   return (
     <div className={styles.overview}>
       <div className={styles.overviewMain}>
-        <div className={styles.progressMetric}><strong>{completed}/{total}</strong><span>已完成题目</span></div>
+        <div className={styles.progressMetric}><strong>{completed}/{total}</strong><span>已完成任务</span></div>
         <div className={styles.overviewMetric} data-tone="warning"><strong>{overview.partial}</strong><span>部分答对</span></div>
         <div className={styles.overviewMetric}><strong>{needsAttention}</strong><span>需要处理</span></div>
         <div className={styles.overviewMetric}><strong>{overview.unanswered}</strong><span>尚未作答</span></div>
@@ -773,7 +773,7 @@ function OverviewRow({
       </div>
       <div className={styles.overviewFoot}>
         <strong>当前进度 {progress}%</strong>
-        <span>{overview.draft > 0 ? `${overview.draft} 题正在作答` : completed > 0 ? `已完成 ${completed} 题` : '尚未开始作答'}</span>
+        <span>{overview.draft > 0 ? `${overview.draft} 项任务正在作答` : completed > 0 ? `已完成 ${completed} 项任务` : '尚未开始作答'}</span>
         <span className={styles.lastActivity}>{lastActivity ? `最后作答：${lastActivity}` : '暂无作答时间'}</span>
       </div>
     </div>

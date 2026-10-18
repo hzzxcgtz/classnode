@@ -115,7 +115,7 @@ export function DrawingToolBody({ node, draft, onChange, disabled }: {
       style={{ '--third-party-canvas-height': maximized ? 'calc(100dvh - 112px)' : '520px' } as CSSProperties}
     >
       <div className={styles.drawingWorkspaceHeader}>
-        <div><strong>{TOOL_LABELS[tool]}</strong><span>本题使用此工具作答</span></div>
+        <div><strong>{TOOL_LABELS[tool]}</strong><span>当前任务使用此工具作答</span></div>
         <button className={`${styles.drawingToolbarButton} ${styles.drawingFullscreenButton}`} type="button" onClick={() => setMaximized(value => !value)} aria-label={maximized ? '退出全屏画板' : '全屏画板'}>
           <DrawingToolbarIcon name={maximized ? 'fullscreenExit' : 'fullscreen'} className={styles.drawingToolbarIcon} />
           <span>{maximized ? '退出全屏' : '全屏'}</span>

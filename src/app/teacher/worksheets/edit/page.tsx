@@ -20,7 +20,7 @@ import {
 import { QuestionCard } from './question-card';
 import { TaskCard } from './task-card';
 import { dropIndexAt, editorRenderBlocks, placeHoverPreview, scoreSummary } from './worksheet-editor-core';
-import { TASK_TYPE } from '@/lib/worksheet-questions';
+import { flattenAnswerable, TASK_TYPE } from '@/lib/worksheet-questions';
 import { WorksheetPreviewModal } from './preview-modal';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 import {
@@ -369,24 +369,24 @@ function WorksheetEditorBody() {
     const count = node.children.length;
     const lines = [
       isTask
-        ? (count > 0 ? `确定删除这个任务吗？它里面的 ${count} 道小题会一起删掉。` : '确定删除这个任务吗？')
-        : `确定删除第 ${heading} 题吗？`,
+        ? (count > 0 ? `确定删除这个主题吗？它里面的 ${count} 项任务会一起删掉。` : '确定删除这个主题吗？')
+        : `确定删除第 ${heading} 项任务吗？`,
     ];
     if (!editor.worksheetId) {
-      lines.push(isTask ? '这个任务还没保存过，删掉之后本机草稿里也不会再有它。' : '这道题还没保存过，删掉之后本机草稿里也不会再有它。');
+      lines.push(isTask ? '这个主题还没保存过，删掉之后本机草稿里也不会再有它。' : '这项任务还没保存过，删掉之后本机草稿里也不会再有它。');
     } else {
       const usageNow = await editor.ensureUsage();
       if (usageNow === null) {
-        lines.push(isTask ? '这次没能读到作答情况，无法确认这个任务里有没有学生答过的题。' : '这次没能读到作答情况，无法确认这道题是否已经被学生作答过。');
+        lines.push(isTask ? '这次没能读到作答情况，无法确认这个主题里有没有学生完成过的任务。' : '这次没能读到作答情况，无法确认这项任务是否已经被学生作答过。');
       } else if (usageNow.responseCount > 0) {
-        lines.push(`这份学习单已经收到 ${usageNow.responseCount} 份作答；删除后，学生${isTask ? '在这个任务里' : `在第 ${heading} 题上`}写下的答案会在看板与导出里变成孤立数据。`);
+        lines.push(`这份学习单已经收到 ${usageNow.responseCount} 份作答；删除后，学生${isTask ? '在这个主题里' : `在第 ${heading} 项任务上`}写下的答案会在看板与导出里变成孤立数据。`);
       } else {
         lines.push('这份学习单还没有收到过作答，删掉不影响任何学生。');
       }
     }
     lines.push('（删错了可以用「撤销」找回来。）');
     if (!await askConfirmation({
-      title: isTask ? '删除这个任务？' : `删除第 ${heading} 题？`,
+      title: isTask ? '删除这个主题？' : `删除第 ${heading} 项任务？`,
       message: lines.join('\n'),
       confirmLabel: '确认删除',
       tone: 'danger',
@@ -468,8 +468,8 @@ function WorksheetEditorBody() {
           />
         </div>
         <div className="worksheet-editor-meta">
-          <span className="worksheet-editor-totals" title="这份学习单的题目数与满分">
-            {blocks.filter(block => block.task).length} 个任务 · {totals.questions} 题 · 满分 {totals.maxScore}
+          <span className="worksheet-editor-totals" title="这份学习单的任务数与满分">
+            {blocks.filter(block => block.task).length} 个主题 · {totals.questions} 项任务 · 满分 {totals.maxScore}
           </span>
           <span className={`worksheet-editor-status${editor.dirty ? ' is-dirty' : ''}${saveStatus.kind === 'error' ? ' is-error' : ''}`}>
             {describeSaveStatus(saveStatus, editor.dirty, Boolean(worksheetId))}
@@ -495,7 +495,7 @@ function WorksheetEditorBody() {
             className="btn btn-primary"
             onClick={() => void editor.save()}
             disabled={saveStatus.kind === 'saving'}
-            title="保存整张学习单（标题、题目、设置、使用说明）"
+            title="保存整张学习单（标题、任务、设置、使用说明）"
           >
             {saveStatus.kind === 'saving' ? '保存中…' : '保存'}
           </button>
@@ -559,9 +559,9 @@ function WorksheetEditorBody() {
           <div className="worksheet-editor-outline-head">
             <div>
               <h2>学习单结构</h2>
-              <p>选择一道题开始编辑</p>
+              <p>选择一项任务开始编辑</p>
             </div>
-            <span>{totals.questions} 题</span>
+            <span>{totals.questions} 项任务</span>
           </div>
 
           <div className="worksheet-editor-outline-list">
@@ -577,7 +577,7 @@ function WorksheetEditorBody() {
                       <span className="worksheet-editor-outline-number">{row.heading}</span>
                       <span className="worksheet-editor-outline-question-copy">
                         <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{editorQuestionTypeLabel(row.node)}</strong>
-                        <em>{row.node.prompt.trim() || '未填写题干'}</em>
+                        <em>{row.node.prompt.trim() || '未填写任务要求'}</em>
                       </span>
                     </button>
                   </div>
@@ -602,15 +602,15 @@ function WorksheetEditorBody() {
                       <span className="worksheet-editor-outline-chevron">⌄</span>
                       <span>
                         <strong>{task.node.prompt.trim() || `任务 ${blockIndex + 1}`}</strong>
-                        <em>{taskTotals.questions} 题 · 满分 {taskTotals.maxScore}</em>
+                        <em>{taskTotals.questions} 项任务 · 满分 {taskTotals.maxScore}</em>
                       </span>
                     </button>
                     <button
                       type="button"
                       className="worksheet-editor-drag-handle"
                       onPointerDown={event => startDrag(event, task.node.id, '', task.index)}
-                      aria-label={`拖动任务 ${task.index + 1} 调整顺序`}
-                      title="拖动调整任务顺序"
+                      aria-label={`拖动主题 ${task.index + 1} 调整顺序`}
+                      title="拖动调整主题顺序"
                     >⠿</button>
                   </div>
 
@@ -625,22 +625,22 @@ function WorksheetEditorBody() {
                           <span className="worksheet-editor-outline-number">{row.label}</span>
                           <span className="worksheet-editor-outline-question-copy">
                             <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{editorQuestionTypeLabel(row.node)}</strong>
-                            <em>{row.node.prompt.trim() || '未填写题干'}</em>
+                            <em>{row.node.prompt.trim() || '未填写任务要求'}</em>
                           </span>
                         </button>
                         <button
                           type="button"
                           className="worksheet-editor-outline-drag"
                           onPointerDown={event => startDrag(event, row.node.id, task.node.id, row.index)}
-                          aria-label={`拖动第 ${row.label} 题调整顺序`}
-                          title="拖动调整题目顺序"
+                          aria-label={`拖动第 ${row.label} 项任务调整顺序`}
+                          title="拖动调整任务顺序"
                         >⠿</button>
                       </div>
                     ))}
                   </div>
 
                   <button type="button" className="worksheet-editor-outline-add-question" onClick={() => setPickerFor({ parentId: task.node.id })}>
-                    ＋ 添加题目
+                    ＋ 添加任务
                   </button>
                 </section>
               );
@@ -648,7 +648,7 @@ function WorksheetEditorBody() {
           </div>
 
           <button type="button" className="worksheet-editor-add" onClick={addTaskAndFocusTitle}>
-            ＋ 添加任务
+            ＋ 添加主题
           </button>
         </aside>
 
@@ -656,18 +656,18 @@ function WorksheetEditorBody() {
           {blocks.length === 0 ? (
             <div className="worksheet-editor-canvas-empty">
               <span>01</span>
-              <h2>先创建第一个任务</h2>
-              <p>任务用于组织一组相关题目，学生会按任务顺序完成学习单。</p>
-              <button type="button" className="btn btn-primary" onClick={addTaskAndFocusTitle}>添加任务</button>
+              <h2>先创建第一个主题</h2>
+              <p>主题用于组织一组相关任务，学生围绕主题完成学习单。</p>
+              <button type="button" className="btn btn-primary" onClick={addTaskAndFocusTitle}>添加主题</button>
             </div>
           ) : activeBlock?.task ? (
             <>
               <div className="worksheet-editor-canvas-head">
                 <div>
-                  <span>任务 {activeBlock.task.index + 1}</span>
-                  {!activeQuestion && <h2>编辑任务</h2>}
+                  <span>主题 {activeBlock.task.index + 1}</span>
+                  {!activeQuestion && <h2>编辑主题</h2>}
                 </div>
-                {activeQuestion && <span>第 {activeQuestion.label} 题 / 共 {totals.questions} 题</span>}
+                {activeQuestion && <span>第 {activeQuestion.label} 项任务 / 共 {totals.questions} 项任务</span>}
               </div>
               <TaskCard
                 index={activeBlock.task.index}
@@ -690,15 +690,15 @@ function WorksheetEditorBody() {
           ) : activeQuestion ? (
             <>
               <div className="worksheet-editor-canvas-head">
-                <div><span>独立题目</span></div>
-                <span>第 {activeQuestion.label} 题 / 共 {totals.questions} 题</span>
+                <div><span>独立任务</span></div>
+                <span>第 {activeQuestion.label} 项任务 / 共 {totals.questions} 项任务</span>
               </div>
               {renderQuestionCard(activeQuestion)}
             </>
           ) : (
             <div className="worksheet-editor-canvas-empty">
-              <h2>选择一道题开始编辑</h2>
-              <p>从左侧结构中选择任务或题目。</p>
+              <h2>选择一项任务开始编辑</h2>
+              <p>从左侧结构中选择主题或任务。</p>
             </div>
           )}
         </main>
@@ -768,7 +768,7 @@ function DraftBanner({ draft, onAccept, onDiscard }: {
   return (
     <div className="worksheet-editor-banner is-info" role="status">
       <div>
-        发现未保存的草稿（本机、{formatClock(draft.savedAt)} 存入，{draft.content.nodes.length} 题）。它是上一次在这台电脑上编辑、但没保存成功的内容。
+        发现未保存的草稿（本机、{formatClock(draft.savedAt)} 存入，{flattenAnswerable(draft.content.nodes).length} 项任务）。它是上一次在这台电脑上编辑、但没保存成功的内容。
       </div>
       <div className="worksheet-editor-banner-actions">
         <button type="button" className="btn btn-primary" onClick={onAccept}>恢复</button>
@@ -787,20 +787,20 @@ function AddQuestionPicker({ onPick, onClose }: {
     <>
       <div className="modal-overlay" onClick={onClose} />
       <div className="worksheet-editor-dialog teacher-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-add-question-title" style={{ width: 560 }}>
-        <h3 id="worksheet-add-question-title">添加题目</h3>
+        <h3 id="worksheet-add-question-title">添加任务</h3>
         {/* ★ 2026-09-25：这句话原来写的是「题目会加到这份学习单的最后」—— 现在**加到
             你点的那个任务里**（`pickerFor.parentId`），▲▼ 也只在**同层内**换位。
             一句说错的帮助文字比没有更糟：教师会按它去找一个不存在的行为。 */}
         {/* ★ 2026-10-06：「选择一种作答方式」改成「选择题型」—— 题卡里的「作答方式」
             指的是键盘 / 手写 / 拍照，两处撞词（教师在这里选的是**题型**）。 */}
-        <p className="worksheet-editor-dialog-note">选择题型。添加后可从左侧抓住拖动把手调整顺序。</p>
+        <p className="worksheet-editor-dialog-note">选择作答形式。添加后可从左侧抓住拖动把手调整顺序。</p>
         <div className="worksheet-editor-type-list">
           {QUESTION_TYPE_OPTIONS.filter(option => option.value !== 'choice-blank' && option.value !== 'multi-choice' && option.value !== 'open-ended').map(option => (
             <button key={option.value} type="button" className="worksheet-editor-type-option" onClick={() => onPick(option.value)}>
               <span className="worksheet-editor-type-option-icon">{questionTypeIcon(option.value)}</span>
               <span className="worksheet-editor-type-option-copy">
                 <span className="worksheet-editor-type-option-label">{option.value === 'single-choice' ? '选择题' : option.label}</span>
-                <span className="worksheet-editor-type-option-hint">{option.value === 'single-choice' ? '可在题内设置为单选或多选' : option.value === 'fill-blank' ? '每个空可设置手工填写、右侧选词或下方选词' : option.hint}</span>
+                <span className="worksheet-editor-type-option-hint">{option.value === 'single-choice' ? '可在任务内设置为单选或多选' : option.value === 'fill-blank' ? '每个空可设置手工填写、右侧选词或下方选词' : option.hint}</span>
               </span>
             </button>
           ))}
@@ -1044,7 +1044,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
           <section className="worksheet-settings-section">
             <div className="worksheet-settings-section-head"><div><strong>作答规则</strong></div></div>
             <fieldset className="worksheet-answer-mode">
-              <legend>题目开放方式</legend>
+              <legend>任务开放方式</legend>
               {/*
                 ★ 2026-09-30：从**竖排**改成**并排**（与同页「卡片透度」「奖励形式」同一种形状）
                 —— 互斥的选择摆成一行才比得出来，而竖排时每一张都要占一整行。
@@ -1056,12 +1056,12 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
               */}
               <div className="worksheet-answer-mode-options is-row">
                 {[
-                  { value: 'open', title: '开放式', note: '全部题目一次放开' },
-                  { value: 'task-step', title: '按任务分步', note: '提交本任务后解锁下一任务' },
-                  { value: 'question-step', title: '按小题分步', note: '提交当前题后解锁下一题' },
+                  { value: 'open', title: '开放式', note: '全部任务一次放开' },
+                  { value: 'task-step', title: '按主题开放', note: '完成当前主题后解锁下一主题' },
+                  { value: 'question-step', title: '按任务开放', note: '提交当前任务后解锁下一项任务' },
                   // ★ 第四档：**教师**推进（前两档是学生交卷推进）。
                   // 控制界面在看板头部的「学习单 ⋯ 逐题开放」里（`W ORKSHEET_MENU_ITEMS`）。
-                  { value: 'manual', title: '手动开放', note: '教师逐题开放' },
+                  { value: 'manual', title: '手动开放', note: '教师逐项开放' },
                 ].map(option => (
                   <label key={option.value} className={settings.answerMode === option.value ? 'is-selected' : ''}>
                     <input
@@ -1095,7 +1095,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
               <span className="worksheet-settings-switch-icon" aria-hidden="true">↻</span>
               <span className="worksheet-settings-switch-copy">
                 <strong>提交后可以修改</strong>
-                <em>普通题可修改；AI 评价题按次数控制</em>
+                <em>普通任务可修改；AI 评价任务按次数控制</em>
               </span>
               <span className="worksheet-editor-autograde-control">
                 <input type="checkbox" checked={settings.allowResubmit} onChange={event => onSettingsChange({ allowResubmit: event.target.checked })} aria-label="提交后可以修改" />

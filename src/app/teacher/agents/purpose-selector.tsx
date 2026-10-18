@@ -29,7 +29,7 @@ const PURPOSES = [
   {
     value: 'tutoring',
     label: '学伴',
-    hint: '学生可以选它聊天（三件套的「智能学伴」）',
+    hint: '学生可以选它聊天（学习模块的「智能学伴」）',
     icon: <svg {...ICON_PROPS}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>,
   },
   {

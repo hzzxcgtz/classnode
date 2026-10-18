@@ -195,7 +195,7 @@ export function OrderBody({ node, draft, onChange, disabled }: OrderBodyProps) {
   }, [drag.draggingId, clearDragStyles]);
 
   if (entries.length === 0) {
-    return <p className={styles.cardNote}>（这道题还没有条目）</p>;
+    return <p className={styles.cardNote}>（这项任务还没有条目）</p>;
   }
 
   return (

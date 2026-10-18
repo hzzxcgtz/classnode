@@ -74,7 +74,7 @@ export function TableBody({ node, onDataChange }: {
     const kept = answers.slice(0, base);
     if (answers.length > base && !await askConfirmation({
       title: '换成这张表格？',
-      message: '表格里原来的答案会被清除；题干中的填空答案不会受影响。',
+      message: '表格里原来的答案会被清除；任务要求中的填空答案不会受影响。',
       confirmLabel: '替换表格',
       tone: 'danger',
     })) return;
@@ -97,8 +97,8 @@ export function TableBody({ node, onDataChange }: {
       <>
       <div className="worksheet-editor-table">
         <div className="worksheet-editor-table-empty">
-          <strong>这道题还没有表格</strong>
-          <span>表格会显示在题干下方；学生只在标成「填空」的格子里作答。</span>
+          <strong>这项任务还没有表格</strong>
+          <span>表格会显示在任务要求下方；学生只在标成「填空」的格子里作答。</span>
           <button type="button" className="btn btn-secondary" onClick={() => apply({ table: createTable(2, 3), answers })}>
             加一张表格
           </button>

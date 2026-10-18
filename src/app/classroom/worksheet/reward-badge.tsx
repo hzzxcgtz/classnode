@@ -86,7 +86,7 @@ export function QuestionReward({ scale, full, score }: { scale: RewardScale; ful
       /* 🔴 图标化的东西必须自带可访问名（本仓的既有规矩）：一排灰/彩图标对读屏是无声的，
          而"本题满分几个、拿到几个"正是这一格要传达的全部信息。 */
       role="img"
-      aria-label={amount > 0 ? `本题满分 ${full}，已获得 ${amount}` : `本题满分 ${full}，尚未获得奖励`}
+      aria-label={amount > 0 ? `当前任务满分 ${full}，已获得 ${amount}` : `当前任务满分 ${full}，尚未获得奖励`}
     >
       {Array.from({ length: plan.slots }, (_, index) => (
         <RewardIcon

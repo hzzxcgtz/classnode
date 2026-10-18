@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ANALYSIS_AGENT_PROMPT_TEMPLATE } from './analysis-agent-prompt-template.ts';
+import { ANALYSIS_AGENT_PROMPT_TEMPLATE, ANALYSIS_PROMPT_VERSION } from './analysis-agent-prompt-template.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const COZE_TEMPLATE = fs.readFileSync(path.resolve(HERE, '..', '..', 'docs', 'Coze学习单小题分析智能体提示词.md'), 'utf8');
@@ -31,7 +31,7 @@ test('分析智能体模板区分通用建议与条件评分，明确输出协�
 });
 
 test('Coze 文档提供通用模板与 12 份完整学科模板入口', () => {
-  assert.match(COZE_TEMPLATE, /Worksheet Analysis Prompts v4\.1\.0/);
+  assert.ok(COZE_TEMPLATE.includes(`Worksheet Analysis Prompts v${ANALYSIS_PROMPT_VERSION}`));
   assert.match(COZE_TEMPLATE, /学生标签采用“姓名#学号”/);
   assert.match(COZE_TEMPLATE, /列入可评分名单/);
   assert.match(COZE_TEMPLATE, /教师提供的初始图不是学生成果/);

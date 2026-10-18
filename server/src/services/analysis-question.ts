@@ -167,15 +167,15 @@ export function analysisQuestionDetails(node: QuestionNode): string {
     case 'multi-choice':
     case 'true-false': {
       const options = [...optionMap(node)].map(([key, text]) => `${key}. ${text}`);
-      return options.length > 0 ? `选项：${options.join('；')}` : '（没有额外题面材料）';
+      return options.length > 0 ? `选项：${options.join('；')}` : '（没有额外任务材料）';
     }
     case 'choice-blank': {
       const choices = readStrings(node.data.fillChoicePool ?? node.data.choices);
-      return choices.length > 0 ? `待选词：${choices.join('、')}` : '（没有额外题面材料）';
+      return choices.length > 0 ? `待选词：${choices.join('、')}` : '（没有额外任务材料）';
     }
     case 'order': {
       const items = entriesOf(node.data.items);
-      return items.length > 0 ? `可排序条目：${items.map((item) => item.text).join('；')}` : '（没有额外题面材料）';
+      return items.length > 0 ? `可排序条目：${items.map((item) => item.text).join('；')}` : '（没有额外任务材料）';
     }
     case 'match': {
       const left = entriesOf(node.data.left);
@@ -188,14 +188,14 @@ export function analysisQuestionDetails(node: QuestionNode): string {
       return `待归类条目：${items.map((item) => item.text).join('；') || '（空）'}\n分类框：${zones.map((item) => item.text).join('；') || '（空）'}`;
     }
     default:
-      return '（没有额外题面材料）';
+      return '（没有额外任务材料）';
   }
 }
 
 /** 按题型把答案键转换成可读的参考答案/评价依据。 */
 export function analysisReferenceAnswer(node: QuestionNode): string {
   if (node.type === 'open-ended' || (node.autoGrade === false && node.type !== 'short-answer' && node.type !== 'drawing')) {
-    return '（本题不设标准答案，仅分析学生作答，不判对错、不评分）';
+    return '（当前任务不设标准答案，仅分析学生作答，不判对错、不评分）';
   }
   let reference = '（未提供参考答案）';
   switch (node.type) {
@@ -322,6 +322,6 @@ export function analysisTaskContext(nodes: QuestionNode[], questionId: string, t
   }
   const parents = pathTo(nodes, []) ?? [];
   return [title && `学习单：${title}`, description && `学习单说明：${description}`,
-    ...parents.map(node => `所属任务：${node.prompt || ''}\n任务说明：${typeof node.data.description === 'string' ? node.data.description : ''}\n任务材料：${analysisQuestionDetails(node)}`),
+    ...parents.map(node => `所属主题：${node.prompt || ''}\n主题说明：${typeof node.data.description === 'string' ? node.data.description : ''}\n主题材料：${analysisQuestionDetails(node)}`),
   ].filter(Boolean).join('\n');
 }

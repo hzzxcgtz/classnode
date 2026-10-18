@@ -276,7 +276,7 @@ export function rowTally(row: MatrixRow): QuestionTally {
 
 /** 题干那一格的文案。**「算不算空」的判据只在这一处** —— JSX 里不许再 `trim()` 一次。 */
 export function promptLabel(prompt: string): string {
-  return prompt.trim() || '（这道题的题干还没写）';
+  return prompt.trim() || '（这项任务的要求还没写）';
 }
 
 /**

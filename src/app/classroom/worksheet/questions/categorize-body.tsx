@@ -126,7 +126,7 @@ export function CategorizeBody({ node, draft, onChange, disabled }: CategorizeBo
   }, [drag.draggingId, clearDragStyles]);
 
   if (items.length === 0 || zones.length === 0) {
-    return <p className={styles.cardNote}>（这道题还没有条目或还没有框）</p>;
+    return <p className={styles.cardNote}>（这项任务还没有条目或还没有框）</p>;
   }
 
   /**

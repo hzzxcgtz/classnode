@@ -17,7 +17,7 @@ export function manualReleaseSheets(worksheets: readonly ReleaseSheet[]) {
 /** 手动开放按题目原有顺序列出，允许单独开放任意一题。 */
 export function releaseUnits(groups: AnswerableGroup[]) {
   return groups.flatMap(group => group.items.map(item => ({
-    id: item.node.id, title: `第 ${item.label} 题`, items: [item],
+    id: item.node.id, title: `任务 ${item.label}`, items: [item],
   })));
 }
 

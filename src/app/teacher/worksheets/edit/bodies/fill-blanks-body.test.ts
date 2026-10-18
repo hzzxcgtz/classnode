@@ -334,5 +334,5 @@ test('③ 每空答案 / 参考答案共用的那个列表输入已接「粘贴�
   const card = body(CARD);
   const referenceAt = card.indexOf('worksheet-editor-reference-block');
   assert.ok(referenceAt > 0, '找不到主观题「参考答案 / 参考要点」那一块');
-  assert.match(card.slice(referenceAt, referenceAt + 1200), /<SymbolListInput/, '参考答案那一格换控件了 —— 粘贴去格式接不到它');
+  assert.match(card.slice(referenceAt, referenceAt + 2300), /<textarea[\s\S]*onPaste=[\s\S]*normalizePastedText/, '段落式参考作答必须保留粘贴去格式');
 });

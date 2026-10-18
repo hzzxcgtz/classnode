@@ -180,7 +180,7 @@ export function questionStats(
     submitted += 1;
     submittedRows.push(row);
     // 判分档：**读行里的**（`rowVerdict`），本地不重算。
-    const verdict = isGradedType(node.type) ? rowVerdict(row as never) : null;
+    const verdict = node.autoGrade !== false && isGradedType(node.type) ? rowVerdict(row as never) : null;
     if (verdict !== null) {
       graded += 1;
       if (verdict === 'correct') correct += 1;
@@ -232,7 +232,7 @@ function buildDistribution(
     // 判断题**不存 options**（`data` 里只有 `correctKeys`）⇒ 必须走常量，
     // 否则一道判断题一个选项都数不出来，而屏幕上看起来只是「这道题没有选项」。
     const options = node.type === 'true-false' ? TRUE_FALSE_OPTIONS : readOptions(node);
-    const correctKeys = Array.isArray(node.data?.correctKeys)
+    const correctKeys = node.autoGrade !== false && Array.isArray(node.data?.correctKeys)
       ? (node.data.correctKeys as unknown[]).filter((key): key is string => typeof key === 'string')
       : [];
     const perOption = new Map<string, number>();
@@ -289,7 +289,7 @@ function buildDistribution(
   // ── 排序 ───────────────────────────────────────────────────────────
   if (kinds.size === 1 && kinds.has('order')) {
     const items = readOrderItems(node);
-    const correctOrder = Array.isArray(node.data?.correctOrder)
+    const correctOrder = node.autoGrade !== false && Array.isArray(node.data?.correctOrder)
       ? (node.data.correctOrder as unknown[]).filter((id): id is string => typeof id === 'string')
       : [];
     const hits = new Array(correctOrder.length).fill(0) as number[];
@@ -344,7 +344,7 @@ function buildDistribution(
       right,
       cells: [...counts.entries()].map(([key, count]) => {
         const [rowId, colId] = key.split('\u0000');
-        return { rowId, colId, count, correct: isCorrectPair(rowId, colId) };
+        return { rowId, colId, count, correct: node.autoGrade !== false && isCorrectPair(rowId, colId) };
       }),
     };
   }
@@ -377,7 +377,7 @@ function buildDistribution(
       zones,
       cells: [...counts.entries()].map(([key, count]) => {
         const [rowId, colId] = key.split('\u0000');
-        return { rowId, colId, count, correct: placement[rowId] === colId };
+        return { rowId, colId, count, correct: node.autoGrade !== false && placement[rowId] === colId };
       }),
     };
   }
@@ -452,7 +452,7 @@ function buildInsights(input: {
     // 主观题 / 关闭自动判分 —— **不许**编一个百分比出来。
     out.push({ level: 'info', text: `已交 ${submitted} 人；这道题没有自动评分，不统计正确率。` });
   }
-  if (node.type === 'short-answer' || node.type === 'drawing') {
+  if (node.type === 'short-answer' || node.type === 'open-ended' || node.type === 'drawing') {
     out.push({ level: 'info', text: '这道题的答案需要人来读 —— 下面可以交给智能体分析。' });
   }
 
@@ -462,10 +462,10 @@ function buildInsights(input: {
     if (top && top.count > 0) {
       const wrongTop = distribution.bars.filter((bar) => !bar.correct).sort((a, b) => b.count - a.count)[0];
       out.push({
-        level: top.correct ? 'good' : 'warn',
+        level: node.autoGrade === false ? 'info' : top.correct ? 'good' : 'warn',
         text: `选得最多的是「${top.label}」（${top.count} 人）${top.correct ? '，它就是正确答案' : ''}。`,
       });
-      if (!top.correct && wrongTop && wrongTop.count > 0) {
+      if (node.autoGrade !== false && !top.correct && wrongTop && wrongTop.count > 0) {
         out.push({ level: 'warn', text: `其中「${wrongTop.label}」有 ${wrongTop.count} 人选（不是正确答案）。` });
       }
     }
@@ -484,7 +484,7 @@ function buildInsights(input: {
       }
     }
   }
-  if (distribution?.kind === 'match') {
+  if (node.autoGrade !== false && distribution?.kind === 'match') {
     const worst = [...distribution.cells].filter((cell) => !cell.correct).sort((a, b) => b.count - a.count)[0];
     if (worst && worst.count > 0) {
       out.push({
@@ -493,7 +493,7 @@ function buildInsights(input: {
       });
     }
   }
-  if (distribution?.kind === 'categorize') {
+  if (node.autoGrade !== false && distribution?.kind === 'categorize') {
     const worst = [...distribution.cells].filter((cell) => !cell.correct).sort((a, b) => b.count - a.count)[0];
     if (worst && worst.count > 0) {
       out.push({

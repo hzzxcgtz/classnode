@@ -2010,7 +2010,8 @@
 .option:active { transform: none; background: #f1f5f9; }
 .optionSelected { box-shadow: inset 0 0 0 1px rgba(82, 113, 152,.08); }
 .submitButton, .submitButton:not(:disabled):hover { box-shadow: none; transform: none; }
-.submitButton:not(:disabled):hover { background: #466384; }
+/* 保存修改的常态是白底蓝字；悬停切换深底时，文字和边框同步切换。 */
+.submitButton:not(:disabled):hover { background: #466384; border-color: #466384; color: #fff; }
 .dragActive { border-color: var(--ws-accent); box-shadow: inset 0 0 0 1px var(--ws-accent); transform: none; }
 .orderRow { display: flex; align-items: center; gap: 8px; max-width: 600px; }
 .orderItem { flex: 1 1 auto; min-height: 40px; border-radius: 6px; }

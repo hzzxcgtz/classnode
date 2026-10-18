@@ -12,7 +12,7 @@ const COZE_TEMPLATE = fs.readFileSync(path.resolve(HERE, '..', '..', 'docs', 'Co
 test('分析智能体模板采用最新姓名学号、评分与初始图口径', () => {
   assert.match(ANALYSIS_AGENT_PROMPT_TEMPLATE, /姓名#学号/);
   assert.match(ANALYSIS_AGENT_PROMPT_TEMPLATE, /逐字复制本次/);
-  assert.match(ANALYSIS_AGENT_PROMPT_TEMPLATE, /无法可靠判断时为/);
+  assert.match(ANALYSIS_AGENT_PROMPT_TEMPLATE, /缺少可靠依据时不猜分/);
   assert.match(ANALYSIS_AGENT_PROMPT_TEMPLATE, /不增加名单外学生/);
   assert.match(ANALYSIS_AGENT_PROMPT_TEMPLATE, /初始图不是学生成果/);
   assert.ok(!ANALYSIS_AGENT_PROMPT_TEMPLATE.includes('User_001'), '模板仍在使用过期的匿名学生代号');
@@ -31,7 +31,7 @@ test('分析智能体模板区分通用建议与条件评分，明确输出协�
 });
 
 test('Coze 文档提供通用模板与 12 份完整学科模板入口', () => {
-  assert.match(COZE_TEMPLATE, /Worksheet Analysis Prompts v3\.3\.0/);
+  assert.match(COZE_TEMPLATE, /Worksheet Analysis Prompts v4\.1\.0/);
   assert.match(COZE_TEMPLATE, /学生标签采用“姓名#学号”/);
   assert.match(COZE_TEMPLATE, /列入可评分名单/);
   assert.match(COZE_TEMPLATE, /教师提供的初始图不是学生成果/);

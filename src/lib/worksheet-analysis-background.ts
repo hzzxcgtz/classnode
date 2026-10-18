@@ -5,6 +5,7 @@ import { runWorksheetAnalysisSteps } from './worksheet-analysis-steps';
 import type { WorksheetAnalysisPayload } from './types';
 
 export const WORKSHEET_ANALYSIS_STARTED_EVENT = 'classnode:worksheet-analysis-started';
+export const WORKSHEET_ANALYSIS_CHANGED_EVENT = 'classnode:worksheet-analysis-changed';
 
 export const WORKSHEET_ANALYSIS_NOTICE_EVENT = 'classnode:worksheet-analysis-notice';
 
@@ -114,7 +115,9 @@ export function startWorksheetAnalysisTask(input: {
         type: 'success', classroomId, worksheetId, questionId,
         message: `${questionLabel || '本题'}的${task.action === 'incremental' ? '补评' : 'AI 分析'}已完成并自动保存`,
       });
-      completed.add(key);
+      if (result.narrative?.trim()) completed.add(key);
+      else completed.delete(key);
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(WORKSHEET_ANALYSIS_CHANGED_EVENT, { detail: { classroomId, worksheetId, questionId } }));
       return result;
     })
     .catch((error: unknown) => {
@@ -149,6 +152,7 @@ export async function stopWorksheetAnalysisTask(classroomId: string, worksheetId
 
 export function forgetWorksheetAnalysis(classroomId: string, worksheetId: string, questionId: string): void {
   completed.delete(taskKey(classroomId, worksheetId, questionId));
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(WORKSHEET_ANALYSIS_CHANGED_EVENT, { detail: { classroomId, worksheetId, questionId } }));
 }
 
 export function activeWorksheetAnalysisTask(

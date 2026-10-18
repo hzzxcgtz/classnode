@@ -167,7 +167,7 @@ export function QuestionInput({ node, draft, onChange, disabled, correctKeys, co
   // 由**面板**渲染（见 `worksheet-panel.tsx` 里那一条分支）。
   // 🔴 这里**不能**再画一份：那会让待选词出现两组，而两组各有一份选中态。
   if (node.type === 'choice-blank' || node.type === 'fill-blank') return null;
-  if (node.type === 'short-answer') {
+  if (node.type === 'short-answer' || node.type === 'open-ended') {
     return (
       <TextBody
         draft={pick('text') ?? { kind: 'text', text: '' }}

@@ -468,6 +468,9 @@ export type WorksheetAnswerMode = 'open' | 'task-step' | 'question-step' | 'manu
  * **不落库**（规格 §9.1）。取值规则与可选项在 `src/lib/worksheet-reward.ts`，别在这里再定义一遍。
  */
 export interface WorksheetSettings {
+  /** 适用年级 1–9；旧学习单未填写时不猜测。 */
+  gradeLevel?: number | null;
+  subject?: string | null;
   allowResubmit: boolean;
   autoGrade: boolean;
   /** 学生的答题开放方式：全部开放、按任务解锁、按小题解锁。 */

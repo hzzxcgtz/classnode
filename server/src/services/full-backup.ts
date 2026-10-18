@@ -9,6 +9,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { getEncryptionKey, decryptWithKey, isEncrypted, reloadEncryptionKey } from './crypto.js';
 import { resolveDatabasePath } from './database-upgrade.js';
 import { safeExtractZip } from './upload-security.js';
+import { reserveBackupFile } from './backup-filename.js';
 
 const require = createRequire(import.meta.url);
 const execute = promisify(execFile);
@@ -89,8 +90,7 @@ export async function createFullBackup(prisma: PrismaClient, source = 'local'): 
   const paths = dataPaths();
   fs.mkdirSync(paths.backups, { recursive: true });
   const staging = workspace();
-  const output = path.join(paths.backups, `classnode-backup-${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomUUID()}.classbak`);
-  const partial = output + '.partial';
+  const { file: output, partial } = reserveBackupFile(paths.backups, '.classbak');
   try {
     await prisma.$executeRawUnsafe('VACUUM INTO ?', path.join(staging, 'data.db'));
     fs.writeFileSync(path.join(staging, '.encryption.key'), getEncryptionKey(), { mode: 0o600 });

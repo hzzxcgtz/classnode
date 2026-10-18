@@ -37,7 +37,7 @@ export function OrderDistribution({ positions, orders, total, unit }: { position
   const animate = useChartAnimation();
   const data = positions.map(position=>({label:`第${position.index+1}位`,rate:selectionRate(position.hits,total),hits:position.hits}));
   return <div className={styles.blocks}>
-    <div><div className={styles.heading}><strong>各位置命中率</strong><small>以已交 {total} {unit}为基数</small></div>
+    {positions.length > 0 && <div><div className={styles.heading}><strong>各位置命中率</strong><small>以已交 {total} {unit}为基数</small></div>
       <div className={styles.plot} role="img" aria-label={data.map(item=>`${item.label}排对${item.hits}${unit}，${item.rate}%`).join('；')}>
         <ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{top:16,right:16,bottom:4,left:0}}>
           <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fontSize:12,fill:CHART.muted}} />
@@ -47,7 +47,7 @@ export function OrderDistribution({ positions, orders, total, unit }: { position
         </LineChart></ResponsiveContainer>
       </div>
       <div className={styles.positions}>{data.map(item=><span key={item.label}>{item.label} <b>{item.hits}/{total}</b> {unit}</span>)}</div>
-    </div>
+    </div>}
     {orders.length>0 && <div><div className={styles.heading}><strong>常见排序路径</strong><small>前三种，不代表全部作答</small></div>
       <ol className={styles.paths}>{orders.map(order=><li key={order.label}>
         <div className={styles.pathSteps}>{order.label.split(' → ').map((step,index)=><span key={index}><small>{index+1}</small><PromptText text={step} placeholder="未填写" /></span>)}</div>

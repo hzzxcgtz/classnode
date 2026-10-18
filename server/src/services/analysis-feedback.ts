@@ -1,3 +1,4 @@
+import { STUDENT_FEEDBACK_STYLE } from './analysis-teaching-policy.js';
 import { extractAnalysisProtocol, analysisProtocolJson } from './analysis-protocol.js';
 /** 独立于成绩的班级问题名单与逐生建议。只接受本次名单中的完整标签。 */
 export const FEEDBACK_START = '<classnode-feedback>';
@@ -11,14 +12,14 @@ export interface AnalysisFeedback {
 type Entry = { studentId: string; anonLabel: string };
 const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
-export function feedbackInstruction(entries: readonly Entry[]): string {
+export function feedbackInstruction(entries: readonly Entry[], includeStyle = true): string {
   return [
     '【班级问题名单与个人建议】所有题型均需返回，与 AI 评分开关无关。',
     `反馈名单（完整标签必须逐字复制）：${entries.map(entry => entry.anonLabel).join('、')}`,
-    '报告采用所配置学科与学段的五段结构：核心结论、典型表现与作答依据、关键认识或方法、课堂讲评或活动方案、讲评后检查；标题随学科和题型调整，简单题可以合并。典型问题与优秀回答都用名单链接关联学生：问题旁可写 [相关同学](#classnode-group-g1)，优秀实例旁可写 [优秀作答同学](#classnode-group-g2)，在 groups 中填写各自作者或相关学生的完整标签，每组 id 唯一。单人优秀实例只关联该作者，不与问题名单混用；引用真实作答并说明亮点，不把润色冒充原话，无法确认作者时不猜。不要在班级正文直接写姓名、学号或可识别的个人错误；姓氏称呼由系统根据有效名单显示，悬停查看完整姓名，不自行计数。每处名单只使用一个完整的 Markdown 名单链接，链接标题使用“相关同学”或“优秀作答同学”，不要嵌套链接，不要在链接后用括号再次列出姓名或名单链接。没有需记录的名单时 groups 返回空数组，不强行分组。',
-    '典型表现与作答依据是报告重点，通常占正文约三分之一至二分之一。按独立实例或问题类型展开：优秀作答1—2例、主要问题1—2类，每项给出真实作答依据、对应名单、具体亮点或症结及可验证追问，不挤成两段概括。对照本题要求解释证据，原因只作为待验证推测；按学科、学段和题型选择维度，证据不足时不凑数、不编造。',
+    '典型表现用名单链接关联学生：[相关同学](#classnode-group-g1) 或 [优秀作答同学](#classnode-group-g2)。groups 中按对应 id 返回准确的完整标签，单人实例只关联作者，不与问题名单混用；开放表达与信息收集也可用相关同学关联观点。每处只用一个完整 Markdown 链接，不嵌套、不在括号重复名单。班级正文不直接写姓名或学号，系统计算称呼和人数；身份不清时不猜，没必要时 groups 返回空数组。',
+    '每一种具体表现分别使用独立的 group id，名单只包含确实符合该表现的学生；不同选项、不同错误、单人实例不得共用全班名单。多选题中“选 D”与“只选 D”必须分别核对，“只选 D”要求该学生的完整选择集合仅含 D；人数和比例以实际作答统计为准，不凭印象写多数或少数。举例名单仅列对应实例，不能用全体反馈名单代替。',
     '每位反馈名单学生必须在 students 中返回一条个性化 advice，不漏人、不重复；建议依据该学生实际作答。评分仅按另行提供的评分协议返回，不在这个数据块中填写分数。',
-    '评价 reason 和小建议 advice 都直接说给学生听，统一用“你”称呼，保持温柔、耐心、尊重、以鼓励为主的口吻。先肯定真实表现，再给一个容易做到的下一步和检查方法；不责备、不比较、不贴标签、不用训斥或命令语气，不空泛夸奖或编造优点。建议要承接评价，评分仍严格依据标准，不能为鼓励而虚增分数。评价（reason）一般写2—3句，约40—80个中文字；建议（advice）一般写3—5句，约80—150个中文字，可补充具体操作步骤、一个提示性例子和检查方法。按学段、题目复杂度与可见作答灵活调整，低年级和简单题可更短，材料不足时如实说明，不为凑字数重复内容或编造表现。评价与建议合计自然穿插2—3个贴合语境的 emoji，如🌟用于肯定真实亮点、💡用于提示思路、🔍用于检查、🌱用于鼓励下一步；不要求每句都加，不连续堆叠，不用表情替代关键说明，不用嘲讽、责备或让学生误以为已经答对的表情。emoji 仅用于面向学生的 reason、advice 正文，不改学生标签、评分、字段名或机器协议。',
+    ...(includeStyle ? [STUDENT_FEEDBACK_STYLE] : []),
     '每位学生只写一份个人建议；同一学生同时出现在反馈块和评分块时，两个 advice 必须逐字一致，先形成个人建议，再复制到评分块，不分别生成。',
     '在 Markdown 报告之后追加以下数据块（格式示意，示例标签必须换成本次真实标签）：',
     FEEDBACK_START,

@@ -73,7 +73,7 @@ test('🔴 评分标准与评分要求已合并：只剩一个输入框，编辑
   // 阳性对照：读到的确实是那张题卡。少了它，路径写错会让下面每条断言**永远绿**。
   assert.match(source, /worksheet-editor-ai-scoring/, '这不是题卡文件（路径读错了？）');
 
-  const labels = source.match(/<span>评分标准<\/span>/g) ?? [];
+  const labels = source.match(/htmlFor=\{`evaluation-rubric-\$\{node.id\}`\}/g) ?? [];
   assert.equal(labels.length, 1, '「评分标准」只许有**一个**输入框 —— 两个就是要命的那次重复');
   assert.ok(!/<span>评分要求<\/span>/.test(source), '「评分要求」那个输入框已随合并删除，不许回来');
 
@@ -101,7 +101,7 @@ test('🔴 评分标准与评分要求已合并：只剩一个输入框，编辑
 
 test('阳性对照：评分标准的图片上传跟着搬进了 AI 评分块（合并不等于把图丢了）', () => {
   const source = fs.readFileSync(CARD, 'utf8');
-  const at = source.indexOf('worksheet-editor-ai-scoring');
+  const at = source.indexOf('worksheet-editor-evaluation-basis');
   assert.ok(at > 0, '找不到 AI 评分块');
   const block = source.slice(at);
   assert.match(block, /worksheet-editor-rubric-image|worksheet-editor-rubric-upload/, '图片上传入口要跟着搬进来');

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { worksheetCurriculumError } from '@/lib/worksheet-curriculum';
 import { api } from '@/lib/api';
 import { useTeacherConfirm } from '@/lib/components';
 // ★ 2026-09-26：新题的**默认分值**（1 / 0）—— 学习单级那两档不再参与判分之后，
@@ -328,6 +329,11 @@ export function useWorksheetEditor({ id, onNotice }: {
       setSaveStatus({ kind: 'error', at: null, message: '学习单标题不能为空' });
       return { ok: false, message: '学习单标题不能为空' };
     }
+    const curriculumError = worksheetCurriculumError(next.settings);
+    if (curriculumError) {
+      setSaveStatus({ kind: 'error', at: null, message: curriculumError });
+      return { ok: false, message: curriculumError };
+    }
     /**
      * 🔴 **三条拦阻，顺序有讲究。** 三条拦的都是「发出去的结果与教师屏幕上看到的不一样」，
      * 所以它们都必须在 `savingRef.current = true` **之前**返回 —— 那之后 return 会让防重入的
@@ -449,6 +455,8 @@ export function useWorksheetEditor({ id, onNotice }: {
    */
   const saveSettings = useCallback(async (): Promise<{ ok: true } | { ok: false; message: string }> => {
     const next = payloadRef.current;
+    const curriculumError = worksheetCurriculumError(next.settings);
+    if (curriculumError) return { ok: false, message: curriculumError };
     const currentId = worksheetIdRef.current;
     if (!currentId) {
       // 新学习单：还没有行可以打补丁 ⇒ 只能整份创建。失败原因**原样带回弹窗**

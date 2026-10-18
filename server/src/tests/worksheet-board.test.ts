@@ -167,7 +167,7 @@ const SAMPLE_CONTENT = {
       //   ⚠️ 夹具里**必须真的建一份** —— 下面那条阳性对照会**遍历整个 `ANSWER_KEYS`**，
       //   要求每个键都在教师读端点上看得见；夹具里没有，那条对照就塌了，
       //   而「学生端搜不到」也就成了空判据（压根没有，当然搜不到）。
-      data: { rubricText: '要点完整 3 分，能举出实例再加 2 分', rubricImageUrl: '/uploads/rubric/photosynthesis.png' },
+      data: { rubricText: '要点完整 3 分，能举出实例再加 2 分', rubricImageUrl: '/uploads/rubric/photosynthesis.png', analysisFocus: '重点关注证据与结论的联系', __analysisContext: '仅供教师分析的教学情境' },
       children: [],
     },
     {

@@ -140,3 +140,17 @@ test('改版修掉的那 5 处错文案没有悄悄回来', () => {
   const wenxin = code.slice(code.indexOf('文心智能体'));
   assert.match(wenxin.slice(0, 260), /capabilities: \[true, false, false, false, false\]/, '文心那一行的能力位又改回「支持流式」了');
 });
+
+test('截图预留尺寸与 PNG 实际尺寸一致，懒加载不会推移目录目标', () => {
+  const shots = [...code.matchAll(/^  "([a-z-]+)": \{ title: .*?width: (\d+), height: (\d+) \},$/gm)];
+  assert.ok(shots.length >= 22);
+  for (const [, id, width, height] of shots) {
+    const bytes = fs.readFileSync(path.join(ROOT, 'public/images/guide', `${id}.png`));
+    assert.deepEqual(bytes.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), `${id} 必须是 PNG 文件，不能按扩展名猜格式`);
+    assert.equal(bytes.readUInt32BE(8), 13, `${id} IHDR 长度`);
+    assert.equal(bytes.toString('ascii', 12, 16), 'IHDR', `${id} 必须以尺寸头开始`);
+    assert.equal(Number(width), bytes.readUInt32BE(16), `${id} 宽度`);
+    assert.equal(Number(height), bytes.readUInt32BE(20), `${id} 高度`);
+  }
+  assert.match(code, /width=\{shot\.width\} height=\{shot\.height\}/);
+});

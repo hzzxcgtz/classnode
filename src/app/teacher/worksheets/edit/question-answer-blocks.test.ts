@@ -49,11 +49,11 @@ test('★ 主观题的参考答案：有输入框、写回 data.answers，但**�
   // `supportsAiScoring` 的题型判定，只找第一个 `short-answer` 会截错代码块。
   const at = card.indexOf("{(node.type === 'short-answer' || node.type === 'drawing') && (");
   assert.ok(at >= 0, '找不到主观题那一块');
-  const block = card.slice(at, at + 1200);
+  const block = card.slice(at, at + 2300);
   // 输入框走**与填空题同一个**组件（`SymbolListInput` 本来就是待选词与标准答案共用的那个）
-  assert.ok(block.includes('SymbolListInput'), '主观题没有参考答案输入框');
+  assert.ok(block.includes('<textarea'), '主观题没有参考答案输入框');
   // 写回**nested 形状**（内核的纪律：写一律写 nested）
-  assert.ok(block.includes('answers: [items]'), '参考答案没有按 nested 形状写回 data.answers');
+  assert.ok(block.includes('[[event.target.value]]'), '参考答案没有按 nested 形状写回 data.answers');
   // 🔴 反面：主观题**不许**被判分 —— 教师 2026-09-30 明确说「主观题不需要评分」。
   //    这一条钉的是**题型表**（`graded` 是判据，决定抽屉里画不画判分那一行）。
   const types = fs.readFileSync(QTYPES, 'utf8');
@@ -234,7 +234,7 @@ test('★ 选择填空仍留着「得分方式 + 分值」是**一块两行**（
 test('★ 填空题的「自动评分」始终是逐空评分的总开关', () => {
   const card = body(CARD);
   assert.doesNotMatch(card, /\{!explicitFillScoring && <HeadSwitch/, '逐空评分仍在隐藏总开关');
-  assert.match(card, /<HeadSwitch\s+checked=\{gradedOn\}/, '自动评分总开关没有直接绑定题目级状态');
+  assert.match(card, /type="radio" checked=\{gradedOn\} onChange=\{\(\) => onAutoGradeChange\(true\)\}/, '自动评分总开关没有直接绑定题目级状态');
   assert.match(
     card,
     /\{gradedOn && \(<>/,

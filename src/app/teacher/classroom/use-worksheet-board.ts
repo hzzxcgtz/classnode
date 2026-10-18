@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
+import { WORKSHEET_ANALYSIS_CHANGED_EVENT } from '@/lib/worksheet-analysis-background';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 import {
   applyLiveRows, isGradeState, mergeProgress, restProgress, shouldDropLiveDraft, type LiveRowPatch,
@@ -167,16 +168,19 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
     });
   }, []);
 
+  const snapshotRequestRef = useRef(0);
   const refresh = useCallback(() => {
     if (!classroomId) return;
     // ⚠️ 先记时刻**再**发请求（「发起」而不是「回来」）—— 这样任何**早于**它的广播，
     // 其对应的那次写库一定在服务端读这个快照之前，下界才是安全的那一侧。
+    const request = ++snapshotRequestRef.current;
     const startedAt = Date.now();
     // ⚠️ **只有第一次**置 loading（见上面那一段）。刷新是静默的。
     if (!everLoadedRef.current) setLoading(true);
     void (async () => {
       try {
         const board = await api.getWorksheetBoard(classroomId);
+        if (request !== snapshotRequestRef.current) return;
         everLoadedRef.current = true;
         setSnapshot({ board, startedAt, fetchedAt: Date.now() });
         // 顺带把题目树与 settings 补齐：抽屉的题号 / 题型 / 奖励换算全靠它们，
@@ -186,7 +190,7 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
         // 状态由 `board === null` + `loading === false` 表达，抽屉里那一段文案负责说。
         // ⚠️ 失败时**不动** snapshot（保留上一次的），见文件头。
       } finally {
-        setLoading(false);
+        if (request === snapshotRequestRef.current) setLoading(false);
       }
     })();
   }, [classroomId, loadNodes]);
@@ -205,6 +209,24 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
     }, BOARD_SNAPSHOT_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [classroomId, refresh]);
+
+  // 清除或生成分析后同步题目列表；本机通知补足断线时收不到广播的情况。
+  useEffect(() => {
+    if (!classroomId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(refresh, 100);
+    };
+    const stop = on('worksheet-analysis-updated', data => {
+      if (worksheetIdsRef.current.includes(data.worksheetId)) scheduleRefresh();
+    });
+    const changed = (event: Event) => {
+      if ((event as CustomEvent<{ classroomId: string }>).detail?.classroomId === classroomId) scheduleRefresh();
+    };
+    window.addEventListener(WORKSHEET_ANALYSIS_CHANGED_EVENT, changed);
+    return () => { clearTimeout(timer); stop(); window.removeEventListener(WORKSHEET_ANALYSIS_CHANGED_EVENT, changed); };
+  }, [classroomId, on, refresh]);
 
   // 题目树的独立节拍（60 秒）。
   useEffect(() => {

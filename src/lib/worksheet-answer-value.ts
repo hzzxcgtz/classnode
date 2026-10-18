@@ -164,7 +164,7 @@ export type AnswerDraft =
 
 /** 问答题与绘图题的拍照作答档。 */
 export function isPhotoNode(node: { type: string; inputMode?: unknown }): boolean {
-  return (node.type === 'short-answer' || node.type === 'drawing') && node.inputMode === 'photo';
+  return (node.type === 'short-answer' || node.type === 'open-ended' || node.type === 'drawing') && node.inputMode === 'photo';
 }
 
 /**
@@ -383,7 +383,7 @@ function draftKindOf(node: WorksheetQuestionNode): AnswerDraft['kind'] | null {
   // 待选词只改变他**怎么填**（拖 vs 打），不改变填出来的东西。
   // ⇒ 往后判分 / 队列 / 提交这一步，两个题型走的是同一条路。
   if (type === 'fill-blank' || type === 'choice-blank') return 'fill';
-  if (type === 'short-answer') return 'text';
+  if (type === 'short-answer' || type === 'open-ended') return 'text';
   if (type === 'order') return 'order';
   if (type === 'match') return 'match';
   if (type === 'categorize') return 'categorize';
@@ -566,7 +566,7 @@ function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): Worksh
     if (!isMultiBlank(node)) return { format: 'fill/v1', text: draft.texts[0] ?? '' };
     return { format: 'fill-multi/v1', texts: draft.texts.slice(0, readBlankCount(node)) };
   }
-  if (type === 'short-answer') {
+  if (type === 'short-answer' || type === 'open-ended') {
     if (draft.kind !== 'text') return null;
     return draft.text.trim() ? { format: 'text/v1', text: draft.text } : null;
   }

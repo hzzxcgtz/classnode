@@ -201,3 +201,9 @@ test('🔴 `submitted` 这个字面量在 `app/` 那侧仍然成立（改名会�
   assert.ok(found[1].includes(`'${SUBMITTED_STATUS}'`),
     `那个联合类型里没有 '${SUBMITTED_STATUS}'：${found[1].trim()}`);
 });
+
+test('分步模式忽略教师手动开放清单，仅按学生提交进度解锁', () => {
+  assert.deepEqual(ids(answerModeView({ groups: GROUPS, statuses: {}, answerMode: 'question-step', openQuestions: ['c'] })), ['a']);
+  assert.deepEqual(ids(answerModeView({ groups: GROUPS, statuses: {}, answerMode: 'task-step', openQuestions: ['c'] })), ['a', 'b']);
+  assert.deepEqual(ids(answerModeView({ groups: GROUPS, statuses: { a: SUBMITTED_STATUS, b: SUBMITTED_STATUS }, answerMode: 'question-step', openQuestions: ['a'] })), ['a', 'b', 'c']);
+});

@@ -37,14 +37,16 @@ export async function runWorksheetAnalysisSteps<T>(
     await verifySupplement();
     return result;
   }
+  let supplementationCompleted = false;
   if (payload.aiScoring.enabled && !payload.studentAiReviewEnabled && !input.analysisOnly && missing.length) {
     await supplement();
     // Include submissions arriving during supplementation in the subsequent summary.
     const updated = await verifySupplement();
     if (!updated.canSend.ok) throw new Error(updated.canSend.reason);
+    supplementationCompleted = true;
   }
   const reportVerb = payload.narrative?.trim() ? '更新' : '生成';
-  onProgress(missing.length && !input.analysisOnly && !payload.studentAiReviewEnabled
+  onProgress(supplementationCompleted
     ? `补评已完成，正在${reportVerb}班级分析，请稍等…`
     : `正在${reportVerb}班级分析，请稍等…`);
   return run({ analysisOnly: true });

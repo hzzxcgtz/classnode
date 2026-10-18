@@ -30,7 +30,7 @@ import { COMPANION_MENU_ITEMS, HEADER_BUSY_KEYS, WORKSHEET_MENU_ITEMS, headerCon
 // ★ 2026-09-30：逐题开放。`normalizeOpenQuestions` 收线缆上那份 id 清单（判据在那个文件里），
 // 浮层是这一屏的第三个「按学习单看全班」的工具。
 import { normalizeOpenQuestions } from '@/lib/worksheet-answer-mode';
-import { WorksheetOpenOverlay } from './worksheet-open-overlay';
+import { WorksheetReleasePanel } from './worksheet-release-panel';
 import { effectiveGroupAgent, effectiveGroupWorksheet, effectiveGroupWebapp } from '@/lib/classroom-material';
 import { AgentNavigationIcon, ExploreSpaceNavigationIcon, WorksheetNavigationIcon } from '@/lib/navigation-icons';
 import type { AvatarSummary, ClassroomCardGroup, ClassroomCardMessage, ClassroomCardStudent, ClassroomDetail, ClassroomMessage, ClassroomModuleKey, ClassroomModuleSetting, ClassroomModuleState, StudentSummary, WorksheetMaterialSummary } from '@/lib/types';
@@ -811,6 +811,7 @@ function ClassroomBoardContent() {
   const [showWorksheetOpen, setShowWorksheetOpen] = useState(false);
   /** 正在写开放清单（写的时候按钮要禁用：整份替换，两次并发会互相盖）。 */
   const [worksheetOpenBusy, setWorksheetOpenBusy] = useState(false);
+  const worksheetOpenSavingRef = useRef(false);
   /**
    * 上面那一份的 ref（`loadClassroom` 要拿它做「这次快照是不是旧的」那个判断）。
    * ⚠️ 走 ref 而不是把它加进 `loadClassroom` 的依赖：那个回调进的是 socket 那个大 effect
@@ -1692,7 +1693,8 @@ function ClassroomBoardContent() {
    * 前面已经开好的那几题必须原样还在。
    */
   const setOpenQuestions = (worksheetId: string, questionIds: string[]) => {
-    if (worksheetOpenBusy) return;   // 整份替换：并发两次会互相盖
+    if (worksheetOpenSavingRef.current) return;
+    worksheetOpenSavingRef.current = true;
     const previous = worksheetOpen[worksheetId] ?? [];
     setWorksheetOpen((prev) => ({ ...prev, [worksheetId]: questionIds }));
     setWorksheetOpenBusy(true);
@@ -1707,6 +1709,7 @@ function ClassroomBoardContent() {
         setWorksheetOpen((prev) => ({ ...prev, [worksheetId]: previous }));
         setToast({ msg: `没设上：${error instanceof Error ? error.message : '请求异常'}`, type: 'error' });
       } finally {
+        worksheetOpenSavingRef.current = false;
         setWorksheetOpenBusy(false);
       }
     })();
@@ -2762,13 +2765,15 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                           {control.id === 'worksheet-menu' && showWorksheetMenu && (
                             <WorksheetMenu
                               // 三个查看入口进入同一个工作区；矩阵负责总览，学生与题目负责详情。
-                              // ★ 2026-09-30：「逐题开放」= 新加的那个浮层（手动逐题开放那一档）。
+                              // 「逐题开放」展开右侧手动开放面板。
                               // ⚠️ 三分支写成 `switch` 而不是 if/else 链：再加一项时 tsc 会**报错**
                               //（`item` 的联合类型没被穷尽），而 if/else 链会静默走进最后一个分支。
                               onSelect={(item) => {
                                 if (item === 'overview') { openWorksheetWorkspace({ view: 'overview' }); return; }
                                 if (item === 'student') { openWorksheetWorkspace({ view: 'student' }); return; }
                                 if (item === 'question') { openWorksheetWorkspace({ view: 'question' }); return; }
+                                if (!openOverlayWorksheets.some(sheet => sheet.settings?.answerMode === 'manual')) { setToast({ msg: '请先将学习单的题目开放方式设为「手动开放」', type: 'error' }); return; }
+                                closeWorksheetLayer();
                                 setShowWorksheetOpen(true);
                               }}
                               onClose={() => setShowWorksheetMenu(false)} />
@@ -3980,15 +3985,19 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           「有哪几份学习单」直接用看板那份数据（`wb.nodesByWorksheet` 与 `wb.settingsByWorksheet`）——
           ⚠️ 不另拉一次：那两份是**同一份数据**的两种形状，各拉一次必然出现「浮层里说 6 题、
              看板列头说 5 题」这种对不上，而两边都不报错。 */}
-      {showWorksheetOpen && (
-        <WorksheetOpenOverlay
+      {!worksheetDrawer && (
+        <WorksheetReleasePanel
+          forceExpanded={showWorksheetOpen}
+          onExpandedChange={setShowWorksheetOpen}
           worksheets={openOverlayWorksheets}
           open={worksheetOpen}
-          onChange={setOpenQuestions}
           busy={worksheetOpenBusy}
-          onClose={() => setShowWorksheetOpen(false)}
+          onChange={setOpenQuestions}
+          selectedQuestionId={worksheetWorkspace?.questionId}
+          onView={(worksheetId, questionId) => openWorksheetWorkspace({ view: 'question', worksheetId, questionId })}
         />
       )}
+
 
       {groupTooltip && groupMembersMap[groupTooltip.id] && (
         <div style={{

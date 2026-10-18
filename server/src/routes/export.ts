@@ -7,6 +7,7 @@ import { createRequire } from 'module';
 const _require = createRequire(import.meta.url);
 import fs from 'fs';
 import crypto from 'crypto';
+import { backupFilenameTime, isBackupFilename, reserveBackupFile } from '../services/backup-filename.js';
 import { createFullBackup, restoreFullBackup, resetAllData, extractBackup } from '../services/full-backup.js';
 import { withDataMaintenance } from '../services/data-maintenance.js';
 import { safeExtractZip } from '../services/upload-security.js';
@@ -434,7 +435,7 @@ router.get('/backups', async (req, res) => {
     const backupDir = getBackupDir();
 
     const files = fs.readdirSync(backupDir)
-      .filter(f => f.startsWith('classnode-backup-') && (f.endsWith('.classbak') || f.endsWith('.classdb') || f.endsWith('.db')))
+      .filter(isBackupFilename)
       .map(f => {
         const metaPath = path.join(backupDir, f + '.meta');
         let source: string = 'local';
@@ -445,10 +446,7 @@ router.get('/backups', async (req, res) => {
           } catch {}
         }
         // 从文件名解析时间，比 birthtime 更可靠
-        const match = f.match(/^classnode-backup-(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})\.(classbak|classdb|db)$/);
-        const createdAt = match
-          ? new Date(`${match[1]}T${match[2]}:${match[3]}:${match[4]}`).toISOString()
-          : fs.statSync(path.join(backupDir, f)).birthtime.toISOString();
+        const createdAt = backupFilenameTime(f) ?? fs.statSync(path.join(backupDir, f)).birthtime.toISOString();
         return {
           name: f,
           path: path.join(backupDir, f),
@@ -616,11 +614,10 @@ router.post('/backup/upload', backupUpload.single('file'), (req, res) => {
       }
     }
     // 重命名为标准格式并写入 meta 信息
-    const timestamp = readableTimestamp();
     const ext = isZip ? '.classbak' : '.classdb';
-    const newName = `classnode-backup-${timestamp}-${crypto.randomUUID()}${ext}`;
-    const newPath = path.join(path.dirname(req.file.path), newName);
-    fs.renameSync(req.file.path, newPath);
+    const { name: newName, file: newPath, partial } = reserveBackupFile(path.dirname(req.file.path), ext);
+    try { fs.renameSync(req.file.path, newPath); }
+    finally { fs.rmSync(partial, { force: true }); }
     const hash = crypto.createHash('sha256').update(fs.readFileSync(newPath)).digest('hex');
     fs.writeFileSync(newPath + '.meta', JSON.stringify({ source: 'imported', hash }));
     res.json({ success: true, name: newName, size: req.file.size });

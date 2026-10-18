@@ -200,6 +200,7 @@ interface AnswerShapeSample {
 }
 
 const ANSWER_KEY_AUDIT: Record<QuestionType, AnswerShapeSample[]> = {
+  'open-ended': [{ label: '开放题（无答案键）', data: {}, answerKeys: [], safeKeys: [], afterStrip: {} }],
   // ★ 2026-09-25：**空数组 = 这一格的答案**，不是漏填 ——
   //    这张表审计的是「题型 × 作答值的形状」，而**任务根本没有作答值**
   //    （教师裁定 ①a）。⇒ 它没有任何形状可审计。

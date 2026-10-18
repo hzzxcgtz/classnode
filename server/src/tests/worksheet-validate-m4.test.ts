@@ -76,7 +76,8 @@ test('🔴 每个可判分的题型，空 data 都必须被拒绝（漏写分支
   //      见 `worksheet-ungraded.test.ts`。
   // ⚠️ 两类豁免都不会削弱把关：`VALIDATORS` 里那些键**必须存在**是编译错误，
   // 而「键在、内容是空的」对它们**就是正确行为**。
-  const EXEMPT: readonly QuestionType[] = ['short-answer', 'drawing', 'task', 'single-choice', 'true-false', 'multi-choice'];
+  // 旧开放题与表达题共用作答形式，没有必填答案材料。
+  const EXEMPT: readonly QuestionType[] = ['short-answer', 'open-ended', 'drawing', 'task', 'single-choice', 'true-false', 'multi-choice'];
   const checked: QuestionType[] = [];
 
   for (const type of QUESTION_TYPES) {
@@ -96,10 +97,15 @@ test('🔴 每个可判分的题型，空 data 都必须被拒绝（漏写分支
   // ⚠️ 这个数随豁免表变：M4b 时是 7（9-2），2026-09-25 加了三类豁免（选择题不设答案合法）
   // 与任务之后是 4（10-6）：填空 / 排序 / 连线 / 归类 —— 也就是**必须配答案**的那四个题型。
   // ★ 2026-09-26 加「选择填空」之后是 **5**（11-6）：它多一条硬要求（待选词不能比空少），
-  // 所以它**不在**豁免表里。
+  // 所以它**不在**豁免表里。旧开放题加入清单后同时加入豁免表，非豁免题型仍为 5 个。
   // 动 `QUESTION_TYPES` / `EXEMPT` 之前先看这里：数字对不上就是在提醒你
   // 「有一个题型的空 data 现在没人管了」。
   assert.equal(checked.length, 5, `实际只跑到 ${checked.length} 个题型`);
+});
+
+test('旧开放题允许空 data，但仍校验题干', () => {
+  accepted('open-ended', {});
+  assert.deepEqual(validateQuestion({ ...node('open-ended', {}), prompt: '  ' }), ['题干不能为空']);
 });
 
 test('★ M4b：绘图题**必须**接受空 data（它没有答案要配，data 恒为 {}）', () => {

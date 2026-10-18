@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import styles from "./guide.module.css";
 
 /**
- * 使用指南（★ 2026-10-09 按 2.0 改版）。
+ * 使用指南（2026-10-18 按 2.1.1 核对学习单、开放控制、评价与备份）。
  *
  * 🔴 **这一页的每一条界面文案都是从代码里逐字核过的**，不凭印象。理由：指南写错一个字，
  *    教师就会在界面上找一个不存在的按钮 —— 而他会以为是自己的版本不对，不是指南错了。
@@ -55,28 +55,31 @@ type GuideSectionId =
  *   「待补截图清单」。22 张截齐之后那些全是死脚手架，连同占位卡片那条分支一起删了。
  */
 const SHOTS = {
-  "agent-form": { title: "接入 / 编辑智能体弹窗", where: "AI智能体 → 接入智能体" },
-  "agent-list": { title: "智能体列表与用途分档", where: "AI智能体" },
-  "class-roster": { title: "班级管理 · 学生列表", where: "班级管理 → 学生列表" },
-  "dashboard": { title: "仪表盘", where: "仪表盘" },
-  "worksheet-list": { title: "学习单列表", where: "学习单" },
-  "worksheet-editor": { title: "学习单编辑器", where: "学习单 → 编辑" },
-  "worksheet-types": { title: "添加题目：题型选择", where: "学习单 → 编辑 → 添加题目" },
-  "worksheet-drawing": { title: "绘图题设置", where: "学习单 → 编辑 → 一道绘图题" },
-  "worksheet-settings": { title: "学习单设置弹窗", where: "学习单 → 编辑 → 设置" },
-  "worksheet-reward": { title: "学习单设置 · 学生奖励", where: "学习单 → 编辑 → 设置" },
-  "worksheet-ai": { title: "题目里的 AI 评分", where: "学习单 → 编辑 → 一道表达题或绘图题" },
-  "webapp-list": { title: "探究空间 · 网页库", where: "探究空间" },
-  "webapp-form": { title: "添加探究网页", where: "探究空间 → 添加网页" },
-  "create-classroom": { title: "创建新课堂", where: "课堂管理 → 创建新课堂" },
-  "student-join": { title: "学生加入与选择身份", where: "学生端" },
-  "student-home": { title: "学生端首页：三个模块", where: "学生端" },
-  "live-board": { title: "课堂看板全景", where: "课堂管理 → 进入课堂" },
-  "live-modules": { title: "课堂模块：开放 / 暂停 / 隐藏", where: "课堂看板 → 模块状态" },
-  "live-worksheet": { title: "看板上的学习单：答题情况", where: "课堂看板 → 学习单 → 学习单矩阵" },
-  "live-analysis": { title: "AI 分析结果", where: "课堂看板 → 学习单 → 按题目查看 → 某题的 AI 分析" },
-  "history": { title: "数据管理 · 历史课堂与导出", where: "数据管理" },
-  "shield": { title: "智能学伴安全", where: "安全管理" },
+  "agent-form": { title: "接入 / 编辑智能体弹窗", where: "AI智能体 → 接入智能体", width: 1710, height: 1390 },
+  "agent-list": { title: "智能体列表与用途分档", where: "AI智能体", width: 2880, height: 988 },
+  "class-roster": { title: "班级管理 · 学生列表", where: "班级管理 → 学生列表", width: 2882, height: 1538 },
+  "dashboard": { title: "仪表盘", where: "仪表盘", width: 2906, height: 1772 },
+  "worksheet-list": { title: "学习单列表", where: "学习单", width: 2896, height: 1220 },
+  "worksheet-editor": { title: "学习单编辑器 · 表达题", where: "学习单 → 编辑", current: true, width: 1274, height: 1302 },
+  "worksheet-types": { title: "添加题目：题型选择", where: "学习单 → 编辑 → 添加题目", width: 1110, height: 992 },
+  "worksheet-drawing": { title: "绘图题设置", where: "学习单 → 编辑 → 一道绘图题", width: 2200, height: 1490 },
+  "worksheet-settings": { title: "学习单设置 · 年级学科与作答规则", where: "学习单 → 编辑 → 设置", current: true, width: 640, height: 633 },
+  "worksheet-reward": { title: "学习单设置 · 学生奖励", where: "学习单 → 编辑 → 设置", width: 1164, height: 1018 },
+  "worksheet-ai": { title: "评价依据、AI 评分与学生自主评价", where: "学习单 → 编辑 → 一道表达题或绘图题", current: true, width: 1274, height: 1594 },
+  "worksheet-collection": { title: "无标准答案的信息收集", where: "学习单 → 编辑 → 客观题 → 作答用途", current: true, width: 1274, height: 1027 },
+  "worksheet-release": { title: "开放进度浮窗", where: "课堂看板右侧 → 开放进度", current: true, width: 1274, height: 717 },
+  "analysis-clear": { title: "清除 AI 评分或班级分析", where: "按题目查看 → AI 分析 → 清除数据", current: true, width: 1274, height: 717 },
+  "webapp-list": { title: "探究空间 · 网页库", where: "探究空间", width: 2888, height: 970 },
+  "webapp-form": { title: "添加探究网页", where: "探究空间 → 添加网页", width: 1228, height: 874 },
+  "create-classroom": { title: "创建新课堂", where: "课堂管理 → 创建新课堂", width: 1568, height: 1808 },
+  "student-join": { title: "学生加入与选择身份", where: "学生端", width: 662, height: 1052 },
+  "student-home": { title: "学生端首页：三个模块", where: "学生端", width: 2480, height: 1080 },
+  "live-board": { title: "课堂看板全景", where: "课堂管理 → 进入课堂", width: 2900, height: 1560 },
+  "live-modules": { title: "课堂模块：开放 / 暂停 / 隐藏", where: "课堂看板 → 模块状态", width: 628, height: 640 },
+  "live-worksheet": { title: "看板上的学习单：答题情况", where: "课堂看板 → 学习单 → 学习单矩阵", width: 1010, height: 1644 },
+  "live-analysis": { title: "AI 分析结果与补评操作", where: "课堂看板 → 学习单 → 按题目查看 → 某题的 AI 分析", current: true, width: 1274, height: 890 },
+  "history": { title: "数据管理 · 历史课堂与导出", where: "数据管理", width: 2892, height: 1584 },
+  "shield": { title: "智能学伴安全", where: "安全管理", width: 2890, height: 1268 },
 } as const;
 
 /** 图片路径由 id 推得 —— 全仓只此一处拼这个路径。 */
@@ -89,8 +92,8 @@ const sections: Array<{ id: GuideSectionId; label: string; desc: string; tag?: s
   { id: "setup", label: "首次设置", desc: "密码与网络准备" },
   { id: "ai-agents", label: "接入 AI 智能体", desc: "学伴型与分析型" },
   { id: "roster", label: "准备班级", desc: "名单与分组" },
-  { id: "worksheet", label: "制作学习单", desc: "十种题型与评分", tag: "2.0 新增" },
-  { id: "webapp", label: "准备探究空间", desc: "上传交互网页", tag: "2.0 新增" },
+  { id: "worksheet", label: "制作学习单", desc: "题型、开放作答与评价" },
+  { id: "webapp", label: "准备探究空间", desc: "上传交互网页" },
   { id: "create", label: "创建课堂", desc: "模式与三件套" },
   { id: "join", label: "学生加入", desc: "互动码与身份" },
   { id: "live", label: "课堂进行中", desc: "开放模块与控制" },
@@ -271,12 +274,12 @@ function Screenshot({ id }: { id: ShotId }) {
   return (
     <figure className={styles.screenshot}>
       <figcaption>
-        <span>界面示例</span>
+        <span>{"current" in shot ? "2.1.1 界面示例 · 模拟数据" : "界面示例"}</span>
         <strong>{shot.title}</strong>
       </figcaption>
-      {/* `loading="lazy"`：22 张合计 7MB，一次性拉太浪费；浏览器不支持时只是退回立即加载。 */}
+      {/* 截图按需加载，避免打开指南时一次请求所有图片。 */}
       <div className={styles.screenshotPreview}>
-        <img src={shotSrc(id)} alt={shot.title} loading="lazy" />
+        <img src={shotSrc(id)} alt={shot.title} width={shot.width} height={shot.height} loading="lazy" />
       </div>
       <p className={styles.screenshotWhere}><b>在哪儿：</b>{shot.where}</p>
     </figure>
@@ -323,10 +326,10 @@ export default function GuidePage() {
     <div className={styles.page}>
       <header className={styles.hero}>
         <div>
-          <span className={styles.heroEyebrow}>CLASSNODE 使用指南</span>
+          <span className={styles.heroEyebrow}>CLASSNODE 使用指南 · 适用 2.1.1</span>
           <h1>从第一次打开，到完成一堂 AI 互动课</h1>
           <p>
-            2.0 起，一堂课由三个模块组成：<strong>学习单</strong>当堂练习、<strong>探究空间</strong>动手体验、
+            一堂课由三个模块组成：<strong>学习单</strong>当堂练习、<strong>探究空间</strong>动手体验、
             <strong>智能学伴</strong>对话思考。这份指南按真实使用顺序编排 —— 第一次顺着读，熟悉之后从左侧目录直接查。
           </p>
         </div>
@@ -358,7 +361,7 @@ export default function GuidePage() {
               icon="route"
               eyebrow="先建立全局认识"
               title="一堂课，由三个模块组成"
-              intro="2.0 之前，课堂里只有一件事：学生和 AI 对话。现在教师在同一块看板上决定三个模块各自什么时候开放 —— 这才是 2.0 与旧版最大的不同。"
+              intro="教师可以组合学习单、探究空间和智能学伴，并在同一块看板上决定各模块什么时候开放，观察学生作答与互动。"
             />
             <div className={styles.modeGrid}>
               <div><span>当堂练习</span><strong>学习单</strong><p>像出卷子一样编辑，学生逐题作答、逐题提交。教师在教室大屏上看到的不再只是「谁交了」，而是每个人此刻正在写什么。</p></div>
@@ -408,7 +411,7 @@ export default function GuidePage() {
                   <>
                     表单里有一条横贯整行的 <Ui>用途</Ui>，两枚胶囊：<Ui>学伴</Ui> 与 <Ui>分析</Ui>。
                     <br />· <Ui>学伴</Ui> —— 学生可以选它聊天，出现在课堂的「智能学伴」里。
-                    <br />· <Ui>分析</Ui> —— 只给教师用，专门分析全班作答，<strong>绝不会出现在学生的学伴列表里</strong>。
+                    <br />· <Ui>分析</Ui> —— 不作为聊天学伴，用于班级作答分析和学生提交作品后的个人评价，<strong>不会出现在学生的学伴列表里</strong>。
                     <br />选错了不会报错，只会表现为「新建课堂的下拉里少一个」或「学习单里选不到分析智能体」。
                   </>
                 ),
@@ -420,16 +423,20 @@ export default function GuidePage() {
               {[
                 ["卡片上的小字", "学伴型卡片标题旁是一枚青色的「学」，分析型是紫色的「析」。"],
                 ["关联对象不同", "学伴型显示「关联课堂 / 未关联课堂」；分析型显示「关联学习单」。"],
-                ["底部说明不同", "学伴型写「可在课堂配置中选用」；分析型写「仅教师端可使用」。"],
+                ["底部说明不同", "学伴型写「可在课堂配置中选用」；分析型不作为聊天学伴；启用学生自主评价后，由系统调用它评价作品。"],
                 ["筛选下拉", "工具条上的用途筛选叫「学习类 / 分析类」—— 与胶囊的「学伴 / 分析」是同一件事的两种叫法。"],
                 ["只有学伴能进课堂", "新建课堂的智能体下拉只列学伴型。"],
-                ["分析型只能在学习单里用", "入口在学习单编辑器 → 设置 → 课堂分析 → 分析型智能体。"],
+                ["分析型只能在学习单里用", "入口在学习单编辑器 → 设置 → 分析智能体。"],
               ].map(([name, desc]) => <div key={name}><strong>{name}</strong><p>{desc}</p></div>)}
             </div>
+            <Note>
+              <strong>分析智能体先配置提示词，再关联学习单。</strong>进入 <a href="/teacher/agents/templates/">作答分析提示词模板库</a>，按小学或初中、学科选择模板，点 <Ui>一键复制完整提示词</Ui>，粘贴到外部 Coze 分析智能体的系统提示词中并保存发布，再回到支点课堂接入。
+              平时通过学习单的参考作答、评价标准和本题分析重点说明具体要求，无需逐题修改模板。模板更新后仍需手动复制到外部平台，系统不会自动替换已有配置。
+            </Note>
             <PlatformComparison />
             <Note tone="amber">
               <strong>做学习单 AI 分析，必须用 Coze 平台的分析型智能体。</strong>
-              本版的分析链路只接了 Coze —— 因为发给模型的材料里有手写、绘图与照片，只有 Coze 收得了图。
+              本系统当前仅支持用 Coze 分析型智能体接收学习单分析材料，包括文字、手写、绘图与照片；其他平台支持图片聊天，不代表可以用于这条分析流程。
               用别的平台配了分析智能体，点分析时会明确告诉你去换一个，不会外发。
             </Note>
             <Note>
@@ -453,14 +460,15 @@ export default function GuidePage() {
           </GuideSection>
 
           <GuideSection id="worksheet">
-            <SectionHeading icon="clipboard" eyebrow="步骤 4 · 2.0 新增" title="制作学习单：像出卷子一样编辑" intro="学习单是 2.0 最大的新增件。教师编辑题目与评分，学生逐题作答、逐题提交，作答过程实时汇总到课堂看板。" />
+            <SectionHeading icon="clipboard" eyebrow="步骤 4" title="制作学习单：像出卷子一样编辑" intro="学习单既可用于有标准答案的练习，也可用于调查、观点表达和开放探究。学生逐题作答、逐题提交，作答过程实时汇总到课堂看板。" />
             <Steps items={[
               { title: "新建学习单", text: <>「学习单」页点 <Ui>新建学习单</Ui> 进入编辑器。左上角填标题，标题下方的 <Ui>使用说明</Ui> 只给教师看，不会出现在学生端。</> },
-              { title: "先加分任务", text: <>点 <Ui>＋ 添加任务</Ui>。任务用来组织一组相关题目，学生会按任务顺序完成 —— 一份真实的学习单通常有 2—4 个任务。</> },
+              { title: "填写年级与学科", text: <>点顶栏 <Ui>设置</Ui>，填写 <Ui>适用年级</Ui> 和 <Ui>学科</Ui>。学段由年级确定，AI 分析会使用这两项信息；旧学习单需要手动补填。</> },
+              { title: "先组织任务", text: <>点 <Ui>＋ 添加任务</Ui>。任务用来组织一组相关题目，学生会按任务顺序完成 —— 一份真实的学习单通常有 2—4 个任务。</> },
               { title: "再逐题添加", text: <>点 <Ui>＋ 添加题目</Ui> 选题型。左侧「学习单结构」里可以拖动把手调整题目与任务的顺序。</> },
-              { title: "设置作答方式", text: <>每道题可以选 <Ui>键盘输入</Ui>、<Ui>手写</Ui>（绘图题这一档显示为 <Ui>画板绘制</Ui>）或 <Ui>照片上传</Ui>。照片档适合纸笔作答的题。</> },
-              { title: "设置评分与奖励", text: <>判分型题目可以设「完全正确」与「部分答对」的分值，以及部分得分的条件。累积的分数会按你选的奖励形式显示给学生。</> },
-              { title: "预览后保存", text: <>顶栏 <Ui>预览</Ui> 会按 iPad 竖屏 / 横屏渲染学生端的真实组件（只读、不含正确答案）。确认无误再 <Ui>保存</Ui>。</> },
+              { title: "设置作答方式", text: <>表达题支持 <Ui>键盘输入</Ui>、<Ui>手写</Ui> 或 <Ui>照片上传</Ui>；绘图题可选择画板工具或上传照片。客观题使用所选题型的作答控件。</> },
+              { title: "设置评分与奖励", text: <>有标准答案的客观题可设置自动评分与部分给分规则；不设答案时用于信息收集。表达题、绘图题按需开启 AI 评分。选择奖励形式后，学生成绩会以对应图标或分数呈现；不评分的题不发放评分奖励。</> },
+              { title: "预览后保存", text: <>顶栏 <Ui>预览</Ui> 会按 iPad 竖屏 / 横屏显示学生端界面，可以临时输入、绘图或选择照片试填；不保存正式作答、不提交评分、不调用 AI，关闭后清空试填内容。确认无误再 <Ui>保存</Ui>。</> },
             ]} />
 
             <div className={styles.termTableWrap}>
@@ -471,12 +479,12 @@ export default function GuidePage() {
                   {[
                     ["选择题", "添加时叫「选择题」，题内右上角有「多选」开关 —— 打开就变多选题。多选题可选「全对才得分」或「漏选可得部分分」。"],
                     ["判断题", "正确答案固定为对 / 错两项。"],
-                    ["填空题", "每个空可以分别设「作答方式」（手工填写 / 右侧选词 / 下方选词）与「评分方式」（本地评分 / AI 评分 / 不评分）。"],
+                    ["填空题", "每个空可设置手工填写或选词作答，开启自动评分后按答案键本地判分；当前不提供逐空 AI 评分。整题关闭自动评分时只收集作答，不判对错、不计分。"],
                     ["选择填空", "共用一套选词，学生点词作答；可选「按空给分」或「整题给分」。"],
                     ["排序题", "正确顺序与条目两栏并排，学生拖动排序。"],
                     ["连线题", "左项与右项配对，可设「连错不超过 N 条」作为部分得分条件。"],
                     ["归类题", "条目拖进不同的分类框。"],
-                    ["表达题", "适合简答、说明、论述和小习作；支持键盘输入、手写或照片上传。可设置参考要点和评分标准，开启 AI 评分与学生提交后自动评价。"],
+                    ["表达题", "适合简答、说明、论述和小习作；支持键盘输入、手写或照片上传。参考作答、评价标准均可选填；不评分时适合收集理由、观点和开放答案，也可按需开启 AI 评分与学生自主评价。"],
                     ["绘图题", "见下方「四档画板」。"],
                   ].map(([name, desc]) => (
                     <tr key={name}><th scope="row">{name}</th><td>{desc}</td></tr>
@@ -508,14 +516,22 @@ export default function GuidePage() {
                 ["初始图", "让学生从一张教师画好的图开始画。数学作图、思维导图、流程图三档支持；基础绘图不支持结构化初始图。"],
                 ["点阵背景", "画布默认的浅色点阵只是背景，不影响作答，也不需要配置。"],
                 ["AI 评分", "表达题与绘图题支持整题 AI 评分，可按评分标准提供评价和修改建议。填空题使用答案键评分，需要自由表达时请选择表达题。"],
-                ["评分标准", "可以写文字，也可以上传一张评分量表图片 —— 两者都会随作答一起发给分析智能体。"],
+                ["参考作答", "提供一种或几种合理作答示例，帮助 AI 理解任务，不作为唯一答案。关闭 AI 评分时仍可填写。"],
+                ["评价标准", "说明看重哪些表现、怎样达到要求；可写文字或上传量表图片。关闭评分时用于定性分析，开启 AI 评分时必须提供文字或图片标准，并写清给分条件。"],
+                ["本题分析重点", "说明这次重点关注什么、哪些方面暂不重点分析。可用于所有题型；它不改变评分标准和给分条件，不填时按题目要求与评价依据分析。"],
                 ["奖励形式", "十二档可选（支点博士、璀璨星星、缤纷花朵……以及「分数 ＋」）。奖励只改变学生端的呈现，不影响看板统计。"],
               ].map(([name, desc]) => <div key={name}><strong>{name}</strong><p>{desc}</p></div>)}
             </div>
 
+            <Note>
+              <strong>做问卷或收集观点，不必为每题编一个正确答案。</strong>选择题、判断题、排序、连线、归类等客观题，在 <Ui>作答用途</Ui> 中选择 <Ui>无标准答案，收集信息</Ui>；填空题关闭 <Ui>自动评分</Ui>。表达题关闭 <Ui>AI 评分</Ui> 即可用于开放表达，参考作答和评价标准可留空。信息收集不判对错、不计分，可汇总分布、理由和建议。
+            </Note>
+            <Note>
+              <strong>学生自主评价需要单独开启。</strong>在表达题或绘图题的评价设置中开启 <Ui>AI 评分</Ui>，填写评价标准，再开启 <Ui>学生自主评价</Ui>，设置每人每题评价次数（1—20 次）。学生提交后获得评分与建议，成功评价才扣次，失败可重试；次数用完后作品定稿，教师增加次数可解锁。学生可查看评价历史，最新有效评分替换旧分，奖励不累计。使用前需配置分析智能体及对应提示词。
+            </Note>
             <div className={styles.modeGrid}>
               <div><span>一次放开</span><strong>开放式</strong><p>全部题目一次放开，学生自己安排节奏。默认就是这一档。</p></div>
-              <div><span>学生推进</span><strong>按任务分步 / 按小题分步</strong><p>做完上一个才开下一个。分步模式只提示「后面还有内容」，不会提前显示后续题目。</p></div>
+              <div><span>学生推进</span><strong>按任务分步 / 按小题分步</strong><p>学生提交当前任务或小题后自动解锁下一步，由学生个人提交进度决定。</p></div>
               <div><span>教师推进</span><strong>手动逐题开放</strong><p>由你在看板上逐题开 —— 讲一题、做一题，适合当堂讲评。</p></div>
             </div>
 
@@ -525,7 +541,7 @@ export default function GuidePage() {
             </Note>
             <Note>
               <strong>要给学生做 AI 分析，先在设置里指定分析型智能体。</strong>
-              学习单编辑器 → 设置 → <Ui>课堂分析</Ui> → <Ui>分析型智能体</Ui>。不指定的话，看板上的分析按钮会告诉你去哪儿配，不会外发数据。
+              学习单编辑器 → 设置 → <Ui>分析智能体</Ui>。不指定的话，看板上的分析按钮会告诉你去哪儿配，不会外发数据。
             </Note>
             <Screenshot id="worksheet-list" />
             <Screenshot id="worksheet-editor" />
@@ -534,10 +550,11 @@ export default function GuidePage() {
             <Screenshot id="worksheet-settings" />
             <Screenshot id="worksheet-reward" />
             <Screenshot id="worksheet-ai" />
+            <Screenshot id="worksheet-collection" />
           </GuideSection>
 
           <GuideSection id="webapp">
-            <SectionHeading icon="compass" eyebrow="步骤 5 · 2.0 新增" title="准备探究空间：把你做的网页带进课堂" intro="教师上传自己做好的交互式网页，学生在隔离的沙箱里打开、动手操作，不用离开课堂去访问外网。" />
+            <SectionHeading icon="compass" eyebrow="步骤 5" title="准备探究空间：把你做的网页带进课堂" intro="教师上传自己做好的交互式网页，学生在隔离的沙箱里打开、动手操作，不用离开课堂去访问外网。" />
             <Steps items={[
               { title: "上传网页", text: <>「探究空间」页点 <Ui>添加网页</Ui>。两种上传方式：<Ui>单个 HTML 文件</Ui>（推荐）或 <Ui>上传压缩包</Ui>（支持 ZIP / RAR / 7Z）。</> },
               { title: "确认入口页面", text: <>上传后系统会告诉你入口是什么，例如「入口是 index.html」。压缩包里若有多个页面，可以手动指定入口文件。</> },
@@ -636,29 +653,55 @@ export default function GuidePage() {
               <strong>看板上没有「结束课堂」。</strong>结束课堂在「课堂管理」页的课堂卡片上（红色按钮），或在桌面端控制面板。
               点下去会提示「结束后学生端将停止互动，数据自动保存至历史记录」。结束之后互动码失效，不要提前结束。
             </Note>
+            <Note>
+              <strong>右侧窄条是 <Ui>开放进度</Ui>。</strong>点击展开完整面板，右上角箭头向右收起，滚动看板时位置保持固定。多份学习单可切换；点题目名称只查看作答，点每题旁的 <Ui>开放</Ui> 或底部的 <Ui>开放下一题</Ui> 才改变开放状态。
+              手动模式可逐题开放、收回；收回只隐藏题目，不删除已交作答。右侧「开放进度」仅显示手动开放的学习单；分步模式由学生提交后自动解锁。
+            </Note>
+            <Note tone="amber">
+              <strong>已有模拟作答时，分步模式不等于重新锁题。</strong>已完成学习单的学生可能已经解锁全部内容。保留作答并测试教师逐题发布时，请改用手动开放；测试提交后自动解锁时，请用尚未作答的测试学生。
+            </Note>
             <Screenshot id="live-board" />
             <Screenshot id="live-modules" />
+            <Screenshot id="worksheet-release" />
             <Screenshot id="live-worksheet" />
           </GuideSection>
 
           <GuideSection id="review">
-            <SectionHeading icon="chart" eyebrow="步骤 9" title="分析与复盘：让课堂里的思考留下来" intro="2.0 新增了两处面向教师的分析入口，以及把学习单与探究空间的记录一起导出的能力。" />
+            <SectionHeading icon="chart" eyebrow="步骤 9" title="分析与复盘：让课堂里的思考留下来" intro="先看实际作答与本地统计，再按需要生成 AI 班级分析或个人评价，最后导出课堂记录。个人评分和班级分析是两类独立结果。" />
             <Steps items={[
               { title: "先看对话分析", text: <>看板 → 智能学伴 → <Ui>对话分析</Ui>。高频词云能看出全班在聊什么（可切换学生提问 / AI 回答），活跃学生 TOP 10 用轮次排出参与度。</> },
               { title: "再看学习单答题情况", text: <>看板 → 学习单 → <Ui>学习单矩阵</Ui>。矩阵按“题目纵向、学生横向”呈现；点学生进入整份作答，点题目进入全班统计，点交叉格直接查看这个学生的这道题。也可以从顶部直接切换到 <Ui>按学生查看</Ui> 或 <Ui>按题目查看</Ui>。</> },
-              { title: "请智能体解读", text: <>在题目的统计浮层或作答结果里点 <Ui>生成 AI 分析</Ui>。它会把题面、评分标准、全班作答与一张「联系表」位图发给分析型智能体，返回共同困难、思维差异与讲评建议。开过 AI 评分的题还会逐生给分。</> },
+              { title: "请智能体解读", text: <>进入 <Ui>按题目查看</Ui>，在题目详情的 <Ui>AI 分析</Ui> 区选择操作。未生成报告时按钮显示「生成」，已有报告时显示「更新」；未开启 AI 评分的题只分析作答，不自动给分。系统会提供题面、所属任务、年级学科、评价依据、分析重点和学生作答；手写、绘图、照片按实际内容作为附件发送。</> },
               { title: "导出需要的材料", text: <>在「数据管理」里：<Ui>导出对话</Ui> 保留完整问答；<Ui>导出学习单与探究空间</Ui> 导出作答明细（含笔迹）与使用汇总。导出前请再次确认隐私使用范围。</> },
               { title: "形成下一次调整", text: <>关注高频问题、沉默学生和误解集中的环节，把数据转化为下一堂课的教学决策。</> },
             ]} />
+            <div className={styles.termTableWrap}>
+              <table className={styles.termTable}>
+                <caption>补评、重评和班级分析分别做什么</caption>
+                <thead><tr><th>操作</th><th>结果</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row">补评未评学生</th><td>只补齐尚未取得有效 AI 评分的已提交作答，保留已有评分，不生成或更新班级分析。</td></tr>
+                  <tr><th scope="row">补评并生成／更新班级分析</th><td>先分批补评并核对结果，再使用全班作答生成或更新分析。</td></tr>
+                  <tr><th scope="row">生成／更新班级分析</th><td>保留已有个人评分，只生成或更新班级总结；不评分题的按钮显示为「生成／更新全班分析」。</td></tr>
+                  <tr><th scope="row">重评并生成／更新班级分析</th><td>重新评价全班已提交作品，再生成或更新分析。需要重新给分时才使用。</td></tr>
+                </tbody>
+              </table>
+            </div>
             <Note>
-              <strong>AI 分析是异步的，可以关掉窗口。</strong>点下去之后任务在后台跑，一般 1—3 分钟；关掉窗口按钮会变成「关闭（后台继续）」。
-              如果这一次只拿到部分学生的评分，结果窗里会给一个 <Ui>只补这 N 人</Ui> 的按钮，不会重算整体。
+              <strong>按钮随当前评分设置和已有结果变化。</strong>没有可补评学生时不显示仅补评按钮；开启学生自主评价时，班级分析只汇总全班情况，不替换个人评分。名单标签可点击展开完整姓名，再点姓名查看该学生本题作答。
+            </Note>
+            <Note>
+              <strong>分析在当前教师页面后台继续运行。</strong>可以关闭分析工作区继续查看看板；需要取消时点 <Ui>停止</Ui>，已保存的评分保留。关闭整个教师浏览器页面不能保证任务继续。生成报告需要等待智能体返回，耗时取决于作品数量、附件和平台响应。
+            </Note>
+            <Note tone="amber">
+              <strong><Ui>清除数据</Ui> 只操作当前题，保留学生作答。</strong><Ui>清除全班 AI 评分</Ui> 和 <Ui>选择学生清除 AI 评分</Ui> 用于主观题 AI 评分，后者通过浮窗选择学生；客观题的直接打分不能清除。<Ui>清除班级分析结果</Ui> 只清除报告及关联反馈，保留个人评分；清除后题目状态变为「未分析」。重新生成报告后再查看新结果。
             </Note>
             <Note tone="amber">
               <strong>发给分析智能体的材料里含学生姓名与学号。</strong>联系表上的标签是「姓名#学号」。
               请确认你使用的第三方平台、账号权限和数据处理方式符合学校要求。
             </Note>
             <Screenshot id="live-analysis" />
+            <Screenshot id="analysis-clear" />
             <Screenshot id="history" />
           </GuideSection>
 
@@ -668,7 +711,7 @@ export default function GuidePage() {
               <article><strong>仪表盘</strong><p>一屏汇总系统的资源量与运行状态：智能体连接健康度、课堂运行、学习单与探究空间的使用情况、存储占用与备份状态，以及一栏「需要关注」。它不是课堂实时数据 —— 实时数据在课堂看板上。</p></article>
               <article><strong>安全管理</strong><p>针对学生与智能学伴的对话。对话敏感词用于管理自定义词和系统词库；安全提醒记录按课堂查看触发敏感词的消息；对话管控可设置自动黑屏次数和每分钟的消息发送上限。两项设为 0 时不限制。</p></article>
               <article><strong>头像管理</strong><p>学生头像与班级图标两个库，支持随机生成、SVG 代码或上传图片。学生获得奖励后可从教师头像库选择。学生自己上传的头像单独成区，可在这里管理删除。</p></article>
-              <article><strong>数据备份与迁移</strong><p>“数据管理”页的备份卡：<Ui>立即备份</Ui> 生成包含数据库、API 凭据密钥、附件和教学网页的完整备份；旧版备份可能缺少附件或网页。换电脑时先在旧设备备份并下载，再在新设备 <Ui>上传备份</Ui> 后恢复。</p></article>
+              <article><strong>数据备份与迁移</strong><p>“数据管理”页的备份卡：<Ui>立即备份</Ui> 生成包含数据库、API 凭据密钥、附件和教学网页的完整备份；旧版备份可能缺少附件或网页。换电脑时先在旧设备备份并下载，再在新设备 <Ui>上传备份</Ui> 后恢复。新备份名称如 <Ui>支点课堂备份_2026-10-18_09-02-57.classbak</Ui>，使用本地时间；同一秒内重复备份会加 _02、_03。生成、导入和下载名称一致，旧名称备份仍可恢复。完整备份含 API 凭据密钥，请妥善保存。</p></article>
               <article><strong>版本更新</strong><p>有新版本时侧栏「关于」图标上会出现小红点，「关于」页里可以看更新日志。升级前建议先备份；安装后确认班级、智能体、学习单与历史数据均正常。</p></article>
               <article><strong>系统初始化</strong><p>会清空业务数据、共享凭据、附件和教学网页，保留管理员密码和系统内置屏蔽词。需要手工输入确认词；系统会自动保留操作前完整备份。只在确定要重来时使用。</p></article>
             </div>

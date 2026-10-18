@@ -1,3 +1,5 @@
+import { normalizeWorksheetCurriculum, worksheetCurriculumError, worksheetCurriculumContext } from '../services/worksheet-curriculum.js';
+import { ANALYSIS_PROMPT_VERSION } from '../services/analysis-teaching-policy.js';
 import { individualReviewSettings, enqueueIndividualReview, reviewConfigurationKey, classAnalysisConfigurationKey } from '../services/individual-review.js';
 import { extractAnalysisProtocol } from '../services/analysis-protocol.js';
 import { recordAnalysisUsage } from '../services/analysis-usage.js';
@@ -57,7 +59,7 @@ import { findInkValueError } from '../services/worksheet-ink.js';
 import { isAnalyzableType } from '../services/analysis-gate.js';
 import { questionTypeLabel } from '../services/question-type-labels.js';
 import {
-  analysisQuestionDetails, analysisReferenceAnswer, analysisRubric, hasDrawingStarter,
+  analysisTaskContext, analysisQuestionDetails, analysisReferenceAnswer, analysisRubric, hasDrawingStarter,
 } from '../services/analysis-question.js';
 import {
   KNOBS_SETTING_KEY, analysisLabelNo, buildAnalysisPayload, entriesFromAggregate, entriesToAggregate,
@@ -321,6 +323,7 @@ export function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
     ? source.halfStep
     : DEFAULT_SETTINGS.halfStep;
   return {
+    ...normalizeWorksheetCurriculum(source),
     allowResubmit: typeof source.allowResubmit === 'boolean' ? source.allowResubmit : DEFAULT_SETTINGS.allowResubmit,
     autoGrade: typeof source.autoGrade === 'boolean' ? source.autoGrade : DEFAULT_SETTINGS.autoGrade,
     answerMode: typeof source.answerMode === 'string' && WORKSHEET_ANSWER_MODES.includes(source.answerMode)
@@ -374,7 +377,8 @@ function normalizeNode(
     return null;
   }
   const node = raw as Record<string, unknown>;
-  const type = typeof node.type === 'string' ? node.type : '';
+  const legacyOpen = node.type === 'open-ended';
+  const type = legacyOpen ? 'short-answer' : typeof node.type === 'string' ? node.type : '';
   if (!QUESTION_TYPES.includes(type)) {
     errors.push(`${label}：题型「${type || '（空）'}」不受支持`);
     return null;
@@ -391,8 +395,15 @@ function normalizeNode(
   seen.add(id);
 
   const data = (node.data && typeof node.data === 'object' && !Array.isArray(node.data))
-    ? node.data as Record<string, unknown>
+    ? { ...node.data as Record<string, unknown> }
     : {};
+  if (legacyOpen) {
+    for (const key of ['answers', 'referenceAnswer', 'correctKeys', 'correctOrder', 'pairs', 'placement', 'rubricText', 'rubricImageUrl', 'aiScoringCriteria', 'aiScoringEnabled', 'aiScoringMaxScore', 'studentAiReviewEnabled', 'aiReviewLimit']) delete data[key];
+    data.aiScoringEnabled = false;
+    data.studentAiReviewEnabled = false;
+  }
+  if (data.analysisFocus !== undefined && (typeof data.analysisFocus !== 'string' || data.analysisFocus.length > 1200)) errors.push(`${label}：本题分析重点须为 1200 字以内的文字`);
+  if ((type === 'short-answer' || type === 'drawing') && data.aiScoringEnabled === true && !String(data.rubricText || data.aiScoringCriteria || '').trim() && !data.rubricImageUrl) errors.push(`${label}：开启 AI 评分时，请填写评价标准或上传评价标准图片，并说明给分条件`);
 
   if (data.aiReviewLimit !== undefined && (!Number.isInteger(data.aiReviewLimit) || Number(data.aiReviewLimit) < 1 || Number(data.aiReviewLimit) > 20)) errors.push(`${label}：个人评价次数须为 1–20 次`);
   if (data.studentAiReviewEnabled !== undefined && typeof data.studentAiReviewEnabled !== 'boolean') errors.push(`${label}：学生 AI 评价开关无效`);
@@ -456,7 +467,7 @@ function normalizeNode(
     id,
     type: type as QuestionType,
     prompt: typeof node.prompt === 'string' ? node.prompt : '',
-    inputMode: (type === 'short-answer' || type === 'drawing') && node.inputMode === 'photo'
+    inputMode: (type === 'short-answer' || type === 'open-ended' || type === 'drawing') && node.inputMode === 'photo'
       ? 'photo'
       : node.inputMode === 'handwriting' ? 'handwriting' : 'keyboard',
     // ⚠️ 只在**有值**时写这个键：`points: undefined` 落到 JSON 里是**整个键消失**
@@ -710,6 +721,8 @@ router.post('/', async (req, res) => {
     const title = readTitle(body.title);
     if (!title) return res.status(400).json({ error: '学习单标题不能为空' });
 
+    const curriculumError = worksheetCurriculumError(body.settings, false);
+    if (curriculumError) return res.status(400).json({ error: curriculumError });
     const parsed = parseContent(body.content);
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
 
@@ -738,7 +751,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const existing = await prisma.worksheet.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    const existing = await prisma.worksheet.findUnique({ where: { id: req.params.id }, select: { id: true, settings: true } });
     if (!existing) return res.status(404).json({ error: '学习单不存在' });
 
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -759,7 +772,11 @@ router.put('/:id', async (req, res) => {
       data.content = parsed.content as unknown as Prisma.InputJsonValue;
     }
     if (body.settings !== undefined) {
-      data.settings = normalizeSettings(body.settings);
+      const source = body.settings && typeof body.settings === 'object' && !Array.isArray(body.settings) ? body.settings as Record<string, unknown> : {};
+      const nextSettings = { ...normalizeWorksheetCurriculum(existing.settings), ...source };
+      const curriculumError = worksheetCurriculumError(nextSettings, false);
+      if (curriculumError) return res.status(400).json({ error: curriculumError });
+      data.settings = normalizeSettings(nextSettings);
     }
     if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: '没有需要更新的内容' });
@@ -1288,8 +1305,8 @@ async function loadAnalysisKnobs(prisma: PrismaClient): Promise<SheetKnobs> {
 /** 题在 `content` 树里的位置（拍平序）—— 抬头那句「第 N 题」要用它。 */
 async function loadAnalysisTarget(
   prisma: PrismaClient, classroomId: string, worksheetId: string, questionId: string,
-): Promise<{ ok: true; node: QuestionNode; heading: string; scoringUnit: string } | { ok: false; status: number; error: string }> {
-  const worksheet = await prisma.worksheet.findUnique({ where: { id: worksheetId }, select: { content: true, settings: true } });
+): Promise<{ ok: true; node: QuestionNode; heading: string; scoringUnit: string; context: string } | { ok: false; status: number; error: string }> {
+  const worksheet = await prisma.worksheet.findUnique({ where: { id: worksheetId }, select: { content: true, settings: true, title: true, description: true } });
   if (!worksheet) return { ok: false, status: 404, error: '学习单不存在' };
   // 与既有三处同形（:1288 / :1469 / :1806）：JSON 列的窄化要走 unknown。
   // ★ 两级题号（`任务一 · 3`），不是拍平下标：拍平序把**任务**也算了一号 ⇒ 抬头印出来的
@@ -1310,7 +1327,7 @@ async function loadAnalysisTarget(
     return { ok: false, status: 404, error: '这份学习单没有挂在当前课堂上' };
   }
   const settings = normalizeSettings((worksheet.settings ?? {}) as Record<string, unknown>) as Record<string, unknown>;
-  return { ok: true, node, heading, scoringUnit: aiScoringUnitForRewardStyle(settings.rewardStyle) };
+  return { ok: true, node, heading, scoringUnit: aiScoringUnitForRewardStyle(settings.rewardStyle), context: analysisTaskContext((worksheet.content as unknown as WorksheetContent).nodes ?? [], questionId, worksheet.title, worksheet.description ?? '') + '\n' + worksheetCurriculumContext(settings) };
 }
 
 /**
@@ -1442,9 +1459,16 @@ function localGradingOwns(node: QuestionNode, value: unknown, points: { full: nu
 
 
 /** 一道题发给智能体前的完整题面投影。三条端点共用，避免重算/重发时漏掉参考答案。 */
-function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: string) {
+function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: string, context = '') {
   const rubric = analysisRubric(node);
+  const aiScoring = aiScoringConfigOf(node, scoringUnit);
+  const subjective = node.type === 'short-answer' || node.type === 'drawing' || node.type === 'open-ended';
+  const hasReference = Array.isArray(node.data.answers) && node.data.answers.some(slot => Array.isArray(slot) ? slot.some(value => typeof value === 'string' && value.trim()) : typeof slot === 'string' && slot.trim());
+  const analysisMode = node.type === 'open-ended' ? 'open' : !subjective && node.autoGrade === false ? 'collection' : aiScoring.enabled ? 'scored' : subjective && !hasReference && !rubric.text && !rubric.imageUrl ? 'open' : 'guided';
   return {
+    analysisMode,
+    analysisFocus: typeof node.data.analysisFocus === 'string' ? node.data.analysisFocus : '',
+    context,
     questionId: node.id,
     typeLabel: questionTypeLabel(node.type),
     prompt: questionTextFor(node),
@@ -1453,14 +1477,20 @@ function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: 
     referenceAnswer: analysisReferenceAnswer(node),
     rubricText: rubric.text,
     rubricImageUrl: rubric.imageUrl,
-    photoWriting: node.type === 'short-answer' && node.inputMode === 'photo',
+    photoWriting: (node.type === 'short-answer' || node.type === 'open-ended') && node.inputMode === 'photo',
+    openEnded: analysisMode === 'open' || analysisMode === 'collection',
     // ★ 2026-10-06：这题有没有教师给的「初始图」—— 判据与前端 `readDrawingStarter` 同一把尺子
     // （`hasDrawingStarter`）。它决定发给 AI 的提示词要不要加那句「初始图不算学生的作答」：
     // 位图快照是**完整那张图**（含教师画的内容），不说这一句模型会把底稿算成学生的成果。
     drawingStarter: hasDrawingStarter(node),
     studentAiReviewEnabled: node.data.studentAiReviewEnabled === true,
-    aiScoring: aiScoringConfigOf(node, scoringUnit),
+    aiScoring,
   };
+}
+
+/** 保存报告的教学依据版本，重算统计不会让旧报告被误认为最新。 */
+function analysisBasisKey(payload: ReturnType<typeof buildAnalysisPayload>) {
+  return crypto.createHash('sha256').update(JSON.stringify({ version: ANALYSIS_PROMPT_VERSION, prompt: payload.prompt, details: payload.questionDetails, reference: payload.referenceAnswer, rubric: payload.rubricText, rubricImage: payload.rubricImageUrl, context: payload.context ?? '', focus: payload.analysisFocus ?? '', mode: payload.analysisMode, scoring: payload.aiScoring })).digest('hex');
 }
 
 /**
@@ -1558,7 +1588,9 @@ async function payloadResponse(
   }
   const node = worksheet ? findQuestion(worksheet.content, payload.questionId) : null;
   const canClearAiScores = node ? supportsAiScoring(node) : false;
-  return { ...payload, labeled, stale, ...analysis, narrative: analysis.narrative === null ? null : extractAnalysisProtocol(analysis.narrative).narrative, analysisDurationMs, perStudent, pendingReviewIds: [...pendingReviewIds], feedback, participantNames, analysisAgent, canSend, canClearAiScores };
+  const resultMeta = analysis.perStudent && typeof analysis.perStudent === 'object' && !Array.isArray(analysis.perStudent) ? analysis.perStudent as Record<string, unknown> : {};
+  const definitionStale = Boolean(analysis.narrative && resultMeta.analysisBasis && resultMeta.analysisBasis !== analysisBasisKey(payload));
+  return { ...payload, labeled, stale: stale || definitionStale, ...analysis, narrative: analysis.narrative === null ? null : extractAnalysisProtocol(analysis.narrative).narrative, analysisDurationMs, perStudent, pendingReviewIds: [...pendingReviewIds], feedback, participantNames, analysisAgent, canSend, canClearAiScores };
 }
 
 router.post('/:id/analysis/:questionId', async (req, res) => {
@@ -1578,7 +1610,7 @@ router.post('/:id/analysis/:questionId', async (req, res) => {
     const answers = await loadAnalysisAnswers(prisma, classroomId, worksheetId);
     const entries = selectAnalyzeEntries(answers, participants, questionId, target.node);
     const knobs = await loadAnalysisKnobs(prisma);
-    const meta = analysisQuestionMeta(target.node, target.heading, target.scoringUnit);
+    const meta = analysisQuestionMeta(target.node, target.heading, target.scoringUnit, target.context);
     const payload = buildAnalysisPayload({ question: meta, entries, total: participants.length, knobs, participants });
 
     operation?.controller.signal.throwIfAborted();
@@ -1640,12 +1672,15 @@ router.get('/:id/analysis/:questionId', async (req, res) => {
     // 于是**永远不报过期**，而屏幕上一点异常都没有（这一条被 `analysis-endpoint.test.ts`
     // 的 stale 用例当场抓住）。
     const answers = await loadAnalysisAnswers(prisma, classroomId, worksheetId);
-    const stale = isAnalysisStale(row.computedAt.toISOString(), lastSubmittedAt(answers, questionId));
+    const worksheetUpdated = await prisma.worksheet.findUnique({ where: { id: worksheetId }, select: { updatedAt: true } });
+    const storedMetadata = row.perStudent && typeof row.perStudent === 'object' && !Array.isArray(row.perStudent) ? row.perStudent as Record<string, unknown> : {};
+    const stale = isAnalysisStale(row.computedAt.toISOString(), lastSubmittedAt(answers, questionId))
+      || (!storedMetadata.analysisBasis && Boolean(worksheetUpdated && worksheetUpdated.updatedAt > (row.analyzedAt ?? row.computedAt)));
     // ★ 2026-10-07：名册要在**构造载荷之前**拿到 —— 标签由它派生（`payloadLabels`），
     //   而 `payloadResponse` 还要用它做真名对照表。两处**同一份**。
     const participants = await loadAnalysisParticipants(prisma, classroomId, worksheetId);
     const entries = analysisEntriesWithSubmissions(row.aggregate, answers, participants, questionId, target.node);
-    const payload = buildAnalysisPayload({ question: analysisQuestionMeta(target.node, target.heading, target.scoringUnit), entries, total: participants.length, knobs, participants });
+    const payload = buildAnalysisPayload({ question: analysisQuestionMeta(target.node, target.heading, target.scoringUnit, target.context), entries, total: participants.length, knobs, participants });
     res.json(await payloadResponse(prisma, classroomId, worksheetId,
       payload,
       participants, await labelsRenderOk(), stale,
@@ -1680,7 +1715,7 @@ router.get('/:id/analysis/:questionId/sheet/:index', async (req, res) => {
     //   教师是在图上核对「第 3 格是谁」，而面板上的「第 3 格」读的是载荷里那一份。
     const participants = await loadAnalysisParticipants(prisma, classroomId, worksheetId);
     const entries = analysisEntriesWithSubmissions(row.aggregate, await loadAnalysisAnswers(prisma, classroomId, worksheetId), participants, questionId, target.node);
-    const payload = buildAnalysisPayload({ question: analysisQuestionMeta(target.node, target.heading, target.scoringUnit), entries, total: participants.length, knobs, participants });
+    const payload = buildAnalysisPayload({ question: analysisQuestionMeta(target.node, target.heading, target.scoringUnit, target.context), entries, total: participants.length, knobs, participants });
     const layouts = payload.sheetLayouts;
     if (sheetIndex >= layouts.length) return res.status(404).json({ error: '没有这一张' });
 
@@ -1790,7 +1825,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     //   否则教师刚在图上核对过的「第 3 格」会在重发时变成另一个人（静默）。
     const participants = await loadAnalysisParticipants(prisma, classroomId, worksheetId);
     const payload = buildAnalysisPayload({
-      question: analysisQuestionMeta(target.node, target.heading, target.scoringUnit),
+      question: analysisQuestionMeta(target.node, target.heading, target.scoringUnit, target.context),
       entries,
       /* ⚠️ 只补几个人时，分母也用这几个 —— 否则提示词里写「已交 3/40」，
          模型会去追那 37 个根本不在图里的人。 */
@@ -1898,10 +1933,11 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
         throw new Error('作答已被清除或统计已更新，请重新生成分析');
       }
       // A teacher request started before a mode switch must not grade after automatic review is enabled.
-      const liveWorksheet = await tx.worksheet.findUnique({ where: { id: worksheetId }, select: { content: true, settings: true } });
+      const liveWorksheet = await tx.worksheet.findUnique({ where: { id: worksheetId }, select: { content: true, settings: true, title: true, description: true } });
       const liveQuestion = liveWorksheet ? findQuestion(liveWorksheet.content, questionId) : null;
       const liveSettings = liveWorksheet?.settings as Record<string, unknown> | null;
       if (!liveQuestion || classAnalysisConfigurationKey(liveQuestion) !== classAnalysisConfigurationKey(target.node)
+        || (liveWorksheet && analysisTaskContext((liveWorksheet.content as unknown as WorksheetContent).nodes ?? [], questionId, liveWorksheet.title, liveWorksheet.description ?? '') + '\n' + worksheetCurriculumContext(liveWorksheet.settings) !== target.context)
         || liveSettings?.analysisAgentId !== agent.id
         || aiScoringUnitForRewardStyle(readStudentSettings(liveSettings).rewardStyle) !== target.scoringUnit) {
         // Preserve completed grades as history, without attaching an obsolete result to the current report.
@@ -1910,7 +1946,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
           if (!frozen || score.score === null) continue;
           const generation = await readAnswerGeneration(tx as PrismaClient, classroomId, worksheetId, score.studentId);
           await tx.worksheetAnswerReview.create({ data: { answerId: frozen.id, requestId: crypto.randomUUID(), generation: answerGenerationFor(generation, questionId), value: frozen.value === null ? Prisma.DbNull : frozen.value as Prisma.InputJsonValue,
-            question: { node: target.node, heading: target.heading, agentId: agent.id } as unknown as Prisma.InputJsonValue,
+            question: { node: target.node, heading: target.heading, context: target.context, agentId: agent.id } as unknown as Prisma.InputJsonValue,
             status: 'superseded', source: 'teacher', score: score.score, maxScore: payload.aiScoring.maxScore, unit: payload.aiScoring.unit, reason: score.reason, advice: score.advice,
             error: '评分规则已更新，本结果仅保留为历史，不计入当前成绩', evaluatedAt: new Date(), evaluationDurationMs: Math.max(0, Date.now() - analysisStartedAt) } });
         }
@@ -1966,7 +2002,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
       const analysisDurationMs = scoped
         ? (previousResult as Record<string, unknown>).analysisDurationMs ?? null
         : Math.max(0, Date.now() - analysisStartedAt);
-      const storedResult = { ...(perStudent ?? previousResult), analysisDurationMs, analysisFeedback: feedback, analysisUsage: recordAnalysisUsage(existing?.perStudent, existing?.agentId ?? null, existing?.narrative ?? null, agent.id, (result.content ?? '').length) };
+      const storedResult = { ...(perStudent ?? previousResult), analysisDurationMs, ...(scoped ? {} : { analysisBasis: analysisBasisKey(payload) }), analysisFeedback: feedback, analysisUsage: recordAnalysisUsage(existing?.perStudent, existing?.agentId ?? null, existing?.narrative ?? null, agent.id, (result.content ?? '').length) };
       const analyzedAt = scoped ? row.analyzedAt : new Date();
       operation!.controller.signal.throwIfAborted();
       await tx.worksheetQuestionAnalysis.update({
@@ -1993,7 +2029,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
           const gradedAnswer = await tx.worksheetAnswer.update({ where: { id: frozen.id }, data: answerGradeFromAiScore(score.score, payload.aiScoring.maxScore, payload.aiScoring.maxScore) });
           changedAnswers.push({ participantId: score.studentId, answer: gradedAnswer });
           const generation = await readAnswerGeneration(tx as PrismaClient, classroomId, worksheetId, score.studentId);
-          await tx.worksheetAnswerReview.create({ data: { answerId: frozen.id, requestId: crypto.randomUUID(), generation: answerGenerationFor(generation, questionId), value: frozen.value === null ? Prisma.DbNull : frozen.value as Prisma.InputJsonValue, question: { node: target.node, heading: target.heading, agentId: agent.id } as unknown as Prisma.InputJsonValue, status: 'succeeded', source: 'teacher', score: score.score, maxScore: payload.aiScoring.maxScore, unit: payload.aiScoring.unit, reason: score.reason, advice: score.advice, evaluatedAt: new Date(), evaluationDurationMs: Math.max(0, Date.now() - analysisStartedAt) } });
+          await tx.worksheetAnswerReview.create({ data: { answerId: frozen.id, requestId: crypto.randomUUID(), generation: answerGenerationFor(generation, questionId), value: frozen.value === null ? Prisma.DbNull : frozen.value as Prisma.InputJsonValue, question: { node: target.node, heading: target.heading, context: target.context, agentId: agent.id } as unknown as Prisma.InputJsonValue, status: 'succeeded', source: 'teacher', score: score.score, maxScore: payload.aiScoring.maxScore, unit: payload.aiScoring.unit, reason: score.reason, advice: score.advice, evaluatedAt: new Date(), evaluationDurationMs: Math.max(0, Date.now() - analysisStartedAt) } });
         }
       }
       operation!.controller.signal.throwIfAborted();
@@ -2583,14 +2619,14 @@ async function evaluateIndividualReview(req: Request, reviewId: string) {
       if (!review || review.status !== 'pending') return;
       const { classroomId, worksheetId, participantId } = review.answer.response;
       const questionId = review.answer.questionId;
-      const snapshot = review.question as unknown as { node: QuestionNode; heading: string; agentId: string };
+      const snapshot = review.question as unknown as { node: QuestionNode; heading: string; context?: string; agentId: string };
       const node = snapshot.node;
       const agent = await prisma.agent.findUnique({ where: { id: snapshot.agentId }, include: { credential: { select: { token: true } } } });
       if (!agent || !agent.enabled || agent.purpose !== 'analysis') throw new Error('分析智能体不存在或已停用，请联系老师');
       const participants = (await loadAnalysisParticipants(prisma, classroomId, worksheetId)).filter(p => p.participantId === participantId);
       const entries = selectAnalyzeEntries([{ participantId, questionId, status: 'submitted', value: review.value }], participants, questionId, node);
       const knobs = await loadAnalysisKnobs(prisma);
-      const payload = buildAnalysisPayload({ question: analysisQuestionMeta(node, snapshot.heading, review.unit), entries, participants, knobs, total: 1, textLimit: 12000 });
+      const payload = buildAnalysisPayload({ question: analysisQuestionMeta(node, snapshot.heading, review.unit, snapshot.context), entries, participants, knobs, total: 1, textLimit: 12000 });
       const gate = analysisGateOf(payload, agent.platform);
       if (!gate.ok) throw new Error(gate.reason);
       if (payload.scorableLabels.length !== 1) throw new Error('这份作品暂时无法读取，请重新上传或联系老师');
@@ -2627,6 +2663,7 @@ async function evaluateIndividualReview(req: Request, reviewId: string) {
         const settings = currentSheet?.settings as Record<string, unknown> | null;
         const valid = currentNode && individualReviewSettings(currentNode).enabled
           && reviewConfigurationKey(currentNode) === reviewConfigurationKey(node)
+          && (snapshot.context === undefined || (currentSheet && analysisTaskContext((currentSheet.content as unknown as WorksheetContent).nodes ?? [], questionId, currentSheet.title, currentSheet.description ?? '') + '\n' + worksheetCurriculumContext(currentSheet.settings) === snapshot.context))
           && settings?.analysisAgentId === snapshot.agentId
           && aiScoringUnitForRewardStyle(readStudentSettings(settings).rewardStyle) === review.unit
           && latestSubmission?.id === reviewId;
@@ -2742,7 +2779,7 @@ router.get('/:id/student-view', async (req, res) => {
       /**
        * ★ 2026-09-30：这间课堂**已开放的题 id**（教师看板的「逐题开放」）。
        *
-       * ⚠️ 无论 `answerMode` 是哪一档都照发：客户端只在自己的档是 `manual` 时读它
+       * ⚠️ 无论 `answerMode` 是哪一档都照发：客户端在手动或分步模式下读取它
        * （`answerModeView` 的注释写着为什么 —— 老师从「手动」改回「开放式」之后，
        * 库里剩下的这些 id 不许继续截断卷子）。**下发与生效分成两件事**是有意的：
        * 在这里按档过滤就成了**第二处**知道「哪一档看它」的地方，而两处必然漂。
@@ -3255,7 +3292,7 @@ router.post('/:id/answers/submit', worksheetMutation(async (req, res, database) 
       const settings = normalizeSettings(ctx.worksheet.settings) as Record<string, unknown>;
       const review = await ctx.prisma.worksheetAnswerReview.create({ data: {
         answerId: answer.id, requestId, generation: answerGenerationFor(generation, questionId),
-        value: toJsonValue(answer.value), question: { node, heading: flattenAnswerable((ctx.worksheet.content as unknown as WorksheetContent).nodes ?? []).find(item => item.node.id === questionId)?.heading ?? questionId, agentId: settings.analysisAgentId ?? '' } as unknown as Prisma.InputJsonValue,
+        value: toJsonValue(answer.value), question: { node, context: analysisTaskContext((ctx.worksheet.content as unknown as WorksheetContent).nodes ?? [], questionId, ctx.worksheet.title, ctx.worksheet.description ?? '') + '\n' + worksheetCurriculumContext(ctx.worksheet.settings), heading: flattenAnswerable((ctx.worksheet.content as unknown as WorksheetContent).nodes ?? []).find(item => item.node.id === questionId)?.heading ?? questionId, agentId: settings.analysisAgentId ?? '' } as unknown as Prisma.InputJsonValue,
         maxScore: config.maxScore, unit: scoringUnit, status: evaluate ? 'pending' : 'submitted',
       } });
       reviewId = review.id; reviewStatus = review.status;

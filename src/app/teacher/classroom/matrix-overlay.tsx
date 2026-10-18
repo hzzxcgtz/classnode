@@ -550,9 +550,9 @@ function AnalysisStatus({ classroomId, worksheetId, row, analyzed }: {
   useEffect(() => {
     if (!task) return;
     let alive = true;
-    void task.promise.then(() => { if (alive) setReady(true); }).catch(() => {}).finally(() => { if (alive) setTick(value => value + 1); });
+    void task.promise.then(result => { if (alive && analyzed === undefined) setReady(Boolean(result.narrative?.trim())); }).catch(() => {}).finally(() => { if (alive) setTick(value => value + 1); });
     return () => { alive = false; };
-  }, [task]);
+  }, [task, analyzed]);
   return <span className={styles.analysisStatus} data-state={task ? 'running' : ready ? 'ready' : 'idle'} role="status">
     <span aria-hidden="true">●</span> <TeacherPendingText active={Boolean(task)}>{task ? 'AI 分析中' : ready ? '已分析' : '未分析'}</TeacherPendingText>
   </span>;

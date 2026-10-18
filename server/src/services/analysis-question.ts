@@ -194,6 +194,9 @@ export function analysisQuestionDetails(node: QuestionNode): string {
 
 /** 按题型把答案键转换成可读的参考答案/评价依据。 */
 export function analysisReferenceAnswer(node: QuestionNode): string {
+  if (node.type === 'open-ended' || (node.autoGrade === false && node.type !== 'short-answer' && node.type !== 'drawing')) {
+    return '（本题不设标准答案，仅分析学生作答，不判对错、不评分）';
+  }
   let reference = '（未提供参考答案）';
   switch (node.type) {
     case 'single-choice':
@@ -299,9 +302,26 @@ export function analysisAnswerText(node: QuestionNode, value: unknown): string |
       }
       return [...groups].map(([zoneId, itemTexts]) => `${zones.get(zoneId) ?? zoneId}：${itemTexts.join('、')}`).join('；');
     }
+    case 'open-ended':
     case 'short-answer':
       return raw.format === 'text/v1' && typeof raw.text === 'string' ? raw.text : null;
     default:
       return null;
   }
+}
+
+/** 保留小题所在任务的共同材料；只收集祖先，不把其他小题的答案带入。 */
+export function analysisTaskContext(nodes: QuestionNode[], questionId: string, title = '', description = ''): string {
+  function pathTo(items: QuestionNode[], parents: QuestionNode[]): QuestionNode[] | null {
+    for (const node of items) {
+      if (node.id === questionId) return parents;
+      const found = pathTo(Array.isArray(node.children) ? node.children : [], [...parents, node]);
+      if (found) return found;
+    }
+    return null;
+  }
+  const parents = pathTo(nodes, []) ?? [];
+  return [title && `学习单：${title}`, description && `学习单说明：${description}`,
+    ...parents.map(node => `所属任务：${node.prompt || ''}\n任务说明：${typeof node.data.description === 'string' ? node.data.description : ''}\n任务材料：${analysisQuestionDetails(node)}`),
+  ].filter(Boolean).join('\n');
 }

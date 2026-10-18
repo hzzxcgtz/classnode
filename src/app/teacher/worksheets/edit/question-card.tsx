@@ -51,9 +51,9 @@ import { QuestionInput } from '@/app/classroom/worksheet/questions';
 // 组件这一层**没有回归网**（本仓没有 jsdom / testing-library）。
 import { TrueFalseBody } from './bodies/true-false-body';
 import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choice-body';
-import { ChoiceBlankSetup, SymbolListInput } from './bodies/fill-blanks-body';
-// ★ 2026-09-30：主观题的**参考答案**（不判分）。输入框与填空题那份是**同一个组件**。
-import { fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, splitChoiceText } from '@/lib/worksheet-fill-modes';
+import { ChoiceBlankSetup } from './bodies/fill-blanks-body';
+// 表达题参考作答支持完整段落，仍沿用 nested answers 数据结构。
+import { fillGradingTotals, fillSettingsFor, hasExplicitFillGrading } from '@/lib/worksheet-fill-modes';
 import { TableBody } from './bodies/table-body';
 import { tableMarkIndex } from '@/lib/worksheet-table';
 // ⚠️ 只引 `OrderBody` —— `OrderAnswerBody`（正确顺序）现在住在它里面（两栏并排），
@@ -111,6 +111,7 @@ const QUESTION_EDITOR_COPY: Partial<Record<string, { title: string; description:
     // 档位由紧下方的单选控件自己说明，不另外复述。
     description: '',
   },
+  'open-ended': { title: '学生作答', description: '' },
   drawing: {
     title: '学生作答',
     // 画板绘制 / 照片上传就在紧下方，这里不再复述。
@@ -371,7 +372,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
     node.type === 'true-false'
       ? null
       : isChoiceQuestion(node)
-        ? { title: '选项', hint: '拖动左侧把手调整顺序，点右侧圆点设置答案。' }
+        ? { title: '选项', hint: gradedOn ? '拖动左侧把手调整顺序，点右侧圆点设置答案。' : '拖动左侧把手调整顺序；本题收集学生选择，不设置正确答案。' }
         : isBlankType
           // ★ 2026-10-06：「填空域与表格域会自动同步」与「表格域作答设置」那一块里的
           // 「表格里的空与题干里的空是同一批」是同一个事实（表格域不出现时这句还是错的）⇒ 删这边半句。
@@ -421,6 +422,21 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
     : isGradedQuestionType(node.type)
       ? (gradedOn ? `自动评分 · 最高 ${maximumPoints}` : '仅统计作答')
       : '教师查看';
+
+  const analysisFocusSettings = (
+    <div className="worksheet-editor-block worksheet-editor-analysis-focus">
+      <div className="worksheet-editor-block-head">
+        <div>
+          <h4><EditorIcon kind="content" /><label htmlFor={`analysis-focus-${node.id}`}>本题分析重点（选填）</label></h4>
+          <p id={`analysis-focus-help-${node.id}`}>告诉 AI 本次最希望关注什么，以及哪些方面暂不重点分析。不填时根据题目要求和评价依据选择重点；本项不改变评分标准和给分条件。</p>
+        </div>
+      </div>
+      <textarea id={`analysis-focus-${node.id}`} className="input worksheet-editor-evaluation-input" rows={3} maxLength={1200}
+        aria-describedby={`analysis-focus-help-${node.id}`} value={typeof node.data.analysisFocus === 'string' ? node.data.analysisFocus : ''}
+        placeholder={isGradedQuestionType(node.type) && !gradedOn ? '例如：了解学生的活动偏好，关注选择理由与实施条件，不评价偏好的优劣。' : '例如：重点看是否把经过写具体，暂不重点评价修辞和个别错别字。'}
+        onChange={event => onDataChange({ analysisFocus: event.target.value })} />
+    </div>
+  );
 
   return (
     <section
@@ -558,7 +574,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           <span>必填</span>
         </div>
 
-        <div className={`worksheet-editor-block${(node.type === 'drawing' || node.type === 'short-answer') ? ' drawing-prompt-block' : ''}`}>
+        <div className={`worksheet-editor-block${(node.type === 'drawing' || node.type === 'short-answer' || node.type === 'open-ended') ? ' drawing-prompt-block' : ''}`}>
           <div className="worksheet-editor-block-head">
             <div>
               {/* ⚠️ 这个「题干」标题是**新的层级**要的：以前它在卡片头部下面，与
@@ -615,8 +631,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
               )}
             </div>
 
-            <div className={(node.type === 'drawing' || node.type === 'short-answer') ? 'drawing-answer-settings' : undefined}>
-            {(node.type === 'drawing' || node.type === 'short-answer') && <h3 className="drawing-zone-heading"><EditorIcon kind="answer" />作答设置</h3>}
+            <div className={(node.type === 'drawing' || node.type === 'short-answer' || node.type === 'open-ended') ? 'drawing-answer-settings' : undefined}>
+            {(node.type === 'drawing' || node.type === 'short-answer' || node.type === 'open-ended') && <h3 className="drawing-zone-heading"><EditorIcon kind="answer" />作答设置</h3>}
             {showInputModeRow && <InputModeRow node={node} onInputModeChange={onInputModeChange} />}
 
             {node.type === 'drawing' && (
@@ -671,55 +687,111 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} />}
             {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
             {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
+            {node.type === 'open-ended' && <p className="worksheet-editor-answer-disabled">开放题不设置标准答案和评分规则。教师可在课堂中对学生作答进行 AI 分析。</p>}
 
             <div className={(node.type === 'drawing' || node.type === 'short-answer') ? 'drawing-evaluation-settings' : undefined}>
             {(node.type === 'drawing' || node.type === 'short-answer') && <h3 className="drawing-zone-heading"><EditorIcon kind="grading" />评价设置</h3>}
             {(node.type === 'short-answer' || node.type === 'drawing') && (
-              // ★ 2026-09-30（教师）：「主观题也需要设置参考答案，但是可以选择不本地评分。」
-              // + 澄清：「主观题**不需要评分**」。
-              // 🔴 所以这一块**只是让答案有个入口** —— 它不接判分那条链：
-              //    `graded` 仍是 false、服务端的判分器仍恒返回 null。
-              //    答案的两个去处：**印在教师用卷上**、以及你在看板查看时有个对照。
-              // ⚠️ 输入框与填空题的「标准答案」是**同一个组件**（`SymbolListInput`，
-              //    它本来就是待选词与标准答案共用的那个）—— 两处各写一份就是本仓最防的分叉。
-              // ⚠️ 写回的是 **nested 形状**（`answers: [items]`，每空一份）：
-              //    内核的纪律是「写一律写 nested」（单空与多空没有区别的那个形状）。
               <div className="worksheet-editor-block worksheet-editor-reference-block">
                 <div className="worksheet-editor-block-head">
                   <div>
-                    <h4><EditorIcon kind="answer" />{node.type === 'drawing' ? '参考要点' : '参考答案'}</h4>
-                    <p>{node.type === 'drawing' ? '写下作品必须包含的要点。' : '写下可接受的核心答案。'}</p>
+                    <h4><EditorIcon kind="answer" /><label htmlFor={`reference-answer-${node.id}`}>参考作答（选填）</label></h4>
+                    <p id={`reference-answer-help-${node.id}`}>提供一种或几种符合要求的作答示例，帮助 AI 理解任务。不作为唯一答案，允许其他符合要求的表达和方法。</p>
                   </div>
                 </div>
-                <SymbolListInput
-                  values={readBlankAnswers(node)[0] ?? []}
-                  split={splitChoiceText}
-                  placeholder={node.type === 'drawing' ? '例如：包含蒸发、凝结、降水，并用箭头表示过程' : '例如：春天、春季'}
-                  onChange={(items) => onDataChange({ answers: [items] })}
-                />
+                <textarea id={`reference-answer-${node.id}`} className="input worksheet-editor-evaluation-input" aria-describedby={`reference-answer-help-${node.id}`} rows={4} maxLength={12000}
+                  value={(readBlankAnswers(node)[0] ?? []).join('\n\n')}
+                  placeholder={node.type === 'drawing' ? '例如：参考作品中的对象、关系和标注，也可提供不同的合理方案' : '填写示例习作、解释或解题过程，无需穷尽所有合理答案'}
+                  onPaste={event => {
+                    const raw = event.clipboardData.getData('text/plain');
+                    if (!raw) return;
+                    event.preventDefault();
+                    const element = event.currentTarget;
+                    const next = element.value.slice(0, element.selectionStart) + normalizePastedText(raw) + element.value.slice(element.selectionEnd);
+                    onDataChange({ answers: next.trim() ? [[next]] : [] });
+                  }}
+                  onChange={event => onDataChange({ answers: event.target.value.trim() ? [[event.target.value]] : [] })} />
               </div>
             )}
-            {/*
-              ★ 2026-10-05（教师）：「评分标准与下面的评分要求重复了，你把『评分标准』替换
-              下面的『评分要求』，带图片上传。」
-              ⇒ 这里原本是**两块**：这块独立的「评分标准」（文字 + 图片）与下面 AI 评分块里
-                那个「评分要求」。两处的文字都会进同一份分析载荷，而 `buildAnalysisMessage`
-                也确实印了两行（`评分标准：…` / `评分要求：…`）—— 同一份东西在提示词里也说两遍。
-              🔴 现在**只有下面那一个输入框**（`rubricText`，带图片上传），
-                `aiScoringCriteria` 降级为**旧数据回退**（唯一读取点：`rubricTextOf`）。
-              ⚠️ 教师 2026-10-05 明确选了「只在 AI 评分打开时显示」——
-                代价是关掉 AI 评分后这里没有编辑入口，而「发给 AI 分析」仍会读这份标准。
-            */}
-            {/*
-              ★ 2026-10-05（教师裁定 B）：填空题**整块去掉**（上一版按裁定 A 缩成了「AI 评分标准」，
-              教师看到之后说「这里也不对……不需要整体的评分标准」）。
-              ⇒ 现在这一块只服务**问答题 / 绘图题**：那两型没有逐空的评分方式，
-                整题的开关、满额、评分标准就该在这儿，评分标准也仍然可以带图片。
-              ⚠️ 填空题的评分为何不需要「整题标准」：它的标准已经细化到每一空
-                （手工填写那一格的标签就叫「评分标准」），并以「参考答案（逐空）」进载荷。
-              ⚠️ 旧的「评分标准 / 评分要求」合并（见上面那段）对这两型仍然有效：
-                `rubricText` 为准，`aiScoringCriteria` 只作回退。
-            */}
+            {aiSupported && <div className="worksheet-editor-block worksheet-editor-evaluation-basis">
+
+                    <div className="worksheet-editor-block-head">
+                      <div>
+                        <h4><EditorIcon kind="grading" /><label htmlFor={`evaluation-rubric-${node.id}`}>评价标准{aiScoringEnabled ? '（必填）' : '（选填）'}</label></h4>
+                        <p id={`evaluation-rubric-help-${node.id}`}>说明本题看重哪些表现、怎样算达到要求。关闭评分时用于定性分析；开启评分时，请写清各项给分条件。</p>
+                      </div>
+                    </div>
+                      <textarea
+                        id={`evaluation-rubric-${node.id}`}
+                        className="input worksheet-editor-evaluation-input"
+                        aria-describedby={`evaluation-rubric-help-${node.id}`}
+                        required={aiScoringEnabled && !rubricImageUrl}
+                        value={rubricText || aiScoringCriteria}
+                        maxLength={2400}
+                        rows={4}
+                        placeholder="例如：写清事情经过；至少用一个动作或对话把片段写具体；感受与事件有关。评分时补充各项给分条件，也可上传评价量表图片。"
+                        onPaste={(event) => {
+                          const raw = event.clipboardData.getData('text/plain');
+                          if (!raw) return;
+                          event.preventDefault();
+                          const element = event.currentTarget;
+                          const start = element.selectionStart ?? element.value.length;
+                          const end = element.selectionEnd ?? element.value.length;
+                          const next = `${element.value.slice(0, start)}${normalizePastedText(raw)}${element.value.slice(end)}`;
+                          onDataChange({ rubricText: next, aiScoringCriteria: undefined });
+                        }}
+                        onBlur={(event) => {
+                          const next = normalizePastedText(event.target.value);
+                          if (next !== event.target.value) onDataChange({ rubricText: next, aiScoringCriteria: undefined });
+                        }}
+                        onChange={(event) => onDataChange({
+                          rubricText: event.target.value,
+                          aiScoringCriteria: undefined,
+                        })}
+                      />
+                    {node.type === 'drawing' && readDrawingTool(node) === 'flowchart' && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          // 显示值可能是旧数据里的 `aiScoringCriteria`（见上面那段说明）⇒ 取合并后的那一份。
+                          const current = rubricText || aiScoringCriteria;
+                          onDataChange({
+                            rubricText: current ? `${current}\n${STRUCTURE_POINTS_TEMPLATE}` : STRUCTURE_POINTS_TEMPLATE,
+                            aiScoringCriteria: undefined,
+                          });
+                        }}
+                      >
+                        插入结构要点模板
+                      </button>
+                    )}
+                    <input
+                      ref={rubricImageInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      hidden
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void uploadRubricImage(file);
+                      }}
+                    />
+                    {rubricImageUrl ? (
+                      <div className="worksheet-editor-rubric-image">
+                        <img src={worksheetAssetUrl(rubricImageUrl)} alt="评价标准" />
+                        <div>
+                          <button type="button" className="btn btn-secondary" disabled={rubricUploading} onClick={() => rubricImageInputRef.current?.click()}>
+                            {rubricUploading ? '正在上传…' : '更换图片'}
+                          </button>
+                          <button type="button" className="btn btn-secondary" onClick={() => onDataChange({ rubricImageUrl: undefined })}>移除图片</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="button" className="btn btn-secondary worksheet-editor-rubric-upload" disabled={rubricUploading} onClick={() => rubricImageInputRef.current?.click()}>
+                        {rubricUploading ? '正在上传图片…' : '上传评价标准图片'}
+                      </button>
+                    )}
+            </div>}
+            {aiSupported && analysisFocusSettings}
             {aiSupported && (
               <div className="worksheet-editor-block worksheet-editor-ai-scoring">
                 <div className="worksheet-editor-block-head">
@@ -799,114 +871,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                         <p className="worksheet-editor-review-help">本题满分，AI 按评分标准评定。</p>
                       </div>
                     </div>
-                    {node.data.studentAiReviewEnabled === true && <p className="worksheet-editor-ai-template-note">使用前，请将分析智能体的提示词更新为模板中的双模式说明。评价次数默认 1 次。评价期间不能修改；次数用完后定稿，增加次数可解锁。</p>}
-                    {/*
-                      🔴 显示的是**合并后**的值：`rubricText` 为准，旧字段 `aiScoringCriteria`
-                      作回退 —— 老学习单只填过「评分要求」的，教师在这里照旧看得见原文。
-                      ⚠️ `onChange` 必须把旧字段**一并清掉**：只写 `rubricText` 的话，
-                      教师把输入框删空之后，回退值会重新出现（「删不掉」）。
-                    */}
-                    <label className="worksheet-editor-ai-rubric">
-                      <span>评分标准</span>
-                      <textarea
-                        value={rubricText || aiScoringCriteria}
-                        maxLength={2400}
-                        rows={8}
-                        placeholder="例如：观点明确；至少写出两个依据；能结合题目材料说明。也可以只上传评分量表图片。"
-                        /*
-                          ★ 2026-10-06（教师）：「这里复制进来的文本，格式要去掉」。
-                          🔴 从 Word / PDF 复制中文带进来的是**排版**：每行缩进、全角空格、
-                             标点**前面**多一个空格（「（1 分） ；」）—— 肉眼以为是内容，其实全是噪音。
-                          ⇒ 粘贴时自己接管（`preventDefault` + 写入归一化后的文本，避免「先脏后清」闪一下）；
-                             另外在**离开输入框时**再收一次：粘贴发生在我们接上之前的旧内容也能被清干净
-                             （归一化是幂等的，干净的文本不会被改样）。
-                          ⚠️ 光标不特意复位：`onDataChange` 之后受控值会把光标带到末尾 —— 粘完接着打字
-                             本来就在末尾，这点可接受；真有人抱怨再补一个 ref + effect。
-                          ⚠️ 只去排版、不动内容：数字与单位之间（「满分 4 分」）与拉丁词之间
-                             （「AI 评分」）的空格都保留，标点后的空格只在紧跟中文时才删。
-                        */
-                        onPaste={(event) => {
-                          const raw = event.clipboardData.getData('text/plain');
-                          if (!raw) return;
-                          event.preventDefault();
-                          const element = event.currentTarget;
-                          const start = element.selectionStart ?? element.value.length;
-                          const end = element.selectionEnd ?? element.value.length;
-                          const next = `${element.value.slice(0, start)}${normalizePastedText(raw)}${element.value.slice(end)}`;
-                          onDataChange({ rubricText: next, aiScoringCriteria: undefined });
-                        }}
-                        onBlur={(event) => {
-                          const next = normalizePastedText(event.target.value);
-                          if (next !== event.target.value) onDataChange({ rubricText: next, aiScoringCriteria: undefined });
-                        }}
-                        onChange={(event) => onDataChange({
-                          rubricText: event.target.value,
-                          aiScoringCriteria: undefined,
-                        })}
-                      />
-                    </label>
-                    {/*
-                      ★ 2026-10-06（教师）：信息科技课的流程图作业判的是**结构**，所以给一颗
-                      「插入结构要点模板」—— 按一下把 `STRUCTURE_POINTS_TEMPLATE` 那几条要点
-                      追加进评分标准，教师再按自己这一题改写。
-
-                      🔴 **只在「作图题 + 作图工具是流程图」时出现**：判据是
-                        `readDrawingTool(node) === 'flowchart'`（那份判据只有一份，见文件头的 import）。
-                        别的题型（含基础绘图 / 数学作图 / 思维导图）没有「判断框、回边」这些结构要求，
-                        把这段模板摆给它们就是一句**屏幕上说得出口的谎话**。
-                      ⚠️ 它收在 `aiScoringEnabled` 那一支里（跟着上面那个输入框显隐）：
-                        标准框关着的时候不摆按钮 —— 否则教师按了，文字写进了 data，而屏幕上
-                        一个能读它的输入框都没有（本仓最防的那类「静默写入」）。
-                      ⚠️ **追加，不是覆盖**：已有内容时前面补一个换行（教师写了一半再点它，
-                        原来那半句不许被吞掉）。
-                      ⚠️ 写回走的是与上面 `onChange` **同一条路**：`rubricText` 为准，
-                        旧字段 `aiScoringCriteria` 一并清掉（只写 `rubricText` 的话，教师把框删空后
-                        回退值会重新出现，看起来像「删不掉」）。
-                      ⚠️ 按钮**不许放进 `<label>`**：`<label>` 会把点击转发给内部第一个可标注元素
-                        （`<button>` 就是），标签里的空白点一下也会触发它 —— 那条教训见上面
-                        「分值 / 奖励数量」那一格（教师报过「点了下面空白地方也会减」）。
-                    */}
-                    {readDrawingTool(node) === 'flowchart' && (
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => {
-                          // 显示值可能是旧数据里的 `aiScoringCriteria`（见上面那段说明）⇒ 取合并后的那一份。
-                          const current = rubricText || aiScoringCriteria;
-                          onDataChange({
-                            rubricText: current ? `${current}\n${STRUCTURE_POINTS_TEMPLATE}` : STRUCTURE_POINTS_TEMPLATE,
-                            aiScoringCriteria: undefined,
-                          });
-                        }}
-                      >
-                        插入结构要点模板
-                      </button>
-                    )}
-                    <input
-                      ref={rubricImageInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      hidden
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) void uploadRubricImage(file);
-                      }}
-                    />
-                    {rubricImageUrl ? (
-                      <div className="worksheet-editor-rubric-image">
-                        <img src={worksheetAssetUrl(rubricImageUrl)} alt="评分标准" />
-                        <div>
-                          <button type="button" className="btn btn-secondary" disabled={rubricUploading} onClick={() => rubricImageInputRef.current?.click()}>
-                            {rubricUploading ? '正在上传…' : '更换图片'}
-                          </button>
-                          <button type="button" className="btn btn-secondary" onClick={() => onDataChange({ rubricImageUrl: undefined })}>移除图片</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button type="button" className="btn btn-secondary worksheet-editor-rubric-upload" disabled={rubricUploading} onClick={() => rubricImageInputRef.current?.click()}>
-                        {rubricUploading ? '正在上传图片…' : '上传评分标准图片'}
-                      </button>
-                    )}
+                    {node.data.studentAiReviewEnabled === true && <p className="worksheet-editor-ai-template-note">使用前，请将分析智能体的提示词更新为模板中的三种调用模式说明。评价次数默认 1 次。评价期间不能修改；次数用完后定稿，增加次数可解锁。</p>}
                     <p className="worksheet-editor-ai-scoring-note">
                       {/* ★ 2026-10-07（教师裁定 2）：AI 的分**会写回成绩**（进总分、进奖励、进报告的
                           对错标记），所以原来那句「仅供参考，不会覆盖教师评价」已经不成立了。
@@ -925,9 +890,10 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
 
         {/* 填空题的答案由下方总开关统一显隐，关闭状态已在「自动评分」区说明；
             这里的额外提示只服务答案控件仍位于本区的其它客观题，避免同一句出现两次。 */}
+        {!aiSupported && <div className="worksheet-editor-analysis-settings">{analysisFocusSettings}</div>}
         {!gradedOn && isGradedQuestionType(node.type) && !isBlankType && (
           <p className="worksheet-editor-answer-disabled">
-            自动评分已关闭，答案设置暂时隐藏。
+            不设标准答案，不判对错、不计分；可在课堂中分析学生作答。
           </p>
         )}
       </section>
@@ -951,22 +917,16 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         <section className="worksheet-editor-question-section is-grading">
           <div className="worksheet-editor-section-head">
             <div>
-              <h3><EditorIcon kind="grading" />自动评分</h3>
-              <p>{explicitFillScoring
-                ? '控制各空的评分设置。关闭后仅统计作答。'
-                : '关闭后仅统计作答，不计分。'}</p>
+              <h3><EditorIcon kind="grading" />作答用途</h3>
+              <p>有答案时自动判分；无标准答案时收集信息，统计作答并支持 AI 分析。</p>
             </div>
             <div className="worksheet-editor-head-actions">
               {/* ⚠️ 徽章里**不写「自动评分」** —— 卡片标题就是它（原来那句
                   `gradingStatus`（「自动评分 · 最高 1 颗星星」）是给**折叠态那一行**用的，
                   那里没有标题，所以不能直接搬过来）。 */}
               {gradedOn && <span className="worksheet-editor-points-badge">本题满分 {explicitFillScoring ? fillTotals.total : maximumPoints} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>}
-              <HeadSwitch
-                checked={gradedOn}
-                onChange={onAutoGradeChange}
-                label="自动评分"
-                title={gradedOn ? '已开启：系统按正确答案判对错并计分' : '已关闭：只统计作答进度，不计分'}
-              />
+              <label><input type="radio" checked={gradedOn} onChange={() => onAutoGradeChange(true)} name={`worksheet-purpose-${node.id}`} /> 有答案，自动评分</label>
+              <label><input type="radio" checked={!gradedOn} onChange={() => onAutoGradeChange(false)} name={`worksheet-purpose-${node.id}`} /> 无标准答案，收集信息</label>
             </div>
           </div>
 
@@ -1526,7 +1486,7 @@ function InputModeRow({ node, onInputModeChange }: {
       <p className="worksheet-editor-hint">
         {photo
           ? '照片提交后可供教师查看和 AI 分析。'
-          : '仅统计作答进度，可由教师查看或交给 AI 分析。'}
+          : '支持教师查看和 AI 分析，是否评分由评价设置决定。'}
       </p>
     </>
   );

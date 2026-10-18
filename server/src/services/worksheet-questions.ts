@@ -27,7 +27,7 @@ import { isInkFormat } from './worksheet-ink.js';
  * 同一个校验器（`correctKeys` 恰好一个），差别只在单选多一条 `options.length >= 2`。
  */
 export const QUESTION_TYPES = [
-  'single-choice', 'true-false', 'multi-choice', 'fill-blank', 'short-answer',
+  'single-choice', 'true-false', 'multi-choice', 'fill-blank', 'short-answer', 'open-ended',
   'order', 'match', 'categorize',
   // ★ M4b：绘图题。**不判分**（`graded: false`）—— 学生画图，教师人眼看。
   // 🔴 它同时收口一个真实存在过的窗口：前端 A2 已把 `drawing` 加进
@@ -344,7 +344,7 @@ export function flattenQuestions(content: WorksheetContent): QuestionNode[] {
 export const ANSWER_KEYS = [
   'correctKeys', 'answers', 'explanation', 'correctOrder', 'pairs', 'placement',
   // 评分标准只供教师与 AI 分析使用，不能随学生版学习单下发。
-  'rubricText', 'rubricImageUrl',
+  'rubricText', 'rubricImageUrl', 'analysisFocus', '__analysisContext',
 ] as const;
 
 /**
@@ -1210,6 +1210,7 @@ const JUDGES: Record<QuestionType, (data: Record<string, unknown>, value: unknow
   // ⇒ 共用一支，不另写（先例：判断题与单选）。
   'choice-blank': judgeFillBlank,
   'short-answer': () => null,
+  'open-ended': () => null,
   order: judgeOrder,
   match: judgeMatch,
   categorize: judgeCategorize,
@@ -1614,7 +1615,6 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
     validateFillBlank(node, errors);
     validateFillModes(node, errors);
     if (node.data.fillBlankSettings && typeof node.data.fillBlankSettings === 'object') return;
-    if (node.autoGrade === false) return;
     const choices = readStrings(node.data.choices);
     // 🔴 **每个词只能用一次**（教师裁定）⇒ 词比空少时这道题**无解**，
     // 而那种题在屏幕上看不出任何异常（学生拖到最后一个空时没词可用）。
@@ -1643,6 +1643,7 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
  * ⚠️ 抽它的唯一理由是 `VALIDATORS` 里要有**一条**实现给两个题型用 ——
  * 对象字面量里引用自己会踩 TDZ，而写两份必然漂移。
  */
+  'open-ended': () => {},
   'short-answer': () => {
     // 主观题**只有题干**要校验，而题干在上面的 `validateQuestion` 里已经查过 —— 所以
     // 这一支是空的。⚠️ 它**必须存在**：「主观题不校验别的」本身就是一个必须被明确作出的

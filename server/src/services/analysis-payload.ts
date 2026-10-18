@@ -301,6 +301,9 @@ export function selectAnalyzeEntries(
     }
     out.push({ studentId: answer.participantId, kind: 'unknown', gradeState: answer.gradeState ?? null });
   }
+  if (question?.type === 'open-ended' || (question?.autoGrade === false && question.type !== 'short-answer' && question.type !== 'drawing')) {
+    for (const entry of out) entry.gradeState = null;
+  }
   return out.sort((a, b) => (a.studentId < b.studentId ? -1 : a.studentId > b.studentId ? 1 : 0));
 }
 
@@ -346,6 +349,10 @@ export const ANSWER_TEXT_MAX = 800;
  * `flattenAnswerable`，对拍用例钉着与前端逐字相同）。
  */
 export interface QuestionMeta {
+  analysisMode?: string;
+  analysisFocus?: string;
+  context?: string;
+  openEnded?: boolean;
   studentAiReviewEnabled?: boolean;
   questionId: string;
   typeLabel: string;
@@ -430,18 +437,20 @@ export function buildTextDocument(
 ): string {
   const head = [
     `${question.heading} · ${question.typeLabel}`,
+    ...(question.context ? [`教学情境：${question.context}`] : []),
+    ...(question.analysisFocus ? [`本题分析重点：${question.analysisFocus}`] : []),
     `题干：${question.prompt || '（题干为空）'}`,
     `题目材料：${question.details || '（没有额外题面材料）'}`,
     `参考答案：${question.referenceAnswer || '（未提供参考答案）'}`,
     `评分标准：${question.rubricText || '（未提供评分标准）'}`,
     `评分标准图片：${question.rubricImageUrl ? '已作为图片附件提供' : '（未提供）'}`,
     `已交 ${covered}/${total}`,
-    localStatsLine(entries),
+    ...(question.openEnded ? [] : [localStatsLine(entries)]),
   ].join('\n');
   if (entries.length === 0) return `${head}\n\n尚无已提交的作答。\n`;
   const body = entries.map((entry) => {
     const who = labels.get(entry.studentId) ?? entry.studentId;
-    const verdict = gradeLabel(entry.gradeState);
+    const verdict = question.openEnded ? null : gradeLabel(entry.gradeState);
     const label = verdict ? `${who}｜${verdict}` : who;
     if (entry.kind === 'unknown') return `【${label}】（这一份的形状本版认不出，未纳入）`;
     if (entry.kind === 'photo') return `【${label}】（照片作答，见联系表）`;
@@ -618,6 +627,10 @@ export function layoutSheets(entries: AnalyzeEntry[], labels: Map<string, string
 
 /** 一道题的聚合载荷。图**不在**里面 —— 它是派生物，走单独的端点按需渲染。 */
 export interface AnalysisPayload {
+  analysisMode?: string;
+  analysisFocus?: string;
+  context?: string;
+  openEnded?: boolean;
   studentAiReviewEnabled?: boolean;
   questionId: string;
   questionLabel: string;
@@ -707,7 +720,8 @@ export function buildAnalysisPayload(input: {
   participants: Participant[];
   textLimit?: number;
 }): AnalysisPayload {
-  const { question, entries, total, participants } = input;
+  const { question, total, participants } = input;
+  const entries = question.openEnded ? input.entries.map(entry => ({ ...entry, gradeState: null })) : input.entries;
   const knobs = question.photoWriting && entries.some(entry => entry.kind === 'photo')
     ? {
       cellWidth: Math.max(input.knobs.cellWidth, 768),
@@ -721,7 +735,11 @@ export function buildAnalysisPayload(input: {
   return {
     questionId: question.questionId,
     questionLabel: question.heading,
+    ...(question.analysisMode ? { analysisMode: question.analysisMode } : {}),
+    ...(question.analysisFocus ? { analysisFocus: question.analysisFocus } : {}),
+    ...(question.context ? { context: question.context } : {}),
     typeLabel: question.typeLabel,
+    ...(question.openEnded ? { openEnded: true } : {}),
     prompt: question.prompt,
     questionDetails: question.details || '（没有额外题面材料）',
     referenceAnswer: question.referenceAnswer || '（未提供参考答案）',

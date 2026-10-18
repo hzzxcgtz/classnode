@@ -71,7 +71,7 @@ export {
 export type QuestionType =
   | 'single-choice' | 'true-false' | 'multi-choice' | 'fill-blank' | 'short-answer'
   | 'order' | 'match' | 'categorize'
-  | 'drawing'
+  | 'drawing' | 'open-ended'
   // ★ 2026-09-26（教师）：「选择填空」—— 题干与填空题同一条（题干里的空），
   // 多出一排待选词，学生**拖**它们进空。⚠️ 它与服务端 `QUESTION_TYPES` 的成员
   // **必须逐字相同**（这个联合是那份清单在前端的投影，不是第二份权威）。
@@ -117,7 +117,8 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   { value: 'order', label: '排序题', nickname: '顺序高手', hint: '把打乱的条目排成正确顺序', graded: true },
   { value: 'match', label: '连线题', nickname: '巧手连线', hint: '把左栏与右栏一一连起来', graded: true },
   { value: 'categorize', label: '归类题', nickname: '分类达人', hint: '把若干条目拖到对应的框里', graded: true },
-  { value: 'short-answer', label: '表达题', nickname: '自由表达', hint: '适合简答、说明、论述和小习作，支持文字、手写或照片作答，可开启 AI 评分', graded: false },
+  { value: 'short-answer', label: '表达题', nickname: '自由表达', hint: '适合开放表达、简答、说明和习作，支持文字、手写或照片，评价依据选填，AI 评分默认关闭', graded: false },
+  { value: 'open-ended', label: '表达题', nickname: '自由表达', hint: '不设标准答案、不评分，支持文字、手写或照片作答，仅进行 AI 作答分析', graded: false },
   // ★ M4b：`drawing` 这个题型名是**本计划的裁定**（规格没有给）—— 见 `QuestionType` 的注释。
   // `graded: false` **是有意的决定，不是补测试**：手写 / 绘图不参与自动判分（规格 §12 裁定 3）。
   // 服务端那一侧有**两条**闸（B1，提交 `e1ff80c`）：`JUDGES.drawing` 恒回 `null`；

@@ -263,7 +263,7 @@ export function AnalysisBanners({ state }: { state: WorksheetAnalysisState }) {
       {/* 「算完之后又有人交了」—— 服务端算的，必须显眼。否则教师会把一份不完整的名单当成当前的。 */}
       {!state.busy && state.payload?.stale && state.payload.narrative && (
         <div style={{ padding: '8px 18px', background: '#edf5ff', borderBottom: '1px solid #d7e5f4', color: '#315f8c', fontSize: '0.82rem', flex: '0 0 auto' }}>
-          有新的作品提交，更新全班分析后即可纳入总结。
+          作答或分析依据有更新，重新生成班级分析后即可纳入总结。
         </div>
       )}
       {state.error && (

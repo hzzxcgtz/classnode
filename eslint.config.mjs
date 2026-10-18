@@ -68,6 +68,8 @@ const eslintConfig = defineConfig([
   },
   // Override default ignores of eslint-config-next.
   globalIgnores([
+    // Local logs, test fixtures and bundled UI previews are generated artifacts.
+    ".dev/**",
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",

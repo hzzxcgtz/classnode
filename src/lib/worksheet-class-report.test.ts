@@ -10,7 +10,7 @@ test('名单链接标题含完整学生标签时不生成嵌套链接或露出�
 test('名单链接后重复展开的姓名或名单链接被移除，实质作答依据保留', () => {
   for (const list of ['张伟#1、张伟#2等', '[作者](#classnode-group-g2)、[同学](#classnode-group-g3)等']) {
     const report = classReportContent(`典型问题：[相关同学](#classnode-group-g1)（${list}）把钝角分错。`, entries, {a:'张伟',b:'张伟'});
-    assert.equal(report.text, '典型问题：[相关同学](#classnode-group-g1)把钝角分错。');
+    assert.equal(report.text, `典型问题：[相关同学](#classnode-group-${list.startsWith('张伟') ? 'evidence1' : 'g1'})把钝角分错。`);
   }
   const report = classReportContent('[相关同学](#classnode-group-g1)（把最大角120°误判为锐角）', entries, {});
   assert.equal(report.text, '[相关同学](#classnode-group-g1)（把最大角120°误判为锐角）');
@@ -58,4 +58,23 @@ test('名单按钮单人显示实际姓氏，多人加等，复姓与外文名�
   assert.equal(reportStudentLabel(['张伟','李芳']),'张同学等');
   assert.equal(reportStudentLabel(['司马懿']),'司马同学');
   assert.equal(reportStudentLabel(['比尔·希恩斯']),'比尔·希恩斯同学');
+});
+
+test('同一全班链接被 AI 复用时，每处明确举例名单独立关联，单人不会展开全班', () => {
+  const input = '动类：如[相关同学](#classnode-group-g1)（张伟#1、张伟#2等）。\n特殊选择：少数同学单独选D（如[相关同学](#classnode-group-g1)张伟#2），选F（如[相关同学](#classnode-group-g1)张伟#1）。';
+  const report = classReportContent(input, entries, { a: '张伟', b: '张伟' });
+  assert.deepEqual(report.groups.map(group => group.studentIds), [['a', 'b'], ['b'], ['a']]);
+  assert.equal((report.text.match(/#classnode-group-evidence/g) ?? []).length, 3);
+  assert.ok(!report.text.includes('#classnode-group-g1'));
+  assert.ok(!report.text.includes('张伟'));
+});
+
+test('附属名单包含实质作答依据时不据其猜测整组成员，同名身份不猜', () => {
+  const content = '[相关同学](#classnode-group-g1)（张伟#1的方法是先检查单位）';
+  const report = classReportContent(content, entries, { a:'张伟', b:'张伟' });
+  assert.ok(report.text.includes('的方法是先检查单位'));
+  assert.ok(report.text.includes('#classnode-group-g1'));
+  const ambiguous = classReportContent('[相关同学](#classnode-group-g1)（张伟）', entries, { a:'张伟', b:'张伟' });
+  assert.match(ambiguous.text, /#classnode-group-unverified/);
+  assert.deepEqual(ambiguous.groups, []);
 });

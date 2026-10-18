@@ -147,6 +147,7 @@
   .hero { padding: 22px 20px; border-radius: 16px; }
   .hero h1 { font-size: 1.35rem; }
   .layout { flex-direction: column; }
+  .content { width: 100%; }
   .sidebar { position: static; width: 100%; max-height: none; }
   .sidebar nav { display: flex; max-height: none; overflow-x: auto; padding: 6px; }
   .sidebar button { min-width: 142px; }
@@ -163,7 +164,7 @@
 /* ── 2026-10-09 改版新增 ──────────────────────────────────────────────────── */
 
 /* 正文里的**界面文案**（按钮/开关上真实写的字）。与强调语气区分开：强调用 <strong>。 */
-.uiText { padding: 1px 5px; border: 1px solid #e2e8f0; border-radius: 5px; color: #334155; background: #f8fafc; font-family: inherit; font-size: .95em; white-space: nowrap; }
+.uiText { overflow-wrap: anywhere; padding: 1px 5px; border: 1px solid #e2e8f0; border-radius: 5px; color: #334155; background: #f8fafc; font-family: inherit; font-size: .95em; white-space: normal; }
 
 /* 侧栏里的「新」标 —— 只有 2.0 新增的两章挂它。 */
 .navTag { display: inline-block; margin-left: 5px; padding: 0 4px; border-radius: 4px; color: #fff; background: var(--primary); font-size: 0.75rem; font-style: normal; font-weight: 800; vertical-align: 1px; }

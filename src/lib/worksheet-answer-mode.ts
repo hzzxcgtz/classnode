@@ -99,9 +99,8 @@ export interface AnswerModeViewInput {
   statuses: AnswerStatusMap;
   answerMode: WorksheetAnswerMode;
   /**
-   * 教师已开放的题 id（`manual` 档专用）。
-   * ⚠️ 其它三档**一律忽略它** —— 老师哪天把模式从「手动」改回「开放式」，
-   *    那些还留在库里的 id 不该继续起作用（否则学生会看到一份莫名其妙被截断的卷子）。
+   * 教师已开放的题 id。仅手动模式逐题匹配；分步模式忽略此清单。
+   * 开放式始终忽略此清单。
    */
   openQuestions: readonly string[];
 }
@@ -137,7 +136,7 @@ export function answerModeView(input: AnswerModeViewInput): AnswerModeView {
     //（做过的不许缩回去，否则学生回头检查时会以为自己的答案没了）。
     const current = groups.findIndex(group =>
       group.items.some(({ node }) => statuses[node.id] !== SUBMITTED_STATUS));
-    if (current < 0) return done(groups);          // 全交完了 ⇒ 一道都不藏
+    if (current < 0) return done(groups);
     return done(groups.slice(0, current + 1));
   }
 
@@ -148,9 +147,9 @@ export function answerModeView(input: AnswerModeViewInput): AnswerModeView {
       .map(group => ({
         ...group,
         items: group.items.filter(({ node }) => {
-          if (reached) return false;
+          const allowed = !reached;
           if (statuses[node.id] !== SUBMITTED_STATUS) reached = true;
-          return true;
+          return allowed;
         }),
       }))
       .filter(group => group.items.length > 0);

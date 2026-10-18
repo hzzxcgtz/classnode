@@ -19,7 +19,7 @@
 // 本地判分回答“对了多少”，智能体继续解释“这些答案反映了怎样的理解方式”。
 // 所有可作答题型都放行；`task` 是容器，没有作答值，明确不在此列。
 export const ANALYZABLE_TYPES: readonly string[] = [
-  'single-choice', 'true-false', 'multi-choice', 'fill-blank', 'short-answer',
+  'single-choice', 'true-false', 'multi-choice', 'fill-blank', 'short-answer', 'open-ended',
   'order', 'match', 'categorize', 'drawing', 'choice-blank',
 ];
 

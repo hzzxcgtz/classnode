@@ -302,10 +302,10 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
         {options.length === 0 && (
           <span className="worksheet-editor-choice-warning" role="status">
             <strong>需要补充选项</strong>
-            这道题还没有选项。请至少添加两个选项，再设置正确答案。
+            这道题还没有选项。请至少添加两个供学生选择的选项。
           </span>
         )}
-        {options.length > 0 && (multiple ? correctKeys.length === 0 : correctKeys.length !== 1) && (
+        {showAnswer && options.length > 0 && (multiple ? correctKeys.length === 0 : correctKeys.length !== 1) && (
           // ★ 2026-10-06：「点选项右侧的圆点 / 方框」这件事由卡片顶部那句块提示讲一次
           //（`question-card.tsx` 的「正确答案点选项右侧的圆点。」）—— 警告条只说结论。
           <span className="worksheet-editor-choice-warning" role="status">

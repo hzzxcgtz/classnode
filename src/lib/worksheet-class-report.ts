@@ -27,6 +27,27 @@ export function classReportContent(text: string, entries: readonly { studentId: 
       groups.push({ id: row.id, studentIds: [...new Set(ids.map((ids: string[]) => ids[0]))] as string[] });
     }
   }
+  // 旧报告可能把同一个全班 group 链接复制到多个不同实例后。
+  // 紧随链接的明确姓名是该处实例的局部证据，不能被全班名单覆盖。
+  content = content.replace(/(\[[^\]\n]*\]\(#classnode-group-[\w-]+\))[ \t]*(?:[（(]([^()（）\n]*)[）)]|([^()（）\n]+)(?=[）)]))/g,
+    (whole, _link: string, parenthesized: string | undefined, bare: string | undefined) => {
+      const list = parenthesized ?? bare ?? '';
+      let remainder = list;
+      const ids = new Set<string>();
+      let ambiguous = false;
+      for (const [label, matches] of [...replacements].sort((a, b) => b[0].length - a[0].length)) {
+        if (!remainder.includes(label)) continue;
+        if (matches.size !== 1) ambiguous = true;
+        else for (const id of matches) ids.add(id);
+        remainder = remainder.split(label).join('');
+      }
+      // 不吞掉作答依据或未知身份，只处理完全由可识别姓名组成的附属名单。
+      if (remainder.replace(/[\s、，,；;和与及等]/g, '') !== '' || !ids.size && !ambiguous) return whole;
+      if (ambiguous) return '[名单待核实](#classnode-group-unverified)';
+      const id = `evidence${groups.length + 1}`;
+      groups.push({ id, studentIds: [...ids] });
+      return `[相关同学](#classnode-group-${id})`;
+    });
   // 已有名单链接必须整体隔离；替换链接标题里的姓名会生成嵌套链接，露出内部地址。
   content = content.replace(/\[[^\]\n]*\]\(#classnode-group-[\w-]+\)/g, link => {
     const marker = `\uE000${slots.length}\uE001`;

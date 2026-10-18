@@ -284,6 +284,7 @@ function renderQuestion(node: QuestionNode): { body: PaperInline[][]; answer: Pa
   if (node.type === 'short-answer') {
     return { body: [], answer: inlineOf(joinAcceptable(acceptableAnswersFor(data, 0))), answerNote: null };
   }
+  if (node.type === 'open-ended') return { body: [], answer: [], answerNote: '开放题：不设标准答案，不评分。' };
 
   if (node.type === 'order') {
     // 学生看到的顺序就是 `data.items` 的顺序（服务端注释：「那是学生看到的**显示顺序**」）。

@@ -1,3 +1,4 @@
+import { normalizeWorksheetCurriculum } from '../../../../lib/worksheet-curriculum.ts';
 /**
  * 学习单编辑器的**纯函数内核**：不碰 React、不碰 DOM、不碰网络，只依赖类型。
  *
@@ -3095,6 +3096,9 @@ function normalizeLoadedTree(value: unknown): WorksheetQuestionNode | null {
   const unchanged = Array.isArray(raw)
     && children.length === raw.length
     && children.every((child, index) => child === raw[index]);
+  if (value.type === 'open-ended') {
+    return { ...value, type: 'short-answer', data: { ...value.data, aiScoringEnabled: false, studentAiReviewEnabled: false }, children };
+  }
   return unchanged ? value : { ...value, children };
 }
 
@@ -3120,12 +3124,13 @@ export function parseDraft(raw: string | null): WorksheetDraft | null {
   if (!Array.isArray(nodes) || !nodes.every(isDraftNode)) return null;
 
   const settings = draft.settings as Record<string, unknown>;
-  const content = draft.content as WorksheetContent;
+  const content = normalizeLoadedContent(draft.content);
   return {
     savedAt: draft.savedAt,
     title: draft.title,
     description: draft.description,
     settings: {
+      ...normalizeWorksheetCurriculum(settings),
       // ★ 2026-09-30：判据从 `!== false` 翻成 `=== true` —— 默认值改成「不能修改」之后，
       // **缺键的那一行也必须是不能修改**（两处读路径与 `DEFAULT_SETTINGS` 同解，
       // 见那个常量的注释）。⚠️ 显式写下的 `true` 照旧读出来是 `true`。
@@ -3183,6 +3188,7 @@ export function normalizeLoadedSettings(raw: unknown): WorksheetSettings {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return DEFAULT_SETTINGS;
   const settings = raw as Record<string, unknown>;
   return {
+    ...normalizeWorksheetCurriculum(settings),
     // ★ 2026-09-30：`=== true`（缺键 ⇒ 不能修改）—— 与 `DEFAULT_SETTINGS`、`parseDraft`
     // 同一个答案。⚠️ 显式写下的 `true` 读出来仍是 `true`：改的是**默认**，不是存量。
     allowResubmit: settings.allowResubmit === true,

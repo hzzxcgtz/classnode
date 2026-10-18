@@ -10683,7 +10683,6 @@ tr:hover td {
 .worksheet-settings-background-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #172033; font-size: .875rem; }
 .worksheet-settings-opacity-heading { margin-top: 0; margin-bottom: 10px; }
 .worksheet-settings-dialog .worksheet-editor-reward-points { display: flex; align-items: center; justify-content: center; height: 38px; font-size: .95rem; font-weight: 600; color: inherit; }
-.worksheet-editor-ai-rubric textarea { min-height: 220px; }
 
 @media (max-width: 640px) {
   .worksheet-settings-appearance-preview { grid-template-columns: 108px minmax(0, 1fr); gap: 12px; }
@@ -10702,3 +10701,78 @@ tr:hover td {
 .worksheet-ipad-hover .worksheet-settings-background-card strong { font-size: .75rem; }
 .worksheet-ipad-hover .worksheet-settings-background-card > span { padding: 0; border: 0; }
 .worksheet-editor-canvas > .worksheet-editor-canvas-head { align-items: flex-start; }
+
+/* Evaluation fields follow the existing worksheet editor hierarchy and input styles. */
+.worksheet-editor-evaluation-basis { display: grid; gap: 12px; }
+.worksheet-editor-question .worksheet-editor-question-section .worksheet-editor-evaluation-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 112px;
+  padding: 12px 14px;
+  border: 1px solid #AEBCCD;
+  border-radius: 8px;
+  background: #fff;
+  color: #1E293B;
+  font-family: inherit;
+  font-size: .875rem;
+  font-weight: 400;
+  line-height: 1.7;
+  resize: vertical;
+}
+.worksheet-editor-question .worksheet-editor-evaluation-input::placeholder { color: #8292A6; font-weight: 400; }
+.worksheet-editor-question .worksheet-editor-evaluation-input:focus { border-color: #587897; outline: 2px solid #DCE6F2; outline-offset: 1px; }
+.worksheet-editor-question .worksheet-editor-analysis-focus .worksheet-editor-evaluation-input { min-height: 96px; }
+.worksheet-editor-question .worksheet-editor-block-head h4 > label { font: inherit; color: inherit; cursor: pointer; }
+.worksheet-editor-question .drawing-evaluation-settings .worksheet-editor-reference-block { margin-top: 0; }
+.worksheet-editor-question .drawing-evaluation-settings > .worksheet-editor-evaluation-basis,
+.worksheet-editor-question .drawing-evaluation-settings > .worksheet-editor-analysis-focus { margin-top: 18px; padding: 18px 0 0; border-top: 1px solid #CDD5E0; }
+.worksheet-editor-question .drawing-evaluation-settings > .worksheet-editor-ai-scoring { margin-top: 18px; padding-top: 18px; }
+.worksheet-editor-question .worksheet-editor-analysis-settings { padding: 16px 18px; margin-top: 18px; border: 1px solid #CDD5E0; border-radius: 10px; background: #F3F5F8; }
+.worksheet-editor-question .worksheet-editor-analysis-settings > .worksheet-editor-analysis-focus { padding: 0; border: 0; }
+.worksheet-editor-question-section.is-grading .worksheet-editor-head-actions > label { display: inline-flex; align-items: center; gap: 6px; padding: 8px; font-size: .8125rem; cursor: pointer; }
+@media (max-width: 720px) {
+  .worksheet-editor-question .worksheet-editor-analysis-settings { padding: 14px; }
+  .worksheet-editor-question .worksheet-editor-question-section .worksheet-editor-evaluation-input { padding: 10px 12px; font-size: .875rem; }
+}
+
+.worksheet-settings-curriculum { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.worksheet-settings-curriculum .worksheet-editor-field { margin: 0; }
+@media (max-width: 520px) { .worksheet-settings-curriculum { grid-template-columns: minmax(0, 1fr); } }
+
+/* 看板开放控制固定在视口边缘；展开后列表独立滚动，不推挤看板。 */
+.worksheet-release-panel { position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 255; color: #243B53; }
+.worksheet-release-trigger { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 30px; min-height: 120px; box-sizing: border-box; padding: 10px 4px; border: 1px solid #B8CADC; border-right: 0; border-radius: 10px 0 0 10px; background: #F5F8FC; color: #365F91; box-shadow: -2px 2px 8px rgb(36 59 83 / 9%); cursor: pointer; }
+.worksheet-release-trigger strong { display: block; writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 3px; font-size: .75rem; }
+.worksheet-release-trigger small { display: none; }
+.worksheet-release-trigger > span:last-child { font-size: 1.125rem; line-height: 1; }
+.worksheet-release-panel.is-expanded { right: 12px; }
+.worksheet-release-panel.is-expanded .worksheet-release-trigger { display: none; }
+.worksheet-release-content { display: flex; flex-direction: column; width: 310px; max-width: calc(100vw - 32px); max-height: 70vh; padding: 16px; box-sizing: border-box; border: 1px solid #C5D3E3; border-radius: 14px; background: #fff; box-shadow: 0 8px 32px rgb(36 59 83 / 18%); }
+.worksheet-release-content > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.worksheet-release-content > header strong { display: block; font-size: .9375rem; }
+.worksheet-release-content > header small { display: block; margin-top: 4px; font-size: .75rem; color: #61788F; }
+.worksheet-release-collapse { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 1px solid #D5DFEA; border-radius: 7px; background: #F5F8FC; color: #526982; font-size: 1.25rem; cursor: pointer; }
+.worksheet-release-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; font-size: .8125rem; font-weight: 600; }
+.worksheet-release-content .input { width: 100%; min-height: 38px; font-size: .8125rem; }
+.worksheet-release-help { margin: 10px 0 12px; color: #61788F; font-size: .75rem; line-height: 1.6; }
+.worksheet-release-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 0 2px 2px; list-style: none; }
+.worksheet-release-list > li { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; padding: 10px; border: 1px solid #E0E6EE; border-radius: 9px; background: #fff; }
+.worksheet-release-list > li.is-open { background: #F0F5FA; border-color: #CDDAE7; }
+.worksheet-release-list > li.is-viewing { border-color: #365F91; box-shadow: inset 3px 0 #365F91; }
+.worksheet-release-view { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; color: inherit; cursor: pointer; }
+.worksheet-release-view strong, .worksheet-release-view span, .worksheet-release-view small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.worksheet-release-view strong { font-size: .8125rem; }
+.worksheet-release-view span { margin-top: 4px; font-size: .75rem; color: #526982; }
+.worksheet-release-view small { margin-top: 5px; font-size: .6875rem; color: #7B8796; }
+.is-open > .worksheet-release-view small { color: #3F7859; }
+.worksheet-release-action { flex-shrink: 0; padding: 6px 8px; border: 1px solid #B8CADC; border-radius: 6px; background: #fff; color: #365F91; font-size: .75rem; cursor: pointer; }
+.worksheet-release-action.is-withdraw { border-color: #D8DFE7; color: #68798B; }
+.worksheet-release-action:disabled { opacity: .5; cursor: wait; }
+.worksheet-release-next { width: 100%; flex-shrink: 0; margin-top: 12px; font-size: .8125rem; }
+.worksheet-release-complete { margin: 12px 0 0; text-align: center; color: #3F7859; font-size: .8125rem; }
+.worksheet-release-panel button:focus { outline: 2px solid #7C9BB9; outline-offset: 2px; }
+@media (max-width: 760px) {
+  .worksheet-release-panel.is-expanded { right: 8px; }
+  .worksheet-release-content { max-height: 65vh; width: 290px; padding: 12px; }
+}

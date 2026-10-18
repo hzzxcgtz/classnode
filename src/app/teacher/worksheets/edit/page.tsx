@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 // ★ 2026-09-27：「悬停看大图」那张浮层要 portal 到 body（理由见 SettingsModal 里那段注释）。
 import { createPortal } from 'react-dom';
 import type { PointerEvent as ReactPointerEvent } from 'react';
+import { WORKSHEET_GRADES, WORKSHEET_SUBJECTS, worksheetCurriculumError, worksheetTemplateRecommendation } from '@/lib/worksheet-curriculum';
 import { useSearchParams } from 'next/navigation';
 import { TeacherEmptyState, TeacherLoadingState, Toast, useTeacherConfirm } from '@/lib/components';
 import type { AgentSummary, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
@@ -794,7 +795,7 @@ function AddQuestionPicker({ onPick, onClose }: {
             指的是键盘 / 手写 / 拍照，两处撞词（教师在这里选的是**题型**）。 */}
         <p className="worksheet-editor-dialog-note">选择题型。添加后可从左侧抓住拖动把手调整顺序。</p>
         <div className="worksheet-editor-type-list">
-          {QUESTION_TYPE_OPTIONS.filter(option => option.value !== 'choice-blank' && option.value !== 'multi-choice').map(option => (
+          {QUESTION_TYPE_OPTIONS.filter(option => option.value !== 'choice-blank' && option.value !== 'multi-choice' && option.value !== 'open-ended').map(option => (
             <button key={option.value} type="button" className="worksheet-editor-type-option" onClick={() => onPick(option.value)}>
               <span className="worksheet-editor-type-option-icon">{questionTypeIcon(option.value)}</span>
               <span className="worksheet-editor-type-option-copy">
@@ -928,6 +929,8 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
 
   const submit = async () => {
     if (saving) return;
+    const curriculumError = worksheetCurriculumError(settings);
+    if (curriculumError) { setSaveError(curriculumError); return; }
     setSaving(true);
     setSaveError('');
     const message = await onSave();
@@ -1019,6 +1022,26 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
         */}
         <div className="worksheet-settings-body">
           <section className="worksheet-settings-section">
+            <div className="worksheet-settings-section-head"><div><strong>适用年级与学科</strong><em>必填，仅设置这张学习单的适用对象。学段由年级确定，AI 分析会使用这些信息。</em></div></div>
+            <div className="worksheet-settings-curriculum">
+              <label className="worksheet-editor-field"><span>适用年级</span>
+                <select className="input" required aria-label="学习单适用年级" value={settings.gradeLevel ?? ''}
+                  onChange={event => onSettingsChange({ gradeLevel: event.target.value ? Number(event.target.value) : null })}>
+                  <option value="">请选择年级</option>
+                  {WORKSHEET_GRADES.map(grade => <option key={grade.value} value={grade.value}>{grade.label}</option>)}
+                </select>
+              </label>
+              <label className="worksheet-editor-field"><span>学科</span>
+                <select className="input" required aria-label="学习单学科" value={settings.subject ?? ''}
+                  onChange={event => onSettingsChange({ subject: event.target.value || null })}>
+                  <option value="">请选择学科</option>
+                  {WORKSHEET_SUBJECTS.map(subject => <option key={subject} value={subject}>{subject}</option>)}
+                </select>
+              </label>
+            </div>
+            <p className="worksheet-settings-help">旧学习单未填写时请手动选择，不根据学习单标题或班级名称自动推测。</p>
+          </section>
+          <section className="worksheet-settings-section">
             <div className="worksheet-settings-section-head"><div><strong>作答规则</strong></div></div>
             <fieldset className="worksheet-answer-mode">
               <legend>题目开放方式</legend>
@@ -1034,8 +1057,8 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
               <div className="worksheet-answer-mode-options is-row">
                 {[
                   { value: 'open', title: '开放式', note: '全部题目一次放开' },
-                  { value: 'task-step', title: '按任务分步', note: '做完任务开下一个' },
-                  { value: 'question-step', title: '按小题分步', note: '做完一题开下一题' },
+                  { value: 'task-step', title: '按任务分步', note: '提交本任务后解锁下一任务' },
+                  { value: 'question-step', title: '按小题分步', note: '提交当前题后解锁下一题' },
                   // ★ 第四档：**教师**推进（前两档是学生交卷推进）。
                   // 控制界面在看板头部的「学习单 ⋯ 逐题开放」里（`W ORKSHEET_MENU_ITEMS`）。
                   { value: 'manual', title: '手动开放', note: '教师逐题开放' },
@@ -1103,6 +1126,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
                   绘图题也需要通过 Coze 分析」那半句 —— 它在**配错平台**的时候才会用到，
                   而那时教师看到的是下拉里没有候选，去智能体管理那一页自然会看见。 */}
               {analysisAgents.length === 0 && <em className="worksheet-settings-help">暂无分析智能体，请先到「智能体管理」添加。</em>}
+              {worksheetTemplateRecommendation(settings) && <em className="worksheet-settings-help">建议配置“{worksheetTemplateRecommendation(settings)}”分析模板。请确认所选智能体的外部提示词与本单学科、学段相符；系统不会自动替换。<a href="/teacher/agents/templates/" target="_blank" rel="noreferrer">查看模板库</a></em>}
             </label>
           </section>
         {/* 奖励形式（规格 §9.2）。🔴 它是**这一张单**的配置，不是全局设置 ——

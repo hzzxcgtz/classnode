@@ -218,8 +218,8 @@ test('开启 AI 评分时消息带满分、评分标准与机器块协议；关�
   assert.match(message, /<classnode-scores>/);
   assert.match(message, /"advice"/, '机器协议必须要求逐生返回详细建议');
   assert.match(message, /用“你”称呼/);
-  assert.match(message, /立即操作的步骤和检查方法/);
-  assert.match(message, /全部正确时提供与本题相关的巩固做法或小拓展/);
+  assert.match(message, /下一步与检查方法/);
+  assert.match(message, /已达标时提供相关的巩固方法或小拓展/);
   // ★ 2026-10-07：示例里的 `student` 也跟着换成新标签 —— 留一个旧形状的示例，
   // 模型会照着它编 `User_00X` 出来（而名单里根本没有那些代号 ⇒ 整班收不到分）。
   assert.match(message, /"student":"张伟#7"/);

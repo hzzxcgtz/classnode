@@ -68,3 +68,24 @@ test('补评中停止时不再发送下一批或更新班级分析', async () =>
   await assert.rejects(runWorksheetAnalysisSteps(value, {}, async () => { calls++; throw new Error('分析已停止'); }, async () => { assert.fail('停止后不再刷新并发起下一步'); }), /分析已停止/);
   assert.equal(calls, 1);
 });
+
+test('未开启 AI 评分的信息收集题只生成或更新分析，不提示补评完成', async () => {
+  for (const narrative of ['', '已有班级分析']) {
+    const value = payload();
+    value.aiScoring.enabled = false;
+    value.narrative = narrative;
+    const calls: unknown[] = [];
+    const progress: string[] = [];
+    await runWorksheetAnalysisSteps(value, {}, async options => { calls.push(options); return 'ok'; }, async () => { assert.fail('未执行补评，不应核对评分'); }, message => progress.push(message));
+    assert.deepEqual(calls, [{ analysisOnly: true }]);
+    assert.deepEqual(progress, [`正在${narrative ? '更新' : '生成'}班级分析，请稍等…`]);
+  }
+});
+
+test('明确选择只分析时，即使开启评分且存在未评学生，也不提示补评完成', async () => {
+  const calls: unknown[] = [];
+  const progress: string[] = [];
+  await runWorksheetAnalysisSteps(payload(), { analysisOnly: true }, async options => { calls.push(options); return 'ok'; }, async () => { assert.fail('只分析不核对评分'); }, message => progress.push(message));
+  assert.deepEqual(calls, [{ analysisOnly: true }]);
+  assert.deepEqual(progress, ['正在生成班级分析，请稍等…']);
+});

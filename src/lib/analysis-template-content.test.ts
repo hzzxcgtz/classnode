@@ -10,7 +10,7 @@ test('页面能区分可优化与固定内容，复制正文不包含教师编�
   assert.match(parts.fixed, /## 限制：/);
   assert.match(parts.fixed, /默认显示姓氏称呼、悬停显示完整姓名/);
   assert.doesNotMatch(parts.prompt, /可优化区|固定区|以下规则用于/);
-  assert.match(parts.prompt, /student.*姓名#学号/);
+  assert.match(parts.prompt, /学生标签采用“姓名#学号”/);
 });
 test('无分区的旧模板保持原文，不会错误截断', () => {
   assert.equal(analysisTemplateParts('# 角色：旧模板\n## 限制：原有规则').prompt, '# 角色：旧模板\n## 限制：原有规则');

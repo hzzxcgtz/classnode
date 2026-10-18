@@ -274,3 +274,32 @@ test('阴性对照 · question-step 档仍然按**提交进度**顺序解锁（�
   const after = await put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_2', value: FILL('H2O') }, bearer(token));
   assert.equal(after.status, 200, `交完前一道之后必须解锁：${after.status}`);
 });
+
+for (const [index, mode] of ['question-step', 'task-step'].entries()) {
+  test(`${mode}：忽略残留手动开放清单，未提交前题时后题仍锁定`, async (t) => {
+    const { put, post, prisma } = await withServer(t);
+    const { worksheet, token } = await seed(prisma, `920${index}`, mode, ['q_2']);
+    const saved = await put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_2', value: FILL('H2O') }, bearer(token));
+    assert.equal(saved.status, 409, await saved.text());
+    const submitted = await post(`/api/worksheets/${worksheet.id}/answers/submit`, { questionId: 'q_2' }, bearer(token));
+    assert.equal(submitted.status, 409, await submitted.text());
+    assert.equal(await prisma.worksheetAnswer.count({ where: { questionId: 'q_1' } }), 0);
+    assert.equal(await prisma.worksheetAnswer.count({ where: { questionId: 'q_2' } }), 0);
+  });
+}
+
+test('task-step：残留开放清单不会解锁后续任务', async (t) => {
+  const { put, prisma } = await withServer(t);
+  const { worksheet, token } = await seed(prisma, '9203', 'task-step', ['q_2']);
+  const task = (id: string, children: typeof CONTENT.nodes) => ({ id, type: 'task', prompt: id, inputMode: 'keyboard', data: {}, children });
+  await prisma.worksheet.update({ where: { id: worksheet.id }, data: { content: { ...CONTENT, nodes: [
+    task('t1', [CONTENT.nodes[0]]),
+    task('t2', [CONTENT.nodes[1], { ...CONTENT.nodes[1], id: 'q_3' }]),
+    task('t3', [{ ...CONTENT.nodes[1], id: 'q_4' }]),
+  ] } } });
+  const allowed = await put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_3', value: FILL('H2O') }, bearer(token));
+  assert.equal(allowed.status, 409, await allowed.text());
+  const blocked = await put(`/api/worksheets/${worksheet.id}/answers`, { questionId: 'q_4', value: FILL('H2O') }, bearer(token));
+  assert.equal(blocked.status, 409);
+  assert.equal((await blocked.json()).code, 'worksheet-step-locked');
+});

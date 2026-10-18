@@ -112,7 +112,7 @@ export function AgentCredentialsFields(props: AgentCredentialsFieldsProps) {
 
   return (
     <>
-      {platform === 'coze' && <RequiredField label="Bot ID" value={props.botId} placeholder="在 Coze 机器人发布页获取 Bot ID，纯数字" error={fieldErrors.botId} onChange={update('botId')} />}
+      {platform === 'coze' && <RequiredField label="Bot ID" value={props.botId} placeholder="智能体编辑页地址栏中的最后一串数字" error={fieldErrors.botId} onChange={update('botId')} />}
       {platform === 'wenxin' && <RequiredField label="App ID" value={props.botId} placeholder="在文心智能体平台获取 App ID" error={fieldErrors.botId} onChange={update('botId')} />}
       {platform === 'zhipuai' && <RequiredField label="Assistant ID" value={props.botId} placeholder="智能体对话页地址栏中的 ID" error={fieldErrors.botId} onChange={update('botId')} />}
       {platform === 'coze-agent' && (

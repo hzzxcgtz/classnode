@@ -357,6 +357,10 @@ test('🔴 每个题型在抽屉里都「有话说」—— 没有哪个题型�
       node: node({ id: 's5', type: 'short-answer' }),
       value: { format: 'text/v1', text: '光合作用' },
     },
+    'open-ended': {
+      node: node({ id: 'open', type: 'open-ended' }),
+      value: { format: 'text/v1', text: '我觉得可以先观察，再提出自己的猜想。' },
+    },
     order: {
       node: node({ id: 's6', type: 'order', data: { items: [{ id: 'i1', text: '苹果' }] } }),
       value: { format: 'order/v1', order: ['i1'] },
@@ -727,6 +731,7 @@ const EXPECTED_GRADED: Record<QuestionType, boolean> = {
   // ★ 2026-09-26：选择填空**判分**（与填空题共用判分器）。
   'choice-blank': true,
   'short-answer': false,
+  'open-ended': false,
   // ★ M4b：`drawing: false` **是有意的决定，不是补测试** —— 手写 / 绘图不参与自动判分
   // （规格 §12 裁定 3）。这一格决定了看板抽屉里画不画 ✓/½/✗。
   // ⊘ 2026-09-24（E1）：这一句原写作「服务端 `JUDGES` 里没有它」—— **B1 之后它不成立了**：

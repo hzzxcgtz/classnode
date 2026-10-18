@@ -62,7 +62,7 @@ function valueOf(type: string): unknown {
       return { format: 'choice/v1', selected: ['a'] };
     case 'fill-blank':
       return { format: 'fill-multi/v1', texts: ['甲'] };
-    case 'short-answer':
+    case 'short-answer': case 'open-ended':
       return { format: 'text/v1', text: '我的看法' };
     case 'order':
       return { format: 'order/v1', order: ['a', 'b'] };
@@ -80,13 +80,13 @@ function valueOf(type: string): unknown {
   }
 }
 
-test('阳性对照：夹具本身要立得住（可判分题判出分、两个主观题不判分）', () => {
+test('阳性对照：夹具本身要立得住（可判分题判出分、主观题及旧开放题不判分）', () => {
   assert.ok(ANSWERABLE_TYPES.length > 2, '题型表里不止两个题型，否则本用例空转');
   const graded = ANSWERABLE_TYPES.filter((t) => grade(nodeOf(t), valueOf(t), DEFAULT_POINTS) !== null);
-  assert.equal(graded.length, ANSWERABLE_TYPES.length - 2,
-    `夹具应当让「除那两个之外」全部判出分，实际判出分的：${graded.join(', ')}`);
-  // 两个主观题必须恰好回 null（夹具的答案值不是 ink，所以 drawing 走的是「题型」那一格闸）
-  for (const t of ['short-answer', 'drawing']) {
+  assert.equal(graded.length, ANSWERABLE_TYPES.length - 3,
+    `夹具应当让「除主观题及旧开放题之外」全部判出分，实际判出分的：${graded.join(', ')}`);
+  // 主观题及旧开放题必须恰好回 null（夹具的答案值不是 ink，所以 drawing 走的是「题型」那一格闸）
+  for (const t of ['short-answer', 'drawing', 'open-ended']) {
     assert.equal(grade(nodeOf(t), valueOf(t), DEFAULT_POINTS), null, `${t} 不该判分`);
   }
 });

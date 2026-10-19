@@ -392,3 +392,20 @@ test('有评价依据的作答分析保留教学结构，不采用调查结构�
     assert.match(message, /不生成班级报告/);
   }
 });
+
+
+test('班级分析统一发送400～600字参考与证据深度要求，个人评价和补评不受此要求影响', () => {
+  for (const kind of ['text', 'image', 'mixed'] as const) {
+    for (const analysisMode of ['collection', 'guided', 'open']) {
+      const payload = { ...payloadOf(kind), analysisMode };
+      const message = buildAnalysisMessage(payload);
+      assert.match(message, /400～600字中文正文/);
+      assert.match(message, /发现了什么 → 作答依据是什么 → 对教师有什么意义/);
+      assert.match(message, /不含标题、名单标签、链接地址、逐生反馈及机器数据块/);
+      assert.match(message, /不因不足400字而凑话/);
+      for (const mode of ['individual', 'supplement'] as const) {
+        assert.doesNotMatch(buildAnalysisMessage(payload, true, mode), /400～600字中文正文/);
+      }
+    }
+  }
+});

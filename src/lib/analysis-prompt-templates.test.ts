@@ -23,6 +23,9 @@ test('each school stage and subject has one complete standalone Markdown prompt'
     assert.match(text, /不是几个举例学生/);
     assert.match(text, /默认只需“主要发现”和“后续建议”/);
     assert.match(text, /不穷举全部组合/);
+    assert.match(text, /400～600字中文正文/);
+    assert.match(text, /作答依据是什么/);
+    assert.match(text, /不含标题、名单标签、链接地址、逐生反馈及机器数据块/);
     assert.match(text, /不在正文逐人列姓名或并排放12个单人链接/);
     assert.match(text, /列入可评分名单/);
     assert.match(text, /`score` 返回 `null`/);

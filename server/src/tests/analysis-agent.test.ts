@@ -370,7 +370,7 @@ test('信息收集的三种载荷使用调查结构、完整分类名单及数�
     });
     const msg = buildAnalysisMessage(payload);
     assert.match(msg, /分析用途：信息收集/);
-    for (const title of ['回答概况与分布', '共性发现与作答依据', '差异与待核实信息', '后续行动建议']) assert.ok(msg.includes('### ' + title));
+    for (const title of ['主要发现', '值得关注的差异', '后续建议']) assert.ok(msg.includes('### ' + title));
     assert.match(msg, /groups 包含该类全部且仅符合条件的学生/);
     assert.match(msg, /去重人数/);
     assert.match(msg, /分母/);
@@ -385,10 +385,10 @@ test('有评价依据的作答分析保留教学结构，不采用调查结构�
   const payload = payloadOf('text');
   const msg = buildAnalysisMessage(payload);
   assert.match(msg, /默认包含核心结论/);
-  assert.doesNotMatch(msg, /### 回答概况与分布/);
+  assert.doesNotMatch(msg, /### 主要发现/);
   for (const mode of ['individual', 'supplement'] as const) {
     const message = buildAnalysisMessage({ ...payload, analysisMode: 'collection' }, true, mode);
-    assert.doesNotMatch(message, /### 回答概况与分布|<classnode-feedback>/);
+    assert.doesNotMatch(message, /### 主要发现|<classnode-feedback>/);
     assert.match(message, /不生成班级报告/);
   }
 });

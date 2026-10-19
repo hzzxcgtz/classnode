@@ -68,7 +68,7 @@ function StudentGroupHint({ students, onOpenStudent }: { students: { id: string;
 
 /** 名单只来自服务端校验过的学生 ID，不从报告文字猜学生身份。 */
 export function AnalysisReport({ text, payload, className, onOpenStudent }: { text: string; payload: WorksheetAnalysisPayload; className?: string; onOpenStudent?: (id: string) => void }) {
-  const report = classReportContent(text, payload.entries, payload.participantNames ?? {});
+  const report = classReportContent(text, payload.entries, payload.participantNames ?? {}, payload.feedback?.groups ?? []);
   const groups = [...(payload.feedback?.groups ?? []), ...report.groups];
   return <Markdown className={className} allowImages={false} renderLink={(href) => {
     if (!href?.startsWith('#classnode-group-')) return undefined;

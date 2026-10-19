@@ -78,3 +78,23 @@ test('附属名单包含实质作答依据时不据其猜测整组成员，同�
   assert.match(ambiguous.text, /#classnode-group-unverified/);
   assert.deepEqual(ambiguous.groups, []);
 });
+
+test('同一类别中连续的单人链接收拢成一个去重整组名单', () => {
+  const source = '选A和E的学生共2人：[甲](#classnode-group-g1)、[乙](#classnode-group-g2)、[甲](#classnode-group-g1)，偏好互动活动。';
+  const report = classReportContent(source, entries, {a:'张伟',b:'李芳'}, [
+    {id:'g1',studentIds:['a']}, {id:'g2',studentIds:['b']},
+  ]);
+  assert.equal((report.text.match(/#classnode-group-/g) ?? []).length, 1);
+  assert.deepEqual(report.groups[report.groups.length - 1]?.studentIds, ['a','b']);
+  assert.match(report.text, /选A和E的学生共2人/);
+  assert.match(report.text, /偏好互动活动/);
+});
+
+test('裸姓名列表也收拢，但不同发现与身份待核实链接不能合并', () => {
+  const report = classReportContent('运动类：张伟、李芳。', entries, {a:'张伟',b:'李芳'});
+  assert.equal((report.text.match(/#classnode-group-/g) ?? []).length, 1);
+  assert.deepEqual(report.groups[report.groups.length - 1]?.studentIds, ['a','b']);
+  const source = '运动：[甲](#classnode-group-g1)，阅读：[乙](#classnode-group-g2)。\n[甲](#classnode-group-g1)、[待核实](#classnode-group-unknown)';
+  const separate = classReportContent(source, entries, {a:'张伟',b:'李芳'}, [{id:'g1',studentIds:['a']},{id:'g2',studentIds:['b']}]);
+  assert.equal(separate.text, source);
+});

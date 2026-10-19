@@ -1,7 +1,7 @@
 import { extractAnalysisProtocol, analysisProtocolJson } from '../../server/src/services/analysis-protocol.ts';
 
 /** 兼容历史报告里的显式姓名：正文隐藏，只有能唯一对应名单时提供悬停名单。 */
-export function classReportContent(text: string, entries: readonly { studentId: string; anonLabel: string }[], names: Record<string, string>) {
+export function classReportContent(text: string, entries: readonly { studentId: string; anonLabel: string }[], names: Record<string, string>, referenceGroups: readonly { id: string; studentIds: string[] }[] = []) {
   const replacements = new Map<string, Set<string>>();
   for (const entry of entries) {
     for (const label of [entry.anonLabel, names[entry.studentId]].filter(Boolean)) {
@@ -74,6 +74,21 @@ export function classReportContent(text: string, entries: readonly { studentId: 
     content = content.split(label).join(marker);
   }
   content = content.replace(/\uE000(\d+)\uE001/g, (_, index: string) => slots[Number(index)] ?? '相关同学');
+  // A model may list a category's students as adjacent links or raw names.
+  // Collapse only uninterrupted lists, preserving narrative and unknown identities.
+  const known = new Map([...groups, ...referenceGroups].map(group => [group.id, group.studentIds]));
+  const allowed = new Set(entries.map(entry => entry.studentId));
+  content = content.replace(/\[[^\]\n]*\]\(#classnode-group-[\w-]+\)(?:[ \t]*[、，,][ \t]*\[[^\]\n]*\]\(#classnode-group-[\w-]+\))+/g, list => {
+    const ids = [...list.matchAll(/\(#classnode-group-([\w-]+)\)/g)].map(match => known.get(match[1]));
+    if (ids.some(group => !group?.length || group.some(id => !allowed.has(id)))) return list;
+    const students = [...new Set(ids.flatMap(group => group!))];
+    let index = groups.length + 1;
+    while (known.has(`merged${index}`)) index++;
+    const id = `merged${index}`;
+    groups.push({ id, studentIds: students });
+    known.set(id, students);
+    return `[查看名单](#classnode-group-${id})`;
+  });
   return { text: content, groups };
 }
 

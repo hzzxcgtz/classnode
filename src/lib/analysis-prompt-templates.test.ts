@@ -21,6 +21,9 @@ test('each school stage and subject has one complete standalone Markdown prompt'
     assert.match(text, /### B. 作答与学习表现分析/);
     assert.match(text, /每类明确写“N人”/);
     assert.match(text, /不是几个举例学生/);
+    assert.match(text, /默认只需“主要发现”和“后续建议”/);
+    assert.match(text, /不穷举全部组合/);
+    assert.match(text, /不在正文逐人列姓名或并排放12个单人链接/);
     assert.match(text, /列入可评分名单/);
     assert.match(text, /`score` 返回 `null`/);
     assert.match(text, /教师提供的初始图不是学生成果/);

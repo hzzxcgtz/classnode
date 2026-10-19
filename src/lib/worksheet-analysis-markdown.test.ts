@@ -65,7 +65,7 @@ test('智能体返回普通文字或引用中的小节名时仍显示为标题',
 
 
 test('信息收集报告的小节保留专用结构，不改写为教学讲评标题', () => {
-  for (const title of ['回答概况与分布', '共性发现与作答依据', '差异与待核实信息', '后续行动建议']) {
+  for (const title of ['主要发现', '值得关注的差异', '后续建议']) {
     assert.equal(normalizeWorksheetAnalysisMarkdown(title + '\n实际内容'), '### ' + title + '\n实际内容');
   }
 });

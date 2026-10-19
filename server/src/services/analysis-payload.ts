@@ -441,7 +441,7 @@ export function buildTextDocument(
     ...(question.analysisFocus ? [`当前任务分析重点：${question.analysisFocus}`] : []),
     `任务要求：${question.prompt || '（任务要求为空）'}`,
     `任务材料：${question.details || '（没有额外任务材料）'}`,
-    `参考答案：${question.referenceAnswer || '（未提供参考答案）'}`,
+    ...(question.analysisMode === 'collection' ? ['分析用途：信息收集（不判对错、不评分）', '无标准答案；参考材料仅供理解调查背景。'] : [`参考答案：${question.referenceAnswer || '（未提供参考答案）'}`]),
     `评分标准：${question.rubricText || '（未提供评分标准）'}`,
     `评分标准图片：${question.rubricImageUrl ? '已作为图片附件提供' : '（未提供）'}`,
     `已交 ${covered}/${total}`,
@@ -720,7 +720,11 @@ export function buildAnalysisPayload(input: {
   participants: Participant[];
   textLimit?: number;
 }): AnalysisPayload {
-  const { question, total, participants } = input;
+  const { total, participants } = input;
+  // Information collection never inherits a stale answer key or scoring switch.
+  const question = input.question.analysisMode === 'collection'
+    ? { ...input.question, openEnded: true, aiScoring: { ...(input.question.aiScoring ?? { maxScore: 10, unit: '分', criteria: '' }), enabled: false } }
+    : input.question;
   const entries = question.openEnded ? input.entries.map(entry => ({ ...entry, gradeState: null })) : input.entries;
   const knobs = question.photoWriting && entries.some(entry => entry.kind === 'photo')
     ? {

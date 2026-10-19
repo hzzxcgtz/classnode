@@ -17,6 +17,10 @@ test('each school stage and subject has one complete standalone Markdown prompt'
     const row = matches[0];
     const text = fs.readFileSync(path.join(root, 'public', row.file), 'utf8');
     assert.match(text, /姓名#学号/);
+    assert.match(text, /### A. 信息收集/);
+    assert.match(text, /### B. 作答与学习表现分析/);
+    assert.match(text, /每类明确写“N人”/);
+    assert.match(text, /不是几个举例学生/);
     assert.match(text, /列入可评分名单/);
     assert.match(text, /`score` 返回 `null`/);
     assert.match(text, /教师提供的初始图不是学生成果/);

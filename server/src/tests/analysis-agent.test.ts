@@ -358,3 +358,37 @@ test('★ 一份可评的都没有 ⇒ 明确让模型「不要给任何人评�
   const message = buildAnalysisMessage({ ...payload, aiScoring: { enabled: true, maxScore: 5, unit: '分', criteria: '' } });
   assert.match(message, /不要给任何人评分/, '一份可评的都没有时还要求评分 —— 那就是明着让模型编');
 });
+
+
+test('信息收集的三种载荷使用调查结构、完整分类名单及数量口径，不发送默认讲评指令', () => {
+  for (const kind of ['text', 'image', 'mixed'] as const) {
+    const payload = buildAnalysisPayload({
+      question: { questionId: 'survey', typeLabel: '多选题', prompt: '选择喜欢的活动', heading: '任务1', analysisMode: 'collection',
+        referenceAnswer: '旧标准答案A', aiScoring: { enabled: true, maxScore: 5, unit: '分', criteria: '' } },
+      entries: kind === 'text' ? textEntries : kind === 'image' ? [inkEntry('p1')] : [textEntries[0], inkEntry('p2')],
+      total: 40, knobs: DEFAULT_ANALYSIS_KNOBS, participants: [],
+    });
+    const msg = buildAnalysisMessage(payload);
+    assert.match(msg, /分析用途：信息收集/);
+    for (const title of ['回答概况与分布', '共性发现与作答依据', '差异与待核实信息', '后续行动建议']) assert.ok(msg.includes('### ' + title));
+    assert.match(msg, /groups 包含该类全部且仅符合条件的学生/);
+    assert.match(msg, /去重人数/);
+    assert.match(msg, /分母/);
+    assert.doesNotMatch(msg, /默认包含核心结论|旧标准答案A|本地统计：|【AI 评分】已开启|<classnode-scores>/);
+    assert.equal(payload.aiScoring.enabled, false);
+    assert.equal(payload.openEnded, true);
+    assert.match(msg, /<classnode-feedback>/);
+  }
+});
+
+test('有评价依据的作答分析保留教学结构，不采用调查结构；个人和补评不生成班级调查报告', () => {
+  const payload = payloadOf('text');
+  const msg = buildAnalysisMessage(payload);
+  assert.match(msg, /默认包含核心结论/);
+  assert.doesNotMatch(msg, /### 回答概况与分布/);
+  for (const mode of ['individual', 'supplement'] as const) {
+    const message = buildAnalysisMessage({ ...payload, analysisMode: 'collection' }, true, mode);
+    assert.doesNotMatch(message, /### 回答概况与分布|<classnode-feedback>/);
+    assert.match(message, /不生成班级报告/);
+  }
+});

@@ -54,10 +54,10 @@ test('截图中评分协议与大段逐生 JSON 在姓名替换前隔离，旧�
 });
 
 test('名单按钮单人显示实际姓氏，多人加等，复姓与外文名称不截错', () => {
-  assert.equal(reportStudentLabel(['张伟']),'张同学');
-  assert.equal(reportStudentLabel(['张伟','李芳']),'张同学等');
-  assert.equal(reportStudentLabel(['司马懿']),'司马同学');
-  assert.equal(reportStudentLabel(['比尔·希恩斯']),'比尔·希恩斯同学');
+  assert.equal(reportStudentLabel(['张伟']),'1人 · 张同学');
+  assert.equal(reportStudentLabel(['张伟','李芳']),'2人 · 张同学等');
+  assert.equal(reportStudentLabel(['司马懿']),'1人 · 司马同学');
+  assert.equal(reportStudentLabel(['比尔·希恩斯']),'1人 · 比尔·希恩斯同学');
 });
 
 test('同一全班链接被 AI 复用时，每处明确举例名单独立关联，单人不会展开全班', () => {

@@ -62,3 +62,10 @@ test('引号包裹的重点紧接中文与冒号时补齐强调边界', () => {
 test('智能体返回普通文字或引用中的小节名时仍显示为标题', () => {
   assert.equal(normalizeWorksheetAnalysisMarkdown('> 核心结论\n> 保留正文。\n\n典型表现与作答依据\n正文\n\n关键认识或方法\n正文\n\n课堂讲评方案\n正文\n\n讲评后检查\n正文'), '### 核心结论\n> 保留正文。\n\n### 典型表现与作答依据\n正文\n\n### 关键认识或方法\n正文\n\n### 课堂讲评方案\n正文\n\n### 讲评后检查\n正文');
 });
+
+
+test('信息收集报告的小节保留专用结构，不改写为教学讲评标题', () => {
+  for (const title of ['回答概况与分布', '共性发现与作答依据', '差异与待核实信息', '后续行动建议']) {
+    assert.equal(normalizeWorksheetAnalysisMarkdown(title + '\n实际内容'), '### ' + title + '\n实际内容');
+  }
+});

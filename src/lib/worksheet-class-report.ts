@@ -85,5 +85,5 @@ export function reportStudentLabel(names: readonly string[]): string {
   const surname = /^[\p{Script=Han}]+$/u.test(name)
     ? compound.find(prefix => name.startsWith(prefix)) ?? Array.from(name)[0]
     : name;
-  return `${surname}同学${names.length > 1 ? '等' : ''}`;
+  return `${names.length}人 · ${surname}同学${names.length > 1 ? '等' : ''}`;
 }

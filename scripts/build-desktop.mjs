@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import fs from 'node:fs';
 import { root, requireRuntime, run } from './lib/project.mjs';
-import { requireMacIconTools } from './lib/macos-icon.mjs';
+import { macIconBuildOptions } from './lib/macos-icon.mjs';
 
 const targets = {
   'aarch64-apple-darwin': { platform: 'darwin', bundle: 'dmg' },
@@ -26,11 +27,14 @@ target ||= /^host: (.+)$/m.exec(execFileSync('rustc', ['-vV'], { encoding: 'utf8
 const config = targets[target];
 if (!config) throw new Error(`不支持的桌面目标: ${target}`);
 if (config.platform !== process.platform) throw new Error(`目标 ${target} 需要在 ${config.platform} 上构建；Windows 远程构建使用 ./release.sh windows`);
-if (config.platform === 'darwin') requireMacIconTools();
+const iconOptions = config.platform === 'darwin'
+  ? macIconBuildOptions(JSON.parse(fs.readFileSync(path.join(root, 'src-tauri/tauri.macos.conf.json'), 'utf8')).bundle.icon)
+  : { args: [], warning: null };
+if (iconOptions.warning) console.warn(`[build-desktop] ${iconOptions.warning}`);
 run('rustc', ['--version']);
 console.log(`[build-desktop] ${target}`);
 run('pnpm', ['build']);
 run('pnpm', ['build:server']);
 run(process.execPath, [path.join(root, 'scripts/package-server.mjs'), '--target', target, ...(withoutNode ? ['--without-node'] : [])]);
-run('pnpm', ['tauri', 'build', '--target', target, ...(config.platform === 'win32' ? ['--bundles', config.bundle] : [])]);
+run('pnpm', ['tauri', 'build', '--target', target, ...(config.platform === 'win32' ? ['--bundles', config.bundle] : []), ...iconOptions.args]);
 run(process.execPath, [path.join(root, 'scripts/rename-bundle.mjs'), target]);

@@ -73,7 +73,7 @@ cd /Users/zxc/myprojects/classnode
 | 命令 | 用途 |
 | --- | --- |
 | `pnpm build:desktop --target <Rust目标>` | 统一本机桌面构建；省略目标时使用 rustc 本机目标 |
-| `pnpm build:mac:arm64` / `pnpm build:mac:intel` | macOS Apple Silicon / Intel，需要 macOS、Rust、Xcode 工具 |
+| `pnpm build:mac:arm64` / `pnpm build:mac:intel` | macOS Apple Silicon / Intel，需要 macOS、Rust、完整 Xcode 26+（含 actool） |
 | `pnpm build:windows` / `pnpm build:windows:arm64` | Windows x64 / ARM64 本机构建，需要 Windows 和 Rust/MSVC 工具 |
 | `pnpm package:desktop --target <Rust目标>` | 从已构建的 out/、server/dist/ 组装桌面资源与内置 Node，不运行 Tauri |
 | `pnpm version:sync` | 同步 package、Tauri、更新清单、门户版本；重复执行不改日期 |
@@ -149,3 +149,19 @@ Node.js 打包设置统一在 `lib/project.mjs` 和 `lib/node-runtime.mjs`：`CL
 | 根 release-full.sh | 兼容 full、mac、arm64、intel；win/windows 现在准确映射 Windows |
 
 兼容文件仅转发参数或调用共用实现，不再维护第二套构建/复制逻辑。
+
+
+### macOS 应用图标
+
+`src-tauri/tauri.macos.conf.json` 将 `icons/ClassNode.icon` 和传统 `icons/icon.icns` 同时交给 Tauri。
+新系统使用 `.icon` 编译出的 `Assets.car`，旧系统继续使用 `.icns`。新版资源沿用原有学士帽与耳机图案，
+使用不透明深色背景，关闭图层玻璃效果、反光和附加阴影，目标是避免传统图标的银白色兼容底板。
+Windows 使用原有配置，不引用 `.icon`。
+
+macOS 打包前会检查 `xcrun actool --version --output-format=human-readable-text`，需要完整 Xcode 26 或更新版本。
+只有 Command Line Tools 时不能编译新版图标；Tauri 本身可能跳过这一步，因此统一构建脚本会提前报出明确错误。
+这项要求只涉及打包电脑，使用安装包的教师无需安装 Xcode。不要为此提高应用的最低 macOS 系统版本。
+
+当前本机只有 Command Line Tools，尚未完成 `.icon` 的原生编译和安装效果验收。
+在完整 Xcode 环境打包后，检查 `.app/Contents/Resources/Assets.car`、图标名及传统 `.icns` 均存在，
+并分别在新旧系统中确认图标显示；最终是否消除兼容外框应以实际安装结果为准。

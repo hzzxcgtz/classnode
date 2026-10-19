@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { root, requireRuntime, run } from './lib/project.mjs';
+import { requireMacIconTools } from './lib/macos-icon.mjs';
 
 const targets = {
   'aarch64-apple-darwin': { platform: 'darwin', bundle: 'dmg' },
@@ -25,6 +26,7 @@ target ||= /^host: (.+)$/m.exec(execFileSync('rustc', ['-vV'], { encoding: 'utf8
 const config = targets[target];
 if (!config) throw new Error(`不支持的桌面目标: ${target}`);
 if (config.platform !== process.platform) throw new Error(`目标 ${target} 需要在 ${config.platform} 上构建；Windows 远程构建使用 ./release.sh windows`);
+if (config.platform === 'darwin') requireMacIconTools();
 run('rustc', ['--version']);
 console.log(`[build-desktop] ${target}`);
 run('pnpm', ['build']);

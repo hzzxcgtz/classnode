@@ -182,7 +182,7 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
         })}
       </div>
 
-      <div className="worksheet-editor-inline-actions">
+      <div className="worksheet-editor-match-actions">
         <button type="button" className="btn btn-secondary" onClick={() => commit(matchAddLeft(match))}>＋ 左侧添加</button>
         <button type="button" className="btn btn-secondary" onClick={() => commit(matchAddRight(match))}>＋ 右侧添加</button>
       </div>

@@ -8,6 +8,7 @@ import {
   readStringMap,
   readStrings,
   resolvePoints,
+  toleranceOf,
   tableRowList,
   type QuestionNode,
   type QuestionPoints,
@@ -15,6 +16,8 @@ import {
 // ★ 2026-09-30：公式切分的**服务端孪生**（与 `src/lib/worksheet-math.ts` 逐字一致，
 // 由 `src/lib/worksheet-math-parity.test.ts` 对拍钉住）。
 import { mathText, splitMath, type MathPiece } from './worksheet-math.js';
+import { rubricTextOf } from './analysis-question.js';
+import { aiScoringConfigOf } from './analysis-scoring.js';
 import { TASK_TYPE, flattenAnswerable } from './worksheet-heading.js';
 import { questionTypeNickname } from './question-type-labels.js';
 
@@ -123,6 +126,8 @@ export interface PaperQuestion {
    * 「答案：（绘图题…）」，那是把两句话串成了一句假的。
    */
   answerNote: string | null;
+  guidance?: string[];
+  images?: { url: string; caption: string }[];
 }
 
 export type PaperBlock =
@@ -340,7 +345,7 @@ function renderQuestion(node: QuestionNode): { body: PaperInline[][]; answer: Pa
 
   if (node.type === 'drawing') {
     // 绘图题**没有文字答案** —— 印一行说明，别让纸上出现一个空荡荡的「答案：」。
-    return { body: [], answer: [], answerNote: '（绘图题：答案在学生画的那张图上，请在教师端查看）' };
+    return { body: [], answer: [], answerNote: '绘图题：结合参考图片与评分标准评价学生作品。' };
   }
 
   // 认不出的题型（老数据、手工改过的行）：题面照印，答案如实说「没有」。
@@ -351,15 +356,31 @@ function renderQuestion(node: QuestionNode): { body: PaperInline[][]; answer: Pa
 export function paperQuestion(node: QuestionNode, heading: string, fallbackPoints: QuestionPoints): PaperQuestion {
   const points = resolvePoints(node, fallbackPoints);
   const rendered = renderQuestion(node);
+  const ai = aiScoringConfigOf(node);
+  const collect = node.autoGrade === false && !ai.enabled || node.type === 'open-ended';
+  const guidance: string[] = [];
+  if (rubricTextOf(node)) guidance.push(`评分标准：${rubricTextOf(node)}`);
+  if (typeof node.data.explanation === 'string' && node.data.explanation) guidance.push(`答案说明：${node.data.explanation}`);
+  if (!collect && !ai.enabled && node.type === 'multi-choice') guidance.push(toleranceOf(node) !== null ? `部分给分条件：只漏选且未选错，漏选不超过 ${toleranceOf(node)} 项。` : node.data.partialCredit === 'allow-missing' ? '部分给分条件：只漏选且未选错。' : '评分规则：全部选对才得分。');
+  if (!collect) guidance.push(ai.enabled ? `评分方式：AI 评分，满分 ${ai.maxScore} 分。` : `分值：完全正确 ${points.full} 分；部分答对 ${points.half} 分。`);
+  const images: { url: string; caption: string }[] = [];
+  for (const [key, caption] of [['promptImageUrl', '任务配图'], ['referenceImageUrl', '参考图片'], ['rubricImageUrl', '评分标准图片']]) {
+    if (typeof node.data[key] === 'string' && node.data[key]) images.push({ url: node.data[key] as string, caption });
+  }
+  if (Array.isArray(node.data.options)) node.data.options.forEach((raw, i) => {
+    const option = raw as Record<string, unknown>;
+    if (typeof option.imageUrl === 'string' && option.imageUrl) images.push({ url: option.imageUrl, caption: `选项 ${option.key || String.fromCharCode(65 + i)} 配图` });
+  });
   return {
     heading,
     // ★ 2026-09-30 教师：「题型使用别名，例如开心填空」——纸上印**别名**（学生端屏幕上
     // 那几个名字），教师念「开心填空」时与学生的屏幕对得上。
-    meta: `${questionTypeNickname(node.type)} · ${points.full} 分`,
+    meta: `${questionTypeNickname(node.type)} · ${collect ? '信息收集，不计分' : `${ai.enabled ? ai.maxScore : points.full} 分`}`,
     prompt: promptParts(node),
     body: rendered.body,
-    answer: rendered.answer,
-    answerNote: rendered.answerNote,
+    answer: collect ? [] : rendered.answer,
+    answerNote: collect ? '不设标准答案，不判对错、不计分。' : rendered.answerNote,
+    guidance, images,
   };
 }
 

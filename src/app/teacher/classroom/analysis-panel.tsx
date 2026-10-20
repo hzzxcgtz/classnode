@@ -550,7 +550,7 @@ function StudentScoreClearDialog({ payload, selected, onSelect, clearing, error,
           <h3 id={titleId}>选择学生清除 AI 评分</h3>
           <button type="button" aria-label="关闭学生选择窗口" disabled={clearing} onClick={onClose}>×</button>
         </header>
-        <p id={descriptionId} className={styles.selectionDescription}>仅清除所选学生的当前任务 AI 评分与评价，保留学生作答。</p>
+        <p id={descriptionId} className={styles.selectionDescription}>清除所选学生在当前任务的 AI 评分、评价及评分奖励，保留作答。</p>
         <fieldset className={styles.studentSelection} disabled={clearing}>
           <legend className={styles.selectionLegend}>选择学生</legend>
           {(payload?.entries ?? []).map(entry => <label key={entry.studentId} data-selected={selected.includes(entry.studentId)}><input type="checkbox" checked={selected.includes(entry.studentId)} onChange={event => onSelect(entry.studentId, event.target.checked)} />{payload?.participantNames?.[entry.studentId] ?? entry.anonLabel}</label>)}

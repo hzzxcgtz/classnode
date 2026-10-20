@@ -101,7 +101,7 @@ test('聚焦编辑器在同一页连续显示题目内容与评分设置', () =>
     '任务与作答区域必须直接显示',
   );
   const promptSection = source.indexOf('<section className="worksheet-editor-question-section is-prompt">');
-  const gradingSection = source.indexOf('<section className="worksheet-editor-question-section is-grading">');
+  const gradingSection = source.indexOf('worksheet-editor-question-section is-grading', promptSection);
   assert.ok(gradingSection > promptSection, '评分设置必须排在任务与作答区域之后并直接显示');
   assert.match(source, /<h4><EditorIcon[^>]*\/>分值设置<\/h4>/, '评分区应使用唯一的“分值设置”标题');
   assert.doesNotMatch(source, /<strong>得分规则<\/strong>/, '分值控件内部不应重复“得分规则”标题');

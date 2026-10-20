@@ -49,43 +49,10 @@ export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
   const unplaced = items.filter(entry => !placement[entry.id]).length;
 
   return (
-    <>
+    <div className="worksheet-editor-category-layout">
       <div className="worksheet-editor-block">
-        <span className="worksheet-editor-block-label">分类框</span>
-        <div className="worksheet-editor-options">
-          {zones.map((zone, index) => (
-            // key 用下标：条目缺 id 时写回会补一个（见 `writeEntries`），用 id 当 key
-            // 会让输入框在补 id 的那一刻被重挂载（焦点丢失）。
-            <div className="worksheet-editor-option" key={index}>
-              <input
-                className="input"
-                value={zone.text}
-                placeholder={`框 ${index + 1}`}
-                onChange={event => commit({ ...categorize, zones: renameEntryAt(zones, index, event.target.value) })}
-              />
-              <button
-                type="button"
-                className="worksheet-editor-icon-button is-danger"
-                disabled={zones.length <= 2}
-                title={zones.length <= 2 ? '归类题至少要有两个框' : '删除这个框（它名下的条目会回到「请选择」）'}
-                aria-label={`删除${zoneLabel(zone.text, index)}`}
-                onClick={() => commit(categorizeRemoveZone(categorize, index))}
-              >
-                <TrashIcon />
-              </button>
-            </div>
-          ))}
-        </div>
-        <div className="worksheet-editor-inline-actions">
-          <button type="button" className="btn btn-secondary" onClick={() => commit(categorizeAddZone(categorize, ''))}>
-            ＋ 添加一个框
-          </button>
-        </div>
-      </div>
-
-      <div className="worksheet-editor-block">
-        <span className="worksheet-editor-block-label">条目与归属</span>
-        <div className="worksheet-editor-options">
+        <span className="worksheet-editor-block-label">{showAnswer ? '条目与正确分类' : '条目'}</span>
+        <div className={`worksheet-editor-options worksheet-editor-category-items${showAnswer ? '' : ' is-collection'}`}>
           {items.map((entry, index) => {
             const zoneId = placement[entry.id] ?? '';
             const zoneExists = zones.some(zone => zone.id === zoneId);
@@ -142,12 +109,50 @@ export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
         </div>
       </div>
 
-      {(unplaced > 0 || zones.length < 2) && (
+      <div className="worksheet-editor-block">
+        <span className="worksheet-editor-block-label">分类框</span>
+        <div className="worksheet-editor-options worksheet-editor-category-zones">
+          {zones.map((zone, index) => (
+            // key 用下标：条目缺 id 时写回会补一个（见 `writeEntries`），用 id 当 key
+            // 会让输入框在补 id 的那一刻被重挂载（焦点丢失）。
+            <div className="worksheet-editor-category-card" key={index}>
+              <div className="worksheet-editor-category-card-head">
+                <span>分类框 {index + 1}</span>
+              <button
+                type="button"
+                className="worksheet-editor-icon-button is-danger"
+                disabled={zones.length <= 2}
+                title={zones.length <= 2 ? '归类题至少要有两个框' : '删除这个框（它名下的条目会回到「请选择」）'}
+                aria-label={`删除${zoneLabel(zone.text, index)}`}
+                onClick={() => commit(categorizeRemoveZone(categorize, index))}
+              >
+                <TrashIcon />
+              </button>
+              </div>
+              <input
+                className="input worksheet-editor-category-name"
+                value={zone.text}
+                aria-label={`分类框 ${index + 1} 名称`}
+                placeholder={`框 ${index + 1}`}
+                onChange={event => commit({ ...categorize, zones: renameEntryAt(zones, index, event.target.value) })}
+              />
+              <small>{showAnswer ? `${items.filter(item => placement[item.id] === zone.id).length} 项正确归属` : '学生归类区域'}</small>
+            </div>
+          ))}
+        </div>
+        <div className="worksheet-editor-inline-actions">
+          <button type="button" className="btn btn-secondary" onClick={() => commit(categorizeAddZone(categorize, ''))}>
+            ＋ 添加一个框
+          </button>
+        </div>
+      </div>
+
+      {((showAnswer && unplaced > 0) || zones.length < 2) && (
         <p className="worksheet-editor-warn-hint">
-          {unplaced > 0 ? `还有 ${unplaced} 个条目没有归属。` : ''}
+          {showAnswer && unplaced > 0 ? `还有 ${unplaced} 个条目未设置正确分类。` : ''}
           {zones.length < 2 ? ' 归类题至少需要两个分类框。' : ''}
         </p>
       )}
-    </>
+    </div>
   );
 }

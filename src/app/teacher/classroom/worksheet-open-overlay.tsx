@@ -113,7 +113,7 @@ export function WorksheetOpenOverlay({
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 id="worksheet-open-title" style={{ margin: 0 }}>逐项开放</h3>
             <p style={{ margin: '3px 0 0', fontSize: "0.8125rem", color: 'var(--text-secondary, #475569)' }}>
-              开放一项任务，全班立刻能看见并作答；收回只是让学生看不见，已交的答案不会丢。
+              开放后，使用该学习单的学生可见并可作答；收回仅隐藏任务，保留已交作答。
             </p>
           </div>
           {/* 🔴 分母与分子都要写出来：一份没有分母的进度会被读成「就这些题」。 */}
@@ -203,7 +203,7 @@ export function WorksheetOpenOverlay({
                               className="btn btn-secondary"
                               disabled={busy || !row.managed}
                               style={{ flex: '0 0 auto', padding: '3px 10px', fontSize: "0.875rem" }}
-                              title={row.managed ? '开放这项任务' : '这张单不是「手动逐项开放」，开放也不会生效'}
+                              title={row.managed ? '开放这项任务' : '请先在学习单设置中选择「教师控制开放」'}
                               onClick={() => onChange(row.id, [...row.openIds, node.id])}
                             >
                               开放
@@ -226,8 +226,8 @@ export function WorksheetOpenOverlay({
 
 /** 四档在**教师这一屏**里的说法（与学生端设置面板的用词一致）。 */
 const ANSWER_MODE_LABEL: Record<string, string> = {
-  open: '开放式',
-  'task-step': '按主题开放',
-  'question-step': '按任务开放',
-  manual: '手动逐项开放',
+  open: '全部开放',
+  'task-step': '学生按主题解锁',
+  'question-step': '学生按任务解锁',
+  manual: '教师控制开放',
 };

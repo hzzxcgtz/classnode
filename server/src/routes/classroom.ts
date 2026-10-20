@@ -1827,8 +1827,7 @@ router.get('/history/all', async (req, res) => {
         classes: { include: { class: true } },
         groups: { include: { members: { select: { id: true } } } },
       },
-      orderBy: { endedAt: 'desc' },
-      take: 50,
+      orderBy: [{ endedAt: 'desc' }, { id: 'asc' }],
     });
 
     // 批量查询每个课堂的参与学生数和消息总字数

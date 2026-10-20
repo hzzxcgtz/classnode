@@ -37,7 +37,7 @@ export function WorksheetReleasePanel({ worksheets, open, busy, onChange, onView
       <span aria-hidden="true">{expanded ? '›' : '‹'}</span>
     </button>
     {expanded && <div id={panelId} className="worksheet-release-content">
-      <header><div><strong>学习单开放</strong><small>教师手动开放 · {count}/{units.length} {unitName}</small></div><button type="button" className="worksheet-release-collapse" onClick={() => setExpanded(false)} aria-label="向右收起开放进度" title="向右收起">›</button></header>
+      <header><div><strong>学习单开放</strong><small>教师控制开放 · {count}/{units.length} {unitName}</small></div><button type="button" className="worksheet-release-collapse" onClick={() => setExpanded(false)} aria-label="向右收起开放进度" title="向右收起">›</button></header>
       {available.length > 1
         ? <select className="input" aria-label="选择要控制开放的学习单" value={sheet.id} onChange={event => setSheetId(event.target.value)}>{available.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>
         : <p className="worksheet-release-title" title={sheet.title}>{sheet.title}</p>}

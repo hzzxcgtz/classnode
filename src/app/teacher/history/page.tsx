@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import { Toast, Pagination, TeacherPageHeader, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
@@ -9,6 +9,7 @@ import type { BackupFile, ClassroomHistoryItem, ConversationExportReport, Export
 // 🔴 `WebappUsage.studentId` 存的是**参与者** id，而分组 / 高级模式下**参与者就是组**
 //    （`ClassroomStudent.type = 'group'`）⇒ 恒写「N 人」在那些模式下是**假话**：
 //    4 个组（12 个人）都打开过探究空间时，那一格写「4 人」，而同一行的「参与人数」列写「4 组/12 人」。
+import { emptyHistoryFilters, filterHistory, type HistoryFilters } from './history-records';
 import { moduleCountUnit } from '../classroom/worksheet-tile-state';
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -17,6 +18,8 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 export default function HistoryPage() {
   const [history, setHistory] = useState<ClassroomHistoryItem[]>([]);
+  const [filters, setFilters] = useState<HistoryFilters>(emptyHistoryFilters);
+  const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
@@ -29,6 +32,8 @@ export default function HistoryPage() {
     data: ConversationExportReport;
   } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [wordClassroomId, setWordClassroomId] = useState<string | null>(null);
+  const [archiveClassroomId, setArchiveClassroomId] = useState<string | null>(null);
   const [previewingClassroomId, setPreviewingClassroomId] = useState<string | null>(null);
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [exportStage, setExportStage] = useState('');
@@ -52,11 +57,22 @@ export default function HistoryPage() {
     });
   }, [on]);
 
-  useEffect(() => {
-    api.getHistory().then(data => { setHistory(data); setPage(1); }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  const loadHistory = async () => {
+    setLoading(true); setLoadError('');
+    try { const records = await api.getHistory(); setHistory(records); setPage(1); }
+    catch (error) { setLoadError(getErrorMessage(error, '课堂记录暂时无法加载，请重试。')); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void loadHistory(); }, []);
 
-  const pagedHistory = history.slice((page - 1) * pageSize, page * pageSize);
+  const filteredHistory = useMemo(() => filterHistory(history, filters), [history, filters]);
+  const classes = useMemo(() => [...new Map(history.flatMap(record => record.classes.map(c => [c.classId, c.class.name] as const))).entries()].sort((a, b) => a[1].localeCompare(b[1], 'zh-CN')), [history]);
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filteredHistory.length / pageSize)));
+  const pagedHistory = filteredHistory.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const updateFilter = <K extends keyof HistoryFilters>(key: K, value: HistoryFilters[K]) => { setFilters(prev => ({ ...prev, [key]: value })); setPage(1); };
+  const clearFilters = () => { setFilters(emptyHistoryFilters); setPage(1); };
+  const hasFilters = Boolean(filters.search || filters.classId || filters.module || filters.from || filters.to);
+  const invalidDates = Boolean(filters.from && filters.to && filters.from > filters.to);
 
   // 点击导出：先获取数据并展示预览
   const handlePreview = async (classroomId: string) => {
@@ -94,36 +110,39 @@ export default function HistoryPage() {
     );
   };
 
-  /**
-   * ★ M6a：导出「学习单与探究空间」报告。
-   *
-   * ⚠️ 与上面那条「导出对话」**刻意不同**：它**没有预览那一步**（那份报告的正文是逐题作答
-   * 与笔迹图，预览在弹窗里读不了），点一下直接下载。
-   * 文件名与时间戳的拼法**逐字照抄**上面那一条（`titleSafe` 的替换也一样）。
-   */
-  const handleExportWorksheetReport = async (classroomId: string, title: string | null, code: string | null) => {
-    if (exporting) return;
+  const handleExportArchive = async (cr: ClassroomHistoryItem, kind: 'records' | 'word' = 'records') => {
+    if (exportingRef.current || previewingRef.current) return;
+    exportingRef.current = true;
     setExporting(true);
-    // ⚠️ 「正在准备」不弹 toast：本页的 toast 类型只有 `error | success`（照既有的那条办 ——
-    //    它把进度放进 `exportStage`，而这里没有预览那一步、按钮本身的禁用态就够了）。
+    if (kind === 'word') setWordClassroomId(cr.id); else setArchiveClassroomId(cr.id);
     try {
-      const resp = await api.exportWorksheetReportDocx(classroomId);
-      if (!resp.ok) throw new Error('导出失败');
-      const blob = await resp.blob();
+      const response = await (kind === 'word' ? api.exportWorksheetDocuments(cr.id) : api.exportClassroomArchive(cr.id));
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || '资料包生成失败');
+      }
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const now = new Date();
-      const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-      const titleSafe = (title || `课堂-${code || classroomId.slice(0, 8)}`).replace(/[\\/:*?"<>|]/g, '_');
-      a.download = `${titleSafe}-学习单与探究空间-${ts}.docx`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setToast({ msg: '导出成功！', type: 'success' });
+      const link = document.createElement('a');
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+      let filename = `${(cr.title || '未命名课堂').replace(/[\\/:*?"<>|]/g, '_')}-${kind === 'word' ? '学习单Word文档' : '课堂资料包'}.zip`;
+      if (encoded) { try { filename = decodeURIComponent(encoded); } catch {} }
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      const warnings = Number(response.headers.get('X-Archive-Warnings') || 0);
+      setToast({ msg: kind === 'word' ? 'Word 文档已导出，解压后可分别查看教师参考学习单和学生作答记录。' : warnings > 0 ? '资料包已导出。部分文件缺失或无法读取，请查看包内「文件检查说明」。' : '资料包已导出，解压后打开「打开课堂记录.html」即可查看。', type: 'success' });
     } catch (error) {
-      setToast({ msg: '导出失败: ' + (error instanceof Error ? error.message : '请求异常'), type: 'error' });
+      setToast({ msg: '导出失败：' + getErrorMessage(error, '请稍后重试'), type: 'error' });
     } finally {
+      exportingRef.current = false;
       setExporting(false);
+      setArchiveClassroomId(null);
+      setWordClassroomId(null);
     }
   };
 
@@ -191,36 +210,52 @@ export default function HistoryPage() {
     setRestoring(false);
   };
 
-  const totalStudents = history.reduce((sum, cr) => sum + (cr.realStudentCount ?? cr._count.students), 0);
-  const totalInteractions = history.reduce((sum, cr) => sum + (cr.totalRounds ?? 0), 0);
-  const totalChars = history.reduce((sum, cr) => sum + cr.totalChars, 0);
+  const totalStudents = filteredHistory.reduce((sum, cr) => sum + (cr.realStudentCount ?? cr._count.students), 0);
+  const totalInteractions = filteredHistory.reduce((sum, cr) => sum + (cr.totalRounds ?? 0), 0);
+  const totalSubmitted = filteredHistory.reduce((sum, cr) => sum + (cr.worksheetSubmitted || 0), 0);
 
   return (
     <div>
-      <TeacherPageHeader title="数据管理" description="查看课堂历史、导出对话并管理本地备份。" />
+      <TeacherPageHeader title="数据管理" description="查看课堂历史，下载包含学习单与智能学伴记录的资料包。" />
 
       {loading ? (
         <TeacherLoadingState label="正在加载课堂历史…" />
+      ) : loadError ? (
+        <div className="teacher-surface history-load-error" role="alert"><h2>课堂记录加载失败</h2><p>{loadError}</p><button className="btn btn-primary" onClick={() => void loadHistory()}>重新加载</button></div>
       ) : (
         <>
           {history.length === 0 ? (
             <TeacherEmptyState
               icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>}
               title="暂无历史记录"
-              description="结束课堂后，可在这里回顾、导出和整理对话。"
+              description="结束课堂后，可在这里查看记录、导出课堂资料包和管理备份。"
             />
           ) : (
             <>
               <div className="history-summary teacher-surface">
                 {[
-                  { label: '历史课堂', value: history.length },
-                  { label: '参与学生', value: totalStudents },
-                  { label: '交互总轮数', value: totalInteractions },
-                  { label: '总文字量', value: totalChars > 10000 ? `${(totalChars / 10000).toFixed(1)}万` : `${totalChars}` },
+                  { label: hasFilters ? '符合条件的课堂' : '历史课堂', value: filteredHistory.length },
+                  { label: '课堂学生人次', value: totalStudents },
+                  { label: '已提交题次', value: totalSubmitted },
+                  { label: '学伴对话轮数', value: totalInteractions },
                 ].map(stat => (
                   <div key={stat.label}><strong>{stat.value}</strong><span>{stat.label}</span></div>
                 ))}
               </div>
+
+          <div className="history-filters teacher-surface" aria-label="筛选历史课堂">
+            <div className="history-filter-main">
+              <label className="history-search"><span>搜索课堂</span><input type="search" value={filters.search} onChange={e => updateFilter('search', e.target.value)} placeholder="输入课堂名称或班级" /></label>
+              <label><span>班级</span><select aria-label="班级" value={filters.classId} onChange={e => updateFilter('classId', e.target.value)}><option value="">全部班级</option>{classes.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
+              <label><span>记录内容</span><select aria-label="记录内容" value={filters.module} onChange={e => updateFilter('module', e.target.value as HistoryFilters['module'])}><option value="">全部记录</option><option value="worksheet">有学习单作答</option><option value="explorer">有探究记录</option><option value="companion">有学伴对话</option></select></label>
+            </div>
+            <div className="history-filter-secondary">
+              <div className="history-date-range" title="旧课堂缺少结束时间时，按创建日期筛选"><label><span>结束日期：从</span><input type="date" aria-invalid={invalidDates} value={filters.from} onChange={e => updateFilter('from', e.target.value)} /></label><label><span>至</span><input type="date" aria-invalid={invalidDates} value={filters.to} onChange={e => updateFilter('to', e.target.value)} /></label></div>
+              <label className="history-sort"><span className="sr-only">排列顺序</span><select aria-label="排列顺序" value={filters.sort} onChange={e => updateFilter('sort', e.target.value as HistoryFilters['sort'])}><option value="newest">最近结束在前</option><option value="oldest">较早结束在前</option></select></label>
+              {hasFilters && <button className="btn btn-secondary" onClick={clearFilters}>清除筛选</button>}
+            </div>
+            {invalidDates && <p className="history-filter-error" role="alert">开始日期不能晚于结束日期，请调整日期范围。</p>}
+          </div>
 
           {/* 历史课堂记录 */}
           <div className="teacher-surface" style={{ background: 'white', borderRadius: 12, border: '1px solid var(--card-border)', overflow: 'hidden' }}>
@@ -229,9 +264,10 @@ export default function HistoryPage() {
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
               <h2 style={{ fontSize: "0.938rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>课堂记录</h2>
-              <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)' }}>共 {history.length} 条记录</span>
+              <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)' }}>{hasFilters ? `找到 ${filteredHistory.length} / ${history.length} 堂课` : `共 ${history.length} 堂课`}</span>
             </div>
             <div className="history-record-list">
+              {filteredHistory.length === 0 && <TeacherEmptyState title="没有符合条件的课堂" description="试试其他关键词、班级或日期。" icon={<span aria-hidden="true">⌕</span>} action={<button className="btn btn-secondary" onClick={clearFilters}>清除筛选</button>} />}
                 {pagedHistory.map((cr) => {
                   const startTime = new Date(cr.createdAt);
                   const endTime = cr.endedAt ? new Date(cr.endedAt) : null;
@@ -255,36 +291,42 @@ export default function HistoryPage() {
                         <div><dt>创建时间</dt><dd>{startTime.toLocaleString()}</dd></div>
                         <div><dt>结束时间</dt><dd>{endTime ? endTime.toLocaleString() : '—'}</dd></div>
                         <div><dt>时长</dt><dd>{duration !== null ? `${duration} 分钟` : '—'}</dd></div>
-                        <div><dt>参与人数</dt><dd>{cr.mode === 'group' || cr.mode === 'advanced'
-                          ? `${cr.participantCount || 0} 组 / ${cr.realStudentCount ?? 0} 人`
-                          : `${cr.participantCount || 0} / ${cr.realStudentCount ?? (cr._count?.students || 0)} 人`}</dd></div>
-                        <div><dt>交互量</dt><dd>{cr.totalRounds || 0} 轮</dd></div>
-                        <div><dt>文字量</dt><dd>{cr.totalChars >= 10000 ? `${(cr.totalChars / 10000).toFixed(1)}万字` : `${cr.totalChars || 0} 字`}</dd></div>
+                        <div><dt>课堂人数</dt><dd>{cr.mode === 'group' || cr.mode === 'advanced'
+                          ? `${cr.groups?.length ?? cr._count.students} 组 / ${cr.realStudentCount ?? 0} 人`
+                          : `${cr.realStudentCount ?? cr._count.students} 人`}</dd></div>
+                        <div><dt>学伴对话</dt><dd>{cr.totalRounds || 0} 轮</dd></div>
+                        <div><dt>对话文字量</dt><dd>{cr.totalChars >= 10000 ? `${(cr.totalChars / 10000).toFixed(1)}万字` : `${cr.totalChars || 0} 字`}</dd></div>
                       </dl>
                       <div className="history-record-footer">
                         <dl className="history-module-summary">
                           <div><dt>智能学伴</dt><dd>{cr.totalRounds > 0 ? `${cr.totalRounds} 轮` : '无记录'}</dd></div>
-                          <div><dt>探究空间</dt><dd>{cr.webappUsageCount > 0 ? `${cr.webappUsageCount} ${moduleCountUnit(cr.mode)} · 累计 ${cr.webappDurationText}` : '无记录'}</dd></div>
-                          <div><dt>学习单</dt><dd>{cr.worksheetTotal > 0 ? `已交 ${cr.worksheetSubmitted} / ${cr.worksheetTotal} 题` : '无作答'}</dd></div>
+                          <div><dt>探究空间</dt><dd>{cr.webappUsageCount > 0 ? `${cr.webappUsageCount} ${moduleCountUnit(cr.mode)} · 记录跨度合计 ${cr.webappDurationText}` : '无记录'}</dd></div>
+                          <div><dt>学习单</dt><dd>{cr.worksheetTotal > 0 ? `已交 ${cr.worksheetSubmitted} / 已保存 ${cr.worksheetTotal} 题次` : '无作答'}</dd></div>
                         </dl>
                         <div className="history-record-actions">
+                          <button className="btn btn-primary"
+                            disabled={exporting || previewingClassroomId !== null}
+                            title="下载离线课堂记录网页、完整文字记录及原始附件；解压后即可查看"
+                            onClick={() => void handleExportArchive(cr)}>
+                            {archiveClassroomId === cr.id ? '正在打包…' : '下载课堂资料包'}
+                          </button>
                           <button className="btn btn-secondary"
                             disabled={previewingClassroomId !== null || exporting}
                             onClick={() => handlePreview(cr.id)}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
-                            {previewingClassroomId === cr.id ? '准备中...' : '导出对话'}
+                            {previewingClassroomId === cr.id ? '准备中...' : '导出对话数据'}
                           </button>
                           <button className="btn btn-secondary"
                             disabled={exporting}
-                            title="导出学习单作答明细（含笔迹）与探究空间使用汇总"
-                            onClick={() => void handleExportWorksheetReport(cr.id, cr.title, cr.code)}>
+                            title="下载教师参考学习单与学生作答记录两类 Word 文档，解压后查看"
+                            onClick={() => void handleExportArchive(cr, 'word')}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" /><line x1="9" y1="3" x2="9" y2="21" /></svg>
-                            导出学习单与探究空间
+                            {wordClassroomId === cr.id ? '正在生成 Word…' : '导出学习单数据'}
                           </button>
                           <button className="btn btn-secondary" onClick={() => setRestoreTarget(cr.id)} disabled={restoring}
                             title="恢复课堂">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
-                            恢复
+                            恢复课堂
                           </button>
                         </div>
                       </div>
@@ -292,7 +334,7 @@ export default function HistoryPage() {
                   );
                 })}
             </div>
-            <Pagination current={page} total={history.length} pageSize={pageSize} pageSizeOptions={[10, 15, 20, 50, 100]} onChange={setPage} onPageSizeChange={setPageSize} />
+            <Pagination current={currentPage} total={filteredHistory.length} pageSize={pageSize} pageSizeOptions={[10, 15, 20, 50, 100]} onChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
           </div>
             </>
           )}

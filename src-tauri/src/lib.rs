@@ -222,7 +222,7 @@ fn ensure_port_free(port: u16) -> Result<(), String> {
     if TcpStream::connect(format!("127.0.0.1:{port}")).is_err() {
         return Ok(());
     }
-    Err(format!("端口 {port} 已被其他程序占用。请关闭占用端口的程序，或在系统设置中调整支点课堂端口后重试。"))
+    Err(format!("端口 {port} 已被其他程序占用。请关闭占用端口的程序后重试。"))
 }
 
 fn process_output_details(output: &Output) -> String {
@@ -261,7 +261,40 @@ fn run_database_upgrade(
     cmd.output().map_err(|e| format!("执行安全数据库升级失败: {}", e))
 }
 
+/// Run identity checks off the UI thread, before touching the database or starting a server.
+fn recover_server_ports(node: &str, script: &std::path::Path, server_dir: &std::path::Path) -> Result<(), String> {
+    if !script.is_file() { return Err("旧服务检查组件缺失，请重新安装支点课堂。".to_string()); }
+    let mut cmd = Command::new(node);
+    cmd.arg(child_script_arg(script, server_dir)).current_dir(server_dir);
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    let output = cmd.output().map_err(|e| format!("检查旧课堂服务失败: {e}"))?;
+    if !output.status.success() { return Err(process_output_details(&output)); }
+    #[derive(serde::Deserialize)]
+    struct RecoveryResult { stopped: u32, blocked: Option<String> }
+    let result: RecoveryResult = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("旧服务检查结果无效: {e}"))?;
+    if let Some(error) = result.blocked { return Err(error); }
+    if result.stopped > 0 { eprintln!("已回收 {} 个旧课堂服务进程，正在重新启动。", result.stopped); }
+    Ok(())
+}
+
 fn spawn_server_inner(app: &AppHandle) -> Result<(), String> {
+    let server_dir = get_server_dir(app)?;
+    let server_script = server_dir.join("dist").join("index.js");
+    let node = find_node(app);
+
+    if !server_script.exists() {
+        return Err(format!("服务端脚本未找到: {:?}", server_script));
+    }
+
+    let recovery_script = server_dir.join("dist").join("desktop-recover.js");
+    // Avoid a process inventory on normal starts with no listening service.
+    let occupied = [SERVER_PORT, WEBAPP_PORT].iter().any(|port| {
+        TcpStream::connect(format!("127.0.0.1:{port}")).is_ok()
+            || TcpStream::connect(format!("[::1]:{port}")).is_ok()
+    });
+    if occupied { recover_server_ports(&node, &recovery_script, &server_dir)?; }
     // 主端口绑不上，服务端根本起不来 —— 硬失败是对的，保持不变。
     ensure_port_free(SERVER_PORT)?;
     // 托管端口**只警告**：它与主服务是同一个进程里的两个监听，服务端自己遇到 EADDRINUSE
@@ -270,14 +303,6 @@ fn spawn_server_inner(app: &AppHandle) -> Result<(), String> {
     // 的承诺自相矛盾。宁可少一个模块，不可整节课停摆。
     if let Err(e) = ensure_port_free(WEBAPP_PORT) {
         eprintln!("⚠️ 探究空间托管端口预检失败，主服务照常启动，该模块将无法加载: {e}");
-    }
-
-    let server_dir = get_server_dir(app)?;
-    let server_script = server_dir.join("dist").join("index.js");
-    let node = find_node(app);
-
-    if !server_script.exists() {
-        return Err(format!("服务端脚本未找到: {:?}", server_script));
     }
 
     let data_dir = node_compatible_path(
@@ -456,11 +481,6 @@ fn cmd_start_server(app: tauri::AppHandle) -> Result<(), String> {
             }
         }
     }
-    if TcpStream::connect(format!("127.0.0.1:{SERVER_PORT}")).is_ok() {
-        let error = format!("端口 {SERVER_PORT} 被其他程序占用，请关闭该程序后重试");
-        *LAST_START_ERROR.lock().unwrap() = Some(error.clone());
-        return Err(error);
-    }
     *LAST_START_ERROR.lock().unwrap() = None;
 
     // 后台线程启动（避免阻塞 IPC 线程导致窗口无响应）
@@ -531,11 +551,14 @@ fn cmd_open_url(url_type: String, ip: Option<String>) {
 }
 
 // Narrow native bridge: fixed loopback host and allowlisted operations only.
-fn desktop_request(operation: &str, ip: Option<String>) -> Result<serde_json::Value, String> {
+fn desktop_request(operation: &str, ip: Option<String>, new_password: Option<String>) -> Result<serde_json::Value, String> {
     use std::io::{Read, Write};
     let (method, path, body) = match operation {
         "info" => ("GET", "/api/settings/desktop-info", String::new()),
-        "reset" => ("POST", "/api/settings/reset-password", "{}".to_string()),
+        "reset" => {
+            let password = new_password.filter(|value| !value.is_empty()).ok_or("请输入新密码")?;
+            ("POST", "/api/settings/reset-password", serde_json::json!({ "newPassword": password }).to_string())
+        },
         "network" => {
             let ip = ip.ok_or("请选择网卡")?;
             if !get_local_ips().iter().any(|i| i.ip == ip) { return Err("网卡已不可用".into()); }
@@ -559,8 +582,8 @@ fn desktop_request(operation: &str, ip: Option<String>) -> Result<serde_json::Va
 }
 
 #[tauri::command]
-async fn cmd_desktop_request(operation: String, ip: Option<String>) -> Result<serde_json::Value, String> {
-    tauri::async_runtime::spawn_blocking(move || desktop_request(&operation, ip)).await.map_err(|e| e.to_string())?
+async fn cmd_desktop_request(operation: String, ip: Option<String>, new_password: Option<String>) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || desktop_request(&operation, ip, new_password)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -748,8 +771,28 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{child_script_arg, node_compatible_path, run_database_upgrade, StartGuard};
+    use super::{child_script_arg, node_compatible_path, run_database_upgrade, recover_server_ports, StartGuard};
     use std::path::Path;
+
+    #[test]
+    fn recovery_requires_valid_success_and_never_ignores_conflicts() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("classnode recovery test {stamp}"));
+        std::fs::create_dir_all(&root).unwrap();
+        let script = root.join("check.js");
+        let node = std::env::var("CLASSNODE_TEST_NODE").unwrap_or_else(|_| "node".to_string());
+        assert!(recover_server_ports(&node, &script, &root).is_err());
+        for (source, expected) in [
+            (r#"console.log(JSON.stringify({stopped:1,blocked:null}))"#, true),
+            (r#"console.log(JSON.stringify({stopped:0,blocked:'foreign program'}))"#, false),
+            (r#"console.log('invalid')"#, false),
+            (r#"console.error('inspection failed');process.exit(1)"#, false),
+        ] {
+            std::fs::write(&script, source).unwrap();
+            assert_eq!(recover_server_ports(&node, &script, &root).is_ok(), expected);
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn start_guard_has_one_owner_and_releases_on_error_or_unwind() {

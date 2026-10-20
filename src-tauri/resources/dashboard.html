@@ -103,9 +103,11 @@ svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width:
 .dialog p { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0 0 12px; }
 .dialog > .btn { margin-top: 10px; width: 100%; min-height: 30px; }
 .dialog .tip { font-size: 11px; text-align: center; margin: 14px 0 0; }
-.password-box { padding: 16px; margin: 16px 0 8px; text-align: center; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
-.password-box label { font-size: 11px; color: var(--muted); }
-.password { font-size: 32px; letter-spacing: 7px; padding-left: 7px; margin-top: 8px; font-variant-numeric: tabular-nums; font-weight: 600; user-select: all; }
+.password-field { display: grid; gap: 6px; margin: 14px 0; font-size: 13px; }
+.password-field input { width: 100%; box-sizing: border-box; min-height: 40px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: inherit; font: inherit; }
+.password-field input:focus { outline: 2px solid var(--accent, #365f91); outline-offset: 1px; }
+.password-error { color: #b91c1c; font-size: 12px; min-height: 18px; }
+
 .network-list { display: grid; gap: 8px; margin-top: 16px; }
 .network-choice { padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); text-align: left; }
 .network-choice.selected { border-color: var(--accent); }
@@ -191,7 +193,7 @@ function setPlatform(platform) {
   document.getElementById('trayLabel').textContent = platform === 'macos' ? '菜单栏' : '系统托盘';
 }
 setPlatform(/Win/i.test(navigator.platform) ? 'windows' : 'macos');
-let state={running:false,starting:true,port:3001,interfaces:[]}, selectedIp='', lanEnabled=true, pendingAction='', commandPending=false, bootWaiting=true, polling=false, temporaryPassword='', returnFocus=null, addressSignature='';
+let state={running:false,starting:true,port:3001,interfaces:[]}, selectedIp='', lanEnabled=true, pendingAction='', commandPending=false, bootWaiting=true, polling=false, returnFocus=null, addressSignature='';
 const $=id=>document.getElementById(id);
 const bootDeadline=Date.now()+4000;
 function phase(){ return pendingAction || (state.starting||bootWaiting?'starting':state.running?'running':state.lastError?'failed':'stopped'); }
@@ -267,11 +269,23 @@ async function service(start) {
   } finally {render();}
 }
 function modal(title,body){closeModal();returnFocus=document.activeElement;const el=document.createElement('div');el.className='shade';el.innerHTML=`<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle"><button class="close" aria-label="关闭">×</button><h3 id="dialogTitle">${title}</h3>${body}</div>`;document.body.append(el);el.querySelector('button').focus()}
-function closeModal(){const el=document.querySelector('.shade');if(el?.dataset.pending==='true')return;if(el){el.remove();temporaryPassword='';returnFocus?.focus()}}
-async function reset(){const btn=$('confirmReset');const overlay=btn.closest('.shade');overlay.dataset.pending='true';btn.disabled=true;btn.textContent='正在重置…';try{const data=await invoke('cmd_desktop_request',{operation:'reset',ip:null});if(!data.success||!/^\d{6}$/.test(data.temporaryPassword))throw Error(data.error||'未收到有效密码');const password=data.temporaryPassword;overlay.dataset.pending='false';modal('新的管理员密码已生成',`<p>这次生成的是 6 位数字，方便输入。</p><div class="password-box"><label>新管理员密码</label><div class="password" id="passwordValue"></div></div><button class="btn primary" id="copyPassword">${icon('copy')}复制密码</button><button class="btn" data-open="teacher">${icon('open')}打开教师端登录</button><p class="tip">登录后，可在设置中改成自己的密码。</p>`);temporaryPassword=password;$('passwordValue').textContent=password}catch(e){overlay.dataset.pending='false';btn.disabled=false;btn.textContent='确认重置';toast('重置失败：'+e)}}
+function closeModal(){const el=document.querySelector('.shade');if(el?.dataset.pending==='true')return;if(el){el.remove();returnFocus?.focus()}}
+async function reset(){
+  const btn=$('confirmReset'), input=$('newPassword'), confirm=$('confirmPassword'), error=$('passwordError');
+  error.textContent='';
+  if(!input.value){error.textContent='请输入新密码';input.focus();return;}
+  if(input.value!==confirm.value){error.textContent='两次输入的密码不一致';confirm.focus();return;}
+  const overlay=btn.closest('.shade');overlay.dataset.pending='true';btn.disabled=true;input.disabled=true;confirm.disabled=true;btn.textContent='正在保存…';
+  try{
+    const data=await invoke('cmd_desktop_request',{operation:'reset',ip:null,newPassword:input.value});
+    if(!data.success)throw Error(data.error||'未能重置密码');
+    input.value='';confirm.value='';overlay.dataset.pending='false';
+    modal('管理员密码已重置',`<p>请使用刚设置的新密码登录教师端。</p><button class="btn primary" data-open="teacher">${icon('open')}打开教师端登录</button>`);
+  }catch(e){overlay.dataset.pending='false';btn.disabled=false;input.disabled=false;confirm.disabled=false;btn.textContent='保存新密码';error.textContent='重置失败：'+e;}
+}
 async function copy(text,button){try{await invoke('cmd_copy_text',{text});button.classList.add('copied');toast('已复制');setTimeout(()=>button.classList.remove('copied'),1400)}catch(e){toast('复制失败，请选中内容手动复制')}}
-document.addEventListener('click',async event=>{const b=event.target.closest('button');if(!b||b.disabled)return;try{if(b.classList.contains('close'))closeModal();else if(b.dataset.open)await invoke('cmd_open_url',{urlType:b.dataset.open,ip:b.dataset.open==='teacher'?'localhost':selectedIp||null});else if(b.dataset.copy)await copy(url(b.dataset.copy),b);else if(b.dataset.folder)await invoke('cmd_open_directory',{kind:b.dataset.folder});else if(b.id==='serviceButton')await service(!state.running);else if(b.id==='retryButton')await service(true);else if(b.id==='resetButton')modal('重置管理密码？','<p>将生成新的 6 位数字密码。原密码会失效，已登录的教师会话将退出。</p><button class="btn primary" id="confirmReset">确认重置</button>');else if(b.id==='confirmReset')await reset();else if(b.id==='copyPassword')await copy(temporaryPassword,b);else if(b.id==='networkButton')modal('选择学生访问地址',`<p>选择学生设备所在的局域网，网址将同步更新。</p><div class="network-list">${state.interfaces.map(i=>`<button class="network-choice ${i.ip===selectedIp?'selected':''}" data-ip="${escapeHtml(i.ip)}"><strong>${escapeHtml(i.label||i.name)}${i.ip===selectedIp?'<span>当前使用</span>':''}</strong><code>${escapeHtml(i.ip)}</code></button>`).join('')||'<p>未检测到局域网地址，请检查网络连接。</p>'}</div>`);else if(b.dataset.ip){b.disabled=true;await invoke('cmd_desktop_request',{operation:'network',ip:b.dataset.ip});selectedIp=b.dataset.ip;closeModal();render();toast('学生网址已更新')}else if(b.id==='exitButton')modal('退出并停止服务？','<p>学生将暂时无法访问课堂。如果只想收起窗口，点击窗口关闭按钮即可继续后台运行。</p><button class="btn" id="keepRunning">继续运行</button><button class="btn primary" id="confirmExit">退出并停止服务</button>');else if(b.id==='keepRunning')closeModal();else if(b.id==='confirmExit'){b.disabled=true;await invoke('cmd_quit')}}catch(e){b.disabled=false;toast(String(e))}});
-document.addEventListener('keydown',event=>{if(event.key==='Escape')closeModal();if(event.key==='Tab'){const modal=document.querySelector('.shade');if(!modal)return;const buttons=[...modal.querySelectorAll('button:not(:disabled)')];const first=buttons[0],last=buttons[buttons.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}}});
+document.addEventListener('click',async event=>{const b=event.target.closest('button');if(!b||b.disabled)return;try{if(b.classList.contains('close'))closeModal();else if(b.dataset.open)await invoke('cmd_open_url',{urlType:b.dataset.open,ip:b.dataset.open==='teacher'?'localhost':selectedIp||null});else if(b.dataset.copy)await copy(url(b.dataset.copy),b);else if(b.dataset.folder)await invoke('cmd_open_directory',{kind:b.dataset.folder});else if(b.id==='serviceButton')await service(!state.running);else if(b.id==='retryButton')await service(true);else if(b.id==='resetButton'){modal('重置管理员密码','<p>设置后原密码失效，已登录的教师需重新登录。</p><label class="password-field" for="newPassword">新密码<input id="newPassword" type="password" autocomplete="new-password"></label><label class="password-field" for="confirmPassword">确认新密码<input id="confirmPassword" type="password" autocomplete="new-password"></label><p class="password-error" id="passwordError" role="alert"></p><button class="btn primary" id="confirmReset">保存新密码</button>');$('newPassword').focus()}else if(b.id==='confirmReset')await reset();else if(b.id==='networkButton')modal('选择学生访问地址',`<p>选择学生设备所在的局域网，网址将同步更新。</p><div class="network-list">${state.interfaces.map(i=>`<button class="network-choice ${i.ip===selectedIp?'selected':''}" data-ip="${escapeHtml(i.ip)}"><strong>${escapeHtml(i.label||i.name)}${i.ip===selectedIp?'<span>当前使用</span>':''}</strong><code>${escapeHtml(i.ip)}</code></button>`).join('')||'<p>未检测到局域网地址，请检查网络连接。</p>'}</div>`);else if(b.dataset.ip){b.disabled=true;await invoke('cmd_desktop_request',{operation:'network',ip:b.dataset.ip});selectedIp=b.dataset.ip;closeModal();render();toast('学生网址已更新')}else if(b.id==='exitButton')modal('退出并停止服务？','<p>学生将暂时无法访问课堂。如果只想收起窗口，点击窗口关闭按钮即可继续后台运行。</p><button class="btn" id="keepRunning">继续运行</button><button class="btn primary" id="confirmExit">退出并停止服务</button>');else if(b.id==='keepRunning')closeModal();else if(b.id==='confirmExit'){b.disabled=true;await invoke('cmd_quit')}}catch(e){b.disabled=false;toast(String(e))}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')closeModal();if(event.key==='Enter'&&['newPassword','confirmPassword'].includes(event.target.id)&&!$('confirmReset').disabled){event.preventDefault();void reset();}if(event.key==='Tab'){const modal=document.querySelector('.shade');if(!modal)return;const buttons=[...modal.querySelectorAll('button:not(:disabled),input:not(:disabled)')];const first=buttons[0],last=buttons[buttons.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}}});
 render();poll();setInterval(poll,2500);
 
 </script>

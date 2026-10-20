@@ -149,9 +149,11 @@ test('🔴 端点接线：`GET /history/all` 真的把那几个字段发出来�
   t.after(() => server.close());
   const { port } = server.address() as AddressInfo;
 
+  await db.prisma.classroom.createMany({ data: Array.from({ length: 51 }, (_, i) => ({ title: `较新的课堂 ${i}`, status: 'ended', endedAt: new Date() })) });
   const res = await fetch(`http://127.0.0.1:${port}/api/classroom/history/all`);
   assert.equal(res.status, 200, '端点本身要活着');
   const body = await res.json() as Array<Record<string, unknown>>;
+  assert.equal(body.length, 52, '历史记录不能只返回最近 50 堂，较早课堂也应能被查找');
   const item = body.find((row) => row.id === classroom.id);
   assert.ok(item, '刚结束的课堂要出现在历史里');
   for (const key of ['webappUsageCount', 'webappDurationMs', 'webappDurationText', 'worksheetSubmitted', 'worksheetTotal']) {

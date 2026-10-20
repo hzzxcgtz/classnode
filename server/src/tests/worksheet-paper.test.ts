@@ -283,3 +283,19 @@ test('★ 表格单元格里的公式也进判据层（`inlineText` 剥掉定界
   // 顺带钉住「剥掉定界符」那一半（判分侧要用它）。
   assert.equal(inlineText(table.rows[0][0].text), 'a<b');
 });
+
+
+test('教师参考保留完整评分标准与配图，信息收集不印参考答案和分值', () => {
+  const node = q('q-new', 'short-answer', { aiScoringEnabled: true, aiScoringMaxScore: 10, rubricText: '具体评分要求'.repeat(100), rubricImageUrl: '/uploads/chat/chat-example.png', answers: [['原参考答案']] });
+  node.autoGrade = false;
+  const scored = questionAt([node], 0);
+  assert.match(scored.meta, /10 分/);
+  assert.ok(scored.guidance?.some(text => text.includes('具体评分要求'.repeat(100))));
+  assert.ok(scored.images?.some(image => image.caption === '评分标准图片'));
+  const collect = q('q-collect', 'single-choice', { options: [{ key: 'A', text: '原选项' }], correctKeys: ['A'] });
+  collect.autoGrade = false;
+  const result = questionAt([collect], 0);
+  assert.match(result.meta, /不计分/);
+  assert.equal(inlineText(result.answer), '');
+  assert.match(result.answerNote || '', /不设标准答案/);
+});

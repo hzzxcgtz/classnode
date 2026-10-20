@@ -25,7 +25,7 @@ import { normalizeWorksheetCurriculum } from '../../../../lib/worksheet-curricul
  */
 
 import type { QuestionPointsDraft, WorksheetContent, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
-import { DEFAULT_WORKSHEET_BACKGROUND, normalizeWorksheetBackgroundTheme } from '../../../../lib/worksheet-backgrounds.ts';
+import { normalizeWorksheetBackgroundTheme } from '../../../../lib/worksheet-backgrounds.ts';
 // ★ 2026-09-27（教师）：「学生页面的学习单区域可以增加一些透明度……也可以在学习单设置中增加
 // 几档透明度供选择。」档位、名字与那两个 alpha **只有那一份** —— 教师端的设置面板与学生端的
 // 面板读的是同一个模块（`@/lib/worksheet-surface`）。
@@ -52,7 +52,6 @@ import { CHOICE_SEPARATORS, fillGradingTotals, hasExplicitFillGrading } from '..
 import {
   DEFAULT_HALF_STEP,
   DEFAULT_REWARD_STEP,
-  DEFAULT_REWARD_STYLE,
   normalizeHalfStep,
   normalizeRewardStep,
   normalizeRewardStyle,
@@ -2909,10 +2908,10 @@ export function buildPayload(
   content: WorksheetContent,
 ): WorksheetPayload {
   return {
-    // 与服务端 `readTitle` / `readDescription` 同一套归一化（trim + 空串归 null）。
+    // 标题留空时使用默认名称；使用说明去空格后可为 null。
     // 前端先做一遍，是为了让「保存后的本地状态」与「库里的状态」逐字相同 ——
     // 否则 `dirty` 判据会在保存成功后仍然为真（一个永远擦不掉的「未保存」标记）。
-    title: title.trim(),
+    title: title.trim() || '未命名学习单',
     description: description.trim() || null,
     settings,
     content: sanitizeContentForSave(content),
@@ -2989,24 +2988,13 @@ export function isContentHalfSaved(baselines: SaveBaselines | null, payload: Wor
 }
 
 export const DEFAULT_SETTINGS: WorksheetSettings = {
-  // ★ 2026-09-30（教师）：「将『允许学生修改』改为**默认不能修改**」。
-  // 改了**两处**默认的一半：这里是「新建的学习单长什么样」，服务端
-  // `routes/worksheets.ts` 的 `DEFAULT_SETTINGS` 是「缺字段的行长什么样」。
-  // 🔴 两处必须是同一个值（那段注释在上面 rewardStyle 上写着）——
-  //    分叉的表现是「新建出来是 A、学生看到的是 B」，而两边都不报错。
-  // ⚠️ 它**只改默认值**：库里 `settings.allowResubmit` 已经是 `true` 的那几张单
-  //    仍然可以修改（教师当时是显式打开的）。「缺键 ⇒ 不能修改」是唯一一个答案 ——
-  //    `normalizeLoadedSettings` / `parseDraft` 两条读路径与这里同解，不另立一个。
+  // 新建学习单的初始设置；读取旧学习单仍按原有归一化规则保留配置。
   allowResubmit: false,
   autoGrade: true,
   answerMode: 'open',
   defaultInputMode: 'keyboard',
-  // 奖励形式（规格 §9.2）：学习单级配置，默认「星星 ⭐、每答对一题 1 个」——
-  // 依据（§9.2 的图里 ● 打在星星上、§8.2 的学生端版式图顶栏画着 `⭐×3`）写在
-  // `worksheet-reward.ts` 的 `DEFAULT_REWARD_STYLE` 上。**两处必须是同一对默认值**：
-  // 这里决定「新建的学习单长什么样」，服务端 `normalizeSettings` 决定「缺字段的行
-  // 长什么样」，不一致的话新建出来与学生看到的就是两回事。
-  rewardStyle: DEFAULT_REWARD_STYLE,
+  // 新单默认选择奖励列表第一项「支点博士」。
+  rewardStyle: 'classnode',
   rewardStep: DEFAULT_REWARD_STEP,
   // 部分给分档默认 **0**（规格 §12 裁定 3：新单默认「全对 1 / 部分给分 0」，与第一批行为逐字相同）。
   // ⚠️ 用 `DEFAULT_HALF_STEP` 而**不是** `DEFAULT_REWARD_STEP`：两者刚好是 0 与 1，
@@ -3016,7 +3004,7 @@ export const DEFAULT_SETTINGS: WorksheetSettings = {
   // 上面那段注释说的就是这件事：这里决定新建的单、那边决定缺字段的行）。
   // 🔴 默认指定一个等于「默认把全班作业发给第三方 AI」。
   analysisAgentId: null,
-  backgroundTheme: DEFAULT_WORKSHEET_BACKGROUND,
+  backgroundTheme: 'none',
   backgroundImageUrl: null,
   backgroundPortraitImageUrl: null,
   surfaceOpacity: DEFAULT_WORKSHEET_SURFACE,

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
-import { api } from '@/lib/api';
+import {useImageUpload, ImageDropOverlay} from './use-image-upload';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import {
   BLANK_MARK_TEXT,
@@ -76,6 +76,7 @@ import { MathInsertDialog } from './math-insert-dialog';
  * 把结果画回来。
  */
 export interface PromptEditorProps {
+  heading?: ReactNode;
   node: WorksheetQuestionNode;
   /**
    * ★ 2026-09-26：`data` 补丁与题干**同一次**提交 —— 一个按键只进一格撤销栈。
@@ -177,7 +178,7 @@ const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string 
   { key: 'emphasis', label: <span className="worksheet-editor-emphasis-glyph">着</span>, title: '着重号（字下加点）' },
 ];
 
-export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPaste, onTableMarkClick, onNotice }: PromptEditorProps) {
+export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRequestPaste, onTableMarkClick, onNotice }: PromptEditorProps) {
   const supportsBlankSlots = hasPromptBlankSlots(node.type);
   /**
    * ★ 2026-09-29（教师）：「增加选择、判断、填空、排序题型的剪贴板粘贴导入功能」。
@@ -193,8 +194,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
     : isChoiceQuestion(node) ? '粘贴一整道选择题（任务要求与选项一起识别）'
       : node.type === 'true-false' ? '粘贴一整道判断题（整段作任务要求）'
         : '粘贴一整道填空题（括号与下划线会认成填空域）';
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
+  const {uploading, error: uploadError, dragging: fileOver, upload: uploadImage, dropProps} = useImageUpload(node.id, url => onDataChange({promptImageUrl: url}));
   const [toolbar, setToolbar] = useState<ToolbarState>(NO_SELECTION);
   /**
    * 颜色那个自定义下拉开着没有。
@@ -642,29 +642,15 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
     refreshToolbar();
   };
 
-  const uploadImage = async (file: File) => {
-    setUploading(true);
-    setUploadError('');
-    try {
-      const result = await api.uploadWorksheetImage(file);
-      onDataChange({ promptImageUrl: result.url });
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : '图片上传失败');
-    } finally {
-      setUploading(false);
-    }
-  };
 
   return (
     <div className="worksheet-editor-rich-field">
-      {/* ★ 2026-09-26（教师）：「这个有点多余」—— 这张卡的 section 头已经写着
-          「题目内容 / 写清学生需要完成什么」，下面再挂一个「题干」是同一句话说两次。
-          （原来的 `.worksheet-editor-rich-label` 也一并从 CSS 里删了。） */}
       {/* ★ 2026-09-26（教师）：「这个工具栏能不能集成到下面的编辑框里，现在感觉有点割裂感。」
           ⇒ 工具条与编辑区收进**同一个框**：框顶那一条是工具，下面就是正文（Word / 问卷星
           都是这个样子）。提示语挪到**框外面**去 —— 它原来是夹在两者中间的那一条，
           正是「割裂感」的一部分。 */}
-      <div className="worksheet-editor-rich-box">
+      <div className={`worksheet-editor-rich-box${fileOver ? ' is-file-over' : ''}`} {...dropProps}>
+        {fileOver && <ImageDropOverlay label="任务配图" replacing={Boolean(imageUrl)} />}
         <div
           className="worksheet-editor-formatbar"
           aria-label="任务要求文字格式"
@@ -674,6 +660,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
             pendingRangeRef.current = el ? selectedRange(el) : null;
           }}
         >
+          {heading && <div className="worksheet-editor-prompt-heading">{heading}</div>}
           <div className="worksheet-editor-tool-group" role="group" aria-label="文字样式">
             {BOOLEAN_BUTTONS.map(button => (
               <button
@@ -807,7 +794,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
               <span className="worksheet-editor-blank-glyph" aria-hidden="true">{BLANK_MARK_TEXT}</span>
             </button>
           )}
-          <label className="worksheet-editor-image-upload">
+          <label className="worksheet-editor-image-upload" title="选择图片，也可将图片文件拖入编辑框">
             <input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} onChange={event => {
               const file = event.target.files?.[0];
               if (file) void uploadImage(file);
@@ -855,7 +842,7 @@ export function PromptEditor({ node, onPromptChange, onDataChange, onRequestPast
       {imageUrl && (
         <div className="worksheet-editor-upload-preview">
           <img src={worksheetAssetUrl(imageUrl)} alt="任务要求配图预览" />
-          <button type="button" onClick={() => onDataChange({ promptImageUrl: undefined })}>移除图片</button>
+          <button type="button" className="worksheet-editor-image-remove" aria-label="移除任务要求配图" title="移除图片" onClick={() => onDataChange({ promptImageUrl: undefined })} />
         </div>
       )}
       {uploadError && <p className="worksheet-editor-upload-error" role="alert">{uploadError}</p>}

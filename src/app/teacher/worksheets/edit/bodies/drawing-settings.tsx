@@ -96,7 +96,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
     return (
       <div className="worksheet-editor-drawing-settings">
         <p className="worksheet-editor-drawing-note">
-          照片模式不使用作图工具和初始图。
+          照片上传不使用画板、底图和底稿；需要绘制时，请改选「画板绘制」。
         </p>
       </div>
     );
@@ -232,7 +232,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
               title={starterSupported ? undefined : '这一档还不支持初始图'}
               onChange={(event) => {
                 if (!event.target.checked) {
-                  if (starter && !window.confirm('清掉初始图会丢掉已经画好的内容，确定吗？')) return;
+                  if (starter && !window.confirm('删除已绘制的底稿？如需保留，请取消。')) return;
                   onDataChange({ drawingStarter: undefined });
                   return;
                 }
@@ -288,8 +288,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
                 {/* 🔴 与流程图那句**不同**，别照抄：思维导图的底稿是**骨架**，
                     学生要填的正是骨架本身，所以交上来的**整棵树**都算他的作答
                     （见 `mindMapOrStarter`）—— 这里必须说清，不然教师会以为「骨架不算他的」。 */}
-                学生将在这张图上继续绘制；导图这一档，交上来的**整张图**都算他的作答
-                （只有发给智能体的那一句说明会提示「初始图不算学生的成果」）。
+                学生在底稿上补充导图，提交时保留整张图；AI 分析时会收到初始内容说明。
               </p>
               <div className="worksheet-editor-starter-canvas">
                 <MindmapDrawing

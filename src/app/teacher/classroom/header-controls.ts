@@ -112,7 +112,7 @@ export const WORKSHEET_MENU_ITEMS: ReadonlyArray<{ id: 'overview' | 'student' | 
   {
     id: 'open',
     label: '逐项开放',
-    title: '选择向学生开放的任务（学习单设为「手动开放」时生效）',
+    title: '选择向学生开放的任务（学习单设为「教师控制开放」时生效）',
   },
 ];
 

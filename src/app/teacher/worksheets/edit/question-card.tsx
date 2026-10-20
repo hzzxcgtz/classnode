@@ -102,7 +102,7 @@ const QUESTION_EDITOR_COPY: Partial<Record<string, { title: string; description:
     description: '',
   },
   categorize: {
-    title: '分类框与条目归属',
+    title: '条目与分类框',
     // 两个子区块已分别叫「分类框」与「条目与归属」，不再复述操作。
     description: '',
   },
@@ -428,7 +428,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
       <div className="worksheet-editor-block-head">
         <div>
           <h4><EditorIcon kind="content" /><label htmlFor={`analysis-focus-${node.id}`}>当前任务分析重点（选填）</label></h4>
-          <p id={`analysis-focus-help-${node.id}`}>告诉 AI 本次最希望关注什么，以及哪些方面暂不重点分析。不填时根据任务要求和评价依据选择重点；本项不改变评分标准和给分条件。</p>
+          <p id={`analysis-focus-help-${node.id}`}>说明重点关注什么、暂不分析什么。留空时按任务要求和评价依据分析，不改变评分标准。</p>
         </div>
       </div>
       <textarea id={`analysis-focus-${node.id}`} className="input worksheet-editor-evaluation-input" rows={3} maxLength={1200}
@@ -575,15 +575,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         </div>
 
         <div className={`worksheet-editor-block${(node.type === 'drawing' || node.type === 'short-answer' || node.type === 'open-ended') ? ' drawing-prompt-block' : ''}`}>
-          <div className="worksheet-editor-block-head">
-            <div>
-              {/* ⚠️ 这个「题干」标题是**新的层级**要的：以前它在卡片头部下面，与
-                  「题目内容 / 写清学生需要完成什么」是同一句话说两次，所以当时删掉了。
-                  现在「题目内容」是容器的名字、块要有自己的名字，它不再重复。 */}
-              <h4><EditorIcon kind="prompt" />任务要求{node.type === 'drawing' && <span className="drawing-required">*</span>}</h4>
-            </div>
-          </div>
           <PromptEditor
+            heading={<h4><EditorIcon kind="prompt" />任务要求{node.type === 'drawing' && <span className="drawing-required">*</span>}</h4>}
             node={node}
             onPromptChange={onPromptChange}
             onDataChange={onDataChange}
@@ -696,7 +689,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                 <div className="worksheet-editor-block-head">
                   <div>
                     <h4><EditorIcon kind="answer" /><label htmlFor={`reference-answer-${node.id}`}>参考作答（选填）</label></h4>
-                    <p id={`reference-answer-help-${node.id}`}>提供一种或几种符合要求的作答示例，帮助 AI 理解任务。不作为唯一答案，允许其他符合要求的表达和方法。</p>
+                    <p id={`reference-answer-help-${node.id}`}>填写合理的作答示例，帮助 AI 理解任务；其他符合要求的表达和方法也可接受。</p>
                   </div>
                 </div>
                 <textarea id={`reference-answer-${node.id}`} className="input worksheet-editor-evaluation-input" aria-describedby={`reference-answer-help-${node.id}`} rows={4} maxLength={12000}
@@ -718,7 +711,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                     <div className="worksheet-editor-block-head">
                       <div>
                         <h4><EditorIcon kind="grading" /><label htmlFor={`evaluation-rubric-${node.id}`}>评价标准{aiScoringEnabled ? '（必填）' : '（选填）'}</label></h4>
-                        <p id={`evaluation-rubric-help-${node.id}`}>说明当前任务看重哪些表现、怎样算达到要求。关闭评分时用于定性分析；开启评分时，请写清各项给分条件。</p>
+                        <p id={`evaluation-rubric-help-${node.id}`}>说明怎样算达到要求；开启 AI 评分时须写清给分条件，可填写文字或上传量表图片。</p>
                       </div>
                     </div>
                       <textarea
@@ -729,7 +722,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                         value={rubricText || aiScoringCriteria}
                         maxLength={2400}
                         rows={4}
-                        placeholder="例如：写清事情经过；至少用一个动作或对话把片段写具体；感受与事件有关。评分时补充各项给分条件，也可上传评价量表图片。"
+                        placeholder="例如：经过清楚4分，动作或对话具体4分，感受与事件相关2分。不评分时可只写评价要求。"
                         onPaste={(event) => {
                           const raw = event.clipboardData.getData('text/plain');
                           if (!raw) return;
@@ -797,11 +790,17 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                 <div className="worksheet-editor-block-head">
                   <div>
                     <h4><EditorIcon kind="grading" />AI 评分</h4>
-                    <p>按评分标准生成分数与建议。</p>
+                    <p>{node.data.studentAiReviewEnabled === true ? '学生提交后自动评分，结果计入成绩。' : '由教师在课堂看板发起 AI 评分，结果计入成绩。'}</p>
                   </div>
                   <HeadSwitch
                     checked={aiScoringEnabled}
-                    onChange={(enabled) => onDataChange({ aiScoringEnabled: enabled })}
+                    onChange={(enabled) => onDataChange({
+                      aiScoringEnabled: enabled,
+                      ...(enabled ? {
+                        studentAiReviewEnabled: true,
+                        aiReviewLimit: Number.isInteger(node.data.aiReviewLimit) && Number(node.data.aiReviewLimit) >= 1 && Number(node.data.aiReviewLimit) <= 20 ? node.data.aiReviewLimit : 1,
+                      } : {}),
+                    })}
                     label="AI 评分"
                     title={aiScoringEnabled ? '已开启 AI 评分' : '已关闭 AI 评分'}
                   />
@@ -813,7 +812,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                         <div className="worksheet-editor-individual-review-head">
                           <div>
                             <h5>学生自主评价</h5>
-                            <p>提交作品后自动获取 AI 评价</p>
+                            <p>学生提交作品后，自动获得 AI 评分与建议</p>
                           </div>
                           <HeadSwitch checked={node.data.studentAiReviewEnabled === true} onChange={enabled => onDataChange({ studentAiReviewEnabled: enabled })} label="学生自主评价" title={node.data.studentAiReviewEnabled === true ? '已开启学生自主评价' : '已关闭学生自主评价'} />
                         </div>
@@ -827,7 +826,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                             </div>
                             <span>次</span>
                           </div>
-                          <p className="worksheet-editor-review-help">成功评价扣次，失败不扣；次数用完后仍可提交作品。<br />允许学生修改作品，最新有效评分替换旧分，奖励不累计。</p>
+                          <p className="worksheet-editor-review-help">成功评价才扣次，失败可重试。剩余次数内可修改并再次提交，评价中不能修改。<br />次数用完后作品定稿，教师增加次数可继续修改；不受学习单「提交后可以修改」开关限制。<br />最新有效评分替换旧分，奖励不累计。</p>
                         </>}
                       </div>
                       <div className="worksheet-editor-ai-scoring-field">
@@ -868,10 +867,10 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                             aria-label={`增加 1 ${pointsUnit}`}
                           >+</button>
                         </div>
-                        <p className="worksheet-editor-review-help">当前任务满分，AI 按评分标准评定。</p>
+                        <p className="worksheet-editor-review-help">设置本项任务的满分，评价标准中的分值应与此一致。</p>
                       </div>
                     </div>
-                    {node.data.studentAiReviewEnabled === true && <p className="worksheet-editor-ai-template-note">使用前，请将分析智能体的提示词更新为模板中的三种调用模式说明。评价次数默认 1 次。评价期间不能修改；次数用完后定稿，增加次数可解锁。</p>}
+                    {node.data.studentAiReviewEnabled === true && <p className="worksheet-editor-ai-template-note">使用前，请将分析智能体的提示词更新为最新模板。评价次数默认 1 次，可按需增加。</p>}
                     <p className="worksheet-editor-ai-scoring-note">
                       {/* ★ 2026-10-07（教师裁定 2）：AI 的分**会写回成绩**（进总分、进奖励、进报告的
                           对错标记），所以原来那句「仅供参考，不会覆盖教师评价」已经不成立了。
@@ -888,14 +887,6 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           </div>
         )}
 
-        {/* 填空题的答案由下方总开关统一显隐，关闭状态已在「自动评分」区说明；
-            这里的额外提示只服务答案控件仍位于本区的其它客观题，避免同一句出现两次。 */}
-        {!aiSupported && <div className="worksheet-editor-analysis-settings">{analysisFocusSettings}</div>}
-        {!gradedOn && isGradedQuestionType(node.type) && !isBlankType && (
-          <p className="worksheet-editor-answer-disabled">
-            不设标准答案，不判对错、不计分；可在课堂中分析学生作答。
-          </p>
-        )}
       </section>
 
       {/*
@@ -914,11 +905,11 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         否则教师看到关闭，学生提交后仍会得到分数。
       */}
       {isGradedQuestionType(node.type) && (
-        <section className="worksheet-editor-question-section is-grading">
+        <section className={`worksheet-editor-question-section is-grading${gradedOn ? '' : ' is-collection'}`}>
           <div className="worksheet-editor-section-head">
             <div>
               <h3><EditorIcon kind="grading" />作答用途</h3>
-              <p>有答案时自动判分；无标准答案时收集信息，统计作答并支持 AI 分析。</p>
+              <p>选择是否设置答案。信息收集不判对错、不计分，可进行 AI 分析。</p>
             </div>
             <div className="worksheet-editor-head-actions">
               {/* ⚠️ 徽章里**不写「自动评分」** —— 卡片标题就是它（原来那句
@@ -933,7 +924,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           {gradedOn && (<>
 
           {isMultipleChoice(node) && (
-            <div className="worksheet-editor-block">
+            <div className="worksheet-editor-block worksheet-editor-choice-scoring">
               <div className="worksheet-editor-block-head">
                 <div>
                   <h4><EditorIcon kind="grading" />评分方式</h4>
@@ -985,13 +976,11 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
               而它恒为假）—— 它的分值在上面那块「得分方式 + 分值」里，一个字没动。
           */}
           {!isBlankType && (
-          <div className="worksheet-editor-block">
+          <div className="worksheet-editor-block worksheet-editor-score-settings">
             <div className="worksheet-editor-block-head">
               <div>
                 <h4><EditorIcon kind="points" />分值设置</h4>
-                <p>{showsPartialPoints(node)
-                  ? `设置完全正确和部分答对时获得的${pointsUnit}。`
-                  : `设置完全正确时获得的${pointsUnit}。`}</p>
+
               </div>
             </div>
             <PointsRow
@@ -1030,6 +1019,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           </>)}
         </section>
       )}
+
+        {!aiSupported && <div className="worksheet-editor-analysis-settings">{analysisFocusSettings}</div>}
 
       {/*
         ⊘ ★ 2026-10-05（教师）：「这部分是不是多余了？」—— 是，已整块删除。
@@ -1260,14 +1251,7 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rewardStyle, re
   // 而教师**没有那个框可改**（`text` 那一侧读的还是库里那个值）。
   const halfInvalid = showHalf && parsePointInput(halfText, 'half').kind === 'invalid';
   const invalidHint = fullInvalid
-    // 🔴 ★ I1：这句必须**指名道姓**说清「全对」那一档，并交代「不计分」今天没有出口 ——
-    // 教师填 0 的动机通常就是「这题不计分」，而**今天没有这个设置**（留空只是跟随学习单的
-    // 档，不是不计分）。不写这一句，他就会去找一个不存在的选项，或者干脆留下 0。
-    ? `「全对给几分」必须是 ${POINTS_FULL_MIN} 以上（${POINTS_FULL_MIN}–${POINTS_MAX} 的整数）——`
-      // ⚠️ 这段字是**教师看到的原文**（`<p>` 里渲染，不走 markdown）⇒ 不许出现 `**` 这类记号。
-      + ` 填 0 的话，答对这项任务的学生会看到红叉：他答对了，却一分都没有。`
-      + ` 今天没有「这项任务不计分」这个设置 —— 两个框都留空只表示跟随学习单的档`
-      + `（${inheritedPoints.full} / ${inheritedPoints.half}），不是不计分。`
+    ? `「完全正确」须填 ${POINTS_FULL_MIN}–${POINTS_MAX} 的整数；不评分请选择「无标准答案，收集信息」。`
     : halfInvalid
       // 这一条同时覆盖两种来路：
       //   · 教师**刚打的**那个字（`rejectedInput` 把它留在屏幕上）—— 它没进 reducer，
@@ -1282,11 +1266,11 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rewardStyle, re
   // 教师会先去改那个**更靠前**的错，而两条的路数是同一个（先把框改成合法值）。
   // ⚠️ 同样只在画了那两个框时才有意义 —— 这句话说的是「两个框要么都填」，而单栏的题只有一个。
   const partialHint = !invalidHint && showHalf && isPartialPoints(node.points)
-    ? '两个框要么都填，要么都留空 —— 只填一个的话，另一个会按 0 分算，学生那边看不出来。'
+    ? '请同时填写两项，或同时留空使用默认值。'
     : null;
 
   return (
-    <div className="worksheet-editor-points">
+    <div className={`worksheet-editor-points${isMultipleChoice(node) ? ' is-multiple-choice' : ''}`}>
       <div className={`worksheet-editor-points-grid${showHalf ? '' : ' is-single'}`}>
         <label className="worksheet-editor-points-field">
           <span>
@@ -1334,6 +1318,7 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rewardStyle, re
             <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />
           </span>
         </label>}
+        {!showHalf && isMultipleChoice(node) && <span className="worksheet-editor-half-placeholder" aria-hidden="true" />}
       </div>
       {/*
         ★ 2026-09-25（教师问「留空 = 跟随学习单（1 / 0）这个什么意思」⇒ 那句话没写好）：
@@ -1347,11 +1332,11 @@ function PointsRow({ heading, node, inheritedPoints, pointsUnit, rewardStyle, re
       </p>
       {invalidHint && <p className="worksheet-editor-warn-hint">{invalidHint}</p>}
       {partialHint && <p className="worksheet-editor-warn-hint">{partialHint}</p>}
-      {shouldWarnZeroHalfCredit(node, inheritedPoints) && (
-        // 🔴 规格 §12 裁定 3 的**连带要求**，一个字都不许省：没有这句，教师会以为自己开了
-        // 部分得分，而学生**一分都拿不到**，且没有任何报错 —— 他会去怀疑学生。
-        <p className="worksheet-editor-warn-hint">
-          部分给分设成 0 分，等于全对才算 —— 若想给部分分，请把它填成一个正数。
+      {isMultipleChoice(node) && (
+        <p className={`worksheet-editor-choice-score-hint${shouldWarnZeroHalfCredit(node, inheritedPoints) ? ' is-warning' : ''}`}>
+          {shouldWarnZeroHalfCredit(node, inheritedPoints)
+            ? '部分给分为 0 时，部分答对不计分；需要给分时请填正整数。'
+            : node.data.partialCredit === 'allow-missing' ? '只漏选且未选错时，按部分答对给分；选错不得分。' : '选全所有正确答案且没有选错，才能得分。'}
         </p>
       )}
     </div>
@@ -1467,9 +1452,7 @@ function InputModeRow({ node, onInputModeChange }: {
             checked={handwriting}
             onChange={() => onInputModeChange('handwriting')}
           />
-          {/* ★ 2026-10-06：原来这里写「手写输入」—— 同一张卡的说明里本来就说「手写」，
-              同一个字段两个词 ⇒ 统一成「手写」。 */}
-          <span><EditorIcon kind="handwriting" />{drawing ? '画板绘制' : '手写'}</span>
+          <span><EditorIcon kind="handwriting" />{drawing ? '画板绘制' : '手写输入'}</span>
         </label>
         <label className={`worksheet-editor-option-correct${drawing && (photo) ? ' is-selected' : ''}`}>
           <input

@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { api } from '@/lib/api';
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import {useImageUpload, ImageDropOverlay} from '../use-image-upload';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 // ★ 2026-10-06：粘贴去格式那一个纯函数（唯一一份，题目卡里「评分标准」那个 textarea 用的也是它）。
@@ -192,7 +192,8 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
           </div>
         )}
         {options.map((option, optionIndex) => (
-          <div className="worksheet-editor-option" key={option.key} data-option-row={node.id}>
+          <OptionImageRow key={option.key} optionKey={option.key} nodeId={node.id} onImageChange={url => setOptionImage(optionIndex, url)}>
+          {({uploading, upload, dragging}) => <>
             <button
               type="button"
               className="worksheet-editor-option-drag"
@@ -217,6 +218,7 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
             */}
             <span className="worksheet-editor-option-correct is-readonly">{option.key}</span>
             <div className="worksheet-editor-option-content">
+              <div className="worksheet-editor-option-text-target">
               <input
                 className="input"
                 value={option.text}
@@ -226,21 +228,18 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
                 onBlur={event => flushOptionText(optionIndex, event.target.value)}
                 onChange={event => commitOptionText(optionIndex, event.target.value)}
               />
+              {dragging && <ImageDropOverlay label={`选项 ${option.key} 配图`} replacing={Boolean(option.imageUrl)} />}
+              </div>
               {option.imageUrl && (
-                /* ★ 2026-10-05：「移除图片」原来挤在右边那三个小盒中间。它一出现，
-                   那一行的**尾巴就宽了约 42px** ⇒ 这一行的答案圆点比同题其它行靠左，
-                   「答案列」不成一条线（上面那个表头更对不齐）。
-                   挪到缩略图旁边 —— 与「评分标准图片」那一块同一套做法（预览 + 操作按钮并排）。 */
                 <div className="worksheet-editor-option-image-preview">
                   <img src={worksheetAssetUrl(option.imageUrl)} alt={`选项 ${option.key} 配图预览`} />
                   <button
                     type="button"
-                    className="btn btn-secondary"
+                    className="worksheet-editor-image-remove"
+                    aria-label={`移除选项 ${option.key} 的图片`}
                     title={`移除选项 ${option.key} 的图片`}
                     onClick={() => setOptionImage(optionIndex, undefined)}
-                  >
-                    移除图片
-                  </button>
+                  />
                 </div>
               )}
             </div>
@@ -273,7 +272,8 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
             <OptionImageButton
               optionKey={option.key}
               hasImage={Boolean(option.imageUrl)}
-              onChange={(imageUrl) => setOptionImage(optionIndex, imageUrl)}
+              uploading={uploading}
+              onUpload={upload}
             />
             <button
               type="button"
@@ -285,7 +285,8 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
             >
               <TrashIcon />
             </button>
-          </div>
+          </>}
+          </OptionImageRow>
         ))}
       </div>
 
@@ -326,31 +327,26 @@ export function ChoiceOptionsEditor({ node, multiple, onDataChange, showAnswer =
   );
 }
 
-function OptionImageButton({ optionKey, hasImage, onChange }: {
-  optionKey: string;
-  hasImage: boolean;
-  onChange: (imageUrl?: string) => void;
+function OptionImageRow({nodeId, optionKey, onImageChange, children}: {
+  nodeId: string; optionKey: string; onImageChange: (url: string) => void;
+  children: (state: {uploading: boolean; upload: (file: File) => Promise<void>; dragging: boolean}) => ReactNode;
 }) {
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState('');
-  const upload = async (file: File) => {
-    setUploading(true);
-    setError('');
-    try {
-      const result = await api.uploadWorksheetImage(file);
-      onChange(result.url);
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : '上传失败');
-    } finally {
-      setUploading(false);
-    }
-  };
+  const state = useImageUpload(`${nodeId}:${optionKey}`, onImageChange);
+  return <div className={`worksheet-editor-option worksheet-editor-image-row${state.dragging ? ' is-file-over' : ''}`} data-option-row={nodeId} {...state.dropProps}>
+    {children(state)}
+    {state.error && <span className="worksheet-editor-option-upload-error" role="alert">{state.error}</span>}
+  </div>;
+}
+
+function OptionImageButton({optionKey, hasImage, uploading, onUpload}: {
+  optionKey: string; hasImage: boolean; uploading: boolean; onUpload: (file: File) => Promise<void>;
+}) {
   return (
     <div className="worksheet-editor-option-image-action">
-      <label title={hasImage ? `更换选项 ${optionKey} 的图片` : `给选项 ${optionKey} 添加图片`}>
+      <label title={hasImage ? `更换选项 ${optionKey} 的图片，也可拖图到此行` : `给选项 ${optionKey} 添加图片，也可拖图到此行`}>
         <input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} onChange={event => {
           const file = event.target.files?.[0];
-          if (file) void upload(file);
+          if (file) void onUpload(file);
           event.target.value = '';
         }} />
         {/* ★ 2026-09-26（教师：「用图标」）：原来这里是「配图 / 换图」两个字的按钮，
@@ -365,7 +361,6 @@ function OptionImageButton({ optionKey, hasImage, onChange }: {
           </svg>
         )}
       </label>
-      {error && <span role="alert">{error}</span>}
     </div>
   );
 }

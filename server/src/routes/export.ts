@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { createClassroomArchive } from '../services/classroom-archive.js';
+import { ClassroomArchiveError } from '../services/classroom-archive-data.js';
 import { PrismaClient, Prisma } from '@prisma/client';
 import multer from 'multer';
 import path from 'path';
@@ -61,6 +63,41 @@ const backupUpload = multer({
     }
     cb(null, true);
   },
+});
+
+// Readable classroom package: teacher-only via the export router's existing auth gate.
+router.post('/:classroomId/archive', async (req, res) => {
+  try {
+    const result = await createClassroomArchive(req.app.get('prisma'), req.params.classroomId);
+    if (res.destroyed) { result.cleanup(); return; }
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Archive-Warnings');
+    res.setHeader('X-Archive-Warnings', String(result.warnings));
+    res.setHeader('Cache-Control', 'no-store');
+    res.download(result.file, result.filename, error => {
+      result.cleanup();
+      if (error && !res.headersSent && !res.destroyed) res.status(500).json({ error: '资料包下载失败，请重试。' });
+    });
+  } catch (error) {
+    if (!(error instanceof ClassroomArchiveError)) console.error('[Export] classroom archive error:', error);
+    if (!res.destroyed && !res.headersSent) res.status(error instanceof ClassroomArchiveError ? error.status : 500).json({ error: errorMessage(error) });
+  }
+});
+
+router.post('/:classroomId/worksheet-documents', async (req, res) => {
+  try {
+    const result = await createClassroomArchive(req.app.get('prisma'), req.params.classroomId, 'word');
+    if (res.destroyed) { result.cleanup(); return; }
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Archive-Warnings');
+    res.setHeader('X-Archive-Warnings', String(result.warnings));
+    res.setHeader('Cache-Control', 'no-store');
+    res.download(result.file, result.filename, error => {
+      result.cleanup();
+      if (error && !res.headersSent && !res.destroyed) res.status(500).json({ error: '资料包下载失败，请重试。' });
+    });
+  } catch (error) {
+    if (!(error instanceof ClassroomArchiveError)) console.error('[Export] classroom archive error:', error);
+    if (!res.destroyed && !res.headersSent) res.status(error instanceof ClassroomArchiveError ? error.status : 500).json({ error: errorMessage(error) });
+  }
 });
 
 // 导出全班对话汇总 (JSON format, supports ?studentIds=id1,id2 filter)

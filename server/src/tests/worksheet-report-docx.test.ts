@@ -26,6 +26,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { PrismaClient } from '@prisma/client';
+import { studentAnswerText } from '../services/worksheet-record-docx.js';
 import { generateWorksheetReportDocx } from '../services/export-service.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -85,7 +86,7 @@ test('🔴 端到端 smoke：有学习单 + 有笔迹 ⇒ 产出一份合法的 
   // .docx 是一个 zip ⇒ 魔数必须是 `PK`。它是「这份文件打不打得到开」最便宜的那条判据。
   assert.equal(result.buffer.subarray(0, 2).toString('latin1'), 'PK', '不是 zip ⇒ Word 打不开');
   assert.ok(result.buffer.length > 5000, `太小了（${result.buffer.length} B），多半没画进去`);
-  assert.match(result.filename, /学习单与探究空间/, '文件名要能一眼看出这是哪一份报告');
+  assert.match(result.filename, /学生作答记录/, '文件名要能一眼看出这是哪一份报告');
   assert.match(result.filename, /\.docx$/);
   assert.equal(result.stats.totalStudents, 1);
   assert.equal(result.stats.totalMsgs, 2, '两道题各一行作答');
@@ -126,17 +127,17 @@ function paperText(buffer: Buffer): string {
   return String(xml).replace(/<[^>]+>/g, '');
 }
 
-test('🔴 纸面核对：题干 / 参与者名 / 学习单名 / 判定都真的印上去了，且**没有正确答案**', async (t) => {
+test('🔴 纸面核对：不重复题干，保留参与者、学习单名与判定，且**没有正确答案**', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const classroom = await seed(db.prisma);
   const text = paperText((await generateWorksheetReportDocx(classroom.id, db.prisma)).buffer);
 
   assert.match(text, /光合作用学习单/, '学习单名没印上去');
-  assert.match(text, /光合作用需要哪些条件/, '题干没印上去');
+  assert.doesNotMatch(text, /光合作用需要哪些条件/, '学生记录不重复题干');
   assert.match(text, /部分给分/, '部分给分没印成部分给分（规格 §12：isCorrect:false 同时覆盖「错」与「部分给分」）');
   assert.match(text, /B/, '学生答案没印上去');
-  assert.match(text, /画出实验装置/, '第二题的题干没印上去');
+  assert.doesNotMatch(text, /画出实验装置/, '第二题同样不重复题干');
   // 🔴 GC 30：正确答案**不许**出现在纸面上（报告会被转发给学生）。
   assert.doesNotMatch(text, /阳光/, '选项文本不该印 —— 那可能是正确答案的载体');
 });
@@ -156,10 +157,10 @@ test('🔴 纸面核对：高级模式下**没配学习单的那一组要点名*
 
   const text = paperText((await generateWorksheetReportDocx(classroom.id, db.prisma)).buffer);
   assert.match(text, /没有可作答的学习单/, '🔴 没配学习单的那一组**整组消失**了，而纸上什么都没说');
-  assert.match(text, /另有 1 个参与者/, '附注里的数不对');
+  assert.match(text, /第 2 组/, '没有学习单的小组仍应保留姓名');
 });
 
-test('🔴 纸面核对：探究空间只有「时长 / 帧数」，**没有**点击 / 输入 / 滚动深度', async (t) => {
+test('🔴 纸面核对：探究空间不进入学生作答记录', async (t) => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
 
@@ -171,15 +172,13 @@ test('🔴 纸面核对：探究空间只有「时长 / 帧数」，**没有**�
   });
 
   const text = paperText((await generateWorksheetReportDocx(classroom.id, db.prisma)).buffer);
-  assert.match(text, /凸透镜成像/, '网页名没印上去');
-  assert.match(text, /3 分 20 秒/, '时长没印成人话');
-  assert.match(text, /时\s*长|时长/, '缺「时长」表头');
-  assert.match(text, /帧数/, '缺「帧数」表头');
-  // 🔴 GC 31：这四列今天**值恒为 0**（recordWebappSummary 只写时长与帧数）⇒ 一个都不许印。
-  for (const forbidden of ['点击', '输入次数', '滚动深度']) {
-    // 「滚动深度」只允许出现在那句实话里（「交互次数与滚动深度本轮暂不可得」）。
-    if (forbidden === '滚动深度') continue;
-    assert.doesNotMatch(text, new RegExp(forbidden), `${forbidden} 恒为 0，不许印在纸上`);
-  }
-  assert.match(text, /暂不可得/, '缺那句实话');
+  for (const forbidden of ['凸透镜成像', '探究空间', '时长', '帧数', '点击', '滚动深度']) assert.ok(!text.includes(forbidden), `不导出探究空间：${forbidden}`);
+});
+
+
+test('排序与分类作答解析成条目文字，选择题 F 保留选项字母', () => {
+  const node = { id: 'q', type: 'categorize', prompt: '', children: [], inputMode: 'keyboard', data: { items: [{ id: 'internal-item', text: '观察花草' }], zones: [{ id: 'internal-zone', label: '愿意参加' }] } } as import('../services/worksheet-questions.js').QuestionNode;
+  assert.equal(studentAnswerText({ format: 'categorize/v1', assignment: { 'internal-item': 'internal-zone' } }, node), '观察花草 → 愿意参加');
+  assert.equal(studentAnswerText({ format: 'order/v1', order: ['internal-item'] }, node), '1. 观察花草');
+  assert.equal(studentAnswerText({ format: 'choice/v1', selected: ['F'] }, node), 'F');
 });

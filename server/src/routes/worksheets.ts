@@ -264,20 +264,12 @@ const WORKSHEET_BACKGROUND_THEMES: readonly string[] = [
 const WORKSHEET_ANSWER_MODES: readonly string[] = ['open', 'task-step', 'question-step', 'manual'];
 
 const DEFAULT_SETTINGS = {
-  // ★ 2026-09-30（教师）：「将『允许学生修改』改为**默认不能修改**」。
-  // 🔴 这一份与前端 `worksheet-editor-core.ts` 的 `DEFAULT_SETTINGS` **必须同值**：
-  //    那边决定「新建的学习单长什么样」，这边决定「缺这个键的行长什么样」——
-  //    分叉的表现是「教师新建时看到的是 A、学生端生效的是 B」，两边都不报错。
-  //    （前端 `worksheet-editor-core.test.ts` 有一条用例**跨文件核对**这一对值。）
-  // ⚠️ 归一化那条路（下面 `normalizeSettings`）读的就是本常量，所以它自动跟着走；
-  //    存量行里显式写下的 `true` 不受影响 —— 改的是默认值，不是已有数据。
+  // 旧数据缺字段时的回落设置；新建接口另设奖励和背景初始值。
   allowResubmit: false,
   autoGrade: true,
   answerMode: 'open',
   defaultInputMode: 'keyboard',
-  // 默认档「星星 ⭐、每答对一题 1 个」的依据写在 `src/lib/worksheet-reward.ts` 的
-  // `DEFAULT_REWARD_STYLE` 上（§9.2 的图与 §8.2 的版式图）。⚠️ 两处必须是同一对默认值：
-  // 这里决定**缺字段的行**长什么样，前端那份决定**新建的单**长什么样。
+  // 保持旧学习单缺字段时的显示；不要随新建默认值一起改动。
   rewardStyle: 'star',
   rewardStep: 1,
   // 部分给分档的默认值是 **0**（规格 §12 裁定 3：「每题 全对 1 / 部分给分 0」）—— 与第一批行为
@@ -732,7 +724,11 @@ router.post('/', async (req, res) => {
         description: readDescription(body.description) ?? null,
         schemaVersion: parsed.content.schemaVersion,
         content: parsed.content as unknown as Prisma.InputJsonValue,
-        settings: normalizeSettings(body.settings),
+        // Creation defaults differ from legacy missing-field fallbacks: do not restyle existing sheets.
+        settings: normalizeSettings({
+          rewardStyle: 'classnode', backgroundTheme: 'none',
+          ...(body.settings && typeof body.settings === 'object' && !Array.isArray(body.settings) ? body.settings : {}),
+        }),
       },
     });
     res.json(worksheet);

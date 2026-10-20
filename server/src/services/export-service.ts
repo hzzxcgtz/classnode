@@ -12,22 +12,16 @@ import { PrismaClient } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { resolveMaterialTargetId } from './group-material-resolve.js';
+import { loadClassroomArchive } from './classroom-archive-data.js';
+import { buildWorksheetRecordDocx } from './worksheet-record-docx.js';
 import {
   DEFAULT_POINTS,
-  questionTextFor,
-  type QuestionNode,
-  type WorksheetContent,
 } from './worksheet-questions.js';
-import { flattenAnswerable } from './worksheet-heading.js';
 import {
-  REPORT_TEXT, answerCell, formatDuration, gradeLabel, unmappedParticipantsNotice, webappUsageColumnLabels,
-  type AnswerCell, type GradeLabel,
+  REPORT_TEXT,
+  type AnswerCell,
 } from './worksheet-report.js';
-import { questionTypeLabel } from './question-type-labels.js';
-import { inkToPng } from './ink-render.js';
 import { inkHasContent } from './ink-path.js';
-import { resolveLocalPath } from './ai-proxy.js';
 // ★ 2026-09-30：教师用卷（含答案）。判据层 + 渲染层，与上面那份报告各走各的。
 import { buildWorksheetPaper } from './worksheet-paper.js';
 import { buildWorksheetPaperDocx, paperFilename } from './worksheet-paper-docx.js';
@@ -43,20 +37,6 @@ let _sharp: SharpModule | null = null;
  * ⚠️ 缩到 720px 宽：报告那一列约 6.9cm，原图（老 iPad 拍的能到 4000px）塞进去
  *    会让 docx 从几百 KB 涨到几十 MB —— 而 `scaleImageSize` 只改「显示尺寸」，不改字节数。
  */
-async function answerImagePng(url: string): Promise<Buffer | null> {
-  try {
-    const sharp = await getSharp();
-    if (!sharp) return null;
-    return await sharp(resolveLocalPath(url))
-      .rotate()
-      .resize({ width: 720, withoutEnlargement: true })
-      .png()
-      .toBuffer();
-  } catch {
-    return null;
-  }
-}
-
 async function getSharp(): Promise<SharpModule | null> {
   if (!_sharp) {
     try {
@@ -1139,51 +1119,7 @@ export async function generateConversationsCsv(
 }
 
 
-// ══════════════════════════════════════════════════════════════
-//  M6a · 学习单与探究空间报告
-// ══════════════════════════════════════════════════════════════
-//
-// 🔴 **这是「导出」这条路里唯一活着的那条**（Global Constraint 29）：全仓只有
-//    `/conversations` 与 `/conversations/docx` 有调用点；`stats` 三条与 `conversations/csv`
-//    在 `src/` 下零调用点，而 `src/lib/export-doc.ts` 的两个整份报告构建器**没人调**。
-//    往那些死代码上加功能 = 产出一份永远打不开的报告，而**没有任何东西会报错**。
-//
-// 🔴 **本函数不印正确答案**（GC 30）：读 `Worksheet.content` 只为了题号 / 题型 / 题干与
-//    题目树的形状，**不读** `data` 里的 `correctKeys` / `answers` / `explanation` /
-//    `correctOrder` / `pairs` / `placement`。
-//
-// 🔴 **纸上的每一句话都来自 `worksheet-report.ts`**（判据层，有 12 条用例）。本文件只把
-//    模型画成段落 —— 写在这里的字**没有任何回归网**，而本机**打不开 Word**。
-
-/**
- * 🔴 **畸形的 `content` 不许让整份导出失败**：手工改过的库行 / 一个旧版本的行都可能让
- * `flattenAnswerable` 抛，而抛出去的后果是教师拿到「导出失败」四个字、**一整节课的报告导不出来**
- * —— 正是本批在 `answerCell` 上已经立过的那条纪律（「认不出的形状不抛，收成一句可读的文字」），
- * 只不过这一侧原先一个守卫都没有。
- */
-function safeAnswers(content: unknown): Array<{ node: QuestionNode; heading: string }> {
-  if (!content || typeof content !== 'object' || Array.isArray(content)) return [];
-  if (!Array.isArray((content as { nodes?: unknown }).nodes)) return [];
-  try {
-    // 🔴 **可作答的题**，任务不在其中：报告是「一道题一行」，
-    // 一行任务会是一行没有答案、没有判定的空壳，而它还会把后面每道题的序号顶掉一格。
-    // ⚠️ 入参是**顶层 nodes**：`flattenQuestions` 的返回值里节点还带着 `children`，
-    // 再喂给 `flattenAnswerable` 会把小题数两遍。
-    return flattenAnswerable((content as WorksheetContent).nodes ?? []);
-  } catch {
-    return [];
-  }
-}
-
-/** 参与者的名字。⚠️ `ClassroomStudent` **没有 `name` 字段** —— 名在 `student` / `group` 上。 */
-function participantName(student: { type: string; student: { name: string } | null; group: { name: string } | null }): string {
-  return student.student?.name ?? student.group?.name ?? REPORT_TEXT.unnamedParticipant;
-}
-
-/** 报告标题：课堂标题，没有就用互动码。 */
-function reportTitle(title: string | null, code: string | null): string {
-  return title || `课堂-${code || '未命名'}`;
-}
+// Compatibility helpers for legacy report consumers. New records use worksheet-record-docx.ts.
 
 /**
  * 学生答案那一格**该画什么** —— 纯函数，抽出来是为了让 `node --test` 能直接钉。
@@ -1219,44 +1155,6 @@ export function answerCellRender(cell: AnswerCell, png: Buffer | null): AnswerCe
   return { kind: 'message', text: REPORT_TEXT.inkFallback, color: C.gold };
 }
 
-/** 一行的三个格子：题号+题型 / 学生答案（笔迹是图）/ 判定。 */
-function worksheetRowCells(
-  row: { heading: string; typeLabel: string; prompt: string; cell: AnswerCell; png: Buffer | null; grade: GradeLabel },
-): TableRow {
-  const rawPrompt = typeof row.prompt === 'string' ? row.prompt : '';
-  const prompt = rawPrompt.trim() || REPORT_TEXT.promptMissing;
-  const short = prompt.length > 40 ? `${prompt.slice(0, 40)}…` : prompt;
-
-  const render = answerCellRender(row.cell, row.png);
-  let answerChildren: Array<TextRun | ImageRun>;
-  if (render.kind === 'image') {
-    // 图片的宽高从 PNG 自己的 IHDR 里读（渲染层不知道值里的 canvas，那张图的真实尺寸在这里）。
-    const w = render.png.readUInt32BE(16);
-    const h = render.png.readUInt32BE(20);
-    answerChildren = [new ImageRun({ type: 'png', data: render.png, transformation: scaleImageSize(w, h) })];
-  } else {
-    answerChildren = [new TextRun({ text: render.text, size: 18, color: render.color })];
-  }
-
-  const gradeColor = row.grade === '对' ? C.green : row.grade === '部分给分' ? C.gold : row.grade === '错' ? C.red : C.textLight;
-  return new TableRow({
-    children: [
-      cell(`${row.heading}. ${row.typeLabel}　${short}`, { width: 3600, size: 16 }),
-      new TableCell({ width: { size: 3900, type: WidthType.DXA }, children: [new Paragraph({ children: answerChildren })] }),
-      cell(row.grade, { width: 900, size: 16, color: gradeColor, bold: true }),
-    ],
-  });
-}
-
-const TABLE_BORDERS = {
-  top: { style: BorderStyle.SINGLE, size: 1, color: C.border },
-  bottom: { style: BorderStyle.SINGLE, size: 1, color: C.border },
-  left: { style: BorderStyle.SINGLE, size: 1, color: C.border },
-  right: { style: BorderStyle.SINGLE, size: 1, color: C.border },
-  insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: C.border },
-  insideVertical: { style: BorderStyle.SINGLE, size: 1, color: C.border },
-};
-
 /**
  * ★ 2026-09-30（教师）：**教师用卷** —— 学习单本身（任务 + 题目 + 答案）导成 docx。
  *
@@ -1291,180 +1189,12 @@ export async function generateWorksheetPaperDocx(
   return { buffer, filename: paperFilename(paper.title, readableTimestamp()), title: paper.title };
 }
 
-export async function generateWorksheetReportDocx(
-  classroomId: string,
-  prisma: PrismaClient,
-  onProgress?: ProgressCallback,
-): Promise<ExportResult> {
-  const progress = onProgress || (() => {});
-  progress({ taskId: '', progress: 5, stage: '正在获取课堂信息…' });
-
-  const classroom = await prisma.classroom.findUnique({
-    where: { id: classroomId },
-    select: {
-      id: true, title: true, code: true, mode: true, createdAt: true, endedAt: true,
-      students: {
-        select: {
-          id: true, type: true, groupId: true,
-          student: { select: { name: true } },
-          group: { select: { name: true } },
-        },
-      },
-      groups: { select: { id: true, materials: { select: { kind: true, targetId: true } } } },
-      worksheets: { select: { worksheetId: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
-    },
-  });
-  if (!classroom) throw new Error('课堂不存在');
-
-  // 课堂级学习单：与 `loadClassroomLevelWorksheetId` 同一条口径（取第一条）。
-  const classroomLevelId = classroom.worksheets[0]?.worksheetId ?? null;
-  const groupMaterials = classroom.groups.flatMap((group) =>
-    group.materials
-      .filter((material) => material.kind === 'worksheet')
-      .map((material) => ({ groupId: group.id, kind: material.kind, targetId: material.targetId })));
-
-  // ⚠️ 高级模式下按组解析、**不回落**（`resolveMaterialTargetId` 的注释逐字）。
-  const participantSheet = new Map<string, string | null>();
-  for (const participant of classroom.students) {
-    participantSheet.set(participant.id, resolveMaterialTargetId({
-      mode: classroom.mode,
-      studentGroupId: participant.groupId,
-      groupMaterials,
-      classroomLevelId,
-      kind: 'worksheet',
-    }));
-  }
-  const sheetIds = Array.from(new Set(Array.from(participantSheet.values()).filter((id): id is string => !!id)));
-
-  progress({ taskId: '', progress: 25, stage: '正在读取学习单与作答…' });
-  const sheets = sheetIds.length
-    ? await prisma.worksheet.findMany({ where: { id: { in: sheetIds } }, select: { id: true, title: true, content: true } })
-    : [];
-  const sheetById = new Map(sheets.map((sheet) => [sheet.id, sheet]));
-
-  const responses = sheetIds.length
-    ? await prisma.worksheetResponse.findMany({
-        where: { classroomId, worksheetId: { in: sheetIds } },
-        select: {
-          participantId: true, worksheetId: true,
-          // 🔴 只 select 这几列。`value` 是**学生自己写的**那一个（规格 §5.4 的红线讲的是
-          //    「正确答案不下发」，而这里读的是作答本身）。正确答案住在题目节点里，本函数不读。
-          answers: { select: { questionId: true, isCorrect: true, gradeState: true, value: true } },
-        },
-      })
-    : [];
-  const answersByPair = new Map<string, Array<{ questionId: string; isCorrect: boolean | null; gradeState: string | null; value: unknown }>>();
-  for (const response of responses) {
-    answersByPair.set(`${response.participantId}\x00${response.worksheetId}`, response.answers);
-  }
-
-  progress({ taskId: '', progress: 45, stage: '正在渲染学习单作答…' });
-  const children: DocBlock[] = [];
-  children.push(pText(reportTitle(classroom.title, classroom.code), { bold: true, size: 32, color: C.primary, align: AlignmentType.CENTER, spacingBefore: 1600 }));
-  children.push(pText(`互动码 ${classroom.code ?? '—'} · 模式 ${classroom.mode} · ${fmtDate(classroom.createdAt)} 起`, { size: 18, color: C.textSecondary, align: AlignmentType.CENTER, spacingAfter: 200 }));
-  children.push(pText(`参与者 ${classroom.students.length} 位 · 学习单 ${sheetIds.length} 份`, { size: 18, color: C.textSecondary, align: AlignmentType.CENTER, spacingAfter: 300 }));
-  children.push(new Paragraph({ children: [new PageBreak()] }));
-
-  children.push(pText('一、学习单作答', { bold: true, size: 26, color: C.primary, spacingAfter: 160 }));
-  if (sheetIds.length === 0) {
-    children.push(pText(REPORT_TEXT.noWorksheet, { size: 20, color: C.textSecondary }));
-  } else {
-    const totalAnswers = responses.reduce((sum, response) => sum + response.answers.length, 0);
-    if (totalAnswers === 0) children.push(pText(REPORT_TEXT.noAnswers, { size: 18, color: C.textSecondary, spacingAfter: 120 }));
-    for (const sheetId of sheetIds) {
-      const sheet = sheetById.get(sheetId);
-      if (!sheet) continue;
-      children.push(pText(`《${sheet.title}》`, { bold: true, size: 22, color: C.text, spacingBefore: 220, spacingAfter: 100 }));
-      const questions = safeAnswers(sheet.content);
-      const members = classroom.students.filter((participant) => participantSheet.get(participant.id) === sheetId);
-      for (const participant of members) {
-        const rows = answersByPair.get(`${participant.id}\x00${sheetId}`) ?? [];
-        const byQuestion = new Map(rows.map((row) => [row.questionId, row]));
-        children.push(pText(participantName(participant), { bold: true, size: 20, color: C.text, spacingBefore: 160, spacingAfter: 60 }));
-        const tableRows: TableRow[] = [];
-        // ⚠️ 逐**题**（可作答的），行首的序号是**两级题号** —— 与看板、抽屉、学生端同一份。
-        for (const { node, heading } of questions) {
-          const row = byQuestion.get(node.id);
-          const answer = answerCell(row ? row.value : undefined);
-          // ⚠️ 笔迹在这里**同步渲染成 PNG**：`inkToPng` 自己会吞掉所有失败并回 `null`。
-          const png = answer.kind === 'ink'
-            ? await inkToPng(answer.ink)
-            // ★ 2026-10-06：`image` 格（学生拍的照片 / 第三方画板交上来的位图）在这里读盘。
-            : answer.kind === 'image' ? await answerImagePng(answer.url) : null;
-          tableRows.push(worksheetRowCells({
-            heading, typeLabel: questionTypeLabel(node.type), prompt: questionTextFor(node),
-            cell: answer, png,
-            grade: gradeLabel({ isCorrect: row?.isCorrect ?? null, gradeState: row?.gradeState ?? null }),
-          }));
-        }
-        if (tableRows.length > 0) {
-          children.push(new Table({ width: { size: 8400, type: WidthType.DXA }, borders: TABLE_BORDERS, rows: tableRows }));
-        }
-      }
-    }
-    // 🔴 **没配学习单的参与者要点名**（规格 §3.5 最后一行）：高级模式下
-    //    `resolveMaterialTargetId` **不回落** ⇒ 那些组**不在上面任何一节里**，
-    //    而「少一块」与「他没做」在纸上长得一样。
-    const unmapped = classroom.students.filter((participant) => !participantSheet.get(participant.id)).length;
-    if (unmapped > 0) children.push(pText(unmappedParticipantsNotice(unmapped), { size: 16, color: C.gold, spacingBefore: 160 }));
-  }
-
-  progress({ taskId: '', progress: 80, stage: '正在渲染探究空间使用…' });
-  children.push(new Paragraph({ children: [new PageBreak()] }));
-  children.push(pText('二、探究空间使用', { bold: true, size: 26, color: C.primary, spacingAfter: 160 }));
-  const usages = await prisma.webappUsage.findMany({
-    where: { classroomId },
-    select: { studentId: true, webappId: true, durationMs: true, frameCount: true },
-  });
-  if (usages.length === 0) {
-    children.push(pText(REPORT_TEXT.noWebapp, { size: 20, color: C.textSecondary }));
-  } else {
-    const webapps = await prisma.webapp.findMany({
-      where: { id: { in: Array.from(new Set(usages.map((usage) => usage.webappId))) } },
-      select: { id: true, name: true },
-    });
-    const webappNameById = new Map(webapps.map((webapp) => [webapp.id, webapp.name]));
-    const nameByParticipant = new Map(classroom.students.map((participant) => [participant.id, participantName(participant)]));
-    // ⚠️ **列就是 `webappUsageLineKeys()` 那四列**（GC 31）：`clicks` / `inputs` / `maxDepth` /
-    //    `reports` 今天**值恒为 0**（`recordWebappSummary` 只写时长与帧数）⇒ 一个都不许印。
-    const header = new TableRow({
-      tableHeader: true,
-      // 🔴 **表头来自判据层**（`webappUsageColumnLabels`）—— 写死在这里的话，「不印恒为 0 的列」
-      //    那条约束就只是一句注释（独立审查抓到过）。
-      children: webappUsageColumnLabels().map((label) => cell(label, { bold: true, size: 16, shading: C.primaryLight, color: C.primary })),
-    });
-    const body = usages.map((usage) => new TableRow({
-      children: [
-        cell(webappNameById.get(usage.webappId) ?? REPORT_TEXT.webappDeleted, { size: 16 }),
-        cell(nameByParticipant.get(usage.studentId) ?? REPORT_TEXT.participantLeft, { size: 16 }),
-        cell(formatDuration(usage.durationMs), { size: 16 }),
-        cell(String(usage.frameCount), { size: 16 }),
-      ],
-    }));
-    children.push(new Table({ width: { size: 8400, type: WidthType.DXA }, borders: TABLE_BORDERS, rows: [header, ...body] }));
-    // 🔴 表下那句实话：缺的两样**必须说**，否则读到的人会以为「学生没点过」。
-    children.push(pText(REPORT_TEXT.webappNoteMissingCounters, { size: 16, color: C.gold, spacingBefore: 120 }));
-  }
-
-  children.push(new Paragraph({ spacing: { before: 1200 }, children: [] }));
-  children.push(pText('— 由支点课堂 ClassNode 自动生成 —', { size: 18, color: C.textLight, align: AlignmentType.CENTER }));
-
-  progress({ taskId: '', progress: 95, stage: '正在打包文档…' });
-  const doc = new Document({
-    title: `学习单与探究空间-${classroom.code ?? classroomId.slice(0, 8)}`,
-    description: '课堂学习单作答与探究空间使用',
-    creator: '支点课堂 ClassNode',
-    styles: { paragraphStyles: [], default: {} },
-    sections: [{ children, footers: { default: makeFooter(reportTitle(classroom.title, classroom.code)) } }],
-  });
-  const buffer = await Packer.toBuffer(doc);
-  progress({ taskId: '', progress: 100, stage: '导出完成' });
-
-  const shortTitle = reportTitle(classroom.title, classroom.code).replace(/[\\/:*?"<>|]/g, '_');
-  return {
-    buffer,
-    filename: `${shortTitle}-学习单与探究空间-${readableTimestamp()}.docx`,
-    title: classroom.title || '课堂学习单与探究空间',
-    stats: { totalStudents: classroom.students.length, totalMsgs: responses.reduce((sum, response) => sum + response.answers.length, 0), totalRounds: 0 },
-  };
+/** Legacy direct Word download now contains student work only; references are exported separately. */
+export async function generateWorksheetReportDocx(classroomId: string, prisma: PrismaClient, onProgress?: ProgressCallback): Promise<ExportResult> {
+  onProgress?.({ taskId: '', progress: 5, stage: '正在读取学生作答…' });
+  const data = await loadClassroomArchive(prisma, classroomId, { requireEnded: false });
+  const buffer = await buildWorksheetRecordDocx(data);
+  onProgress?.({ taskId: '', progress: 100, stage: '导出完成' });
+  const title = data.classroom.title || '未命名课堂';
+  return { buffer, title, filename: `${title.replace(/[\\/:*?"<>|]/g, '_')}-学生作答记录-${readableTimestamp()}.docx`, stats: { totalStudents: data.participants.length, totalMsgs: data.responses.reduce((n, r) => n + r.answers.length, 0), totalRounds: 0 } };
 }

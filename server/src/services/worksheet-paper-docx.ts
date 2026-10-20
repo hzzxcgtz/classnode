@@ -1,7 +1,8 @@
 import {
-  AlignmentType, BorderStyle, Document, Footer, PageNumber, Packer, Paragraph, ShadingType, Table,
+  AlignmentType, BorderStyle, Document, Packer, Paragraph, ShadingType, Table,
   TableCell, TableLayoutType, TableRow, TextRun, WidthType,
 } from 'docx';
+import { WORD_PAGE, WORD_STYLES, wordFooter, readWordImage, wordImage } from './worksheet-docx-layout.js';
 import { PAPER_BLANK_TEXT } from './worksheet-questions.js';
 // ★ 2026-09-30：公式画成**真 Word 公式**（OMML）。转换与「文字/公式混排成一个 children 数组」
 // 都在 `worksheet-paper-math.ts`；本文件只负责把结果放进段落里。
@@ -10,23 +11,9 @@ import {
   inlineText, type PaperBlock, type PaperInline, type PaperQuestion, type PaperPromptPart, type WorksheetPaper,
 } from './worksheet-paper.js';
 
-/**
- * 「教师用卷」的**渲染层**（★ 2026-09-30，教师）。
- *
- * 🔴 本文件**只做一件事**：把 `worksheet-paper.ts` 的判据画成段落。
- *    「这道题在纸上写着什么」**一个字都不在这里决定** —— 那是判据层的事（那里有 15 条用例），
- *    因为**本文件在本机验不了**（没有 Word）。这与 `export-service.ts` / `worksheet-report.ts`
- *    的分工是同一套（那边写着同一句话）。
- * ⚠️ 想改纸上任何一句文案 —— 去 `worksheet-paper.ts`，别在这里拼字符串。
- *
- * ── 排版（教师：「精美，但不能花哨」）────────────────────────────────────────
- *   · 字体跟全仓那两份导出**同一套**（`Microsoft YaHei`，Word 里认；中文不缺字）；
- *   · 题号加粗 + 主色，题干正常字重 —— 靠**字重**分层，不靠颜色块；
- *   · 答案**缩进一行、字号小一档、灰一档**，前面「答案：」加粗（教师扫一眼能找到）；
- *   · 只用了两条线：任务标题下面一条细横线、页脚一条 —— 不加底色、不加边框、不加图标。
- *   ⚠️ 不引 `export-service.ts` 的私有助手（`pText` / `C` 都没导出）：那几个是为**另一份**
- *      文档调的，共用会让「改对话记录的配色」顺手改掉这张卷子 —— 抄常量比耦合便宜。
- *      颜色值与那边保持一致（同一套视觉语言），但这里各写一份、各自演进。
+/** Teacher reference layout: full task content, answers, criteria and images.
+ * Content decisions live in worksheet-paper.ts; shared A4 typography lives in worksheet-docx-layout.ts.
+ * Paragraphs stay in normal document flow and are checked using rendered page images.
  */
 
 /**
@@ -86,10 +73,10 @@ const answerRun = runMaker(SZ.answer, { color: C.answer });
 
 function para(text: string, opts: {
   size?: number; color?: string; bold?: boolean; indent?: number;
-  before?: number; after?: number; align?: (typeof AlignmentType)[keyof typeof AlignmentType];
+  before?: number; after?: number; style?: string; keepNext?: boolean; align?: (typeof AlignmentType)[keyof typeof AlignmentType];
 } = {}) {
   return new Paragraph({
-    alignment: opts.align,
+    alignment: opts.align, style: opts.style, keepNext: opts.keepNext,
     spacing: { before: opts.before ?? 0, after: opts.after ?? 60 },
     indent: opts.indent ? { left: opts.indent } : undefined,
     children: [new TextRun({
@@ -122,6 +109,7 @@ function promptTable(rows: PaperPromptPart & { kind: 'table' }): Table {
     // 列宽按内容算（不定宽）：一行两三个字的表被拉成满页宽会很难看。
     layout: TableLayoutType.AUTOFIT,
     rows: rows.rows.map((cells, rowIndex) => new TableRow({
+      tableHeader: rowIndex === 0,
       children: cells.map((cell) => new TableCell({
         margins: { top: 60, bottom: 60, left: 90, right: 90 },
         shading: rowIndex === 0 ? { fill: C.tableHead, type: ShadingType.CLEAR } : undefined,
@@ -173,7 +161,7 @@ function promptParagraphs(parts: PaperInline[]): Paragraph[] {
     });
   }
   return lines.map((line, index) => new Paragraph({
-    spacing: { before: index === 0 ? 20 : 0, after: index === lines.length - 1 ? 40 : 0 },
+    keepNext: true, spacing: { before: index === 0 ? 20 : 0, after: index === lines.length - 1 ? 40 : 0 },
     indent: { left: PROMPT_INDENT },
     // 🔴 文字与公式在**同一个 Paragraph 的 children 里** ⇒ 它们在同一条行内流上
     //    （这才叫行内公式；各占一个段落会变成一行一个字）。
@@ -184,7 +172,7 @@ function promptParagraphs(parts: PaperInline[]): Paragraph[] {
 /** 一道题的题号行：`① 任务一 · 1　单选题 · 2 分`。 */
 function questionHead(question: PaperQuestion): Paragraph {
   return new Paragraph({
-    spacing: { before: 240, after: 20 },
+    style: 'Heading2', keepNext: true, spacing: { before: 240, after: 80 },
     children: [
       // ⚠️ **不再自己编号**（原来印的是 `1. 任务一：看一看 · 1` —— 同一个号印了两遍，
       //    教师第一眼就说「难看」）。题号由 `heading` 一处给（`flattenAnswerable`）。
@@ -200,7 +188,7 @@ function questionHead(question: PaperQuestion): Paragraph {
   });
 }
 
-function renderQuestion(question: PaperQuestion): (Paragraph | Table)[] {
+async function renderQuestion(question: PaperQuestion): Promise<(Paragraph | Table)[]> {
   const out: (Paragraph | Table)[] = [questionHead(question)];
   // 题面按部件画：**连续的行内内容攒成一段**（一起走换行与段间距），
   // 表格就地插进去（位置就是 `{表格域}` 在题干里的那处）。
@@ -227,7 +215,7 @@ function renderQuestion(question: PaperQuestion): (Paragraph | Table)[] {
   // 作答区（选项 / 条目 / 左右栏 / 待选词）：缩进一档，行距紧一点。
   question.body.forEach((line) => {
     out.push(new Paragraph({
-      spacing: { after: 20 },
+      keepNext: true, spacing: { after: 20 },
       indent: { left: PROMPT_INDENT + 120 },
       children: inlineChildren(line, bodyRun),
     }));
@@ -237,7 +225,7 @@ function renderQuestion(question: PaperQuestion): (Paragraph | Table)[] {
   } else {
     // 「答案：」那三个字加粗 —— 教师翻页找答案时靠它。
     out.push(new Paragraph({
-      spacing: { before: 20, after: 60 },
+      keepNext: Boolean(question.guidance?.length || question.images?.length), spacing: { before: 20, after: 60 },
       indent: { left: PROMPT_INDENT },
       children: [
         new TextRun({ text: '答案：', bold: true, size: SZ.answer, color: C.answer, font: { ascii: FONT_LATIN, hAnsi: FONT_LATIN, eastAsia: FONT_EAST_ASIA } }),
@@ -250,25 +238,25 @@ function renderQuestion(question: PaperQuestion): (Paragraph | Table)[] {
       ],
     }));
   }
+  for (const [index, text] of (question.guidance || []).entries()) out.push(para(text, { size: SZ.body, indent: PROMPT_INDENT, before: 40, after: 80, keepNext: index < (question.guidance?.length || 0) - 1 }));
+  for (const image of question.images || []) {
+    const png = await readWordImage(image.url);
+    out.push(para(image.caption, { size: SZ.meta, before: 80, after: 40, keepNext: true }));
+    out.push(png ? wordImage(png, image.caption) : para('原图片缺失或无法读取。', { size: SZ.meta }));
+  }
   return out;
 }
 
-function renderBlock(block: PaperBlock, questionIndex: number): { children: (Paragraph | Table)[]; next: number } {
+async function renderBlock(block: PaperBlock, questionIndex: number): Promise<{ children: (Paragraph | Table)[]; next: number }> {
   if (block.kind === 'question') {
-    return { children: renderQuestion(block.question), next: questionIndex + 1 };
+    return { children: await renderQuestion(block.question), next: questionIndex + 1 };
   }
   const children: (Paragraph | Table)[] = [para(block.title || '（未命名任务）', {
-    bold: true, size: SZ.task, color: C.ink, before: 260, after: 40,
+    style: 'Heading1', keepNext: true, bold: true, size: SZ.task, color: C.ink, before: 260, after: 40,
   })];
   if (block.description) {
     children.push(para(block.description, { size: SZ.meta, color: C.ink, after: 40 }));
   }
-  // 标题下面一条细横线（唯一一条装饰线）。
-  children.push(new Paragraph({
-    spacing: { before: 0, after: 100 },
-    border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: C.line } },
-    children: [],
-  }));
   return { children, next: questionIndex };
 }
 
@@ -277,7 +265,7 @@ export async function buildWorksheetPaperDocx(paper: WorksheetPaper): Promise<Bu
   const children: (Paragraph | Table)[] = [];
 
   children.push(para(paper.title || '未命名学习单', {
-    bold: true, size: SZ.title, color: C.ink, align: AlignmentType.CENTER, after: 40,
+    style: 'Title', bold: true, size: SZ.title, color: C.ink, align: AlignmentType.CENTER, after: 40,
   }));
   // ★ 2026-09-30 教师：「最上面不要写教师用卷」⇒ 副标题只剩题数（原先那句是
   // 「8 道题 · 教师用卷（含答案）」）。**只在这张纸上**不写 —— 文件名里仍然有
@@ -290,34 +278,18 @@ export async function buildWorksheetPaperDocx(paper: WorksheetPaper): Promise<Bu
   }
 
   let questionIndex = 0;
-  paper.blocks.forEach((block) => {
-    const rendered = renderBlock(block, questionIndex);
+  for (const block of paper.blocks) {
+    const rendered = await renderBlock(block, questionIndex);
     children.push(...rendered.children);
     questionIndex = rendered.next;
-  });
+  }
 
   const doc = new Document({
     title: `${paper.title || '学习单'}-教师用卷`,
     description: '学习单（含答案）',
     creator: '支点课堂 ClassNode',
-    styles: { paragraphStyles: [], default: {} },
-    sections: [{
-      children,
-      footers: {
-        default: new Footer({
-          children: [new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { before: 0, after: 0 },
-            border: { top: { style: BorderStyle.SINGLE, size: 2, color: C.line } },
-            children: [
-              new TextRun({ text: `${paper.title || '学习单'}  |  第 `, size: 16, color: C.ink, font: { ascii: FONT_LATIN, hAnsi: FONT_LATIN, eastAsia: FONT_EAST_ASIA } }),
-              new TextRun({ children: [PageNumber.CURRENT], size: 16, color: C.ink, font: { ascii: FONT_LATIN, hAnsi: FONT_LATIN, eastAsia: FONT_EAST_ASIA } }),
-              new TextRun({ text: ' 页', size: 16, color: C.ink, font: { ascii: FONT_LATIN, hAnsi: FONT_LATIN, eastAsia: FONT_EAST_ASIA } }),
-            ],
-          })],
-        }),
-      },
-    }],
+    styles: WORD_STYLES,
+    sections: [{ properties: { page: WORD_PAGE }, children, footers: { default: wordFooter() } }],
   });
 
   return Packer.toBuffer(doc);

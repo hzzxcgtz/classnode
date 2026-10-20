@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import type { PrismaClient, Prisma } from '@prisma/client';
-import crypto from 'crypto';
 import { hashPassword, isAcceptablePassword, SCRYPT_PREFIX, verifyPassword } from '../services/password-security.js';
 import {
   createTeacherSession,
@@ -156,15 +155,16 @@ router.post('/reset-password', async (req, res) => {
   if (!isLocalMachineRequest(req)) return res.status(403).json({ error: '只能从本机控制面板重置密码' });
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const temporaryPassword = crypto.randomInt(100_000, 1_000_000).toString();
+    const newPassword = req.body?.newPassword;
+    if (!isAcceptablePassword(newPassword)) return res.status(400).json({ error: '新密码不能为空' });
     await prisma.setting.upsert({
       where: { key: 'admin_password' },
-      update: { value: hashPassword(temporaryPassword) },
-      create: { key: 'admin_password', value: hashPassword(temporaryPassword) },
+      update: { value: hashPassword(newPassword) },
+      create: { key: 'admin_password', value: hashPassword(newPassword) },
     });
     revokeAllTeacherSessions();
     loginAttempts.clear();
-    res.json({ success: true, temporaryPassword, message: '已生成临时密码，请登录后立即修改' });
+    res.json({ success: true, message: '管理员密码已重置，请使用新密码登录' });
   } catch {
     res.status(500).json({ error: '重置密码失败' });
   }

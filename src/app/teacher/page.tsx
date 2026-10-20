@@ -1151,12 +1151,12 @@ export default function TeacherDashboard() {
             setSettingsModalClassroom(null);
           }}
         >
-          <div className="teacher-compact-dialog" role="dialog" aria-modal="true" aria-label="课堂设置"
+          <div className="teacher-compact-dialog classroom-settings-dialog" role="dialog" aria-modal="true" aria-label="课堂设置"
             style={{
               background: "white",
               borderRadius: 16,
-              maxWidth: 480,
-              width: "90%",
+              maxWidth: 560,
+              width: "calc(100% - 32px)",
               boxShadow: "0 25px 80px rgba(0,0,0,0.2)",
             }}
             onClick={(e) => e.stopPropagation()}
@@ -1215,15 +1215,15 @@ export default function TeacherDashboard() {
                     margin: "2px 0 0",
                   }}
                 >
-                  可修改名称、探究网页和智能学伴，学习单不可更换
+                  修改课堂名称，查看或更换学习模块
                 </p>
               </div>
             </div>
             {/* 弹窗内容 */}
-            <div style={{ padding: "20px 28px", overflowY: "auto", maxHeight: "60vh" }}>
+            <div className="classroom-settings-body">
               {/* 课堂名称 */}
-              <div style={{ marginBottom: 20 }}>
-                <label
+              <div className="classroom-settings-name">
+                <label htmlFor="classroom-settings-title"
                   style={{
                     fontSize: "0.875rem",
                     fontWeight: 600,
@@ -1234,48 +1234,20 @@ export default function TeacherDashboard() {
                     gap: 4,
                   }}
                 >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  >
-                    <path d="M4 20h16" />
-                    <path d="M4 20V4m0 0h16v16" />
-                  </svg>
                   课堂名称
                 </label>
                 <input
+                  id="classroom-settings-title"
+                  className="classroom-settings-control"
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
                   placeholder="未命名课堂"
-                  style={{
-                    width: "100%",
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    border: "1px solid var(--card-border)",
-                    fontSize: "0.875rem",
-                    outline: "none",
-                    boxSizing: "border-box",
-                    transition: "border-color 0.15s",
-                    background: "#fafbfc",
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = "var(--primary)";
-                    e.currentTarget.style.background = "white";
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = "#e2e8f0";
-                    e.currentTarget.style.background = "#fafbfc";
-                  }}
                 />
               </div>
 
               {choicesError && <p role="alert" style={{ color: "#b45309", fontSize: "0.813rem" }}>{choicesError}</p>}
+              <div className="classroom-settings-modules-title">学习模块</div>
               {/* 当前关联来自课堂数据；可选材料另外加载，高级模式按组更换。 */}
               {(() => {
                 const materials = classroomMaterialsInUse({
@@ -1296,14 +1268,11 @@ export default function TeacherDashboard() {
                   : Math.max(0, classroomWebapps.length - 1);
 
                 return sections.map(({ key, label, items }) => (
-                  <section key={key} aria-label={label} style={{ marginTop: 20 }}>
-                    <div style={{
-                      fontSize: "0.875rem", fontWeight: 600, color: "#475569",
-                      marginBottom: 6, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4,
-                    }}>
-                      {label}
-                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 400 }}>
-                        {key === "worksheets" ? "（创建后不可更改）" : "（可更换）"}
+                  <section key={key} aria-label={label} className="classroom-settings-module">
+                    <div className="classroom-settings-module-heading">
+                      <span>{label}</span>
+                      <span className={`classroom-settings-module-status${key === "worksheets" ? " is-fixed" : ""}`}>
+                        {key === "worksheets" ? "已固定" : "可更换"}
                       </span>
                     </div>
                     {key !== "worksheets" ? (
@@ -1318,12 +1287,11 @@ export default function TeacherDashboard() {
                           return (
                             <label key={scope} style={{ display: "grid", gap: 4, fontSize: "0.813rem" }}>
                               {name && <span>{name}</span>}
-                              <select aria-label={`${name ? `${name} · ` : ""}${label}`}
+                              <select className="classroom-settings-control" aria-label={`${name ? `${name} · ` : ""}${label}`}
                                 value={value} disabled={choicesLoading || savingSettings || choices.length === 0}
                                 onChange={e => setEditMaterials(prev => ({ ...prev, [scope]: { ...prev[scope], [field]: e.target.value } }))}
-                                style={{ width: "100%", minWidth: 0, padding: "10px 12px", borderRadius: 8,
-                                  border: "1px solid var(--card-border)", background: "#f8fafc", color: "#475569" }}>
-                                <option value="" disabled>未关联</option>
+                              >
+                                <option value="" disabled>{choicesLoading ? "正在加载…" : "未关联"}</option>
                                 {material && !choices.some(c => c.id === material.id) && (
                                   <option value={material.id}>{"name" in material ? material.name : material.title}（当前关联）</option>
                                 )}
@@ -1333,24 +1301,18 @@ export default function TeacherDashboard() {
                           );
                         })}
                         <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", lineHeight: 1.6 }}>
-                          {key === "agents" ? "更换后开始新的对话上下文，旧聊天记录保留。回答生成中暂不能更换。"
-                            : "更换后学生将打开新网页，旧网页未保存的输入和操作状态会丢失，历史活动记录保留。"}
+                          {key === "agents" ? "更换后开始新对话，原聊天记录保留。请等回答生成结束后再更换。"
+                            : "更换后学生将进入新网页，原网页未保存的内容会丢失，历史活动记录保留。"}
                         </span>
                       </div>
                     ) : items.length === 0 ? (
-                      <span style={{ fontSize: "0.813rem", color: "var(--text-muted)" }}>
+                      <div className="classroom-settings-control is-readonly">
                         {settingsModalClassroom.mode === "advanced" ? `各组均未配置${label}` : "未关联"}
-                      </span>
+                      </div>
                     ) : (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      <div style={{ display: "grid", gap: 8 }}>
                         {items.map(({ material, groupNames }) => (
-                          <div key={material.id} style={{
-                            display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6,
-                            padding: "6px 12px", borderRadius: 8,
-                            border: "1px solid var(--card-border)", background: "#f8fafc",
-                            fontSize: "0.813rem", color: "var(--text-secondary, #475569)",
-                            maxWidth: "100%", overflowWrap: "anywhere",
-                          }}>
+                          <div key={material.id} className="classroom-settings-control is-readonly" role="textbox" aria-readonly="true" aria-label={`学习单${groupNames.length ? ` · ${groupNames.join("、")}` : ""}`}>
                             <span>{"name" in material ? material.name : material.title}</span>
                             {groupNames.length > 0 && (
                               <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
@@ -1361,6 +1323,7 @@ export default function TeacherDashboard() {
                         ))}
                       </div>
                     )}
+                    {key === "worksheets" && <p className="classroom-settings-note">学习单在创建课堂时确定，之后不可更换。</p>}
                     {key === "webapps" && trimmedCount > 0 && (
                       <div role="alert" style={{
                         marginTop: 8, fontSize: "0.75rem", color: "#92400e", background: "#faf4eb",
@@ -1368,7 +1331,7 @@ export default function TeacherDashboard() {
                       }}>
                         本课堂关联了 {classroomWebapps.length} 个探究网页，只有第一个（
                         {classroomWebapps[0].name}）会生效。保存设置后，另外 {trimmedCount}{" "}
-                        个关联会被自动移除（服务端日志会记录删除了哪些）。
+                        个关联会被移除。
                       </div>
                     )}
                   </section>

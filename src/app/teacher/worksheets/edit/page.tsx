@@ -69,8 +69,8 @@ function editorQuestionTypeLabel(node: WorksheetQuestionNode): string {
  *   —— 题流（每题一张卡片，直接编辑题干、选项、正确答案）
  *   —— 底部的「＋ 添加题目」。
  *
- * ★ 2026-09-27（教师裁定）：顶栏的「撤销重做」与「复制一份」两个按钮删掉了；
- * 「保存」保留，它存的是**整张学习单**（见那一处的注释）。
+ * 顶栏提供任务编辑的撤销 / 重做；「复制一份」仍在学习单列表页。
+ * 「保存」存整张学习单（标题、任务、设置、使用说明）。
  *
  * `useSearchParams` 必须被 Suspense 包住（静态导出预渲染的硬要求）——
  * 与 `teacher/classroom/page.tsx` 同一写法。
@@ -476,18 +476,17 @@ function WorksheetEditorBody() {
           </span>
         </div>
 
-        {/*
-          ★ 2026-09-27（教师裁定）：顶栏只剩「设置 / 预览 / 保存」三个按钮。
-          删掉的两样，各有各的理由：
-          · **撤销 / 重做按钮** —— 快捷键（⌘Z / ⇧⌘Z / ⌘Y）照旧可用，见 `use-worksheet-editor.ts`
-            的那个 effect。⚠️ 那两颗按钮原本是**给不知道快捷键的教师**的唯一入口，删掉之后
-            本页就没有可见的撤销了 —— 这是明知的取舍，教师当天明确要求去掉。
-          · **「复制一份」** —— 学习单列表页每张卡片上都有（`worksheet-card.tsx`），
-            同一个动作不必两处都有。
-          ⚠️ 「保存」**留着**：它存的是**整张学习单**（标题 + 题目 + 设置 + 使用说明）。
-            设置弹窗里那个「保存设置」只存设置那一半 —— 两者的分工写在 `saveSettings` 的注释里。
-        */}
         <div className="worksheet-editor-topbar-actions">
+          <div className="worksheet-editor-history-actions" role="group" aria-label="编辑历史">
+            <button type="button" className="btn btn-secondary" onClick={editor.undo} disabled={!editor.canUndo} title="撤销上一步任务编辑（⌘Z / Ctrl+Z）">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 4 4 9l5 5M4 9h10a6 6 0 0 1 0 12" /></svg>
+              撤销
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={editor.redo} disabled={!editor.canRedo} title="重做上一步任务编辑（⌘⇧Z / Ctrl+Shift+Z / Ctrl+Y）">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 4 5 5-5 5m5-5H10a6 6 0 0 0 0 12" /></svg>
+              重做
+            </button>
+          </div>
           <button type="button" className="btn btn-secondary" onClick={() => setSettingsOpen(true)}>设置</button>
           <button type="button" className="btn btn-secondary" onClick={() => setPreviewOpen(true)}>预览</button>
           <button
@@ -1022,7 +1021,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
         */}
         <div className="worksheet-settings-body">
           <section className="worksheet-settings-section">
-            <div className="worksheet-settings-section-head"><div><strong>适用年级与学科</strong><em>必填，仅设置这张学习单的适用对象。学段由年级确定，AI 分析会使用这些信息。</em></div></div>
+            <div className="worksheet-settings-section-head"><div><strong>适用年级与学科</strong><em>必填，帮助 AI 按年级和学科分析作答。</em></div></div>
             <div className="worksheet-settings-curriculum">
               <label className="worksheet-editor-field"><span>适用年级</span>
                 <select className="input" required aria-label="学习单适用年级" value={settings.gradeLevel ?? ''}
@@ -1039,7 +1038,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
                 </select>
               </label>
             </div>
-            <p className="worksheet-settings-help">旧学习单未填写时请手动选择，不根据学习单标题或班级名称自动推测。</p>
+            <p className="worksheet-settings-help">旧学习单未填写时，请补选年级和学科。</p>
           </section>
           <section className="worksheet-settings-section">
             <div className="worksheet-settings-section-head"><div><strong>作答规则</strong></div></div>
@@ -1056,12 +1055,12 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
               */}
               <div className="worksheet-answer-mode-options is-row">
                 {[
-                  { value: 'open', title: '开放式', note: '全部任务一次放开' },
-                  { value: 'task-step', title: '按主题开放', note: '完成当前主题后解锁下一主题' },
-                  { value: 'question-step', title: '按任务开放', note: '提交当前任务后解锁下一项任务' },
+                  { value: 'open', title: '全部开放', note: '全部任务同时开放，自由作答' },
+                  { value: 'task-step', title: '学生按主题解锁', note: '本主题全部提交后解锁下一主题' },
+                  { value: 'question-step', title: '学生按任务解锁', note: '提交当前任务后解锁下一项' },
                   // ★ 第四档：**教师**推进（前两档是学生交卷推进）。
                   // 控制界面在看板头部的「学习单 ⋯ 逐题开放」里（`W ORKSHEET_MENU_ITEMS`）。
-                  { value: 'manual', title: '手动开放', note: '教师逐项开放' },
+                  { value: 'manual', title: '教师控制开放', note: '教师选择开放哪些任务' },
                 ].map(option => (
                   <label key={option.value} className={settings.answerMode === option.value ? 'is-selected' : ''}>
                     <input
@@ -1075,7 +1074,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
                 ))}
               </div>
             </fieldset>
-            {/* ⚠️ 上面那 3 张卡 + 下面 2 个开关是这一段的主体；顺序不许再动 ——
+            {/* ⚠️ 上面那 4 张卡 + 下面 2 个开关是这一段的主体；顺序不许再动 ——
                 开关紧跟在「开放方式」后面，因为「自动评分」与「提交后可以修改」
                 都是**提交之后**才起作用的两条规则。 */}
             <div className="worksheet-settings-switches">
@@ -1083,7 +1082,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
               <span className="worksheet-settings-switch-icon" aria-hidden="true">✓</span>
               <span className="worksheet-settings-switch-copy">
                 <strong>客观题自动判分</strong>
-                <em>{settings.autoGrade ? '显示对错与正确率' : '只统计作答进度'}</em>
+                <em>{settings.autoGrade ? '对设有答案的任务自动判分' : '不自动判分，仍可查看作答与分析'}</em>
               </span>
               <span className="worksheet-editor-autograde-control">
                 <input type="checkbox" checked={settings.autoGrade} onChange={event => onSettingsChange({ autoGrade: event.target.checked })} aria-label="自动评分" />
@@ -1095,7 +1094,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
               <span className="worksheet-settings-switch-icon" aria-hidden="true">↻</span>
               <span className="worksheet-settings-switch-copy">
                 <strong>提交后可以修改</strong>
-                <em>普通任务可修改；AI 评价任务按次数控制</em>
+                <em>{settings.allowResubmit ? '提交后允许修改' : '提交后不可修改'}；学生自主评价任务不受此开关限制</em>
               </span>
               <span className="worksheet-editor-autograde-control">
                 <input type="checkbox" checked={settings.allowResubmit} onChange={event => onSettingsChange({ allowResubmit: event.target.checked })} aria-label="提交后可以修改" />
@@ -1117,7 +1116,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
                 value={settings.analysisAgentId ?? ''}
                 onChange={event => onSettingsChange({ analysisAgentId: event.target.value || null })}
               >
-                <option value="">不指定（分析按钮不可用）</option>
+                <option value="">不指定（无法使用 AI 分析与评分）</option>
                 {analysisAgents.map(agent => (
                   <option key={agent.id} value={agent.id}>{agent.name}（{agent.platform}）</option>
                 ))}
@@ -1125,8 +1124,8 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
               {/* ★ 2026-09-30：这句原来有 47 个字（两行）；砍掉「当前仅支持 Coze，
                   绘图题也需要通过 Coze 分析」那半句 —— 它在**配错平台**的时候才会用到，
                   而那时教师看到的是下拉里没有候选，去智能体管理那一页自然会看见。 */}
-              {analysisAgents.length === 0 && <em className="worksheet-settings-help">暂无分析智能体，请先到「智能体管理」添加。</em>}
-              {worksheetTemplateRecommendation(settings) && <em className="worksheet-settings-help">建议配置“{worksheetTemplateRecommendation(settings)}”分析模板。请确认所选智能体的外部提示词与本单学科、学段相符；系统不会自动替换。<a href="/teacher/agents/templates/" target="_blank" rel="noreferrer">查看模板库</a></em>}
+              {analysisAgents.length === 0 && <em className="worksheet-settings-help">暂无分析智能体，请先到「AI智能体」添加分析用途的智能体。</em>}
+              {worksheetTemplateRecommendation(settings) && <em className="worksheet-settings-help">建议使用“{worksheetTemplateRecommendation(settings)}”模板，请复制到所选智能体的提示词中，系统不会自动替换。<a href="/teacher/agents/templates/" target="_blank" rel="noreferrer">查看模板库</a></em>}
             </label>
           </section>
         {/* 奖励形式（规格 §9.2）。🔴 它是**这一张单**的配置，不是全局设置 ——
@@ -1210,7 +1209,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
               <div className="worksheet-background-portrait-row">
                 <div>
                   <strong>竖屏背景（可选）</strong>
-                  <em>上传后在 iPad 竖屏自动使用；不上传也会完整显示横图，不会裁掉左右。</em>
+                  <em>竖屏时使用此图；未上传时完整显示横图，可能留白。</em>
                 </div>
                 <label className="worksheet-background-portrait-upload">
                   <input
@@ -1283,8 +1282,9 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
           不写清「这个按钮只存设置」的话，教师改完题目再点它，会以为题目也存了。
         */}
         {saveError && (
-          <p className="worksheet-settings-error" role="alert">设置没有存上：{saveError}</p>
+          <p className="worksheet-settings-error" role="alert">设置保存失败：{saveError}</p>
         )}
+        <p className="worksheet-settings-help">修改任务内容后，请点顶栏「保存」保存整份学习单。</p>
         <div className="worksheet-settings-footer">
           <button type="button" className="btn btn-primary" onClick={() => void submit()} disabled={saving}>
             {saving ? '保存中…' : '保存设置'}

@@ -164,8 +164,7 @@ export function OrderAnswerBody({ node, onDataChange }: {
         // 「正确顺序」与条目对不上（缺 id / 长度不符 / 有重复）—— 它是**存不下**的状态
         //（服务端：「排序题的『正确顺序』必须正好是这些条目各一次」），所以必须说清怎么重设。
         <p className="worksheet-editor-warn-hint">
-          ⚠ 这一栏与条目对不上（库里那一份被改过，或者条目缺了 id），照这样保存会被服务端拒绝。
-          点「取当前顺序」按现在的条目重设一遍即可。
+          正确顺序与现有条目不一致，请点「取当前顺序」重新设置后保存。
         </p>
       )}
       {!answerReady ? (
@@ -251,7 +250,7 @@ export function OrderBody({ node, onDataChange }: {
         {/* ★ 2026-09-28（教师）：「打乱顺序」移到这一行、改名「重新排列」——
             它和「＋ 添加条目」都是**对条目这一列本身的操作**，摆在一起才读得通；
             而「打乱顺序」这个名字说着像是另一种操作，其实只是把学生看到的顺序重排一次。 */}
-        <div className="worksheet-editor-inline-actions">
+        <div className="worksheet-editor-inline-actions worksheet-editor-order-actions">
           <button type="button" className="btn btn-secondary" onClick={() => commit(orderAddItem(order, ''))}>
             ＋ 添加条目
           </button>

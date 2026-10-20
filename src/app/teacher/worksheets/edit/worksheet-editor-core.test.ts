@@ -791,7 +791,7 @@ test('parseDraft：settings 缺失的键按默认走（只认那几个值）', (
     content: { schemaVersion: 1, nodes: [] },
   }));
   assert.ok(draft);
-  assert.deepEqual(draft.settings, DEFAULT_SETTINGS);
+  assert.deepEqual(draft.settings, { ...DEFAULT_SETTINGS, rewardStyle: 'star', backgroundTheme: 'cloud-playground' });
 });
 
 test('draftKeyFor：新建用 new，编辑用真实 id（两者不能互相覆盖）', () => {
@@ -916,7 +916,7 @@ test('normalizeLoadedSettings：奖励三项原样带过来（漏掉就等于用
   assert.equal(withAgent.analysisAgentId, 'agent-xyz', '配好的分析智能体不能被一次「只改标题」的保存清掉');
   assert.equal(normalizeLoadedSettings({ analysisAgentId: '' }).analysisAgentId, null, '空串 ⇒ null（与服务端同一判据）');
   // 坏值回落到与取值域同一份默认（不是就地编一个第五档）
-  assert.equal(normalizeLoadedSettings({ rewardStyle: '彩虹' }).rewardStyle, DEFAULT_SETTINGS.rewardStyle);
+  assert.equal(normalizeLoadedSettings({ rewardStyle: '彩虹' }).rewardStyle, 'star', '旧数据坏值仍按历史默认回落，不套用新建默认');
   assert.equal(normalizeLoadedSettings({ rewardStep: 4 }).rewardStep, DEFAULT_SETTINGS.rewardStep);
   assert.equal(normalizeLoadedSettings({ rewardStep: '3' }).rewardStep, DEFAULT_SETTINGS.rewardStep);
   // ★ 部分给分档：0 是**合法值**（要原样带过来），4 是越界值（回落到 0）。

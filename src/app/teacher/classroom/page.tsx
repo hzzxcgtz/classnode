@@ -2776,7 +2776,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                 if (item === 'overview') { openWorksheetWorkspace({ view: 'overview' }); return; }
                                 if (item === 'student') { openWorksheetWorkspace({ view: 'student' }); return; }
                                 if (item === 'question') { openWorksheetWorkspace({ view: 'question' }); return; }
-                                if (!openOverlayWorksheets.some(sheet => sheet.settings?.answerMode === 'manual')) { setToast({ msg: '请先将学习单的任务开放方式设为「手动开放」', type: 'error' }); return; }
+                                if (!openOverlayWorksheets.some(sheet => sheet.settings?.answerMode === 'manual')) { setToast({ msg: '请先将学习单的任务开放方式设为「教师控制开放」', type: 'error' }); return; }
                                 closeWorksheetLayer();
                                 setShowWorksheetOpen(true);
                               }}

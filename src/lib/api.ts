@@ -373,6 +373,12 @@ export const api = {
     return request<StatsExportReport>(`/api/export/${classroomId}/stats${params}`);
   },
 
+  exportWorksheetDocuments: (id: string) => fetch(`${getApiBaseUrl()}/api/export/${encodeURIComponent(id)}/worksheet-documents`, { method: 'POST', credentials: 'include' }),
+  exportClassroomArchive: (classroomId: string) => fetch(`${getApiBaseUrl()}/api/export/${encodeURIComponent(classroomId)}/archive`, {
+    method: 'POST',
+    credentials: 'include',
+  }),
+
   // 服务端生成 DOCX（对话记录）
   exportConversationsDocx: (classroomId: string, options?: { studentIds?: string[]; socketId?: string }) => {
     return fetch(`${getApiBaseUrl()}/api/export/${classroomId}/conversations/docx`, {

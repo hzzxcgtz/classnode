@@ -141,6 +141,8 @@ if (!withoutNode) await bundleNode(runtime, resourceDir);
 
 const requiredFiles = [
   'dist/index.js',
+  'dist/desktop-recover.js',
+  'dist/services/desktop-port-recovery.js',
   'frontend/index.html',
   'frontend/teacher/agents/templates/index.html',
   ...ANALYSIS_PROMPT_TEMPLATES.map(template => `frontend${template.file}`),

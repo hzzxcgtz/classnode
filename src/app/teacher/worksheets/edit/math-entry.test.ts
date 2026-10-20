@@ -22,6 +22,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import ts from 'typescript';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,6 +48,21 @@ function stripImports(source: string): string {
 }
 
 const body = (source: string) => stripImports(stripComments(source));
+
+/** 只读取组件自身的 JSX 属性，跳过注释、类型声明和属性里的嵌套元素。 */
+function jsxAttribute(source: string, component: string, attribute: string): string | undefined {
+  const file = ts.createSourceFile('component.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let value: string | undefined;
+  function visit(node: ts.Node): void {
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText(file) === component) {
+      const prop = node.attributes.properties.find(prop => ts.isJsxAttribute(prop) && prop.name.getText(file) === attribute);
+      if (prop && ts.isJsxAttribute(prop)) value = prop.initializer?.getText(file);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(file);
+  return value;
+}
 
 test('★ Σ 住在题干工具栏里，右边写着「数学公式」（教师第三轮：放回去）', () => {
   const editor = body(EDITOR);
@@ -125,21 +141,16 @@ test('★ 复制成功那句话要弹得出来（onNotice 从编辑页一路传�
   //    而 toast 在**编辑页**那一层。这条链路断了的症状是「复制成功了一声不吭」，
   //    屏幕上看不出哪里不对（克隆出来的代码照样编译、照样跑）。
   assert.ok(body(PAGE).includes('onNotice={notify}'), '编辑页没有把 notice 交给题目卡');
-  // ⚠️ **只看 `<PromptEditor` 那一段**：`onNotice` 在题目卡里还有**类型声明**与**解构**
-  //    两处，查整个文件的话「把往下传的那一行删掉」照样绿 —— 而断的正是那一行。
-  //    变异检验实测抓出来的假绿。
-  const card = body(CARD);
-  const peAt = card.indexOf('<PromptEditor');
-  assert.ok(peAt >= 0, '题目卡里找不到 <PromptEditor');
-  const peMount = card.slice(peAt, card.indexOf('/>', peAt));
-  assert.ok(peMount.includes('onNotice={onNotice}'), '题目卡没有把 notice 转给题干编辑器');
+  // JSX 属性可以包含嵌套组件；按语法树读取当前组件的属性，避免在标题图标的 /> 处截断。
+  assert.equal(jsxAttribute(CARD, 'PromptEditor', 'onNotice'), '{onNotice}', '题目卡没有把 notice 转给题干编辑器');
+  assert.equal(
+    jsxAttribute(CARD.replace('onNotice={onNotice}', ''), 'PromptEditor', 'onNotice'),
+    undefined,
+    '删掉实际回调后不能从声明、解构或其他组件中误认出连接',
+  );
   const editor = body(EDITOR);
   assert.ok(editor.includes('onNotice'), '题干编辑器没有接 notice');
-  const at = editor.indexOf('<MathInsertDialog');
-  assert.ok(at >= 0, '找不到弹窗的挂载点');
-  const mount = editor.slice(at, editor.indexOf('/>', at));
-  assert.ok(mount.includes('onCopied'), '弹窗的 onCopied 没接上');
-  assert.ok(mount.includes('onNotice'), '复制成功的提示没有接到页面的 toast 上');
+  assert.equal(jsxAttribute(EDITOR, 'MathInsertDialog', 'onCopied'), "{message => onNotice(message, 'success')}", '复制成功的提示没有接到页面的 toast 上');
 });
 
 test('★ 弹窗里那排符号是**分组**画的，且走的是那张表', () => {

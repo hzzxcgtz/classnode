@@ -109,16 +109,23 @@ $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false)
 $current=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $rows=@()
-$connections=@($env:CLASSNODE_RECOVERY_LISTENERS | ConvertFrom-Json)
-foreach($targetId in @($connections.OwningProcess | Sort-Object -Unique)) {
+# Windows PowerShell 5.1 emits a JSON array as one pipeline object. Do not wrap
+# ConvertFrom-Json in @(...), which would create an extra array level.
+$connections=ConvertFrom-Json -InputObject $env:CLASSNODE_RECOVERY_LISTENERS
+$targetIds=@(foreach($connection in $connections) { [int]$connection.OwningProcess })
+foreach($targetId in @($targetIds | Sort-Object -Unique)) {
+  $ports=@(foreach($connection in $connections) {
+    if ([int]$connection.OwningProcess -eq $targetId) { [int]$connection.LocalPort }
+  })
+  $ports=@($ports | Sort-Object -Unique)
   try {
     $item=Get-CimInstance Win32_Process -Filter "ProcessId = $targetId"
     $native=[System.Diagnostics.Process]::GetProcessById([int]$targetId)
     try {
       $sid=(Invoke-CimMethod -InputObject $item -MethodName GetOwnerSid).Sid
-      $rows+=@{pid=[int]$targetId;executable=[string]$item.ExecutablePath;commandLine=[string]$item.CommandLine;started=[string]$native.StartTime.ToUniversalTime().Ticks;owner=[string]$sid;ports=@($connections | Where-Object { $_.OwningProcess -eq $targetId } | Select-Object -ExpandProperty LocalPort -Unique)}
+      $rows+=@{pid=[int]$targetId;executable=[string]$item.ExecutablePath;commandLine=[string]$item.CommandLine;started=[string]$native.StartTime.ToUniversalTime().Ticks;owner=[string]$sid;ports=$ports}
     } finally { $native.Dispose() }
-  } catch { $rows+=@{pid=[int]$targetId;executable='';commandLine='';started='';owner='';ports=@($connections | Where-Object { $_.OwningProcess -eq $targetId } | Select-Object -ExpandProperty LocalPort -Unique)} }
+  } catch { $rows+=@{pid=[int]$targetId;executable='';commandLine='';started='';owner='';ports=$ports} }
 }
 @{owner=$current;processes=@($rows)} | ConvertTo-Json -Depth 5 -Compress
 `;

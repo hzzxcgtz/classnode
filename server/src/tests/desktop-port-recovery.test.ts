@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { isOwnedListener, sameListener, windowsArgs, windowsListeners, nativeRecoveryAdapter, recoverDesktopPorts, type ListenerProcess, type RecoveryContext } from '../services/desktop-port-recovery.js';
 
 const context: RecoveryContext = {platform:'win32', nodePath:'C:\\Program Files\\支点课堂\\server\\node.exe', serverDir:'C:\\Program Files\\支点课堂\\server', owner:'S-1-test', dedicatedRuntime:true};
@@ -53,6 +54,38 @@ test('Windows inspection sends only target listeners for identity checks and pro
   changed = true;
   await assert.rejects(adapter.stop(snapshot.processes[0]), /占用进程已变化/);
   assert.throws(() => nativeRecoveryAdapter('win32', () => { throw new Error('query timeout'); }).inspect(), /query timeout/);
+});
+
+test('Windows PowerShell reads singleton and multi-port JSON arrays, including failed identity queries', { timeout: 200000 }, t => {
+  if (process.platform !== 'win32') return t.skip('requires Windows PowerShell 5.1');
+  // Capture the exact production query. Stub CIM only; execute its JSON/array/port handling in powershell.exe.
+  let query = '';
+  nativeRecoveryAdapter('win32', (file, args) => {
+    if (file.endsWith('netstat.exe')) return `TCP 0.0.0.0:3001 0.0.0.0:0 LISTENING ${process.pid}`;
+    query = args.at(-1)!;
+    return JSON.stringify({ owner: '', processes: [] });
+  }).inspect();
+  const stub = `
+function Get-CimInstance {
+  if ($env:CLASSNODE_TEST_IDENTITY_FAIL -eq '1') { throw 'simulated access denied' }
+  return [pscustomobject]@{ExecutablePath='test-node.exe';CommandLine='test-node.exe dist/index.js'}
+}
+function Invoke-CimMethod { return [pscustomobject]@{Sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value} }
+`;
+  for (const [ports, fail] of [[[3001], false], [[3001, 3002], false], [[3001, 3002], true]] as const) {
+    const result = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', stub + query], {
+      encoding: 'utf8', timeout: 60000, windowsHide: true,
+      env: { ...process.env, CLASSNODE_TEST_IDENTITY_FAIL: fail ? '1' : '0',
+        CLASSNODE_RECOVERY_LISTENERS: JSON.stringify(ports.map(port => ({ LocalPort: port, OwningProcess: process.pid }))) },
+    });
+    const snapshot = JSON.parse(result.replace(/^\uFEFF/, '')) as { owner: string; processes: ListenerProcess[] };
+    assert.equal(snapshot.processes.length, 1);
+    const row = snapshot.processes[0];
+    assert.equal(row.pid, process.pid);
+    assert.deepEqual(row.ports, ports);
+    assert.equal(row.executable, fail ? '' : 'test-node.exe');
+    assert.equal(row.owner, fail ? '' : snapshot.owner);
+  }
 });
 
 test('requires installed dedicated executable, exact server entry, user and process identity', () => {

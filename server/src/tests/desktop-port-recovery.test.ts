@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isOwnedListener, sameListener, windowsArgs, recoverDesktopPorts, type ListenerProcess, type RecoveryContext } from '../services/desktop-port-recovery.js';
+import { isOwnedListener, sameListener, windowsArgs, windowsListeners, nativeRecoveryAdapter, recoverDesktopPorts, type ListenerProcess, type RecoveryContext } from '../services/desktop-port-recovery.js';
 
 const context: RecoveryContext = {platform:'win32', nodePath:'C:\\Program Files\\支点课堂\\server\\node.exe', serverDir:'C:\\Program Files\\支点课堂\\server', owner:'S-1-test', dedicatedRuntime:true};
 const own: ListenerProcess = {pid:1234, executable:context.nodePath, commandLine:`"${context.nodePath}" dist/index.js`, started:'123456789', owner:context.owner, ports:[3001,3002]};
@@ -11,6 +11,48 @@ test('Windows command parsing preserves quoted paths and rejects malformed input
   assert.equal(windowsArgs('node.exe "unterminated'), null);
   assert.equal(windowsArgs('node.exe\nother'), null);
   assert.deepEqual(windowsArgs(String.raw`node.exe "a\"b"`), ['node.exe','a"b']);
+});
+
+test('Windows netstat parsing selects only target TCP listeners and deduplicates IPv4/IPv6', () => {
+  assert.deepEqual(windowsListeners(`
+活动连接
+  协议  本地地址  外部地址  状态  PID
+  TCP    0.0.0.0:3001    0.0.0.0:0    LISTENING    1234
+  TCP    [::]:3001       [::]:0       LISTENING    1234
+  TCP    127.0.0.1:3002  0.0.0.0:0    LISTENING    5678
+  TCP    127.0.0.1:3001  127.0.0.1:90 ESTABLISHED  9999
+  TCP    0.0.0.0:13001   0.0.0.0:0    LISTENING    9999
+  UDP    0.0.0.0:3001    *:*                       9999
+  TCP    0.0.0.0:3001    0.0.0.0:0    LISTENING    nope
+  TCP    0.0.0.0:3001    0.0.0.0:0    LISTENING    0
+`), [{ pid: 1234, port: 3001 }, { pid: 5678, port: 3002 }]);
+  assert.deepEqual(windowsListeners(''), []);
+});
+
+test('Windows inspection skips PowerShell when target ports are free', () => {
+  const adapter = nativeRecoveryAdapter('win32', (file, args) => {
+    assert.match(file, /netstat\.exe$/);
+    assert.deepEqual(args, ['-ano', '-p', 'TCP']);
+    return 'TCP 0.0.0.0:8080 0.0.0.0:0 LISTENING 1111';
+  });
+  assert.deepEqual(adapter.inspect(), { owner: '', processes: [] });
+});
+
+test('Windows inspection sends only target listeners for identity checks and propagates query failures', async () => {
+  let changed = false;
+  const adapter = nativeRecoveryAdapter('win32', (file, args, options) => {
+    if (file.endsWith('netstat.exe')) return 'TCP 0.0.0.0:3001 0.0.0.0:0 LISTENING 1234';
+    assert.equal(file, 'powershell.exe');
+    assert.ok(!args.at(-1)!.includes('Get-NetTCPConnection'));
+    assert.equal(options.timeout, 60000);
+    assert.deepEqual(JSON.parse(options.env!.CLASSNODE_RECOVERY_LISTENERS!), [{ OwningProcess: 1234, LocalPort: 3001 }]);
+    return JSON.stringify({ owner: context.owner, processes: [{ ...own, started: changed ? 'replacement' : own.started }] });
+  });
+  const snapshot = adapter.inspect();
+  assert.equal(isOwnedListener(snapshot.processes[0], { ...context, owner: snapshot.owner }), true);
+  changed = true;
+  await assert.rejects(adapter.stop(snapshot.processes[0]), /占用进程已变化/);
+  assert.throws(() => nativeRecoveryAdapter('win32', () => { throw new Error('query timeout'); }).inspect(), /query timeout/);
 });
 
 test('requires installed dedicated executable, exact server entry, user and process identity', () => {
@@ -88,7 +130,7 @@ test('replacement occupying the released main port is reported and never termina
   assert.deepEqual(stopped,[own.pid]);
 });
 
-test('native recovery identifies and stops an isolated bundled server, without accessing real application data', {timeout:45000}, async t => {
+test('native recovery identifies and stops an isolated bundled server, without accessing real application data', {timeout:process.platform === 'win32' ? 300000 : 45000}, async t => {
   if (!['darwin','win32'].includes(process.platform)) return t.skip('desktop platforms only');
   const fs=await import('node:fs/promises');
   const os=await import('node:os');

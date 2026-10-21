@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from 'node:child_process';
 
 export interface ListenerProcess {
   pid: number;
@@ -73,13 +73,43 @@ export function sameListener(a: ListenerProcess, b: ListenerProcess | null): boo
     a.ports.some(port => b.ports.includes(port));
 }
 
+/** Read numeric netstat rows without depending on translated column headings. */
+export function windowsListeners(output: string): { pid: number; port: number }[] {
+  const listeners: { pid: number; port: number }[] = [];
+  for (const line of output.split(/\r?\n/)) {
+    const fields = line.trim().split(/\s+/);
+    if (fields.length !== 5 || fields[0] !== 'TCP' || fields[3] !== 'LISTENING' || !/^\d+$/.test(fields[4])) continue;
+    const port = Number(/:(\d+)$/.exec(fields[1])?.[1]);
+    const pid = Number(fields[4]);
+    if ((port === 3001 || port === 3002) && Number.isSafeInteger(pid) && pid > 0 &&
+        !listeners.some(row => row.pid === pid && row.port === port)) listeners.push({ pid, port });
+  }
+  return listeners;
+}
+
+// netstat avoids the slow NetTCPIP CIM provider; CIM is reserved for candidate identities.
+const WINDOWS_LISTENERS = String.raw`
+function Get-ClassNodeListeners {
+  $rows=@()
+  $lines=& "$env:SystemRoot\System32\netstat.exe" -ano -p TCP
+  if ($LASTEXITCODE -ne 0) { throw '无法查询本机监听端口' }
+  foreach($line in $lines) {
+    $fields=$line.Trim() -split '\s+'
+    if ($fields.Count -eq 5 -and $fields[0] -eq 'TCP' -and $fields[3] -eq 'LISTENING' -and $fields[1] -match ':(3001|3002)$') {
+      $rows+=@{LocalPort=[int]$Matches[1];OwningProcess=[int]$fields[4]}
+    }
+  }
+  return $rows
+}
+`;
+
 // Querying CIM provides the real executable path and user identity, not just the image name.
 const WINDOWS_QUERY = String.raw`
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false)
 $current=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $rows=@()
-$connections=@(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object { $_.LocalPort -in @(3001,3002) })
+$connections=@($env:CLASSNODE_RECOVERY_LISTENERS | ConvertFrom-Json)
 foreach($targetId in @($connections.OwningProcess | Sort-Object -Unique)) {
   try {
     $item=Get-CimInstance Win32_Process -Filter "ProcessId = $targetId"
@@ -93,7 +123,7 @@ foreach($targetId in @($connections.OwningProcess | Sort-Object -Unique)) {
 @{owner=$current;processes=@($rows)} | ConvertTo-Json -Depth 5 -Compress
 `;
 
-const WINDOWS_STOP = String.raw`
+const WINDOWS_STOP = WINDOWS_LISTENERS + String.raw`
 $ErrorActionPreference='Stop'
 $expected=$env:CLASSNODE_RECOVERY_PROCESS | ConvertFrom-Json
 $targetId=[int]$expected.pid
@@ -105,17 +135,20 @@ try {
   $sid=(Invoke-CimMethod -InputObject $item -MethodName GetOwnerSid).Sid
   $current=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
   if ($sid -ne $current -or $sid -ne $expected.owner -or $item.ExecutablePath -cne $expected.executable -or $item.CommandLine -cne $expected.commandLine) { throw '进程身份已变化，取消回收' }
-  $listeners=@(Get-NetTCPConnection -State Listen | Where-Object { $_.OwningProcess -eq $targetId -and $_.LocalPort -in @($expected.ports) })
+  $listeners=@(Get-ClassNodeListeners | Where-Object { $_.OwningProcess -eq $targetId -and $_.LocalPort -in @($expected.ports) })
   if ($listeners.Count -eq 0) { throw '进程已不占用目标端口，取消回收' }
   $native.Kill()
   if (-not $native.WaitForExit(5000)) { throw '等待旧服务退出超时' }
 } finally { $native.Dispose() }
 `;
 
-function powershell(script: string, expected?: ListenerProcess): string {
-  return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-    encoding: 'utf8', timeout: 20000, maxBuffer: 1024 * 1024, windowsHide: true,
-    env: { ...process.env, ...(expected ? { CLASSNODE_RECOVERY_PROCESS: JSON.stringify(expected) } : {}) },
+type WindowsCommand = (file: string, args: string[], options: ExecFileSyncOptionsWithStringEncoding) => string;
+
+function powershell(run: WindowsCommand, script: string, expected?: ListenerProcess, listeners?: { pid: number; port: number }[]): string {
+  return run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8', timeout: 60000, maxBuffer: 1024 * 1024, windowsHide: true,
+    env: { ...process.env, ...(expected ? { CLASSNODE_RECOVERY_PROCESS: JSON.stringify(expected) } : {}),
+      ...(listeners ? { CLASSNODE_RECOVERY_LISTENERS: JSON.stringify(listeners.map(row => ({ OwningProcess: row.pid, LocalPort: row.port }))) } : {}) },
   }).replace(/^\uFEFF/, '');
 }
 
@@ -155,15 +188,24 @@ export interface RecoveryAdapter {
   stop(candidate: ListenerProcess): Promise<void>;
 }
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-export function nativeRecoveryAdapter(platform: string): RecoveryAdapter {
+export function nativeRecoveryAdapter(platform: string, run: WindowsCommand = execFileSync): RecoveryAdapter {
   if (!['win32', 'darwin'].includes(platform)) throw new Error('不支持此系统的旧服务回收');
-  const inspect = () => platform === 'win32' ? JSON.parse(powershell(WINDOWS_QUERY)) as ReturnType<RecoveryAdapter['inspect']> : macListeners();
+  const inspect = (): ReturnType<RecoveryAdapter['inspect']> => {
+    if (platform !== 'win32') return macListeners();
+    const output = run(path.win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'netstat.exe'), ['-ano', '-p', 'TCP'], {
+      encoding: 'utf8', timeout: 10000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
+    });
+    const listeners = windowsListeners(output);
+    // No candidate means no CIM/PowerShell startup, including the post-stop release checks.
+    if (!listeners.length) return { owner: '', processes: [] };
+    return JSON.parse(powershell(run, WINDOWS_QUERY, undefined, listeners)) as ReturnType<RecoveryAdapter['inspect']>;
+  };
   return {
     inspect,
     async stop(candidate) {
       const latest = inspect().processes.find(row => row.pid === candidate.pid) ?? null;
       if (!sameListener(candidate, latest)) throw new Error('占用进程已变化，未结束该进程');
-      if (platform === 'win32') { powershell(WINDOWS_STOP, candidate); return; }
+      if (platform === 'win32') { powershell(run, WINDOWS_STOP, candidate); return; }
       process.kill(candidate.pid, 'SIGTERM');
       for (let i = 0; i < 20; i++) {
         await delay(100);

@@ -1,0 +1,5 @@
+.button { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 6px 10px; border: 1px solid #bdd0e2; border-radius: 6px; background: #f3f8fd; color: #315b80; font-size: 12px; line-height: 1.4; white-space: nowrap; cursor: pointer; }
+.button:disabled { opacity: .45; cursor: default; }
+.button { gap: 7px; }
+.button svg { flex-shrink: 0; }
+.button:focus-visible { outline: 2px solid #6a9dcc; outline-offset: 2px; }

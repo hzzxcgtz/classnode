@@ -2,8 +2,9 @@
 import { useEffect, useState } from 'react';
 import { getApiBaseUrl } from '@/lib/api-base';
 import type { WorksheetQuestionNode } from '@/lib/types';
+import { ReviewPreviewButton } from './review-preview';
 import { ReviewHistory, type AnswerReview } from '@/app/classroom/worksheet/review-history';
-export function TeacherReviewHistory({ classroomId, worksheetId, participantId, node }: { classroomId: string; worksheetId: string; participantId: string; node: WorksheetQuestionNode }) {
+export function TeacherReviewHistory({ classroomId, worksheetId, participantId, studentName, node }: { classroomId: string; worksheetId: string; participantId: string; studentName?: string; node: WorksheetQuestionNode }) {
   const [reviews, setReviews] = useState<AnswerReview[]>([]);
   const [error, setError] = useState(false);
   useEffect(() => {
@@ -20,5 +21,8 @@ export function TeacherReviewHistory({ classroomId, worksheetId, participantId, 
     void load(); const timer = window.setInterval(load, 5000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [classroomId, worksheetId, participantId, node.id]);
-  return error ? <p role="status">提交历史暂时未能读取，正在重试。</p> : <ReviewHistory node={node} reviews={reviews} />;
+  return error ? <p role="status">提交历史暂时未能读取，正在重试。</p> : <ReviewHistory node={node} reviews={reviews} renderReviewActions={review =>
+    <ReviewPreviewButton title={`${studentName || '学生'} · AI 评价与建议`} reason={review.reason} advice={review.advice} score={review.score} maxScore={review.maxScore} unit={review.unit}
+      note={review.status === 'superseded' ? (review.error || '历史评价，不计入当前成绩') : undefined} />
+  } />;
 }

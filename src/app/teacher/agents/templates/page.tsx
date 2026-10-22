@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { ANALYSIS_PROMPT_TEMPLATES, ANALYSIS_TEMPLATE_STAGES, ANALYSIS_TEMPLATE_SUBJECTS } from '@/lib/analysis-prompt-templates';
 import { TeacherPageHeader, Toast } from '@/lib/components';
 import { Markdown } from '@/lib/markdown';
@@ -47,7 +48,7 @@ export default function AnalysisTemplatesPage() {
   return <div>
     {toast && <Toast msg={toast.msg} type={toast.type} onClose={closeToast} />}
     <TeacherPageHeader title="作答分析提示词模板库" description="按学段和学科选择，复制完整提示词到外部分析智能体的系统提示词中。" actions={
-      <a className="btn btn-secondary" href="/teacher/agents/">返回 AI 智能体</a>
+      <Link className="btn btn-secondary" href="/teacher/agents/">返回 AI 智能体</Link>
     } />
     <section className={styles.panel}>
       <div className={styles.filters}>

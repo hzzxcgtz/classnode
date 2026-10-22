@@ -83,7 +83,7 @@ export function AgentPurposeSelector({ purpose, onChange }: {
       </div>
 
       {purpose === 'analysis' && <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', minWidth: 0 }}>
-        提示词参考：AI 智能体页顶部“提示词模板”
+        提示词参考：AI 智能体页顶部“分析提示词模板”
       </span>}
 
       {/* 右端那一句是**两个选项共用**的提示，所以留在外面（放进任一枚胶囊都会偏心）。 */}

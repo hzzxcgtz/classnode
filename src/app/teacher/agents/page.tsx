@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { FieldError, Toast, Pagination, TeacherPageHeader, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
 import type { AgentSummary, PlatformTokenSummary, RelatedClassroom } from '@/lib/types';
 import { api } from '@/lib/api';
@@ -135,10 +136,10 @@ export default function AgentsPage() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 3h6a3 3 0 0 1 3 3v15a4 4 0 0 0-4-2H4z" /><path d="M13 6a3 3 0 0 1 3-3h4v16h-3a4 4 0 0 0-4 2" /></svg>
             接入教程
           </a>
-          <a className="btn btn-secondary" href="/teacher/agents/templates/">
+          <Link className="btn btn-secondary" href="/teacher/agents/templates/">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h5" /></svg>
-            提示词模板
-          </a>
+            分析提示词模板
+          </Link>
           {/* ★ 2026-09-25：与「接入智能体」并排。⚠️ 在**没有 token 时也显示** ——
               它就是教师第一次该去的地方（Coze 低代码的智能体要选一份 Token）。 */}
           <button className="btn btn-secondary agent-token-management-button" onClick={() => setShowTokens(true)} title={tokenAlertText || undefined} aria-label={tokenAlerts.length ? `扣子访问令牌，${tokenAlerts.length} 份令牌即将到期或已过期。${tokenAlertText}` : '扣子访问令牌'}>

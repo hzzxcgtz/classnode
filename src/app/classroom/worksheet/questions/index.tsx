@@ -6,6 +6,8 @@ import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import { emptyDraftFor, isPhotoNode } from '@/lib/worksheet-answer-value';
 import { isInkNode } from '@/lib/worksheet-ink';
 import { api } from '@/lib/api';
+import { ClassroomImagePreview } from '@/app/teacher/classroom/image-preview';
+import { useRotatedImageSource } from '@/components/use-image-rotation';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { CategorizeBody } from './categorize-body';
 import { ChoiceBody } from './choice-body';
@@ -216,6 +218,8 @@ function PhotoBody({ draft, onChange, disabled, localOnly }: {
   onChange: (next: AnswerDraft) => void;
   disabled: boolean;
 }) {
+  const [preview, setPreview] = useState(false);
+  const photoSource = useRotatedImageSource(worksheetAssetUrl(draft.url));
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -262,7 +266,11 @@ function PhotoBody({ draft, onChange, disabled, localOnly }: {
       />
       {draft.url ? (
         <div className={styles.photoAnswerPreview}>
-          <img src={worksheetAssetUrl(draft.url)} alt="已上传的照片作答" />
+          <button type="button" className={styles.photoAnswerPreviewButton} onClick={() => setPreview(true)} aria-label="放大照片并调整方向">
+            <img src={photoSource} alt="已上传的照片作答" />
+          </button>
+          <button type="button" className={styles.photoAnswerAction} onClick={() => setPreview(true)}>查看大图 / 旋转方向</button>
+          {preview && <ClassroomImagePreview key={draft.url} src={worksheetAssetUrl(draft.url)} onClose={() => setPreview(false)} />}
           {!disabled && (
             <div className={styles.photoAnswerActions}>
               <button type="button" className={styles.photoAnswerAction} disabled={uploading} onClick={() => inputRef.current?.click()}>

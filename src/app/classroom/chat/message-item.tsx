@@ -1,4 +1,5 @@
 import { memo, useCallback, useState } from 'react';
+import { RotatedImage } from '@/components/rotated-image';
 import { Markdown, stripImages } from '@/lib/markdown';
 import { SvgAvatar } from '@/components/svg-avatar';
 import { AgentAvatar } from './agent-avatar';
@@ -76,7 +77,7 @@ export const MessageItem = memo(function MessageItem({
         {fileSources.map((fu: string, fi: number) => (
           <div key={fi} style={{ marginBottom: 8 }}>
             {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
-              <img src={`${apiBase}${fu}`} alt={(msg.fileNames?.[fi]) || msg.fileName || ''}
+              <RotatedImage src={`${apiBase}${fu}`} alt={(msg.fileNames?.[fi]) || msg.fileName || ''}
                 onClick={() => onImageClick?.(`${apiBase}${fu}`)}
                 style={{ maxWidth: 220, maxHeight: 160, borderRadius: 10, objectFit: 'cover', display: 'block', cursor: 'pointer', transition: 'opacity 0.15s' }}
                 onMouseEnter={e => { e.currentTarget.style.opacity = '0.8'; }}

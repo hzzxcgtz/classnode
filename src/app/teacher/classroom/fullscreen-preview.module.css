@@ -1,0 +1,42 @@
+.dialog { position: fixed; z-index: 100000; inset: 0; width: 100vw; max-width: none; height: 100vh; height: 100dvh; max-height: none; margin: 0; padding: 0; border: 0; background: #121b28; color: #fff; overflow: hidden; outline: none; }
+.dialog[open] { display: flex; flex-direction: column; }
+.dialog::backdrop { background: #121b28; }
+.header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 60px; padding: 10px 24px; background: #1c293a; border-bottom: 1px solid #ffffff20; }
+.header h2 { margin: 0; color: #fff; font-size: 1rem; font-weight: 600; }
+.close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 1px solid #ffffff24; border-radius: 50%; background: #ffffff0d; color: #e6eef7; cursor: pointer; }
+.close:hover { background: #ffffff20; border-color: #ffffff50; color: #fff; }
+.close:active { background: #ffffff30; }
+.controls { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; padding: 12px 18px max(12px, env(safe-area-inset-bottom)); background: #1c293a; border-top: 1px solid #ffffff20; font-size: .8125rem; }
+.controls button { min-height: 44px; min-width: 44px; border: 1px solid #ffffff20; border-radius: 10px; padding: 5px 12px; background: #ffffff0d; color: #fff; cursor: pointer; }
+.controls button:hover:not(:disabled) { background: #ffffff20; border-color: #ffffff45; }
+.controls button:disabled { opacity: .4; cursor: default; }
+.controls input { width: 140px; }
+.controls output { min-width: 42px; font-variant-numeric: tabular-nums; }
+.hint { color: #c2cddd; font-size: .75rem; }
+.stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; user-select: none; cursor: grab; }
+.stage[data-dragging='true'] { cursor: grabbing; }
+.stage img { max-width: 92%; max-height: 92%; object-fit: contain; flex-shrink: 0; pointer-events: none; user-select: none; transform-origin: center; }
+.textViewport { flex: 1; min-height: 0; overflow: auto; background: #edf2f7; color: #21364e; padding: 32px 24px; }
+.review { max-width: 1080px; border: 1px solid #e5edf4; box-shadow: 0 8px 32px #263c5410; margin: 0 auto; padding: 32px 40px; border-radius: 12px; background: #fff; line-height: 1.85; overflow-wrap: anywhere; }
+.review h3 { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; color: #315b80; font-size: .85em; font-weight: 600; line-height: 1.5; }
+.review section + section { margin-top: 28px; padding-top: 24px; border-top: 1px solid #dce5ef; }
+.review p { margin: 0; white-space: pre-wrap; }
+.reviewMeta { margin-bottom: 28px; padding-bottom: 24px; border-bottom: 1px solid #e6edf4; color: #62758b; font-size: .8em; }
+.rewardSummary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.rewardLabel { font-size: .8em; color: #6c7f93; }
+.rewardIcons { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.rewardCount { color: #315b80; font-size: 1.15em; font-weight: 650; font-variant-numeric: tabular-nums; }
+.rewardCount > span { color: #7a8ca0; font-size: .7em; font-weight: 400; }
+.reviewNote { margin-top: 12px !important; font-size: .8em; }
+.fontTools { display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid #ffffff1c; border-radius: 14px; background: #101d2c; }
+.fontTools .toolLabel { padding: 0 12px; color: #bccbdb; font-size: 12px; }
+.fontTools button { border-color: transparent; background: #283b50; font-size: 16px; font-weight: 500; }
+.fontTools output { min-width: 58px; text-align: center; color: #e6eef7; font-size: 15px; }
+.fontTools output small { margin-left: 3px; color: #9db0c5; font-size: 10px; }
+.hint kbd { margin-left: 10px; padding: 2px 5px; border: 1px solid #ffffff28; border-radius: 4px; color: #dce7f2; font: inherit; font-size: 10px; }
+.expand { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; width: 28px; height: 28px; min-width: 28px; padding: 0; margin: 0; border: 1px solid #dce6f0; background: #f8fbfe; color: #5a7b9b; border-radius: 6px; cursor: pointer; }
+.expand:hover { color: #315f8e; border-color: #adc5dd; background: #eaf3fc; }
+.expand:focus-visible { outline: 2px solid #648fba; outline-offset: 2px; }
+.dialog button:focus-visible, .dialog input:focus-visible { outline: 2px solid #a8d1ff; outline-offset: 3px; }
+.textViewport:focus-visible { outline: 2px solid #85b9ef; outline-offset: -3px; }
+@media (max-width: 600px) { .header { padding: 8px 12px; } .textViewport { padding: 14px 10px; } .review { padding: 20px; } .controls { gap: 8px; } .hint { width: 100%; text-align: center; } }

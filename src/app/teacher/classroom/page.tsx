@@ -13,10 +13,14 @@ import { QRCodeSVG } from 'qrcode.react';
 import QRCode from 'qrcode';
 import { Toast } from '@/lib/components';
 import { useWebappMonitor } from './use-webapp-monitor';
+import { useBoardPreferences } from './use-board-preferences';
 import { ExploreDetailPanel, ExploreMemberStrip, ExploreTile } from './explore-tiles';
 import { WorksheetTileContent } from './worksheet-tiles';
 import { SvgAvatar } from '@/components/svg-avatar';
+import { publishImageOrientationUpdated } from '@/components/use-image-rotation';
+import { RotatedImage } from '@/components/rotated-image';
 import { ClassroomImagePreviewContext } from './answer-photo';
+import { ClassroomImagePreview } from './image-preview';
 import { MatrixOverlay, type WorksheetWorkspaceEntry } from './matrix-overlay';
 import { WorksheetDrawer, type WorksheetDrawerEntry } from './worksheet-drawer';
 import { clearConfirmText, participantOverview } from './worksheet-drawer-state';
@@ -433,7 +437,7 @@ function ModuleStateMenu({ modules, busy, neverConfigured, onSelect }: {
 }
 
 /**
- * 看板上的一个「段选」按钮（跟随/指定，以及指定模式下的三选一）。
+ * 看板上的一个「段选」按钮（跟随/固定，以及固定模式下的三选一）。
  *
  * 与 `ModuleStateRadio` 刻意分开：那个是**菜单里的**选项（`role="menuitemradio"`，
  * 生命周期跟着菜单走），这个是常驻在筛选行上的开关，用 `aria-pressed` 而不是
@@ -509,7 +513,6 @@ function ModuleCountChip({ label, value, unit, hint, muted = false, tone = 'defa
  *   · `follow` 每格显示**该学生此刻在用**的模块；
  *   · `assign` 全班格子统一显示教师选定的那一个模块。
  */
-type BoardMode = 'follow' | 'assign';
 
 /**
  * 徽章行里那个模块相关的徽章（`null` = 这一格不该有它）。
@@ -597,7 +600,7 @@ function ModuleInitialChip({ module, compact = false }: { module: GroupTileModul
 
 /**
  * 一个格子**内容区**该渲染什么。
- *   · `ModuleId`  —— 三件套之一（跟随模式下由该学生的 focus 决定，指定模式下是教师选的）
+ *   · `ModuleId`  —— 三件套之一（跟随模式下由该学生的 focus 决定，固定模式下是教师选的）
  *   · `'home'`    —— 学生此刻停在**首页**（focus 明确是 `null`）
  *   · `'unknown'` —— 还没收到这个学生的 focus。**不猜**：猜一个模块会让教师看到
  *                    一个不存在的事实（比一句「不知道」糟得多）。
@@ -655,11 +658,7 @@ function ClassroomBoardContent() {
   const [studentUrl, setStudentUrl] = useState('');
   const [studentAvatars, setStudentAvatars] = useState<Record<number, string>>({});
   const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [imgOffset, setImgOffset] = useState({ x: 0, y: 0 });
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const dragRef = useRef({ dragging: false, startX: 0, startY: 0, offX: 0, offY: 0 });
-  const overlayRef = useRef<HTMLDivElement>(null);
   const selectedStudentIdRef = useRef<string | null>(null); // 避免 useEffect 依赖 selectedStudent 导致重复挂载 socket
   // 投屏弹窗打开时监听 Socket 网卡切换事件
   useEffect(() => {
@@ -685,59 +684,7 @@ function ClassroomBoardContent() {
     }).catch(() => {});
   }, []);
 
-  // 全屏图片预览：ESC 关闭 + 滚轮缩放 + 鼠标拖拽
-  useEffect(() => {
-    if (!fullscreenImg) return;
-    const d = dragRef.current;
-    d.dragging = false; d.offX = 0; d.offY = 0;
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setFullscreenImg(null); setZoomLevel(1); }
-    };
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const step = Math.abs(e.deltaY) < 20 ? e.deltaY * 0.005 : e.deltaY > 0 ? -0.12 : 0.12;
-      setZoomLevel(prev => Math.max(0.3, Math.min(15, prev + step)));
-    };
-    const onMouseDown = (e: MouseEvent) => {
-      if (e.button !== 0) return;
-      d.dragging = true;
-      d.startX = e.clientX - d.offX;
-      d.startY = e.clientY - d.offY;
-      if (overlayRef.current) overlayRef.current.style.cursor = 'grabbing';
-    };
-    const onMouseMove = (e: MouseEvent) => {
-      if (!d.dragging) return;
-      d.offX = e.clientX - d.startX;
-      d.offY = e.clientY - d.startY;
-      setImgOffset({ x: d.offX, y: d.offY });
-    };
-    const onMouseUp = () => {
-      if (d.dragging) {
-        d.dragging = false;
-        if (overlayRef.current) overlayRef.current.style.cursor = 'zoom-out';
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('wheel', onWheel, { passive: false });
-    window.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('wheel', onWheel);
-      window.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-  }, [fullscreenImg]);
-
-  const openFullscreenImage = (url: string) => {
-    setZoomLevel(1);
-    setImgOffset({ x: 0, y: 0 });
-    setFullscreenImg(url);
-  };
-
+  const openFullscreenImage = (url: string) => setFullscreenImg(url);
 
   /** 生成并下载带 Logo 的二维码图片 */
   const downloadQRCode = async () => {
@@ -821,7 +768,7 @@ function ClassroomBoardContent() {
   useEffect(() => { worksheetOpenRef.current = worksheetOpen; }, [worksheetOpen]);
   const [allMessages, setAllMessages] = useState<ClassroomMessage[]>([]);
   const [gridFullscreen, setGridFullscreen] = useState(false);
-  // ★ M5b：学习单矩阵的覆盖层。**第三份独立 state** —— 不参与「跟随 / 指定」的分支，
+  // ★ M5b：学习单矩阵的覆盖层。**第三份独立 state** —— 不参与「跟随 / 固定」的分支，
   // 也不共用 `gridFullscreen` 的列数与筛选（规格 §3.1 / GC 28）。
   /** 学习单查看只使用这一层全屏工作区；矩阵、学生、题目与 AI 分析都在内部切换。 */
   const [worksheetWorkspace, setWorksheetWorkspace] = useState<WorksheetWorkspaceEntry | null>(null);
@@ -841,9 +788,7 @@ function ClassroomBoardContent() {
    * 默认 `follow`：教师绝大多数时候想知道「这个学生此刻在干什么」，
    * 而 `assign` 是一次主动的、有明确目的的选择（全班看同一个模块）。
    */
-  const [boardMode, setBoardMode] = useState<BoardMode>('follow');
-  /** 指定模式下全班统一显示的那个模块。默认「智能学伴」= 合并前那个视图的内容。 */
-  const [assignModule, setAssignModule] = useState<ModuleId>('companion');
+  const { boardMode, setBoardMode, assignModule, setAssignModule } = useBoardPreferences(id);
   /**
    * 学生 id → 他**此刻在哪个模块**（`null` = 首页）。数据源是 `student-module-focus`。
    *
@@ -1175,7 +1120,7 @@ function ClassroomBoardContent() {
   }, []);
 
   /** 学生卡片：恢复原来的单人抽屉。抽屉里只呈现这个参与者，不提供同学列表。 */
-  const openWorksheetParticipantDrawer = useCallback((participantId: string) => {
+  const openWorksheetParticipantDrawer = useCallback((participantId: string, questionId: string | null = null) => {
     setSelectedStudent(null);
     setSelectedGroup(null);
     selectedStudentIdRef.current = null;
@@ -1183,7 +1128,7 @@ function ClassroomBoardContent() {
     setWorksheetWorkspace(null);
     setWorksheetDrawer({
       token: beginWorksheetLayer(),
-      view: { kind: 'participant', participantId },
+      view: { kind: 'participant', participantId, questionId },
     });
     refreshWorksheetBoard();
   }, [beginWorksheetLayer, refreshWorksheetBoard]);
@@ -1482,6 +1427,7 @@ function ClassroomBoardContent() {
     // ⚠️ 与学习单作答那条广播不同：这一条**不需要**防串台校验（载荷里没有任何学生数据），
     //    但**要**校验形状（`worksheetId` 是不是非空串）—— 一条坏载荷会把清单写到一个
     //    空键上，而屏幕上只是「打开的那几题又变回去了」。
+    const unsubImageOrientation = on('image-orientation-updated', publishImageOrientationUpdated);
     const unsub20 = on('worksheet-open-changed', (data) => {
       const worksheetId = typeof data?.worksheetId === 'string' ? data.worksheetId : '';
       if (!worksheetId) return;
@@ -1489,7 +1435,7 @@ function ClassroomBoardContent() {
       setWorksheetOpen((prev) => ({ ...prev, [worksheetId]: questionIds }));
     });
 
-    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsubMaterials?.(); unsub16?.(); unsub18?.(); unsub19?.(); unsub20?.(); };
+    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsubMaterials?.(); unsub16?.(); unsub18?.(); unsub19?.(); unsub20?.(); unsubImageOrientation?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: StudentSummary) => {
@@ -1828,9 +1774,9 @@ function ClassroomBoardContent() {
    * 画面，所以「开着看板」就该在推流档位上。
    *
    * 🔴 但**不能**因此变成"只要开着看板就无脑推流"：watch 一旦下发，全班学生立刻开始
-   * 按档位截图（老 iPad 上 55~68ms/帧）。「指定 · 智能学伴」这种课堂上，屏幕上**一格**
+   * 按档位截图（老 iPad 上 55~68ms/帧）。「固定 · 智能学伴」这种课堂上，屏幕上**一格**
    * 都不会用到那些图，却会让 40 台设备白白每 10 秒光栅化一次整页。
-   * ⇒ 由 `needsExploreFrames` 把这件事说清楚：跟随模式要；指定模式下只有指定的正是
+   * ⇒ 由 `needsExploreFrames` 把这件事说清楚：跟随模式要；固定模式下只有指定的正是
    *    探究空间时才要。**这是成本闸门，不是优化**（见 use-webapp-monitor.ts 的 prop 注释）。
    */
   const webappStates = useWebappMonitor({
@@ -1910,7 +1856,7 @@ function ClassroomBoardContent() {
   /**
    * 该生**实际**所在的模块 —— 与看板模式无关。
    *
-   * 与 `resolveTileModule` 的差别只在「指定」模式：那时格子显示的是教师指定的那个，
+   * 与 `resolveTileModule` 的差别只在「固定」模式：那时格子显示的是教师指定的那个，
    * 而学生人还在自己点开的模块里。两者的差只有这里读得到，格子上那行「实际在：X」
    * 与小组格的实际位置统计都靠它（见 `tileLocationNote`）。
    *
@@ -1926,7 +1872,7 @@ function ClassroomBoardContent() {
    * `hasOwnProperty` 而不是读值判 `undefined`：**键不在 = 从没收到过**（`unknown`），
    * 与「收到了 null = 他在首页」是两件不同的事 —— 合并成一件就会把「不知道」说成
    * 「在首页」，而那是**编造**出来的一条事实。（这一层判断在 `resolveStudentFocus` 里，
-   * 指定模式下不走它 —— 那时格子的内容由教师指定，与学生位置无关。）
+   * 固定模式下不走它 —— 那时格子的内容由教师指定，与学生位置无关。）
    */
   const resolveTileModule = (studentId: string): TileModule => {
     if (boardMode === 'assign') return assignModule;
@@ -2052,9 +1998,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
   /**
    * 格子内容区那行小字：这个学生**实际**在哪个模块（「当前位置」）。
    *
-   * 🔴 只在「指定」模式下出现。跟随模式下格子的模块就是这个学生的实际位置
+   * 🔴 只在「固定」模式下出现。跟随模式下格子的模块就是这个学生的实际位置
    * （同一个来源 `resolveStudentFocus`），写出来只是把同一件事说两遍；小组格的逐人差异
-   * 也已经由 `mixed` 分支列出来了。指定模式下则不然：教师选的是「探究空间」，而某个
+   * 也已经由 `mixed` 分支列出来了。固定模式下则不然：教师选的是「探究空间」，而某个
    * 学生可能正待在「学习单」里 —— 格子上显示的是等待画面，这行小字是唯一告诉教师
    * 「他在哪儿」的东西（用户 2026-09-23 的截图批注：箭头指向格子空白处）。
    *
@@ -2113,9 +2059,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
   /**
    * 模块筛选的**生效值**。
    *
-   * 🔴 只在「跟随」模式下生效：指定模式下全班的格子都是教师选的那一个模块
+   * 🔴 只在「跟随」模式下生效：固定模式下全班的格子都是教师选的那一个模块
    * （`resolveTileModule` 直接返回 `assignModule`），按模块筛就只剩「全中」与「全不中」
-   * 两种结果 —— 那种筛选器对教师毫无用处，却会让人以为它坏了。所以指定模式下这一行
+   * 两种结果 —— 那种筛选器对教师毫无用处，却会让人以为它坏了。所以固定模式下这一行
    * 不渲染（见下面筛选行的 JSX），筛选值也**不生效**而不是偷偷清空 state：
    * 切回跟随时教师原来挑的那一项还在。
    */
@@ -2154,7 +2100,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       }
     }
     // 两组筛选是**「与」**关系：状态那一组答「他掉线了吗」，模块这一组答「他在用哪一件」。
-    // 模块那一组的生效值见 `effectiveModuleFilter`（指定模式下恒为 `all`）。
+    // 模块那一组的生效值见 `effectiveModuleFilter`（固定模式下恒为 `all`）。
     return effectiveModuleFilter === 'all' || cardInModule(card, effectiveModuleFilter);
   });
   /**
@@ -2520,13 +2466,13 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       }
     })();
 
-    // 「当前所在位置」那行小字。只在指定模式下、且与该格显示的模块不同时出现 ——
+    // 「当前所在位置」那行小字。只在固定模式下、且与该格显示的模块不同时出现 ——
     // 判断全在 `tileLocationNote` 里，两处看板（主看板 / 全屏）共用这一个出口。
     const locationNote = tileLocationNote(module, members);
     if (!locationNote) return content;
     return (
       <>
-        <div title="该学生此刻实际所在的模块（指定模式下与他被指定的可能不同）"
+        <div title="该学生此刻实际所在的模块（固定模式下与他被指定的可能不同）"
           style={{
             flexShrink: 0, padding: compact ? '2px 6px' : '3px 8px', borderRadius: compact ? 4 : 6,
             background: '#f8fafc', border: '1px solid #eef2f6',
@@ -2635,7 +2581,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           「探究空间」卡一起走。去处与理由各一条：
             · **探究空间那两个计数**搬进了下面那个统计面板的「探究空间」页（★ 同日新建，
               它就在这一行原来的位置往下一点，一样是常显的）；
-            · **指定模式那句「全班统一显示「X」」**不再单独读数 —— 「指定」那三个段选按钮里
+            · **固定模式那句「全班统一显示「X」」**不再单独读数 —— 「固定」那三个段选按钮里
               选中的那一个就是同一件事，而且它紧挨着设置它的控件（原来那句话离控件很远）。
           🔴 顺带消掉了一处**同屏两个口径**：这四张卡里的「在线人数 / 离线」数的是
           `Object.values(studentStatuses)`（= 「**连过**这张看板的学生」，离线且从没连过的
@@ -2808,7 +2754,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               <SegmentedButton label="跟随"
                 hint="每格显示该学生此刻在用哪个模块；还没收到状态的学生显示「…」"
                 selected={boardMode === 'follow'} onSelect={() => setBoardMode('follow')} />
-              <SegmentedButton label="指定" hint="全班格子统一显示下面选定的那一个模块"
+              <SegmentedButton label="固定" hint="全班格子统一显示下面选定的那一个模块"
                 selected={boardMode === 'assign'} onSelect={() => setBoardMode('assign')} />
               {boardMode === 'assign' && (
                 <>
@@ -2871,7 +2817,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               <span aria-hidden="true" style={{ width: 1, alignSelf: 'stretch', minHeight: 22, background: '#e2e8f0', margin: '0 4px' }} />
             )}
             {/* ── 右段：此刻在线。分母 = **在线**的参与者（不是全部）。 ──
-                ⚠️ 仍然**只在跟随模式下渲染**：指定模式全班都是同一个模块，按模块筛只剩
+                ⚠️ 仍然**只在跟随模式下渲染**：固定模式全班都是同一个模块，按模块筛只剩
                 「全中 / 全不中」两种结果，那种筛选器只会让人以为它坏了（见 `effectiveModuleFilter`）。
                 🔴 单位是**参与者数**：`moduleDistribution` 逐 `students` 计数，而 `students`
                 的每一行是一个参与者 —— **分组 / 高级模式下参与者就是组**（规格 §1.2），
@@ -2975,7 +2921,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   : null;
                 return (
                   <div key={isGroup ? item.group?.id : cs.id}
-                    onClick={() => {
+                    onClick={(event) => {
                       // 点开的内容跟着格子显示的内容走：显示探究画面的格子点开的是**探究详情**
                       // （同时把那个学生转成高频截图），其余仍旧打开对话抽屉。
                       if (!isGroup && tileModule === 'explore') { openExploreDetail(sid); return; }
@@ -2985,7 +2931,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       // 小组 / 高级模式下它是「组」那一个参与者，而抽屉与 `review` 端点要的
                       // 正是这个 id。用 `student.id` 会指向一个不在课堂里的人（且不报错）。
                       if (tileModule === 'worksheet') {
-                        openWorksheetParticipantDrawer(cs.id);
+                        openWorksheetParticipantDrawer(cs.id, event.currentTarget.querySelector<HTMLElement>('[data-worksheet-preview-question]')?.dataset.worksheetPreviewQuestion ?? null);
                         return;
                       }
                       setExploreDetailId(null);
@@ -3355,7 +3301,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       return urls.map((fu: string, fi: number) => (
                         <div key={fi} style={{ marginBottom: 6 }}>
                           {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
-                            <img src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
+                            <RotatedImage src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
                               onClick={() => openFullscreenImage(`${getApiBaseUrl()}${fu}`)}
                               style={{ maxWidth: 200, maxHeight: 150, borderRadius: 8, objectFit: 'cover', display: 'block', cursor: 'pointer' }} />
                           ) : (
@@ -3607,7 +3553,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                         return urls.map((fu: string, fi: number) => (
                           <div key={fi} style={{ marginBottom: 12 }}>
                             {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
-                              <img src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
+                              <RotatedImage src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
                                 onClick={() => openFullscreenImage(`${getApiBaseUrl()}${fu}`)}
                                 style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 12, objectFit: 'contain', display: 'block', cursor: 'pointer' }} />
                             ) : (
@@ -3764,11 +3710,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   const moduleBadge = tileModuleBadge(tileModule, isGroup ? item.members : [cs], rounds);
                   return (
                     <div key={isGroup ? item.group?.id : cs.id}
-                      onClick={() => {
+                      onClick={(event) => {
                       if (!isGroup && tileModule === 'explore') { openExploreDetail(sid); return; }
                       // 与主看板那一条同款（全屏与主看板共用同一套「点开的内容跟着格子走」规则）。
                       if (tileModule === 'worksheet') {
-                        openWorksheetParticipantDrawer(cs.id);
+                        openWorksheetParticipantDrawer(cs.id, event.currentTarget.querySelector<HTMLElement>('[data-worksheet-preview-question]')?.dataset.worksheetPreviewQuestion ?? null);
                         return;
                       }
                       setExploreDetailId(null);
@@ -4168,81 +4114,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       </SettingsDialog>
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* 全屏图片预览（支持无极缩放） */}
-      {fullscreenImg && (
-        <div ref={overlayRef}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.88)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(8px)',
-            cursor: 'zoom-out',
-            userSelect: 'none',
-          }}>
-          <img src={fullscreenImg} alt=""
-            draggable={false}
-            style={{
-              transform: `translate(${imgOffset.x}px, ${imgOffset.y}px) scale(${zoomLevel})`,
-              transformOrigin: 'center center',
-              maxWidth: '92vw', maxHeight: '92vh',
-              objectFit: 'contain', borderRadius: 8,
-              boxShadow: zoomLevel > 1 ? '0 0 60px rgba(0,0,0,0.4)' : '0 8px 40px rgba(0,0,0,0.5)',
-              cursor: 'grab',
-              pointerEvents: 'auto',
-            }} />
-          <button aria-label="关闭大图预览" onClick={() => { setFullscreenImg(null); setZoomLevel(1); }}
-            style={{
-              position: 'absolute', top: 20, right: 24,
-              width: 40, height: 40, borderRadius: '50%',
-              border: 'none', background: 'rgba(255,255,255,0.12)',
-              color: 'white', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 22, lineHeight: 1,
-              backdropFilter: 'blur(4px)',
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.25)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; }}>
-            ✕
-          </button>
-          <div style={{
-            position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
-          }}>
-            {/* 缩放滑竿 */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 14,
-              background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
-              borderRadius: 24, padding: '8px 20px',
-              border: '1px solid rgba(255,255,255,0.1)',
-            }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-              <input type="range" min="30" max="300" value={Math.round(zoomLevel * 100)}
-                onChange={e => setZoomLevel(parseInt(e.target.value) / 100)}
-                style={{
-                  width: 140, height: 4, appearance: 'none',
-                  background: 'rgba(255,255,255,0.2)', borderRadius: 2,
-                  outline: 'none', cursor: 'pointer',
-                }}
-                onInput={e => {
-                  const v = parseInt((e.target as HTMLInputElement).value) / 100;
-                  setZoomLevel(v);
-                }} />
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-              <span style={{
-                minWidth: 44, textAlign: 'center',
-                color: 'rgba(255,255,255,0.85)', fontSize: "0.813rem",
-                fontWeight: 600, fontVariantNumeric: 'tabular-nums',
-              }}>{Math.round(zoomLevel * 100)}%</span>
-            </div>
-            {/* 滚轮提示 */}
-            <span style={{
-              color: 'rgba(255,255,255,0.35)', fontSize: "0.75rem",
-              letterSpacing: 0.5,
-            }}>滚轮缩放</span>
-          </div>
-        </div>
-      )}
+      {fullscreenImg && <ClassroomImagePreview key={fullscreenImg} src={fullscreenImg} onClose={() => setFullscreenImg(null)} />}
+
     </div>
     </ClassroomImagePreviewContext.Provider>
   );

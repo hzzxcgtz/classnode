@@ -353,6 +353,8 @@ export const api = {
     formData.append('avatar', file);
     return formRequest<AvatarUploadResponse>('/api/upload/avatar', 'POST', formData);
   },
+  getImageOrientation: (url: string) => request<{ url: string; version: string }>(`/api/upload/image-orientation?url=${encodeURIComponent(url)}`, { cache: 'no-store' }),
+  saveImageOrientation: (url: string, degrees: number, version: string) => request<{ url: string; version: string }>('/api/upload/image-orientation', { method: 'POST', body: JSON.stringify({ url, degrees, version }) }),
   uploadWorksheetImage: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);

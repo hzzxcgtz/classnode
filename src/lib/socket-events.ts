@@ -4,6 +4,7 @@
 import type { WorksheetGradeState } from './types';
 
 export interface ServerToClientEvents {
+  'image-orientation-updated': (data: { url: string; version: string }) => void;
   [event: string]: (...args: never[]) => void;
   // 服务端 join-classroom 成功后下发（server/src/socket/index.ts 的 socket.emit('joined', …)）。
   // 学生端目前不监听它（首屏与兜底都走 GET /code/:code 轮询），但声明按真实 payload 写，

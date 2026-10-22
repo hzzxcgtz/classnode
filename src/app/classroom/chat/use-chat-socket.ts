@@ -1,3 +1,4 @@
+import { publishImageOrientationUpdated } from '@/components/use-image-rotation';
 import { mergeMaterialSnapshot } from '@/lib/classroom-material-snapshot';
 import { effectiveGroupAgent } from '@/lib/classroom-material';
 import { useEffect, useRef } from 'react';
@@ -249,6 +250,7 @@ export function useChatSocket(options: ChatSocketOptions) {
       // ⇒ 学生端浏览器假死」，而我在那条链上读了三遍都没读出回路。命令（边沿触发）
       // 本来就该走总线而不是 state（电平触发）—— 见 `worksheet-clear-bus.ts` 那一段。
       socket.on('worksheet-analysis-updated', publishWorksheetAnalysisUpdated);
+      socket.on('image-orientation-updated', publishImageOrientationUpdated);
 
       socket.on('worksheet-answers-cleared', (data) => {
         publishWorksheetClear(data);

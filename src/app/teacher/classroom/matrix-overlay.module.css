@@ -895,7 +895,30 @@
 /* 固定表格布局由 colgroup 分配学生列，单元格不再提供固定列宽。 */
 .participantHead, .bodyCell, .matrixFooterCell { width: auto; max-width: none; }
 
-.analysisStatus { display: inline-flex; align-items: center; gap: 4px; color: #8797a8; font-size: .7rem; line-height: 1.4; white-space: nowrap; }
-.analysisStatus[data-state='ready'] { color: #557867; }
-.analysisStatus[data-state='running'] { color: #587796; }
-.analysisStatus span { font-size: .5rem; }
+.analysisStatus[data-state] {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 4px;
+  border: 1px solid #e9cd91;
+  border-radius: 4px;
+  background: #fff4dc;
+  color: #8a520c;
+  font-size: .625rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.analysisStatus[data-state='ready'] {
+  border-color: #b8dfc8;
+  background: #e8f6ee;
+  color: #17613f;
+}
+.analysisStatus[data-state='running'] {
+  border-color: #bdd5ee;
+  background: #eaf3ff;
+  color: #225d9b;
+}
+.analysisStatus > span { color: inherit; }
+.analysisStatus > span[aria-hidden='true'] { font-size: .375rem; }
+.analysisStatus > span:not([aria-hidden='true']) { font-size: inherit; }

@@ -1,5 +1,7 @@
 'use client';
 
+import { useImageRotation } from '@/components/use-image-rotation';
+import { ImageRotationControls } from '@/components/image-rotation-controls';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getStudentSessionAuthorization } from '@/lib/api';
 import { effectiveGroupAgent } from '@/lib/classroom-material';
@@ -11,7 +13,6 @@ import { useModuleViewport } from '../shell/use-module-viewport';
 import { MessageItem } from './message-item';
 import { StreamingIndicator } from './streaming-indicator';
 import { ThinkingContent } from './thinking-content';
-import { useVoiceInput } from './use-voice-input';
 import styles from './chat.module.css';
 
 const MAX_ATTACHED_FILES = 5;
@@ -86,6 +87,7 @@ export function StudentChatContent({
   const [uploading, setUploading] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<{ url: string; name: string }[]>([]);
   const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
+  const rotation = useImageRotation(active ? fullscreenImg : null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [imgOffset, setImgOffset] = useState({ x: 0, y: 0 });
   const dragRef = useRef({ dragging: false, startX: 0, startY: 0, offX: 0, offY: 0 });
@@ -150,8 +152,6 @@ export function StudentChatContent({
   // 「课堂会话」而不是「学伴模块」—— M1b-2 之后面板常驻却随时可能不可见，让模块持有
   // socket 就等于用可见性决定连接的生死。面板仍需要的 ref（发送闸门 / 停止生成 /
   // 卸载清理）由 page.tsx 按对象身份透传。
-  // `active` 交给语音：模块被隐藏时必须停麦（Ruling 6，见 use-voice-input.ts 里那条 effect）。
-  const { voiceInputAvailable, voiceListening, toggleVoiceInput } = useVoiceInput({ input, setInput, setToast, inputRef, active });
 
   // iOS 键盘 / viewport 那一段已抽到 shell/use-module-viewport.ts（§3-AB）。
   // 变量名**刻意**与学习单面板共用一个，理由见 hook 的 `cssVar` 注释。
@@ -915,26 +915,6 @@ export function StudentChatContent({
               </svg>
             )}
           </button>
-
-          <button type="button" onClick={toggleVoiceInput}
-            disabled={waitingAI || paused || askBlocked || agentDisabled || blacklisted}
-            aria-pressed={voiceListening}
-            aria-label={voiceListening ? '停止语音输入' : '开始语音输入'}
-            title={voiceListening ? '正在听写，点击停止' : voiceInputAvailable ? '语音输入' : '当前浏览器可能不支持语音输入'}
-            className={`${styles.voiceButton} ${voiceListening ? styles.voiceButtonListening : ''}`}>
-            {voiceListening ? (
-              <span className={styles.voiceListeningDot} />
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="2" width="6" height="12" rx="3" />
-                <path d="M5 10a7 7 0 0 0 14 0" />
-                <line x1="12" y1="17" x2="12" y2="22" />
-                <line x1="8" y1="22" x2="16" y2="22" />
-              </svg>
-            )}
-          </button>
-
-
           </>)}
           {/* 输入框 + 发送按钮（整合在一行） */}
           <div className={styles.composerBox}>
@@ -947,7 +927,6 @@ export function StudentChatContent({
               if (e.key === 'Enter' && !e.shiftKey) {
                 if (e.nativeEvent.isComposing) return;
                 e.preventDefault();
-                if (voiceListening) return;
                 sendMessage();
               }
             }} placeholder={blacklisted ? '暂时无法输入' : paused ? '课堂已暂停' : askBlocked ? '老师暂时关闭了提问' : agentDisabled ? '智能体已停用' : '输入问题…'} disabled={waitingAI || paused || askBlocked || agentDisabled || blacklisted} autoComplete="off"
@@ -960,7 +939,7 @@ export function StudentChatContent({
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10" rx="2"/></svg>
               </button>
             ) : (
-              <button type="button" onClick={sendMessage} disabled={voiceListening || waitingAI || (!input.trim() && attachedFiles.length === 0) || paused || askBlocked || agentDisabled || blacklisted || !connected}
+              <button type="button" onClick={sendMessage} disabled={waitingAI || (!input.trim() && attachedFiles.length === 0) || paused || askBlocked || agentDisabled || blacklisted || !connected}
                 className={styles.composerAction}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
@@ -986,10 +965,10 @@ export function StudentChatContent({
             cursor: 'zoom-out',
             userSelect: 'none',
           }}>
-          <img src={fullscreenImg} alt=""
+          <img src={rotation.source} alt=""
             draggable={false}
             style={{
-              transform: `translate(${imgOffset.x}px, ${imgOffset.y}px) scale(${zoomLevel})`,
+              transform: `translate(${imgOffset.x}px, ${imgOffset.y}px) scale(${zoomLevel}) rotate(${rotation.angle}deg)`,
               transformOrigin: 'center center',
               maxWidth: '92vw', maxHeight: '92vh',
               objectFit: 'contain', borderRadius: 8,
@@ -1042,6 +1021,7 @@ export function StudentChatContent({
                 fontWeight: 600, fontVariantNumeric: 'tabular-nums',
               }}>{Math.round(zoomLevel * 100)}%</span>
             </div>
+            <div style={{display:'flex',gap:8,alignItems:'center',color:'white'}}><ImageRotationControls rotation={rotation} /></div>
             {/* 滚轮提示 */}
             <span style={{
               color: 'rgba(255,255,255,0.35)', fontSize: "0.75rem",

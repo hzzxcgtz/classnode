@@ -2,7 +2,7 @@
 import { TeacherPendingText } from '@/components/teacher-pending-text';
 import { TeacherReviewHistory } from './answer-review-history';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 // ★ 2026-09-30：题干里可能有数学公式（`$x^2$`）。
@@ -71,7 +71,7 @@ export type WorksheetDrawerView =
   | { kind: 'worksheets' }
   | { kind: 'questions'; worksheetId: string }
   | { kind: 'question'; worksheetId: string; questionId: string }
-  | { kind: 'participant'; participantId: string };
+  | { kind: 'participant'; participantId: string; questionId?: string | null };
 
 export interface WorksheetDrawerEntry {
   /** 每次「打开」换一个新对象 ⇒ 抽屉内的下钻栈随之重置（组件用它的引用做依赖）。 */
@@ -217,7 +217,7 @@ export function WorksheetDrawer({
               onOpenParticipant={(participantId) => push({ kind: 'participant', participantId })} />
           )}
           {board && current.kind === 'participant' && (
-            <ParticipantAnswers board={board} participantId={current.participantId}
+            <ParticipantAnswers key={entry.token} board={board} participantId={current.participantId} focusQuestionId={current.questionId}
               nodesByWorksheet={nodesByWorksheet} settingsByWorksheet={settingsByWorksheet}
               liveDrafts={liveDrafts}
               reviewBusy={reviewBusy} onReview={onReview} onClearQuestion={onClearQuestion} />
@@ -556,6 +556,22 @@ export function ParticipantAnswers({
     participantId: string; focusQuestionId: string | null; questionId: string | null;
   } | null>(null);
   const [filter, setFilter] = useState<'all' | 'answered' | 'attention' | 'unanswered'>('all');
+  const initialScroll = useRef<string | null>(null);
+  const focusTarget = useRef<HTMLElement | null>(null);
+  // Wait for the new student panel and expanded answer to finish laying out.
+  // Ref callbacks run during insertion, before the workspace has its final scroll geometry.
+  useEffect(() => {
+    const key = `${participantId}:${focusQuestionId}`;
+    if (!focusQuestionId || !focusTarget.current || initialScroll.current === key) return;
+    const frame = requestAnimationFrame(() => {
+      const target = focusTarget.current;
+      if (!target?.isConnected) return;
+      initialScroll.current = key;
+      target.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'start', inline: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+  });
 
   const found = findParticipant(board, participantId);
   if (!found) {
@@ -676,7 +692,9 @@ export function ParticipantAnswers({
                 const expanded = node.id === selectedId;
                 const facts = outcome.status === 'unanswered' ? null : processFacts(row, serverNowMs);
                 return (
-                  <article key={node.id} className={styles.question}>
+                  <article key={node.id} className={styles.question} ref={element => {
+                    if (node.id === focusQuestionId) focusTarget.current = element;
+                  }}>
                     <button type="button" className={styles.questionHeader}
                       onClick={() => setExpandedSelection({ participantId, focusQuestionId, questionId: expanded ? null : node.id })}
                       aria-expanded={expanded}>
@@ -703,7 +721,7 @@ export function ParticipantAnswers({
                         <div className={styles.answerPanel}>
                           <span className={styles.answerLabel}>学生作答与答案对照</span>
                           <AnswerViewBody node={node} value={row?.value} />
-                          {(node.type === 'short-answer' || node.type === 'drawing') && <TeacherReviewHistory classroomId={board.classroomId} worksheetId={worksheet.id} participantId={participantId} node={node} />}
+                          {(node.type === 'short-answer' || node.type === 'drawing') && <TeacherReviewHistory classroomId={board.classroomId} worksheetId={worksheet.id} participantId={participantId} studentName={participant.name} node={node} />}
                         </div>
                         {outcome.canReview && (
                           <div className={styles.actionRow}>

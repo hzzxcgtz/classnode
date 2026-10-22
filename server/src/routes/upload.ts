@@ -7,6 +7,8 @@ import crypto from 'crypto';
 import type { ErrorRequestHandler } from 'express';
 import { detectSafeChatFile, detectSafeImage } from '../services/upload-security.js';
 import { getStudentSession } from '../middleware/student-auth.js';
+import { hasTeacherSession } from '../middleware/auth.js';
+import { containsImageUrl, imageRotationRooms, ImageRotationError, readRotatableImage, rotateStoredImage, ROTATABLE_IMAGE_URL } from '../services/image-rotation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
@@ -133,6 +135,7 @@ async function removeExpiredUnreferencedFiles(directory: string, referenced: Set
       const stat = await fs.promises.stat(filePath);
       if (now - stat.mtimeMs < UPLOAD_ORPHAN_GRACE_MS) return;
       await fs.promises.unlink(filePath);
+      if (filePattern === CHAT_UPLOAD_NAME) await fs.promises.rm(path.join(path.dirname(directory), '.image-owners', `${name}.json`), { force: true });
       removed++;
     } catch {
       // 文件可能在扫描时被其他请求删除，忽略即可。
@@ -176,6 +179,72 @@ export async function cleanupOrphanedUploads(
   return { chat, avatars: avatarFiles };
 }
 
+// Keep upload ownership beside the files so restarting the service does not lose it.
+// This hidden directory cannot be fetched through the public uploads static route.
+const imageOwnerDir = path.join(uploadsBase, '.image-owners');
+function rememberImageOwner(req: import('express').Request, url: string) {
+  const session = getStudentSession(req);
+  fs.mkdirSync(imageOwnerDir, { recursive: true });
+  const owner = hasTeacherSession(req) || !session ? { kind: 'teacher' } : { kind: 'student', classroomId: session.classroomId, studentId: session.studentId };
+  fs.writeFileSync(path.join(imageOwnerDir, `${path.basename(url)}.json`), JSON.stringify(owner), { flag: 'wx' });
+}
+async function canRotateImage(req: import('express').Request, url: string): Promise<boolean> {
+  if (hasTeacherSession(req)) return true;
+  const session = getStudentSession(req);
+  if (!session) return false;
+  try {
+    const owner = JSON.parse(await fs.promises.readFile(path.join(imageOwnerDir, `${path.basename(url)}.json`), 'utf8'));
+    return owner.kind === 'student' && owner.classroomId === session.classroomId && owner.studentId === session.studentId;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return false;
+  }
+  // Images from earlier versions have no receipt; use their existing answer/message scope.
+  const prisma = req.app.get('prisma') as import('@prisma/client').PrismaClient;
+  const scope = { response: { classroomId: session.classroomId, participantId: session.studentId } };
+  const [answers, reviews, messages] = await Promise.all([
+    prisma.worksheetAnswer.findMany({ where: scope, select: { value: true } }),
+    prisma.worksheetAnswerReview.findMany({ where: { answer: scope }, select: { value: true } }),
+    prisma.message.findMany({ where: { classroomId: session.classroomId, studentId: session.studentId, role: 'user', fileUrls: { not: null } }, select: { fileUrls: true } }),
+  ]);
+  return answers.some(row => containsImageUrl(row.value, url)) || reviews.some(row => containsImageUrl(row.value, url)) || messages.some(row => {
+    try { return containsImageUrl(JSON.parse(row.fileUrls || '[]'), url); } catch { return false; }
+  });
+}
+async function imageOrientationRequest(req: import('express').Request, res: import('express').Response, save: boolean) {
+  try {
+    if (!hasTeacherSession(req) && !getStudentSession(req)) return res.status(401).json({ error: '请先登录后再调整图片' });
+    const url = save ? req.body?.url : req.query.url;
+    if (typeof url !== 'string' || !ROTATABLE_IMAGE_URL.test(url)) return res.status(400).json({ error: '图片地址无效' });
+    if (!await canRotateImage(req, url)) return res.status(403).json({ error: '只能调整自己上传的图片' });
+    const result = save ? await rotateStoredImage(chatDir, url, req.body?.degrees, req.body?.version) : await readRotatableImage(chatDir, url);
+    if (save) {
+      const io = req.app.get('io') as import('socket.io').Server | undefined;
+      if (io) {
+        try {
+          let owner = getStudentSession(req);
+          if (!owner) {
+            try {
+              const receipt = JSON.parse(await fs.promises.readFile(path.join(imageOwnerDir, `${path.basename(url)}.json`), 'utf8'));
+              if (receipt.kind === 'student') owner = receipt;
+            } catch { /* Existing images are resolved through their stored references. */ }
+          }
+          const rooms = await imageRotationRooms(req.app.get('prisma'), url, owner);
+          if (rooms.length) io.to(rooms).emit('image-orientation-updated', { url, version: result.version });
+        } catch (error) {
+          // The file is already saved: a notification failure must not report a failed rotation.
+          console.warn('[image-rotation] Could not broadcast orientation update', error);
+        }
+      }
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ success: true, url, version: result.version });
+  } catch (error) {
+    return res.status(error instanceof ImageRotationError ? error.status : 500).json({ error: error instanceof ImageRotationError ? error.message : '图片方向保存失败，原图片未更改，请重试' });
+  }
+}
+router.get('/image-orientation', requireActiveStudentUpload, (req, res) => { void imageOrientationRequest(req, res, false); });
+router.post('/image-orientation', requireActiveStudentUpload, (req, res) => { void imageOrientationRequest(req, res, true); });
+
 // 学习单题干与选择题选项配图：单独校验图片真实内容，不能沿用聊天附件的文档格式。
 router.post('/worksheet-image', requireActiveStudentUpload, upload.single('file'), (req, res) => {
   try {
@@ -191,6 +260,7 @@ router.post('/worksheet-image', requireActiveStudentUpload, upload.single('file'
     const safeName = `chat-${crypto.randomUUID()}.${kind}`;
     fs.renameSync(req.file.path, path.join(chatDir, safeName));
     const url = `/uploads/chat/${safeName}`;
+    rememberImageOwner(req, url);
     res.json({ success: true, url, name: req.file.originalname, size: req.file.size });
   } catch {
     res.status(500).json({ error: '题目配图上传失败' });
@@ -212,6 +282,7 @@ router.post('/', requireActiveStudentUpload, upload.single('file'), (req, res) =
     const safeName = `chat-${crypto.randomUUID()}.${kind}`;
     fs.renameSync(req.file.path, path.join(chatDir, safeName));
     const url = `/uploads/chat/${safeName}`;
+    rememberImageOwner(req, url);
     res.json({ success: true, url, name: req.file.originalname, size: req.file.size });
   } catch (error) {
     res.status(500).json({ error: '上传失败' });

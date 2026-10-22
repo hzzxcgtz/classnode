@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -115,8 +116,8 @@ export default function StudentHomePage() {
         </span>
       </div>
 
-      {/* 教师入口：<a> 标签不需要 JS，点击即跳转 */}
-      <a href="/teacher/"
+      {/* 使用站内导航，避免进入教师端时整页重新加载。 */}
+      <Link href="/teacher/"
         style={{
           position: 'absolute', bottom: 24, right: 24,
           background: 'rgba(255,255,255,0.1)',
@@ -128,7 +129,7 @@ export default function StudentHomePage() {
         }}
       >
         教师入口
-      </a>
+      </Link>
 
       <form action="/classroom" method="get" onSubmit={handleSubmit}
         style={{ background: 'white', borderRadius: 20, padding: 40, maxWidth: 400, width: '100%', margin: 0, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>

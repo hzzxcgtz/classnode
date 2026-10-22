@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useRotatedImageSource } from '@/components/use-image-rotation';
 import { answerView, type AnswerView } from '@/lib/worksheet-answer-view';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 // ★ 2026-09-30：题面文本里的数学公式（选项 / 左右项 / 框名 / 条目）。
@@ -85,10 +86,19 @@ export function TileAnswerBody({ answer }: { answer: TileAnswer }) {
   //   文字类作答照旧走上面那条 `flexShrink: 0`（长答案该滚就滚）。
   const fill = view.kind === 'ink';
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, ...(fill ? { flex: 1, minHeight: 0 } : { flexShrink: 0 }) }}>
+    <div data-worksheet-preview-question={answer.node.id} style={{ display: 'flex', flexDirection: 'column', gap: 3, ...(fill ? { flex: 1, minHeight: 0 } : { flexShrink: 0 }) }}>
       {renderCompact(view, answer.node)}
     </div>
   );
+}
+
+/** Subscribe independently: even memoized monitor cards refresh after a rotation save. */
+function TilePhoto({ url }: { url: string }) {
+  const src = useRotatedImageSource(worksheetAssetUrl(url));
+  return <img src={src} alt="学生上传的作答照片" style={{
+    display: 'block', width: '100%', maxHeight: 112, objectFit: 'contain',
+    borderRadius: 4, border: '1px solid #e2e8f0', background: '#f8fafc',
+  }} />;
 }
 
 function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.ReactNode {
@@ -132,16 +142,7 @@ function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.Rea
       ) : <Line color={FAINT}>读不出这幅画</Line>;
 
     case 'photo':
-      return (
-        <img
-          src={worksheetAssetUrl(view.url)}
-          alt="学生上传的作答照片"
-          style={{
-            display: 'block', width: '100%', maxHeight: 112, objectFit: 'contain',
-            borderRadius: 4, border: '1px solid #e2e8f0', background: '#f8fafc',
-          }}
-        />
-      );
+      return <TilePhoto url={view.url} />;
 
     case 'choice': {
       // 只画**他勾的**那几个：整张表在这一格里放不下，而他没勾的选项对教师没有信息量。

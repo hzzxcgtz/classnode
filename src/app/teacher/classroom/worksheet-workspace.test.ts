@@ -10,7 +10,8 @@ const questionStatsStyles = readFileSync(new URL('./question-stats-overlay.modul
 test('顶部学习单菜单挂完整工作区，学生卡片挂单人抽屉', () => {
   assert.match(page, /worksheetWorkspace && \(\s*<MatrixOverlay/);
   assert.match(page, /worksheetDrawer && \(\s*<WorksheetDrawer/);
-  assert.match(page, /openWorksheetParticipantDrawer\(cs\.id\)/);
+  const previewDrawerCalls = page.match(/openWorksheetParticipantDrawer\(cs\.id, event\.currentTarget\.querySelector<HTMLElement>\('\[data-worksheet-preview-question\]'\)\?\.dataset\.worksheetPreviewQuestion \?\? null\)/g);
+  assert.equal(previewDrawerCalls?.length, 2, '普通看板和全屏看板都应将当前预览题目传给学生抽屉');
   assert.match(page, /item === 'overview'[^\n]*openWorksheetWorkspace\(\{ view: 'overview' \}\)/);
   assert.doesNotMatch(page, /<QuestionStatsOverlay/);
   assert.doesNotMatch(page, /<AnalysisOverlay/);

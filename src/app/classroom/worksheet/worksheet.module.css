@@ -3256,3 +3256,9 @@
 @keyframes reviewBuddyFloat { 0%,100% { transform: translateY(2px); } 50% { transform: translateY(-3px); } }
 @keyframes reviewSparkle { 0%,100% { opacity: .35; transform: scale(.75); } 50% { opacity: 1; transform: scale(1.15); } }
 @media (prefers-reduced-motion: reduce) { .reviewThinkingBuddy img, .reviewThinkingBuddy > i { animation: none; } }
+
+.photoAnswerPreviewButton { display: block; width: 100%; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+
+.reviewEvaluation { display: flex; align-items: flex-start; gap: 10px; }
+.reviewEvaluationText { flex: 1; min-width: 0; }
+.reviewEvaluationText > p:first-child { margin-top: 0; }

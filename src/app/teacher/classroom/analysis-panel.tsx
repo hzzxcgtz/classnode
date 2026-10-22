@@ -1,5 +1,6 @@
 'use client';
 
+import { ReviewPreviewButton } from './review-preview';
 import { TeacherPendingText } from '@/components/teacher-pending-text';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -364,12 +365,17 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
       {!loading && payload?.perStudent && (payload.perStudent.scores.length > 0 || !!payload.pendingReviewIds?.length) && (
         <details className={styles.scoreCard} aria-label="全班 AI 评分明细" open={payload.studentAiReviewEnabled || undefined} key={`${classroomId}:${worksheetId}:${questionId}`}>
           <summary className={styles.scoreHeader}>
-            <div>
+            <div className={styles.scoreHeaderTitle}>
+              <svg className={styles.scoreTableIcon} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M3 9h18M3 14h18M9 9v11" />
+              </svg>
               <strong>全班 AI 评分明细</strong>
             </div>
             <div className={styles.scoreHeaderActions}>
-              <span className={styles.scoreToggleClosed}>查看明细 ▾</span>
-              <span className={styles.scoreToggleOpen}>收起明细 ▴</span>
+              <span className={styles.scoreToggleClosed}>展开明细</span>
+              <span className={styles.scoreToggleOpen}>收起明细</span>
+              <svg className={styles.scoreChevron} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
             </div>
           </summary>
           {payload.perStudent.criteria && (
@@ -404,7 +410,18 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                   })()}
                 </strong>}
                 {!payload.pendingReviewIds?.includes(item.studentId) && <div className={styles.scoreReason}>
-                  <span>{item.reason || '智能体未补充简短评价'}</span>
+                  <div className={styles.scoreReasonHeading}>
+                    <span>{item.reason || '智能体未补充简短评价'}</span>
+                    <div className={styles.scoreReviewActions}>
+                    {onOpenStudent && <button type="button" className={styles.answerShortcut}
+                      onClick={() => onOpenStudent(item.studentId)} title="查看这位学生的本题作答" aria-label={`查看${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位学生'}的本题作答`}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9M15 3h6v6m0-6L10 14M7 8h3M7 17h7" /></svg>
+                    </button>}
+                    <ReviewPreviewButton title={`${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '学生'} · AI 评价与建议`}
+                      reason={item.reason} advice={item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice}
+                      score={item.score} maxScore={payload.perStudent!.maxScore} unit={payload.perStudent!.unit} />
+                    </div>
+                  </div>
                   {(item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice) && (
                     <div className={styles.scoreAdvice}>
                       <strong className={styles.scoreAdviceHeading}>

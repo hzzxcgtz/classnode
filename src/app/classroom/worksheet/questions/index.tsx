@@ -6,6 +6,7 @@ import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import { emptyDraftFor, isPhotoNode } from '@/lib/worksheet-answer-value';
 import { isInkNode } from '@/lib/worksheet-ink';
 import { api } from '@/lib/api';
+import { prepareWorksheetPhoto } from '@/lib/worksheet-photo-upload';
 import { ClassroomImagePreview } from '@/app/teacher/classroom/image-preview';
 import { useRotatedImageSource } from '@/components/use-image-rotation';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
@@ -240,7 +241,8 @@ function PhotoBody({ draft, onChange, disabled, localOnly }: {
         onChange({ kind: 'photo', url });
         return;
       }
-      const result = await api.uploadWorksheetImage(file);
+      const prepared = await prepareWorksheetPhoto(file);
+      const result = await api.uploadWorksheetImage(prepared);
       onChange({ kind: 'photo', url: result.url });
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : '照片上传失败，请重试');

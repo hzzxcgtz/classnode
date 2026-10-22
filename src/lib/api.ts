@@ -5,6 +5,7 @@ import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, A
 let studentSessionToken = '';
 
 const FORM_REQUEST_TIMEOUT_MS = 15_000;
+const PHOTO_UPLOAD_TIMEOUT_MS = 90_000;
 
 export function setStudentSessionToken(token?: string): void {
   studentSessionToken = token || '';
@@ -74,9 +75,9 @@ async function requestOnce<T>(path: string, url: string, options: RequestInit | 
   return res.json();
 }
 
-async function formRequest<T>(path: string, method: 'POST' | 'PUT', body: FormData): Promise<T> {
+async function formRequest<T>(path: string, method: 'POST' | 'PUT', body: FormData, uploadOptions?: { timeoutMs: number; timeoutMessage: string }): Promise<T> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), FORM_REQUEST_TIMEOUT_MS);
+  const timer = window.setTimeout(() => controller.abort(), uploadOptions?.timeoutMs ?? FORM_REQUEST_TIMEOUT_MS);
   try {
     const res = await fetch(`${getApiBaseUrl()}${path}`, {
       method,
@@ -93,7 +94,7 @@ async function formRequest<T>(path: string, method: 'POST' | 'PUT', body: FormDa
     return data as T;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('保存请求超时，请确认支点课堂服务正在运行后重试');
+      throw new Error(uploadOptions?.timeoutMessage ?? '保存请求超时，请确认支点课堂服务正在运行后重试');
     }
     throw error;
   } finally {
@@ -358,7 +359,10 @@ export const api = {
   uploadWorksheetImage: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return formRequest<{ success: true; url: string; name: string; size: number }>('/api/upload/worksheet-image', 'POST', formData);
+    return formRequest<{ success: true; url: string; name: string; size: number }>('/api/upload/worksheet-image', 'POST', formData, {
+      timeoutMs: PHOTO_UPLOAD_TIMEOUT_MS,
+      timeoutMessage: '照片上传超时，可能是网络较慢或照片较大，请检查网络后重试',
+    });
   },
 
   // Export

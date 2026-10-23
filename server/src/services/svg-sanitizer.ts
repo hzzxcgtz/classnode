@@ -44,7 +44,7 @@ const STYLE_PROPERTIES = new Set([
   'stop-color', 'stop-opacity',
 ]);
 const FRAGMENT = /^#[A-Za-z_][A-Za-z0-9_.-]*$/;
-const LOCAL_IMAGE = /^\/uploads\/(?:avatars|logos|chat)\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i;
+const LOCAL_IMAGE = /^\/uploads\/(?:avatars|logos|chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i;
 
 function escapeText(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

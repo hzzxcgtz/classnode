@@ -76,6 +76,8 @@ test('full backup snapshots committed WAL and includes effective key, attachment
   const f = await fixture();
   try {
     const { webapp } = await seed(f.prisma);
+    f.write('uploads/classrooms/room/worksheet/photo.jpg', '课堂附件');
+    f.write('uploads/.image-owners/photo.jpg.json', '{"kind":"student"}');
     f.write('uploads/chat/photo.txt', '附件'); f.write('uploads/avatars/avatar.txt', '头像'); f.write('uploads/logos/logo.txt', 'logo'); f.write(`webapps/${webapp.id}/index.html`, '<h1>教学网页</h1>');
     process.env.ENCRYPTION_KEY = keyA;
     fs.rmSync(path.join(f.dir, '.encryption.key'));
@@ -86,6 +88,8 @@ test('full backup snapshots committed WAL and includes effective key, attachment
     const Zip = require('adm-zip'); const zip = new Zip(backup);
     assert.equal(zip.readAsText('.encryption.key'), keyA);
     assert.equal(zip.readAsText('chat/photo.txt'), '附件');
+    assert.equal(zip.readAsText('classrooms/room/worksheet/photo.jpg'), '课堂附件');
+    assert.equal(zip.readAsText('.image-owners/photo.jpg.json'), '{"kind":"student"}');
     assert.equal(zip.readAsText(`webapps/${webapp.id}/index.html`), '<h1>教学网页</h1>');
     assert.equal(JSON.parse(zip.readAsText('manifest.json')).version, 2);
     const snapshot = path.join(f.dir, 'snapshot.db'); fs.writeFileSync(snapshot, zip.readFile('data.db'));
@@ -99,6 +103,8 @@ test('restore to fresh environment restores messages, answers, credentials and r
   try {
     const { webapp } = await seed(f.prisma);
     f.write(`webapps/${webapp.id}/index.html`, '<h1>teaching</h1>'); f.write('uploads/chat/keep.txt', 'keep');
+    f.write('uploads/classrooms/room/worksheet/photo.jpg', 'scoped');
+    f.write('uploads/.image-owners/photo.jpg.json', 'owner');
     const backup = await createFullBackup(f.prisma);
     await resetAllData(f.prisma);
     f.write('uploads/chat/stale.txt', 'stale'); f.write('uploads/avatars/stale.txt', 'stale'); f.write('webapps/stale/index.html', 'stale');
@@ -111,6 +117,8 @@ test('restore to fresh environment restores messages, answers, credentials and r
     assert.equal(decrypt((await f.prisma.platformToken.findFirst())!.token), 'shared-token');
     assert.equal(decrypt((await f.prisma.agent.findFirst())!.apiKey), 'private-token');
     assert.equal(fs.readFileSync(path.join(f.dir, `webapps/${webapp.id}/index.html`), 'utf8'), '<h1>teaching</h1>');
+    assert.equal(fs.readFileSync(path.join(f.dir, 'uploads/classrooms/room/worksheet/photo.jpg'), 'utf8'), 'scoped');
+    assert.equal(fs.readFileSync(path.join(f.dir, 'uploads/.image-owners/photo.jpg.json'), 'utf8'), 'owner');
     assert.equal(fs.existsSync(path.join(f.dir, 'uploads/chat/stale.txt')), false);
     assert.equal(fs.existsSync(path.join(f.dir, 'uploads/avatars/stale.txt')), false);
     assert.equal(fs.existsSync(path.join(f.dir, 'webapps/stale')), false);

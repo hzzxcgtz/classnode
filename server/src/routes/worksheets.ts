@@ -78,7 +78,7 @@ import { proxyAnalysisRequest, resolveLocalPath } from '../services/ai-proxy.js'
 // ★ 2026-09-30：课堂级「逐题开放」的清单（存 `Classroom.worksheetOpen`，判据在那个文件里）。
 import { openQuestionsFor } from '../services/worksheet-open.js';
 
-const WORKSHEET_PHOTO_URL = /^\/uploads\/chat\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
+const WORKSHEET_PHOTO_URL = /^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
 
 /** 只在识别到 photo/v1 时校验；未知格式仍遵循既有的向前兼容策略。 */
 function findPhotoValueError(value: unknown): string | null {

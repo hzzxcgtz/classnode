@@ -3687,3 +3687,22 @@ test('🔴 参考答案（`answers: [items]`）写回再读回必须无损 —�
   const empty = { ...node, data: { answers: [[]] } } as unknown as typeof node;
   assert.deepEqual(readBlankAnswers(empty)[0], []);
 });
+
+test('AI-scored subjective questions default missing student review preference on, preserving explicit opt-out', () => {
+  const source = { schemaVersion: 1, nodes: [{ id:'task', type:'task', prompt:'任务', data:{}, children: [
+    { id:'text', type:'short-answer', prompt:'习作', data:{aiScoringEnabled:true}, children:[] },
+    { id:'drawing', type:'drawing', prompt:'画图', data:{aiScoringEnabled:true,aiReviewLimit:3}, children:[] },
+    { id:'off', type:'short-answer', prompt:'教师评', data:{aiScoringEnabled:true,studentAiReviewEnabled:false}, children:[] },
+    { id:'manual', type:'short-answer', prompt:'自由表达', data:{aiScoringEnabled:false}, children:[] },
+    { id:'choice', type:'choice', prompt:'选择', data:{aiScoringEnabled:true}, children:[] },
+  ] }] };
+  const loaded = normalizeLoadedContent(source);
+  const [text,drawing,off,manual,choice] = loaded.nodes[0].children;
+  assert.equal(text.data.studentAiReviewEnabled,true);assert.equal(text.data.aiReviewLimit,1);
+  assert.equal(drawing.data.studentAiReviewEnabled,true);assert.equal(drawing.data.aiReviewLimit,3);
+  assert.equal(off.data.studentAiReviewEnabled,false);
+  assert.equal(manual.data.studentAiReviewEnabled,undefined);
+  assert.equal(choice.data.studentAiReviewEnabled,undefined);
+  assert.equal(source.nodes[0].children[0].data.studentAiReviewEnabled,undefined,'loading must not mutate source data');
+  assert.deepEqual(normalizeLoadedContent(loaded),loaded,'normalizing twice must keep the saved preference');
+});

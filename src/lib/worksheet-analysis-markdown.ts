@@ -1,3 +1,5 @@
+import { formatReviewText } from './worksheet-review-display.ts';
+
 /**
  * 修正分析型智能体常见的 Markdown 小瑕疵，只用于教师端展示。
  *
@@ -23,7 +25,15 @@ const REPORT_HEADINGS = new Set([
 ]);
 
 export function normalizeWorksheetAnalysisMarkdown(source: string): string {
-  return source
+  // Keep link targets, inline code and fenced examples untouched while laying out prose.
+  const protectedParts: string[] = [];
+  const protectedSource = source.replace(/```[\s\S]*?```|`[^`\n]*`|!?\[[^\]\n]*\]\([^\n)]*\)/g, part => {
+    protectedParts.push(part); return `\uE000${protectedParts.length - 1}\uE001`;
+  });
+  const sectioned = protectedSource.replace(/(^|[。！？；;\r\n \t])((?:\*\*)?(?:优秀作答实例|主要问题实例|可验证追问)[：:](?:\*\*)?)/g,
+    (_, boundary: string, heading: string) => `${boundary.trimEnd()}\n\n${heading}`);
+  const formatted = formatReviewText(sectioned).replace(/\uE000(\d+)\uE001/g, (_, index: string) => protectedParts[Number(index)]);
+  return formatted
     .replace(/\r\n?/g, '\n')
     // 旧模板的总标题没有额外信息，展示直接从核心结论开始。
     .replace(/^#{1,6}[ \t]+(?:一[、.．][ \t]*)?班级分析[ \t]*$/gm, '')

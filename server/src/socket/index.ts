@@ -191,7 +191,7 @@ interface SendMessageData {
 
 const MAX_STUDENT_MESSAGE_LENGTH = 10_000;
 const MAX_CHAT_ATTACHMENTS = 5;
-const CHAT_UPLOAD_URL = /^\/uploads\/chat\/chat-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|webp|pdf|doc|docx|txt)$/i;
+const CHAT_UPLOAD_URL = /^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\/chat-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|webp|pdf|doc|docx|txt)$/i;
 
 /**
  * Socket 事件不具备 HTTP 路由的参数校验，必须在进入 AI 代理前收紧边界。

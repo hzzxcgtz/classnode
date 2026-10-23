@@ -47,7 +47,7 @@ export const DEFAULT_DRAWING_BACKGROUND: DrawingBackgroundPreset = 'dot-grid';
  *    于是「服务端存得下、学生端读不回来」的照片会**静默**变成空作答。
  * ⚠️ 与 `server/src/services/worksheet-ink.ts` 的 `CHAT_IMAGE_URL` 逐字相同（跨工程对拍网钉着）。
  */
-export const CHAT_IMAGE_URL = /^\/uploads\/chat\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
+export const CHAT_IMAGE_URL = /^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
 
 export function readDrawingExtensions(node: Pick<WorksheetQuestionNode, 'type' | 'data'>): DrawingExtension[] {
   if (node.type !== 'drawing' || !Array.isArray(node.data.drawingExtensions)) return [];

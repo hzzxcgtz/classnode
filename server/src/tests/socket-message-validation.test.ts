@@ -29,3 +29,12 @@ test('student socket message rejects path traversal, external URLs, and oversize
   assert.equal(validateStudentMessagePayload({ ...base, fileUrls: ['https://example.com/file.png'] }), null);
   assert.equal(validateStudentMessagePayload({ ...base, content: 'x'.repeat(10_001) }), null);
 });
+
+test('student socket accepts classroom-scoped attachments and rejects malformed scoped paths', () => {
+  const base = { classroomCode: 'ABC123', studentId: 'student-1', content: 'hello' };
+  const scoped = uploadedFile.replace('/uploads/chat/', '/uploads/classrooms/room-one/chat/');
+  assert.equal(validateStudentMessagePayload({ ...base, fileUrls: [scoped] })?.fileUrls?.[0], scoped);
+  for (const url of [scoped.replace('room-one', '..'), scoped.replace('/chat/chat-', '/other/chat-'), scoped+'?x=1']) {
+    assert.equal(validateStudentMessagePayload({ ...base, fileUrls: [url] }), null);
+  }
+});

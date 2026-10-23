@@ -27,7 +27,7 @@ function textOf(raw: unknown): string | null {
   return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null;
 }
 
-const WORKSHEET_IMAGE_URL = /^\/uploads\/chat\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
+const WORKSHEET_IMAGE_URL = /^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
 
 /**
  * 主观题的评分标准文字 —— **唯一读取点**。

@@ -21,6 +21,8 @@ import { publishImageOrientationUpdated } from '@/components/use-image-rotation'
 import { RotatedImage } from '@/components/rotated-image';
 import { ClassroomImagePreviewContext } from './answer-photo';
 import { ClassroomImagePreview } from './image-preview';
+import { FullscreenPreview } from './fullscreen-preview';
+import previewStyles from './fullscreen-preview.module.css';
 import { MatrixOverlay, type WorksheetWorkspaceEntry } from './matrix-overlay';
 import { WorksheetDrawer, type WorksheetDrawerEntry } from './worksheet-drawer';
 import { clearConfirmText, participantOverview } from './worksheet-drawer-state';
@@ -652,6 +654,7 @@ function ClassroomBoardContent() {
   const [selectedGroup, setSelectedGroup] = useState<ClassroomGroupDisplay | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [showFullscreen, setShowFullscreen] = useState(false);
+  const [conversationFontSize, setConversationFontSize] = useState(24);
   const [selectedRounds, setSelectedRounds] = useState<number[]>([]);
   const [codeScreenKey, setCodeScreenKey] = useState(0);
   const [teacherCode, setTeacherCode] = useState('');
@@ -1023,7 +1026,10 @@ function ClassroomBoardContent() {
   useEffect(() => {
     if (showFullscreen && fullscreenContentRef.current) {
       requestAnimationFrame(() => {
-        fullscreenContentRef.current?.scrollTo({ top: fullscreenContentRef.current.scrollHeight, behavior: 'auto' });
+        const viewport = fullscreenContentRef.current;
+        if (viewport && !viewport.closest('[data-preview-locked="true"]')) {
+          viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'auto' });
+        }
       });
     }
   }, [showFullscreen, messages]);
@@ -3227,7 +3233,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   <button className="btn btn-secondary" style={{ fontSize: "0.875rem", padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
-                    onClick={() => setShowFullscreen(true)}>
+                    onClick={() => { setConversationFontSize(24); setShowFullscreen(true); }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
                     投屏
                   </button>
@@ -3452,37 +3458,24 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
 
       {/* 投屏讲评 */}
       {showFullscreen && (
-        <div data-overscroll-guard="" style={{
-          position: 'fixed', inset: 0, overflow: 'hidden', zIndex: 300,
-          background: '#fff',
-          display: 'flex', flexDirection: 'column',
-            overscrollBehavior: 'contain',
-        }}>
-          {/* 顶部信息栏 */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '16px 48px',
-            background: 'white',
-            borderBottom: '1px solid #eef2f6',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: '#0f172a', letterSpacing: 1 }}>
-                {classroom?.title || '课堂'} · 学习展示
-              </div>
-              <div style={{ fontSize: "0.813rem", color: 'var(--text-muted)' }}>
-                {selectedStudent?.name || ''} · {projMsgs.filter((m) => m.role === 'user').length} 轮对话
-              </div>
+        <FullscreenPreview
+          title={`${classroom?.title || '课堂'} · 学习展示${selectedStudent ? ` · ${selectedStudent.name}` : ''} · ${projMsgs.filter(m => m.role === 'user').length} 轮对话`}
+          onClose={() => setShowFullscreen(false)}
+          allowAnnotations
+          controls={<>
+            <div className={previewStyles.fontTools}>
+              <span className={previewStyles.toolLabel}>文字大小</span>
+              <button type="button" onClick={() => setConversationFontSize(size => Math.max(18, size - 2))} disabled={conversationFontSize <= 18} aria-label="缩小对话文字">A−</button>
+              <output aria-label="当前对话文字大小">{conversationFontSize}<small>px</small></output>
+              <button type="button" onClick={() => setConversationFontSize(size => Math.min(48, size + 2))} disabled={conversationFontSize >= 48} aria-label="放大对话文字">A＋</button>
             </div>
-            <button onClick={() => setShowFullscreen(false)}
-              style={{ padding: '8px 20px', border: '1px solid #e2e8f0', borderRadius: 8, background: 'white', cursor: 'pointer', fontSize: "0.875rem", color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
-              退出投屏
-            </button>
-          </div>
-
+            <span className={previewStyles.hint}>上下滚动查看对话 <kbd>Esc</kbd> 退出</span>
+          </>}
+        >
+          <div style={{ display: 'flex', flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#fff' }}>
           {/* 对话内容 */}
-          <div ref={fullscreenContentRef} style={{
-            flex: 1, overflow: 'auto', overscrollBehavior: 'contain', padding: '40px 60px',
+          <div ref={fullscreenContentRef} tabIndex={0} role="region" aria-label="学生与智能学伴的投屏对话" style={{
+            flex: 1, minHeight: 0, overflow: 'auto', overscrollBehavior: 'contain', padding: '40px 60px',
             maxWidth: 1100, width: '100%', margin: '0 auto',
           }}>
             {messages.length === 0 ? (
@@ -3542,7 +3535,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       border: '1px solid',
                       borderColor: m.role === 'user' ? 'var(--primary-light)' : '#eef2f6',
                       lineHeight: 1.8,
-                      fontSize: "1.375rem",
+                      fontSize: conversationFontSize,
                       color: '#0f172a',
                       wordBreak: 'break-word',
                     }}>
@@ -3573,15 +3566,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             )}
           </div>
 
-          {/* 底部水印 */}
-          <div style={{
-            textAlign: 'center', padding: '12px 0',
-            fontSize: "0.813rem", color: 'var(--text-muted, #64748b)',
-            borderTop: '1px solid #f1f5f9',
-          }}>
-            支点课堂 · 投屏展示
           </div>
-        </div>
+        </FullscreenPreview>
       )}
 
       {/* 全屏学生网格覆盖层 — 盖过左侧导航栏 */}
@@ -4114,7 +4100,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       </SettingsDialog>
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
-      {fullscreenImg && <ClassroomImagePreview key={fullscreenImg} src={fullscreenImg} onClose={() => setFullscreenImg(null)} />}
+      {fullscreenImg && <ClassroomImagePreview allowAnnotations key={fullscreenImg} src={fullscreenImg} onClose={() => setFullscreenImg(null)} />}
 
     </div>
     </ClassroomImagePreviewContext.Provider>

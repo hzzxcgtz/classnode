@@ -94,7 +94,7 @@ export async function createFullBackup(prisma: PrismaClient, source = 'local'): 
   try {
     await prisma.$executeRawUnsafe('VACUUM INTO ?', path.join(staging, 'data.db'));
     fs.writeFileSync(path.join(staging, '.encryption.key'), getEncryptionKey(), { mode: 0o600 });
-    for (const sub of ['chat', 'avatars', 'logos']) copyDirectory(path.join(paths.uploads, sub), path.join(staging, sub));
+    for (const sub of ['chat', 'classrooms', '.image-owners', 'avatars', 'logos']) copyDirectory(path.join(paths.uploads, sub), path.join(staging, sub));
     copyDirectory(paths.webapps, path.join(staging, 'webapps'));
     const entries = files(staging);
     const sizes = entries.map(name => fs.statSync(path.join(staging, name)).size);
@@ -131,7 +131,7 @@ export function extractBackup(file: string, staging: string, forceZip = false): 
   const AdmZip = require('adm-zip');
   const zip = new AdmZip(file);
   const names = zip.getEntries().map((entry: { entryName: string }) => String(entry.entryName).replace(/\\/g, '/')) as string[];
-  if (!names.includes('data.db') || names.some(name => !/^(?:data\.db|\.encryption\.key|manifest\.json|(?:chat|avatars|logos|webapps)(?:\/.*)?)$/.test(name))) throw new Error('备份压缩包结构无效');
+  if (!names.includes('data.db') || names.some(name => !/^(?:data\.db|\.encryption\.key|manifest\.json|(?:chat|classrooms|\.image-owners|avatars|logos|webapps)(?:\/.*)?)$/.test(name))) throw new Error('备份压缩包结构无效');
   if (new Set(names).size !== names.length) throw new Error('备份压缩包有重复路径');
   safeExtractZip(zip, staging, { maxFiles: 50000, maxTotalBytes: 1024 * 1024 * 1024, maxSingleFileBytes: 500 * 1024 * 1024 });
   const manifest = path.join(staging, 'manifest.json');
@@ -295,7 +295,7 @@ export async function restoreFullBackup(prisma: PrismaClient, file: string, hook
     // DB-only backups retain local assets; v1 ZIPs retain local webapps because
     // those releases never included that directory.
     if (!format.full) { copyDirectory(paths.uploads, uploads); warnings.push('旧数据库备份不含附件和教学网页，保留当前资产；仅适合同环境恢复。'); }
-    else for (const sub of ['chat', 'avatars', 'logos']) copyDirectory(path.join(staging, sub), path.join(uploads, sub));
+    else for (const sub of ['chat', 'classrooms', '.image-owners', 'avatars', 'logos']) copyDirectory(path.join(staging, sub), path.join(uploads, sub));
     if (format.version < 2) {
       if (fs.existsSync(path.join(staging, 'webapps'))) fs.rmSync(path.join(staging, 'webapps'), { recursive: true });
       copyDirectory(paths.webapps, path.join(staging, 'webapps'));

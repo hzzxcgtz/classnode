@@ -37,7 +37,7 @@ export class ArchiveView {
     const raw = String(value ?? '');
     // Preserve source text literally; never execute Markdown/HTML from students, agents or prompts.
     let start = 0; let html = '';
-    const pattern = /\/uploads\/(?:chat|avatars|logos)\/[^\s<>"'`\]\[)]+/g;
+    const pattern = /\/uploads\/(?:chat|classrooms|avatars|logos)\/[^\s<>"'`\]\[)]+/g;
     for (const match of raw.matchAll(pattern)) {
       html += esc(raw.slice(start, match.index));
       const target = this.assets.attachment(match[0]);

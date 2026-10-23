@@ -69,3 +69,24 @@ test('信息收集报告的小节保留专用结构，不改写为教学讲评�
     assert.equal(normalizeWorksheetAnalysisMarkdown(title + '\n实际内容'), '### ' + title + '\n实际内容');
   }
 });
+
+test('报告内独立列项分行，连续引用保留段落、学生名单链接与代码', () => {
+  const input = '典型表现与作答依据\n优秀作答：[查看名单](#classnode-group-g1) 的作答：①“调整风车”是具体小事；②“举着跑”是具体动作；③有心情。\n\n课堂讲评方案\n1. 阅读[查看名单](#classnode-group-g1)的作答；2. 对比第①项；3. 学生修改。\n\n示例：`1.5；2.5`';
+  const formatted = normalizeWorksheetAnalysisMarkdown(input);
+  assert.ok(formatted.includes('的作答：①“调整风车”是具体小事；②“举着跑”是具体动作；③有心情。'));
+  assert.ok(formatted.includes('\n2. 对比第①项\n3. 学生修改。'));
+  assert.ok(formatted.includes('[查看名单](#classnode-group-g1)'));
+  assert.ok(formatted.includes('`1.5；2.5`'));
+  assert.equal(normalizeWorksheetAnalysisMarkdown(formatted),formatted);
+});
+
+test('作答实例、问题实例和追问各起一段，并保持格式稳定', () => {
+  const input = '优秀作答实例：[罗同学](#classnode-group-g1)的作答：①“风车”具体；②“举着跑”是动作；③有心情。主要问题实例：[丁同学](#classnode-group-g2)的第①项笼统。可验证追问：“具体玩了哪件小事？”';
+  const result = normalizeWorksheetAnalysisMarkdown(input);
+  assert.ok(result.includes('。\n\n主要问题实例：'));
+  assert.ok(result.includes('。\n\n可验证追问：'));
+  assert.ok(result.includes('①“风车”具体；②“举着跑”是动作；③有心情。'));
+  assert.ok(result.includes('[丁同学](#classnode-group-g2)'));
+  assert.equal(normalizeWorksheetAnalysisMarkdown(result), result);
+  assert.equal(normalizeWorksheetAnalysisMarkdown('**优秀作答实例：** 好。 **主要问题实例：** 待改。 **可验证追问：** 为什么？'), '**优秀作答实例：** 好。\n\n**主要问题实例：** 待改。\n\n**可验证追问：** 为什么？');
+});

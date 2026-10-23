@@ -1,5 +1,6 @@
 'use client';
 
+import { formatReviewText } from '@/lib/worksheet-review-display';
 import { ReviewPreviewButton } from './review-preview';
 import { TeacherPendingText } from '@/components/teacher-pending-text';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
@@ -411,7 +412,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                 </strong>}
                 {!payload.pendingReviewIds?.includes(item.studentId) && <div className={styles.scoreReason}>
                   <div className={styles.scoreReasonHeading}>
-                    <span>{item.reason || '智能体未补充简短评价'}</span>
+                    <span>{formatReviewText(item.reason || '智能体未补充简短评价')}</span>
                     <div className={styles.scoreReviewActions}>
                     {onOpenStudent && <button type="button" className={styles.answerShortcut}
                       onClick={() => onOpenStudent(item.studentId)} title="查看这位学生的本题作答" aria-label={`查看${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位学生'}的本题作答`}>
@@ -430,7 +431,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                         </svg>
                         AI 给{payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位'}同学的小建议
                       </strong>
-                      <p>{item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice}</p>
+                      <p>{formatReviewText(item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice || '')}</p>
                     </div>
                   )}
                 </div>}

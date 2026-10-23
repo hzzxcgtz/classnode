@@ -1,3 +1,4 @@
+import { ATTACHMENT_URL, ensureAttachmentDirectory } from '../services/upload-paths.js';
 import { Router } from 'express';
 import { createClassroomArchive } from '../services/classroom-archive.js';
 import { ClassroomArchiveError } from '../services/classroom-archive-data.js';
@@ -554,10 +555,10 @@ router.get('/backup/uploads-chat', async (req, res) => {
   try {
     const { ZipArchive } = _require('archiver');
     const uploadsDir = process.env.CLASSNODE_DATA_DIR
-      ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads', 'chat')
-      : path.join(__dirname, '../../uploads', 'chat');
+      ? path.join(process.env.CLASSNODE_DATA_DIR, 'uploads')
+      : path.join(__dirname, '../../uploads');
 
-    if (!fs.existsSync(uploadsDir) || fs.readdirSync(uploadsDir).length === 0) {
+    if (!['chat', 'classrooms'].some(name => fs.existsSync(path.join(uploadsDir, name)) && fs.readdirSync(path.join(uploadsDir, name)).length > 0)) {
       return res.status(404).json({ error: '暂无上传文件' });
     }
 
@@ -565,7 +566,10 @@ router.get('/backup/uploads-chat', async (req, res) => {
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename=classnode-uploads-chat-${readableTimestamp()}.classchat`);
     archive.pipe(res);
-    archive.directory(uploadsDir, 'chat');
+    for (const name of ['chat', 'classrooms']) {
+      const source = path.join(uploadsDir, name);
+      if (fs.existsSync(source)) archive.directory(source, name);
+    }
     await archive.finalize();
   } catch (error: unknown) {
     console.error('[UploadsChat] 打包失败:', errorMessage(error));
@@ -603,12 +607,25 @@ router.post('/backup/uploads-chat/import', chatUpload.single('file'), async (req
       maxTotalBytes: 300 * 1024 * 1024,
       maxSingleFileBytes: 25 * 1024 * 1024,
     });
-    const sourceDir = fs.existsSync(path.join(tmpDir, 'chat')) ? path.join(tmpDir, 'chat') : tmpDir;
-    fs.mkdirSync(uploadsChatDir, { recursive: true });
-    for (const file of fs.readdirSync(sourceDir)) {
-      const source = path.join(sourceDir, file);
-      if (fs.statSync(source).isFile()) fs.copyFileSync(source, path.join(uploadsChatDir, path.basename(file)));
-    }
+    const uploadsRoot = path.dirname(uploadsChatDir);
+    const importFile = (source: string, relative: string) => {
+      if (!ATTACHMENT_URL.test('/uploads/' + relative)) return;
+      const destination = ensureAttachmentDirectory(uploadsRoot, path.posix.dirname(relative));
+      const target = path.join(destination, path.posix.basename(relative));
+      if (fs.existsSync(target) && fs.lstatSync(target).isSymbolicLink()) throw new Error('附件路径无效');
+      fs.copyFileSync(source, target);
+    };
+    const visit = (directory: string, relative: string) => {
+      for (const item of fs.readdirSync(directory, { withFileTypes: true })) {
+        const source = path.join(directory, item.name);
+        const next = relative ? `${relative}/${item.name}` : item.name;
+        if (item.isDirectory()) visit(source, next);
+        else if (item.isFile()) importFile(source, next);
+      }
+    };
+    if (fs.existsSync(path.join(tmpDir, 'chat')) || fs.existsSync(path.join(tmpDir, 'classrooms'))) {
+      for (const name of ['chat', 'classrooms']) if (fs.existsSync(path.join(tmpDir, name))) visit(path.join(tmpDir, name), name);
+    } else visit(tmpDir, 'chat'); // Legacy flat .classchat packages.
 
     fs.unlinkSync(req.file.path);
     fs.rmSync(tmpDir, { recursive: true, force: true });

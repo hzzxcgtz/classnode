@@ -6,7 +6,7 @@
 .close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; border: 1px solid #ffffff24; border-radius: 50%; background: #ffffff0d; color: #e6eef7; cursor: pointer; }
 .close:hover { background: #ffffff20; border-color: #ffffff50; color: #fff; }
 .close:active { background: #ffffff30; }
-.controls { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; padding: 12px 18px max(12px, env(safe-area-inset-bottom)); background: #1c293a; border-top: 1px solid #ffffff20; font-size: .8125rem; }
+.controls { position: relative; min-height: 64px; box-sizing: border-box; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 12px 18px max(12px, env(safe-area-inset-bottom)); background: #1c293a; border-top: 1px solid #ffffff20; font-size: .8125rem; }
 .controls button { min-height: 44px; min-width: 44px; border: 1px solid #ffffff20; border-radius: 10px; padding: 5px 12px; background: #ffffff0d; color: #fff; cursor: pointer; }
 .controls button:hover:not(:disabled) { background: #ffffff20; border-color: #ffffff45; }
 .controls button:disabled { opacity: .4; cursor: default; }
@@ -40,3 +40,29 @@
 .dialog button:focus-visible, .dialog input:focus-visible { outline: 2px solid #a8d1ff; outline-offset: 3px; }
 .textViewport:focus-visible { outline: 2px solid #85b9ef; outline-offset: -3px; }
 @media (max-width: 600px) { .header { padding: 8px 12px; } .textViewport { padding: 14px 10px; } .review { padding: 20px; } .controls { gap: 8px; } .hint { width: 100%; text-align: center; } }
+
+.headerActions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.controls .annotationToggle { flex-shrink: 0; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 6px 14px; border: 1px solid #a7c5e04d; border-radius: 9px; background: #2b435c; color: #e4effb; font-size: 13px; cursor: pointer; }
+.controls .annotationToggle:hover { background: #375779; }
+.controls .annotationToggle[aria-pressed='true'] { border-color: #a8ceef; background: #e5f1ff; color: #234b73; }
+.controls .annotationToggle[aria-pressed='true']:hover:not(:disabled) { border-color: #c4dfff; background: #cee5ff; color: #193f65; }
+.content { position: relative; display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.previewBody { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.previewBody[data-preview-locked='true'] { pointer-events: none; user-select: none; -webkit-user-select: none; }
+.bottomTools { position: relative; display: flex; flex: 1; align-items: center; justify-content: center; flex-wrap: wrap; gap: 16px; min-width: 0; min-height: 56px; align-self: stretch; }
+.viewControls { display: contents; }
+.viewControls[data-preview-locked='true'] { visibility: hidden; pointer-events: none; }
+@media (max-width:600px) { .header h2 { font-size: .875rem; } .headerActions { gap: 8px; } .controls .annotationToggle { flex-shrink: 0; white-space: nowrap; padding: 6px 10px; font-size: 12px; } }
+
+.stage, .textViewport { min-width: 0; }
+.header h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The floating image tools leave the bottom row available for navigation. */
+.imageControls .bottomTools { min-height: 56px; }
+.imageControls .hint { display: none; }
+.imageControls input[type="range"] { width: clamp(52px, 10vw, 140px); min-width: 52px; }
+@media (max-width: 600px) {
+  .imageControls { flex-wrap: wrap; gap: 8px; padding: 8px 12px max(8px, env(safe-area-inset-bottom)); }
+  .imageControls .bottomTools { flex-basis: 100%; }
+  .imageControls .annotationToggle { margin-left: auto; }
+}

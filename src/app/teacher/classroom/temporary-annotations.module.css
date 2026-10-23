@@ -1,0 +1,23 @@
+.canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
+.canvas[data-tool='eraser'] { cursor: cell; }
+.canvas[data-tool='move'] { cursor: grab; }
+.canvas[data-tool='move']:active { cursor: grabbing; }
+
+
+
+.imageNavigation { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; background: #1c293a; }
+.imageNavigation input[type="range"] { flex: 0 1 140px; min-width: 52px; width: 140px; }
+.imageNavigation output { text-align: center; min-width: 48px; }
+.floating { position: absolute; z-index: 3; right: 16px; top: 50%; transform: translateY(-50%); max-height: calc(100% - 24px); color: #e5edf7; }
+.rail { display: flex; flex-direction: column; gap: 4px; padding: 6px; max-height: inherit; overflow-y: auto; border: 1px solid #ffffff26; border-radius: 16px; background: #1c293af5; box-shadow: 0 8px 28px #0004; }
+.floating button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 44px; min-height: 44px; padding: 5px 8px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #e5edf7; font: inherit; font-size: 12px; cursor: pointer; }
+.rail > button { flex: 0 0 auto; flex-direction: column; font-size: 10px; line-height: 1.3; }
+.floating button:hover:not(:disabled) { background: #ffffff18; color: #fff; }
+.floating button[aria-pressed='true'], .floating button[aria-expanded='true'] { background: #355779; border-color: #8ab8e5; color: #fff; }
+.floating button:disabled { opacity: .35; cursor: default; }
+.currentColor, .palette i { display: block; width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1px #ffffff55; }
+.flyout { position: absolute; right: calc(100% + 10px); top: 0; box-sizing: border-box; width: 220px; max-height: 100%; overflow-y: auto; padding: 14px; border: 1px solid #ffffff26; border-radius: 14px; background: #1c293a; box-shadow: 0 8px 28px #0004; }
+.palette { display: flex; gap: 4px; }
+.panelLabel { margin: 0 0 8px; font-size: 12px; color: #c2cddd; }
+.palette + .panelLabel { margin-top: 14px; }
+@media (max-width: 600px) { .floating { right: 8px; } .flyout { width: 208px; right: calc(100% + 8px); } }

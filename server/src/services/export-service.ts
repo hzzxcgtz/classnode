@@ -1,3 +1,4 @@
+import { resolveAttachmentFile } from './upload-paths.js';
 /**
  * 课堂数据导出服务
  * 服务端生成 DOCX / CSV，支持进度回调（Socket）和分批处理
@@ -106,6 +107,10 @@ const INDENT_SM = { left: 400 };
 
 function resolveFilePath(fileUrl: string): string | null {
   if (!fileUrl) return null;
+  const uploadsRoot = path.join(process.env.CLASSNODE_DATA_DIR || path.join(__dirname, '../..'), 'uploads');
+  const scoped = resolveAttachmentFile(uploadsRoot, fileUrl);
+  if (scoped) return scoped;
+  if (fileUrl.startsWith('/uploads/classrooms/')) return null;
   const fileName = path.basename(fileUrl);
   // 优先从 CLASSNODE_DATA_DIR 加载（生产模式）
   const dataDir = process.env.CLASSNODE_DATA_DIR;

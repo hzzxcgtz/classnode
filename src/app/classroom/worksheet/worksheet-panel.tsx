@@ -2,7 +2,7 @@
 
 import { ReviewFailure, ReviewHistory, ReviewTiming, type AnswerReview } from './review-history';
 
-import { formatReviewAdvice } from '@/lib/worksheet-review-display';
+import { formatReviewText, formatReviewAdvice } from '@/lib/worksheet-review-display';
 
 import { normalizeGeneration, type WorksheetGeneration } from './worksheet-generation';
 import { subscribeWorksheetAnalysisUpdated } from './worksheet-socket-bus';
@@ -723,7 +723,7 @@ export function WorksheetQuestionList({
                 <div className={styles.aiScoreCommentBody}>
                   <strong className={styles.aiScoreCommentHeading}>AI 给你的评价</strong>
                   {latestReview && <ReviewTiming review={latestReview} />}
-                  <p className={styles.aiScoreCommentText}>{aiReferenceScore.comment}</p>
+                  <p className={styles.aiScoreCommentText}>{formatReviewText(aiReferenceScore.comment)}</p>
                   {studentAdvice && (
                     <div className={styles.aiScoreAdvice}>
                       <strong><AiFeedbackIcon advice />小建议</strong>

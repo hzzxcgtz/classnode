@@ -1,3 +1,4 @@
+import { ATTACHMENT_URL, resolveAttachmentFile } from '../services/upload-paths.js';
 import { readAnalysisUsage } from '../services/analysis-usage.js';
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
@@ -181,7 +182,6 @@ router.get('/storage-stats', async (req, res) => {
     });
 
     // 按 classroom 分组统计当前存在的附件文件
-    const chatDir = path.join(uploadsBase, 'chat');
     const classroomAttachments: Record<string, Set<string>> = {};
 
     for (const msg of allMessages) {
@@ -200,15 +200,31 @@ router.get('/storage-stats', async (req, res) => {
       }
     }
 
+    // Include original worksheet answers and every preserved revision, not just chat messages.
+    const [answers, reviews] = await Promise.all([
+      prisma.worksheetAnswer.findMany({ select: { value: true, response: { select: { classroomId: true } } } }),
+      prisma.worksheetAnswerReview.findMany({ select: { value: true, question: true, answer: { select: { response: { select: { classroomId: true } } } } } }),
+    ]);
+    const collect = (classroomId: string, value: unknown) => {
+      const visit = (item: unknown) => {
+        if (typeof item === 'string' && ATTACHMENT_URL.test(item)) {
+          (classroomAttachments[classroomId] ??= new Set()).add(item);
+        } else if (Array.isArray(item)) item.forEach(visit);
+        else if (item && typeof item === 'object') Object.values(item).forEach(visit);
+      };
+      visit(value);
+    };
+    for (const answer of answers) collect(answer.response.classroomId, answer.value);
+    for (const review of reviews) collect(review.answer.response.classroomId, [review.value, review.question]);
+
     let totalAttachmentCount = 0;
     let totalAttachmentSize = 0;
     const attachmentCache = new Map<string, number>(); // url -> size
 
     function getAttachmentSize(url: string): number {
       if (attachmentCache.has(url)) return attachmentCache.get(url)!;
-      const fileName = url.replace('/uploads/chat/', '');
-      const absPath = path.join(chatDir, fileName);
-      const size = getFileSize(absPath);
+      const absPath = resolveAttachmentFile(uploadsBase, url);
+      const size = absPath ? getFileSize(absPath) : 0;
       attachmentCache.set(url, size);
       return size;
     }

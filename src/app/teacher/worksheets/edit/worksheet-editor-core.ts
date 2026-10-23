@@ -35,6 +35,7 @@ import { DEFAULT_WORKSHEET_SURFACE, normalizeWorksheetSurfaceOpacity } from '../
 // ⚠️ 相对路径 + `.ts` 后缀是**必须的**（Node 解析不了 `@/…`），见上面的文件头。
 import {
   flattenAnswerable,
+  aiScoredFor,
   isMultipleChoice,
   optionKey,
   POINTS_FULL_MIN,
@@ -3086,6 +3087,13 @@ function normalizeLoadedTree(value: unknown): WorksheetQuestionNode | null {
     && children.every((child, index) => child === raw[index]);
   if (value.type === 'open-ended') {
     return { ...value, type: 'short-answer', data: { ...value.data, aiScoringEnabled: false, studentAiReviewEnabled: false }, children };
+  }
+  // Older sheets/drafts may have AI grading but no student-review preference.
+  // Supply the same default as enabling grading in the editor; explicit false is intentional.
+  if (aiScoredFor(value) && value.data.studentAiReviewEnabled === undefined) {
+    const limit = value.data.aiReviewLimit;
+    return { ...value, children, data: { ...value.data, studentAiReviewEnabled: true,
+      aiReviewLimit: Number.isInteger(limit) && Number(limit) >= 1 && Number(limit) <= 20 ? limit : 1 } };
   }
   return unchanged ? value : { ...value, children };
 }

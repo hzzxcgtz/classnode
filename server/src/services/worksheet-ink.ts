@@ -23,7 +23,7 @@ export const INK_MAX_POINTS = 2000;
  * （`analysis-render.ts` → `resolveLocalPath`），别的字符串一律不认。
  * 形状与前端 `worksheet-answer-value.ts` 里那条**逐字相同**（跨工程对拍网钉着它）。
  */
-export const CHAT_IMAGE_URL = /^\/uploads\/chat\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
+export const CHAT_IMAGE_URL = /^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\/chat-[0-9a-f-]+\.(?:png|jpe?g|webp)$/i;
 
 /** 与前端 `worksheet-drawing-document.ts` 保持一致：一题的第三方绘图文档最大字符数。 */
 export const DRAWING_DOCUMENT_MAX_CHARS = 600_000;

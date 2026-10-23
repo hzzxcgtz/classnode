@@ -7,7 +7,7 @@ const UPDATED = 'classnode-image-orientation-updated';
 const versions = new Map<string, string>();
 /** One entry point for local saves and room-scoped socket updates. */
 export function publishImageOrientationUpdated(data: {url: string; version: string}) {
-  if (!data || typeof data.url !== 'string' || !/^\/uploads\/chat\/chat-[0-9a-f-]+\.(png|jpg|webp)$/i.test(data.url) || typeof data.version !== 'string' || !/^[a-f0-9]{64}$/.test(data.version)) return;
+  if (!data || typeof data.url !== 'string' || !/^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\/chat-[0-9a-f-]+\.(png|jpg|webp)$/i.test(data.url) || typeof data.version !== 'string' || !/^[a-f0-9]{64}$/.test(data.version)) return;
   versions.set(data.url, data.version);
   window.dispatchEvent(new CustomEvent(UPDATED, {detail:data}));
 }
@@ -16,7 +16,7 @@ function imagePath(url: string | null): string | null {
   try {
     const parsed = new URL(url, window.location.href);
     if (![window.location.origin, new URL(getApiBaseUrl() || '/', window.location.origin).origin].includes(parsed.origin)) return null;
-    return /^\/uploads\/chat\/chat-[0-9a-f-]+\.(png|jpg|webp)$/i.test(parsed.pathname) ? parsed.pathname : null;
+    return /^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\/chat-[0-9a-f-]+\.(png|jpg|webp)$/i.test(parsed.pathname) ? parsed.pathname : null;
   } catch { return null; }
 }
 function versioned(url: string, version?: string): string {

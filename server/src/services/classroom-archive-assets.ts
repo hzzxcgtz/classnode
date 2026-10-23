@@ -52,7 +52,7 @@ export class ArchiveAssets {
     if (this.references.has(relative)) return this.references.get(relative) ?? null;
     const source = archiveSource(this.uploads, relative);
     let target: string | null = null;
-    if (source && /^(chat|avatars|logos)\//.test(relative)) {
+    if (source && /^(chat|classrooms|avatars|logos)\//.test(relative)) {
       target = `附件/文件/${String(this.references.size + 1).padStart(4, '0')}-${archiveName(path.basename(source))}`;
       this.copy(source, target);
     } else this.addWarning(`附件未找到或路径不受支持：${raw}`);
@@ -61,7 +61,7 @@ export class ArchiveAssets {
   }
   scan(value: unknown): void {
     if (typeof value === 'string') {
-      for (const match of value.matchAll(/\/uploads\/(?:chat|avatars|logos)\/[^\s<>"'`\]\[)]+/g)) this.attachment(match[0]);
+      for (const match of value.matchAll(/\/uploads\/(?:chat|classrooms|avatars|logos)\/[^\s<>"'`\]\[)]+/g)) this.attachment(match[0]);
     } else if (Array.isArray(value)) value.forEach(v => this.scan(v));
     else if (value && typeof value === 'object') Object.values(value).forEach(v => this.scan(v));
   }

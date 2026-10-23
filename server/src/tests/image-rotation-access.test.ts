@@ -52,8 +52,25 @@ test('rotation authorizes only teachers and active owners; saves immediately wit
     active=true;const form=new FormData();form.append('file',new Blob([original],{type:'image/png'}),'photo.png');
     const upload=await fetch(base+'/api/upload/worksheet-image',{method:'POST',headers:{Authorization:`Bearer ${token}`},body:form});
     assert.equal(upload.status,200);const added=await upload.json() as {url:string};
+    assert.match(added.url, /^\/uploads\/classrooms\/room\/worksheet\/chat-/);
+    const scopedFile=path.join(directory,added.url.slice(1));
+    assert.equal((await fs.stat(scopedFile)).isFile(),true);
     const fresh=`${base}/api/upload/image-orientation?url=${encodeURIComponent(added.url)}`;
-    assert.equal((await fetch(fresh,{headers:{Authorization:`Bearer ${token}`}})).status,200);
+    const scopedInfo=await fetch(fresh,{headers:{Authorization:`Bearer ${token}`}});
+    assert.equal(scopedInfo.status,200);
+    const scopedVersion=(await scopedInfo.json() as {version:string}).version;
+    const scopedRotate=await fetch(base+'/api/upload/image-orientation',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({url:added.url,degrees:90,version:scopedVersion})});
+    assert.equal(scopedRotate.status,200);
+    const scopedMeta=await sharp(await fs.readFile(scopedFile)).metadata();
+    assert.equal(scopedMeta.width,40);assert.equal(scopedMeta.height,80);
+    const chatForm=new FormData();chatForm.append('file',new Blob([original],{type:'image/png'}),'chat.png');
+    const chatUpload=await fetch(base+'/api/upload/',{method:'POST',headers:{Authorization:`Bearer ${token}`},body:chatForm});
+    assert.equal(chatUpload.status,200);
+    assert.match((await chatUpload.json() as {url:string}).url,/^\/uploads\/classrooms\/room\/chat\/chat-/);
+    const teacherForm=new FormData();teacherForm.append('file',new Blob([original],{type:'image/png'}),'shared.png');
+    const teacherUpload=await fetch(base+'/api/upload/worksheet-image',{method:'POST',headers:{cookie},body:teacherForm});
+    assert.equal(teacherUpload.status,200);
+    assert.match((await teacherUpload.json() as {url:string}).url,/^\/uploads\/chat\/chat-/);
     assert.equal((await fetch(fresh,{headers:{Authorization:`Bearer ${other}`}})).status,403);
     answerValue={format:'photo/v1',url:added.url};
     // A forged reference must not grant another student ownership of a newer upload.

@@ -573,7 +573,7 @@ export function readOptions(node: WorksheetQuestionNode): ChoiceOption[] {
     options.push({
       key: typeof option.key === 'string' && option.key ? option.key : optionKey(options.length),
       text: typeof option.text === 'string' ? option.text : '',
-      ...(typeof option.imageUrl === 'string' && option.imageUrl.startsWith('/uploads/chat/')
+      ...(typeof option.imageUrl === 'string' && /^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\//.test(option.imageUrl)
         ? { imageUrl: option.imageUrl }
         : {}),
     });

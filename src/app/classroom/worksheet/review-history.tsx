@@ -5,7 +5,7 @@ import { AnswerViewBody } from '@/app/teacher/classroom/answer-view';
 import styles from './worksheet.module.css';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { REWARD_STYLE_OPTIONS, pointsUnitLabel } from '@/lib/worksheet-reward';
-import { formatReviewAdvice, reviewDurationLabel, reviewSourceLabel } from '@/lib/worksheet-review-display';
+import { formatReviewText, formatReviewAdvice, reviewDurationLabel, reviewSourceLabel } from '@/lib/worksheet-review-display';
 
 export interface AnswerReview {
   id: string; questionId: string; value: unknown;
@@ -42,8 +42,8 @@ export function ReviewHistory({ node, reviews, onRetry, renderReviewActions }: {
       <AnswerViewBody node={node} value={r.value} />
       {r.status === 'superseded' && <p role="status">{r.error || '历史结果，不计入当前成绩和评价次数'}</p>}
       <div className={styles.reviewEvaluation}><div className={styles.reviewEvaluationText}>
-      {r.reason && <p><strong>AI 评价：</strong>{r.reason}</p>}
-      {r.advice && <p><strong>修改建议：</strong>{formatReviewAdvice(r.advice)}</p>}
+      {r.reason && <p><strong>AI 评价：</strong><span className={styles.reviewPointText}>{formatReviewText(r.reason)}</span></p>}
+      {r.advice && <p><strong>修改建议：</strong><span className={styles.reviewPointText}>{formatReviewAdvice(r.advice)}</span></p>}
       </div>{renderReviewActions?.(r)}</div>
       {r.status === 'failed' && <ReviewFailure review={r} onRetry={onRetry && r.canRetry !== false && r.id === reviews.find(item => item.source === 'student')?.id ? () => retry(r.id) : undefined} retrying={retrying !== null} />}
       </div>

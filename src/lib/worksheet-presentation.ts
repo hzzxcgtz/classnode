@@ -33,7 +33,7 @@ export function readPromptRunsFor(node: WorksheetQuestionNode): PromptRun[] {
 
 export function readPromptImage(node: WorksheetQuestionNode): string | null {
   const value = node.data.promptImageUrl;
-  return typeof value === 'string' && value.startsWith('/uploads/chat/') ? value : null;
+  return typeof value === 'string' && /^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\//.test(value) ? value : null;
 }
 
 export function worksheetAssetUrl(value: string): string {

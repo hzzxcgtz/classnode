@@ -1,3 +1,4 @@
+import { ATTACHMENT_IMAGE_URL, resolveAttachmentFile } from './upload-paths.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -6,13 +7,13 @@ import sharp from 'sharp';
 export class ImageRotationError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
-export const ROTATABLE_IMAGE_URL = /^\/uploads\/chat\/(chat-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:png|jpg|webp))$/i;
+export const ROTATABLE_IMAGE_URL = ATTACHMENT_IMAGE_URL;
 const busy = new Set<string>();
 export const imageVersion = (data: Buffer) => crypto.createHash('sha256').update(data).digest('hex');
 export async function readRotatableImage(directory: string, url: string) {
-  const name = ROTATABLE_IMAGE_URL.exec(url)?.[1];
-  if (!name) throw new ImageRotationError('只支持已上传的 JPG、PNG 或 WebP 图片', 400);
-  const file = path.join(directory, name);
+  if (!ROTATABLE_IMAGE_URL.test(url)) throw new ImageRotationError('只支持已上传的 JPG、PNG 或 WebP 图片', 400);
+  const file = url.startsWith('/uploads/chat/') ? path.join(directory, path.basename(url)) : resolveAttachmentFile(path.dirname(directory), url);
+  if (!file) throw new ImageRotationError('图片已不存在或路径无效', 404);
   try {
     const stat = await fs.lstat(file);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new ImageRotationError('图片路径无效', 400);

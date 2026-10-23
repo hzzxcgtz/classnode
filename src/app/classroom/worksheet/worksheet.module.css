@@ -3262,3 +3262,5 @@
 .reviewEvaluation { display: flex; align-items: flex-start; gap: 10px; }
 .reviewEvaluationText { flex: 1; min-width: 0; }
 .reviewEvaluationText > p:first-child { margin-top: 0; }
+
+.reviewPointText { display: block; margin-top: 6px; white-space: pre-wrap; }

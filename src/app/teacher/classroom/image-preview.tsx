@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { FullscreenPreview } from './fullscreen-preview';
+import { TemporaryAnnotations } from './temporary-annotations';
 import styles from './fullscreen-preview.module.css';
 import { useImageRotation } from '@/components/use-image-rotation';
 import { ImageRotationControls } from '@/components/image-rotation-controls';
 
 const clampZoom = (value: number) => Math.max(.3, Math.min(15, value));
-export function ClassroomImagePreview({ src, onClose }: { src: string; onClose: () => void }) {
+export function ClassroomImagePreview({ src, onClose, allowAnnotations = false }: { src: string; onClose: () => void; allowAnnotations?: boolean }) {
   const rotation = useImageRotation(src);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -23,7 +24,9 @@ export function ClassroomImagePreview({ src, onClose }: { src: string; onClose: 
     element?.addEventListener('wheel', wheel, { passive: false });
     return () => element?.removeEventListener('wheel', wheel);
   }, []);
-  return <FullscreenPreview title="学生图片" onClose={onClose} controls={<>
+  return <FullscreenPreview allowAnnotations={allowAnnotations} title="学生图片" onClose={onClose} controlsLayout={allowAnnotations ? 'image' : undefined}
+    renderAnnotations={toolbarHost => <TemporaryAnnotations toolbarHost={toolbarHost} imageView={{zoom, offset, angle: rotation.angle, onZoom: change => setZoom(value => clampZoom(value + change)), onPan: setOffset, onFit: () => {setZoom(1);setOffset({x:0,y:0});}}} />}
+    controls={<>
     <button type="button" onClick={() => setZoom(value => clampZoom(value - .2))} disabled={zoom <= .3} aria-label="缩小图片">−</button>
     <input aria-label="图片缩放" type="range" min="30" max="1500" step="10" value={Math.round(zoom * 100)} onChange={event => setZoom(Number(event.target.value) / 100)} />
     <button type="button" onClick={() => setZoom(value => clampZoom(value + .2))} disabled={zoom >= 15} aria-label="放大图片">＋</button>

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { REWARD_STYLE_OPTIONS, pointsUnitLabel } from '@/lib/worksheet-reward';
-import { formatReviewAdvice } from '@/lib/worksheet-review-display';
+import { formatReviewText, formatReviewAdvice } from '@/lib/worksheet-review-display';
 import { FullscreenPreview } from './fullscreen-preview';
 import styles from './fullscreen-preview.module.css';
 
@@ -19,7 +19,7 @@ export function ReviewPreviewButton({ title = 'AI 评价与建议', reason, advi
     <button type="button" className={styles.expand} aria-label="全屏查看评价" title="全屏查看评价" onClick={() => { setFontSize(24); setOpen(true); }}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" /></svg>
     </button>
-    {open && <FullscreenPreview title={title} onClose={() => setOpen(false)} controls={<>
+    {open && <FullscreenPreview allowAnnotations title={title} onClose={() => setOpen(false)} controls={<>
       <div className={styles.fontTools}><span className={styles.toolLabel}>文字大小</span>
       <button type="button" onClick={() => setFontSize(size => Math.max(18, size - 2))} disabled={fontSize <= 18} aria-label="缩小评价文字">A−</button>
       <output aria-label="当前文字大小">{fontSize}<small>px</small></output>
@@ -39,7 +39,7 @@ export function ReviewPreviewButton({ title = 'AI 评价与建议', reason, advi
             </div>}
             {note && <p className={styles.reviewNote}>{note}</p>}
           </div>}
-          {reason && <section><h3><RewardIcon kind="classnode" size={40} /><span>支点博士对你的评价</span></h3><p>{reason}</p></section>}
+          {reason && <section><h3><RewardIcon kind="classnode" size={40} /><span>支点博士对你的评价</span></h3><p>{formatReviewText(reason)}</p></section>}
           {advice && <section><h3><RewardIcon kind="classnode" size={40} /><span>支点博士给你的建议</span></h3><p>{formatReviewAdvice(advice)}</p></section>}
         </article>
       </div>

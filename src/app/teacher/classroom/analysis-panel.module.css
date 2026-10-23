@@ -399,3 +399,5 @@
 .answerShortcut { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid #dce6f0; border-radius: 6px; background: #f8fbfe; color: #5a7b9b; cursor: pointer; }
 .answerShortcut:hover { color: #315f8e; border-color: #adc5dd; background: #eaf3fc; }
 .answerShortcut:focus-visible { outline: 2px solid #648fba; outline-offset: 2px; }
+
+.scoreReasonHeading > span { white-space: pre-wrap; }

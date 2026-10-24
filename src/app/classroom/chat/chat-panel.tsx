@@ -87,6 +87,12 @@ export function StudentChatContent({
   const [input, setInput] = useState('');
   const [uploading, setUploading] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
+  const [recordingSupported, setRecordingSupported] = useState(false);
+  useEffect(() => {
+    // Read browser capabilities after hydration; checking does not request permission.
+    setRecordingSupported(window.isSecureContext === true
+      && typeof navigator.mediaDevices?.getUserMedia === 'function');
+  }, []);
   const [inputVoiceStatus, setInputVoiceStatus] = useState<InputVoiceStatus>({ text: '', cancelling: false });
   const [attachedFiles, setAttachedFiles] = useState<{ url: string; name: string }[]>([]);
   const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
@@ -241,7 +247,7 @@ export function StudentChatContent({
    * ⚠️ `student-home.tsx`（学伴卡名称）读的是同一个函数：两张卡说同一个名字。
    */
   const getCurrentAgent = () => effectiveGroupAgent(classroom, selectedStudent);
-  const voiceAvailable = !blacklisted && getCurrentAgent()?.platform === 'coze';
+  const voiceAvailable = recordingSupported && !blacklisted && getCurrentAgent()?.platform === 'coze';
   const voiceVisible = voiceAvailable && voiceMode && !waitingAI;
 
   const renderAgentAvatar = (size: number, borderRadius = 8, fontSize = 13, agent?: ChatAgent) => {

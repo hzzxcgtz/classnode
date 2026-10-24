@@ -69,6 +69,7 @@ test('classroom ZIP is a detached readable archive of all modules, reviews and g
   let archive: Awaited<ReturnType<typeof createClassroomArchive>> | undefined;
   try {
     const c = await prisma.classroom.create({ data: { title: '301班 / 历史课 <课堂>', mode: 'advanced', status: 'ended', endedAt: new Date() } });
+    await prisma.classroomAnnotation.create({data:{classroomId:c.id,targetKey:'image-key',target:'/uploads/chat/photo.png',document:{version:1,kind:'image',strokes:[]}}});
     const other = await prisma.classroom.create({ data: { title: '不可串班', status: 'ended', endedAt: new Date() } });
     const group = await prisma.classroomGroup.create({ data: { classroomId: c.id, name: '观察组' } });
     await prisma.classroomGroupMember.createMany({ data: [{ classroomId: c.id, groupId: group.id, name: '小林', studentNo: '01' }, { classroomId: c.id, groupId: group.id, name: '小周', studentNo: '02' }] });
@@ -97,9 +98,10 @@ test('classroom ZIP is a detached readable archive of all modules, reviews and g
     archive = await createClassroomArchive(prisma, c.id);
     const zip = new Zip(archive.file);
     const names = zip.getEntries().map((e: { entryName: string }) => e.entryName);
+    assert.equal(JSON.parse(zip.readAsText('课堂批注.json')).annotations.length,1);
     const html = zip.readAsText('打开课堂记录.html'); const text = zip.readAsText('课堂完整记录.txt');
     assert.ok(names.includes('使用说明.txt'));
-    assert.ok(!names.some((n: string) => n.endsWith('.json') || n.includes('unrelated') || n.endsWith('.db')));
+    assert.ok(!names.some((n: string) => (n.endsWith('.json') && n !== '课堂批注.json') || n.includes('unrelated') || n.endsWith('.db')));
     assert.equal(names.filter((n: string) => n.includes('photo.png')).length, 1);
     for (const phrase of ['观察组', '小林', '小周', '科学学伴', '观察学习单', '原有班级分析', '原有评价依据', '当次评价任务快照', '第 1 次评分理由', '第 2 次评分理由', '蝴蝶 → 昆虫', '再记录', '完整原文'.repeat(3000), '原始回答'.repeat(4000)]) assert.ok(text.includes(phrase), `Missing: ${phrase.slice(0, 60)}`);
     for (const internal of ['记录编号', '课堂编号', '评价请求编号', '内容版本', '内容格式', 'req-1', 'gen-1', 'i2 · 再记录', participant.id, sheet.id, c.id]) assert.ok(!text.includes(internal), `Internal metadata leaked: ${internal}`);

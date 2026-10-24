@@ -2,6 +2,13 @@
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
+## Coze Development Reference
+
+Before Coze-related development, read `docs/project-notes/COZE-DEVELOPMENT-REFERENCE.md`.
+It records official sources, verified notes, documentation discrepancies, and remaining coverage.
+The full reading log, source snapshots, and implementation caveats are under `docs/reference/coze/`.
+Recheck the relevant official documentation and target project's deployment example before API or deployment changes.
+
 ## Commands
 
 ```bash

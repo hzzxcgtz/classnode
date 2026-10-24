@@ -22,7 +22,7 @@ export function TeacherReviewHistory({ classroomId, worksheetId, participantId, 
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [classroomId, worksheetId, participantId, node.id]);
   return error ? <p role="status">提交历史暂时未能读取，正在重试。</p> : <ReviewHistory node={node} reviews={reviews} renderReviewActions={review =>
-    <ReviewPreviewButton title={`${studentName || '学生'} · AI 评价与建议`} reason={review.reason} advice={review.advice} score={review.score} maxScore={review.maxScore} unit={review.unit}
+    <ReviewPreviewButton annotationId={`${classroomId}:${worksheetId}:${participantId}:${node.id}:${review.id}`} title={`${studentName || '学生'} · AI 评价与建议`} reason={review.reason} advice={review.advice} score={review.score} maxScore={review.maxScore} unit={review.unit}
       note={review.status === 'superseded' ? (review.error || '历史评价，不计入当前成绩') : undefined} />
   } />;
 }

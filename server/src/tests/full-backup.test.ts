@@ -45,6 +45,7 @@ async function seed(prisma: PrismaClient) {
   const student = await prisma.student.create({ data: { name: 'Alice', classId: cls.id, avatarId: avatar.id } });
   const classroom = await prisma.classroom.create({ data: { title: '历史课堂', code: '5555' } });
   await prisma.classroomClass.create({ data: { classroomId: classroom.id, classId: cls.id } });
+  await prisma.classroomAnnotation.create({data:{classroomId:classroom.id,targetKey:'image-key',target:'/uploads/chat/photo.jpg',document:{version:1,kind:'image',strokes:[]},revision:4}});
   const participant = await prisma.classroomStudent.create({ data: { classroomId: classroom.id, studentId: student.id, status: 'online' } });
   const credential = await prisma.platformToken.create({ data: { platform: 'coze', label: '教师账号', token: encrypt('shared-token') } });
   const agent = await prisma.agent.create({ data: { name: 'AI', platform: 'coze', apiKey: encrypt('private-token'), credentialId: credential.id } });
@@ -113,6 +114,8 @@ test('restore to fresh environment restores messages, answers, credentials and r
     const result = await withDataMaintenance(() => restoreFullBackup(f.prisma, backup, { committed: () => commits++ }));
     assert.equal(commits, 1); assert.deepEqual(result.warnings, []);
     assert.equal((await f.prisma.message.findFirst())?.content, '历史消息');
+    assert.equal((await f.prisma.classroomAnnotation.findFirst())?.revision,4);
+    assert.deepEqual((await f.prisma.classroomAnnotation.findFirst())?.document,{version:1,kind:'image',strokes:[]});
     assert.deepEqual((await f.prisma.worksheetAnswer.findFirst())?.value, { text: '历史答案' });
     assert.equal(decrypt((await f.prisma.platformToken.findFirst())!.token), 'shared-token');
     assert.equal(decrypt((await f.prisma.agent.findFirst())!.apiKey), 'private-token');
@@ -152,6 +155,8 @@ test('corrupt manifests, keys, missing webapps and strict migration failure pres
       }
       await assert.rejects(withDataMaintenance(() => restoreFullBackup(f.prisma, bad)));
       assert.equal((await f.prisma.message.findFirst())?.content, '历史消息');
+    assert.equal((await f.prisma.classroomAnnotation.findFirst())?.revision,4);
+    assert.deepEqual((await f.prisma.classroomAnnotation.findFirst())?.document,{version:1,kind:'image',strokes:[]});
       assert.equal(decrypt((await f.prisma.agent.findFirst())!.apiKey), 'private-token');
       assert.equal(fs.readFileSync(path.join(f.dir, 'uploads/chat/live.txt'), 'utf8'), 'live');
       assert.equal(fs.readFileSync(path.join(f.dir, `webapps/${webapp.id}/index.html`), 'utf8'), 'original');
@@ -274,6 +279,8 @@ test('hard process interruption between swaps is rolled back on startup recovery
     execFileSync(process.execPath, [path.join(root, 'dist/upgrade-database.js')], { cwd: root, env: process.env, stdio: 'pipe' });
     assert.equal(fs.existsSync(f.database + '.maintenance.json'), false);
     assert.equal((await f.prisma.message.findFirst())?.content, '历史消息');
+    assert.equal((await f.prisma.classroomAnnotation.findFirst())?.revision,4);
+    assert.deepEqual((await f.prisma.classroomAnnotation.findFirst())?.document,{version:1,kind:'image',strokes:[]});
     assert.equal(fs.readFileSync(path.join(f.dir, 'uploads/chat/live.txt'), 'utf8'), 'original');
     assert.equal(decrypt((await f.prisma.agent.findFirst())!.apiKey), 'private-token');
   } finally { await f.close(); }

@@ -19,6 +19,16 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/** Structured upstream failure; never includes request headers or audio payloads. */
+export class CozeStreamError extends Error {
+  constructor(public code: number | string, public msg: string,
+    public event: string, public logid?: string,
+    public conversationId?: string, public chatId?: string) {
+    super(`扣子对话失败（code=${code}）：${msg}${logid ? ` [logid=${logid}]` : ''}`);
+    this.name = 'CozeStreamError';
+  }
+}
+
 /** 流式事件回调 */
 export interface StreamCallbacks {
   /** 对话已创建 (conversation.chat.created) */
@@ -90,72 +100,87 @@ export class ChatAPI {
       conversationId ? { conversation_id: conversationId } : undefined
     );
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('无法读取响应流');
+    return this.readStream(response, callbacks, signal);
+  }
 
+  /** Both chat and tool-output streams use the same framing and error handling. */
+  private async readStream(response: Response, callbacks: StreamCallbacks, signal?: AbortSignal): Promise<ChatData> {
+    const logid = response.headers.get('x-tt-logid') || response.headers.get('x-coze-logid') || undefined;
+    let conversationId: string | undefined;
+    let chatId: string | undefined;
+    let lastEvent = '';
+    let completed: ChatData | null = null;
+    const failure = (event: string, value: unknown) => {
+      const record = asRecord(value);
+      const detail = asRecord(record?.last_error) || asRecord(record?.error) || record;
+      const rawCode = detail?.code ?? detail?.error_code ?? -1;
+      const code = typeof rawCode === 'number' || typeof rawCode === 'string' ? rawCode : -1;
+      const rawMessage = detail?.msg ?? detail?.message ?? detail?.error_message;
+      const msg = typeof rawMessage === 'string' && rawMessage ? rawMessage.slice(0, 1500) : '上游未提供具体错误说明';
+      const trace = asRecord(record?.detail)?.logid;
+      return new CozeStreamError(code, msg, event, typeof trace === 'string' ? trace : logid, conversationId, chatId);
+    };
+    if (response.headers.get('content-type')?.includes('application/json')) {
+      throw failure('json_error', await response.json());
+    }
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('无法读取扣子响应流');
     const decoder = new TextDecoder();
     let buffer = '';
-    let currentEvent = '';
-    let completedChat: ChatData | null = null;
-
+    let event = '';
+    let data: string[] = [];
+    const dispatch = () => {
+      const type = event;
+      const raw = data.join('\n').trim();
+      event = ''; data = [];
+      if (!raw) return;
+      if (raw === '[DONE]' || raw === '"[DONE]"') { callbacks.onDone?.(); return; }
+      let parsed: unknown;
+      try { parsed = JSON.parse(raw); }
+      catch { throw new CozeStreamError(-1, '扣子返回了无法解析的事件数据', type || 'invalid_json', logid, conversationId, chatId); }
+      const record = asRecord(parsed);
+      lastEvent = type || 'data';
+      if (typeof record?.conversation_id === 'string') conversationId = record.conversation_id;
+      if (type.startsWith('conversation.chat.') && typeof record?.id === 'string') chatId = record.id;
+      const isError = type === 'error' || type === 'conversation.chat.failed'
+        || (!type && record?.code !== undefined && record.code !== 0 && record.code !== '0');
+      const upstreamError = isError ? failure(type || 'error', parsed) : null;
+      this.dispatchEvent(type, parsed, callbacks);
+      if (upstreamError) throw upstreamError;
+      if (type === 'conversation.chat.completed') completed = parsed as ChatData;
+    };
+    const line = (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) { dispatch(); return; }
+      if (trimmed.startsWith('event:')) {
+        // Also tolerate providers omitting the blank separator between events.
+        if (data.length) dispatch();
+        event = trimmed.slice(6).trim();
+      } else if (trimmed.startsWith('data:')) data.push(trimmed.slice(5).trimStart());
+    };
     try {
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-
-          if (trimmed.startsWith('event:')) {
-            currentEvent = trimmed.slice(6).trim();
-            continue;
-          }
-
-          if (trimmed.startsWith('data:')) {
-            const dataStr = trimmed.slice(5).trim();
-            if (!dataStr || dataStr === '[DONE]' || dataStr === '"[DONE]"') {
-              if (currentEvent === 'done') {
-                callbacks.onDone?.();
-              }
-              currentEvent = '';
-              continue;
-            }
-
-            let parsed: unknown;
-            try {
-              parsed = JSON.parse(dataStr);
-            } catch {
-              continue;
-            }
-
-            this.dispatchEvent(currentEvent, parsed, callbacks);
-
-            // 追踪最终完成的 chat 信息
-            if (currentEvent === 'conversation.chat.completed' && parsed) {
-              completedChat = parsed as ChatData;
-            }
-
-            currentEvent = '';
-          }
+        signal?.throwIfAborted();
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        let newline: number;
+        while ((newline = buffer.indexOf('\n')) !== -1) {
+          line(buffer.slice(0, newline)); buffer = buffer.slice(newline + 1);
         }
       }
-    } catch (error: unknown) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        // 被外部 signal 取消，返回当前已收集的数据
-        throw error;
-      }
-      throw error;
-    }
-
-    if (!completedChat) {
-      throw new Error('Coze 流式响应未返回完成事件');
-    }
-
-    return completedChat;
+      buffer += decoder.decode();
+      if (buffer) line(buffer);
+      dispatch();
+      signal?.throwIfAborted();
+    } catch (problem) {
+      await reader.cancel().catch(() => {});
+      throw problem;
+    } finally { reader.releaseLock(); }
+    if (!completed) throw new CozeStreamError(-1,
+      `响应流提前结束，未收到对话完成事件（最后事件：${lastEvent || '无'}）`,
+      'incomplete_stream', logid, conversationId, chatId);
+    return completed;
   }
 
   /** 将 SSE event 分派到对应的回调 */
@@ -331,55 +356,7 @@ export class ChatAPI {
       signal
     );
 
-    // 复用流式解析逻辑
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('无法读取响应流');
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let currentEvent = '';
-    let completedChat: ChatData | null = null;
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith('event:')) {
-            currentEvent = trimmed.slice(6).trim();
-            continue;
-          }
-          if (trimmed.startsWith('data:')) {
-            const dataStr = trimmed.slice(5).trim();
-            if (!dataStr || dataStr === '[DONE]' || dataStr === '"[DONE]"') {
-              if (currentEvent === 'done') callbacks.onDone?.();
-              currentEvent = '';
-              continue;
-            }
-            try {
-              const parsed = JSON.parse(dataStr);
-              this.dispatchEvent(currentEvent, parsed, callbacks);
-              if (currentEvent === 'conversation.chat.completed') {
-                completedChat = parsed as ChatData;
-              }
-              currentEvent = '';
-            } catch {}
-          }
-        }
-      }
-    } catch (error: unknown) {
-      if (error instanceof Error && error.name === 'AbortError') throw error;
-      throw error;
-    }
-
-    if (!completedChat) throw new Error('Coze 流式响应未返回完成事件');
-    return completedChat;
+    return this.readStream(response, callbacks, signal);
   }
 
   /**

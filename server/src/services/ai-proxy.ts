@@ -1,5 +1,7 @@
 import { anonymizer } from './anonymizer.js';
 import { CozeBot } from './coze-bot/index.js';
+import { CozeStreamError } from './coze-bot/chat.js';
+import { CozeClientError } from './coze-bot/client.js';
 import type { EnterMessage, StreamCallbacks } from './coze-bot/index.js';
 import { WenxinBot } from './wenxin/index.js';
 import { ZhipuaiBot } from './zhipuai/index.js';
@@ -84,7 +86,7 @@ export interface AgentConfig {
   sessionId?: string;
 }
 
-type CozeMultimodalItem = { type: 'text'; text: string } | { type: 'image'; file_id: string };
+type CozeMultimodalItem = { type: 'text'; text: string } | { type: 'image' | 'audio'; file_id: string };
 type CozeAgentExtra = { projectId?: string };
 type SecretAgentExtra = { apiSecret?: string };
 type CozeWorkspace = { id: string };
@@ -207,6 +209,9 @@ async function proxyCoze(
   fileUrls?: string[],
   onThinking?: (thinking: string) => void
 ): Promise<ProxyResult> {
+  if (fileUrls?.some(url => /\.ogg$/i.test(url))) {
+    return proxyCozeStream(agent, message, userName, () => {}, history, fileUrls, undefined, onThinking);
+  }
   try {
     const coze = createCozeBot(agent);
 
@@ -649,16 +654,14 @@ async function proxyCozeStream(
 
     // 当前消息（支持多模态）
     if (fileUrls && fileUrls.length > 0) {
-      // 新 API 支持流式多模态，不再回退到非流式
-      const fileIds: string[] = [];
+      const textItems: CozeMultimodalItem[] = [];
+      // The local placeholder is for the transcript only; Coze receives audio itself.
+      if (message && message !== '(语音)') textItems.push({ type: 'text', text: message });
       for (const url of fileUrls) {
+        if (signal?.aborted) return { success: false, aborted: true };
         const fid = await uploadFileToCoze(url, coze);
-        if (fid) fileIds.push(fid);
-      }
-      console.log(`[CozeStream] Uploaded ${fileIds.length}/${fileUrls.length} files, ids:`, fileIds);
-      const textItems: CozeMultimodalItem[] = [{ type: 'text', text: message }];
-      for (const fid of fileIds) {
-        textItems.push({ type: 'image', file_id: fid });
+        if (!fid) throw new Error('附件上传到扣子失败，请稍后重试');
+        textItems.push({ type: /\.ogg$/i.test(url) ? 'audio' : 'image', file_id: fid });
       }
       messages.push({
         role: 'user',
@@ -731,7 +734,11 @@ async function proxyCozeStream(
       // 被取消时，返回已收集到的内容
       return { success: false, aborted: true };
     }
-    console.error('[CozeStream] Error:', getErrorMessage(error, 'Coze 流式请求失败'));
+    if (error instanceof CozeStreamError) {
+      console.error('[CozeStream] upstream failure:', JSON.stringify({ event: error.event, code: error.code, msg: error.msg, logid: error.logid, conversationId: error.conversationId, chatId: error.chatId }));
+    } else if (error instanceof CozeClientError) {
+      console.error('[CozeStream] HTTP failure:', JSON.stringify({ status: error.statusCode, code: error.code, msg: error.msg, logid: error.logid }));
+    } else console.error('[CozeStream] Error:', getErrorMessage(error, 'Coze 流式请求失败'));
     return { success: false, error: getErrorMessage(error, 'Coze 流式请求失败') };
   }
 }

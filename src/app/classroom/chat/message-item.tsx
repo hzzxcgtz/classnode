@@ -27,6 +27,17 @@ export const MessageItem = memo(function MessageItem({
   msg, studentName, agent, apiBase, avatarSvg, onImageClick, onRevise, allowExport, msgIndex, onFollowUp, allowFollowUps, allowStudentStop, isRespondingToThis, aiResponding,
 }: MessageItemProps) {
   const fileSources = msg.fileUrls || (msg.fileUrl ? [msg.fileUrl] : []);
+  const hasImages = fileSources.some(url => /\.(jpg|jpeg|png|gif|svg|webp)$/i.test(url));
+  const hasAudio = fileSources.some(url => /\.ogg$/i.test(url));
+  const userMedia = msg.role === 'user' && (hasImages || hasAudio);
+  const content = fileSources.length ? stripImages(msg.content) : msg.content;
+  const attachmentPlaceholder = msg.role === 'user' && (
+    (hasAudio && ['(语音)', '（语音）'].includes(content.trim()))
+    || (hasImages && fileSources.every(url => /\.(jpg|jpeg|png|gif|svg|webp)$/i.test(url))
+      && ['(附件)', '（附件）'].includes(content.trim()))
+  );
+  const hasMessageText = Boolean(content.trim()) && !attachmentPlaceholder;
+  const userVariant = hasImages ? styles.imageBubble : hasAudio ? styles.audioBubble : styles.textBubble;
   const followUps = msg.followUps ?? [];
   const [toast, setToast] = useState<string | null>(null);
 
@@ -73,15 +84,17 @@ export const MessageItem = memo(function MessageItem({
           <span>{studentName}</span>
         </div>
       )}
-      <div data-msg-content className={`${styles.messageBubble} ${msg.role === 'user' ? styles.userBubble : msg.role === 'system' ? styles.systemBubble : styles.assistantBubble}`}>
+      <div data-msg-content className={`${styles.messageBubble} ${msg.role === 'user' ? `${styles.userBubble} ${userVariant}` : msg.role === 'system' ? styles.systemBubble : styles.assistantBubble}${userMedia ? ` ${styles.mediaBubble}` : ''}`}>
         {fileSources.map((fu: string, fi: number) => (
-          <div key={fi} style={{ marginBottom: 8 }}>
+          <div key={fi} style={{ marginBottom: hasMessageText || fi < fileSources.length - 1 ? 8 : 0 }}>
             {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
               <RotatedImage src={`${apiBase}${fu}`} alt={(msg.fileNames?.[fi]) || msg.fileName || ''}
                 onClick={() => onImageClick?.(`${apiBase}${fu}`)}
-                style={{ maxWidth: 220, maxHeight: 160, borderRadius: 10, objectFit: 'cover', display: 'block', cursor: 'pointer', transition: 'opacity 0.15s' }}
+                style={{ maxWidth: msg.role === 'user' ? '100%' : 220, width: 'auto', maxHeight: msg.role === 'user' ? 220 : 160, borderRadius: 12, objectFit: msg.role === 'user' ? 'contain' : 'cover', display: 'block', cursor: 'pointer', transition: 'opacity 0.15s' }}
                 onMouseEnter={e => { e.currentTarget.style.opacity = '0.8'; }}
                 onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }} />
+            ) : /\.ogg$/i.test(fu) ? (
+              <audio className={styles.audioPlayer} src={`${apiBase}${fu}`} controls preload="none" aria-label="学生语音" />
             ) : (
               <div style={{ padding: '8px 12px', background: msg.role === 'user' ? 'rgba(255,255,255,0.15)' : '#f3f4f6', borderRadius: 8, fontSize: "0.813rem", display: 'flex', alignItems: 'center', gap: 6 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
@@ -90,11 +103,9 @@ export const MessageItem = memo(function MessageItem({
             )}
           </div>
         ))}
-        {msg.role === 'system' ? (
-          <span>{msg.content}</span>
-        ) : (
-          <Markdown>{msg.fileUrls?.length ? stripImages(msg.content) : msg.content}</Markdown>
-        )}
+        {hasMessageText && <div className={userMedia ? styles.mediaCaption : undefined}>
+          {msg.role === 'system' ? <span>{content}</span> : <Markdown>{content}</Markdown>}
+        </div>}
       </div>
       {msg.role === 'assistant' && allowExport !== false && (
         <div className={styles.messageActions}>

@@ -20,6 +20,7 @@ import { SvgAvatar } from '@/components/svg-avatar';
 import { publishImageOrientationUpdated } from '@/components/use-image-rotation';
 import { RotatedImage } from '@/components/rotated-image';
 import { ClassroomImagePreviewContext } from './answer-photo';
+import { AnnotationClassroomContext } from './annotation-storage';
 import { ClassroomImagePreview } from './image-preview';
 import { FullscreenPreview } from './fullscreen-preview';
 import previewStyles from './fullscreen-preview.module.css';
@@ -2516,7 +2517,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
   }));
 
   return (
-    <ClassroomImagePreviewContext.Provider value={openFullscreenImage}>
+    <AnnotationClassroomContext.Provider value={id}><ClassroomImagePreviewContext.Provider value={openFullscreenImage}>
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       {gridFullscreen && <style>{`body { overflow: hidden; }`}</style>}
       <style>{`.preview-scroll::-webkit-scrollbar { width: 4px; } .preview-scroll::-webkit-scrollbar-track { background: transparent; } .preview-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; } .preview-scroll { scrollbar-width: thin; scrollbar-color: #e2e8f0 transparent; } .control-btn:hover { background: #f1f5f9 !important; } @keyframes slideDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -3310,6 +3311,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                             <RotatedImage src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
                               onClick={() => openFullscreenImage(`${getApiBaseUrl()}${fu}`)}
                               style={{ maxWidth: 200, maxHeight: 150, borderRadius: 8, objectFit: 'cover', display: 'block', cursor: 'pointer' }} />
+                          ) : /\.ogg$/i.test(fu) ? (
+                            <audio src={`${getApiBaseUrl()}${fu}`} controls preload="none" aria-label="学生语音" style={{ maxWidth: '100%', width: 260 }} />
                           ) : (
                             <div style={{ padding: '6px 10px', background: '#f3f4f6', borderRadius: 6, fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
@@ -3549,6 +3552,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                               <RotatedImage src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
                                 onClick={() => openFullscreenImage(`${getApiBaseUrl()}${fu}`)}
                                 style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 12, objectFit: 'contain', display: 'block', cursor: 'pointer' }} />
+                            ) : /\.ogg$/i.test(fu) ? (
+                              <audio src={`${getApiBaseUrl()}${fu}`} controls preload="none" aria-label="学生语音" style={{ maxWidth: '100%', width: 300 }} />
                             ) : (
                               <div style={{ padding: '10px 16px', background: m.role === 'user' ? 'rgba(102,126,234,0.08)' : '#f1f5f9', borderRadius: 10, fontSize: "1rem", display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
@@ -4103,7 +4108,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       {fullscreenImg && <ClassroomImagePreview allowAnnotations key={fullscreenImg} src={fullscreenImg} onClose={() => setFullscreenImg(null)} />}
 
     </div>
-    </ClassroomImagePreviewContext.Provider>
+    </ClassroomImagePreviewContext.Provider></AnnotationClassroomContext.Provider>
   );
 }
 

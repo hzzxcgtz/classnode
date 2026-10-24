@@ -7,8 +7,8 @@ import { formatReviewText, formatReviewAdvice } from '@/lib/worksheet-review-dis
 import { FullscreenPreview } from './fullscreen-preview';
 import styles from './fullscreen-preview.module.css';
 
-export function ReviewPreviewButton({ title = 'AI 评价与建议', reason, advice, score, maxScore, unit, note }: {
-  title?: string; reason?: string | null; advice?: string | null; score?: number | null; maxScore?: number; unit?: string; note?: string;
+export function ReviewPreviewButton({ title = 'AI 评价与建议', reason, advice, score, maxScore, unit, note, annotationId }: {
+  title?: string; reason?: string | null; advice?: string | null; score?: number | null; maxScore?: number; unit?: string; note?: string; annotationId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [fontSize, setFontSize] = useState(24);
@@ -19,7 +19,7 @@ export function ReviewPreviewButton({ title = 'AI 评价与建议', reason, advi
     <button type="button" className={styles.expand} aria-label="全屏查看评价" title="全屏查看评价" onClick={() => { setFontSize(24); setOpen(true); }}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" /></svg>
     </button>
-    {open && <FullscreenPreview allowAnnotations title={title} onClose={() => setOpen(false)} controls={<>
+    {open && <FullscreenPreview allowAnnotations textSize={fontSize} annotationKey={JSON.stringify(['review', annotationId, title, reason, advice, score, maxScore, unit, note])} title={title} onClose={() => setOpen(false)} controls={<>
       <div className={styles.fontTools}><span className={styles.toolLabel}>文字大小</span>
       <button type="button" onClick={() => setFontSize(size => Math.max(18, size - 2))} disabled={fontSize <= 18} aria-label="缩小评价文字">A−</button>
       <output aria-label="当前文字大小">{fontSize}<small>px</small></output>
@@ -28,7 +28,7 @@ export function ReviewPreviewButton({ title = 'AI 评价与建议', reason, advi
       <span className={styles.hint}>上下滚动查看全文 <kbd>Esc</kbd> 退出</span>
     </>}>
       <div className={styles.textViewport} role="region" tabIndex={0} aria-label="AI 评价与建议全文">
-        <article className={styles.review} style={{ fontSize }}>
+        <article className={styles.review} style={{ fontSize:'var(--preview-text-size, 24px)' }}>
           {(score !== undefined && score !== null || note) && <div className={styles.reviewMeta}>
             {score !== undefined && score !== null && <div className={styles.rewardSummary}>
               <span className={styles.rewardLabel}>本次获得</span>

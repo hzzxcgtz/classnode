@@ -52,11 +52,8 @@ const MAX_EVENTS_PER_MESSAGE = 50;
 /**
  * 拼接网页地址。
  *
- * 形状由 T1/T3 定死：`http://${location.hostname}:${webappPort}/webapps/${id}/${entryPath}`。
- * 用的是**端口**而不是服务端拼好的 URL —— 学生本来就知道自己是从哪个 IP / 域名进来的，
- * 所以自己拼出来的源永远和他此刻用的入口一致（服务端挑的绑定 IP 不一定就是它）。
- * 协议写 `http://` 不是偷懒：主服务与托管服务都是 `http.createServer`（`server/src/index.ts`
- * 里没有 TLS 分支，`/api/server-info` 自己也是这么拼 `webappOrigin` 的）。
+ * 使用当前页面的协议与服务器下发的独立托管端口。HTTPS课堂使用webappHttpsPort，
+ * HTTP课堂继续使用webappPort，避免混合内容并保持iframe与主站不同源。
  *
  * `entryPath` 按段编码：它是教师上传时的文件名，可能带空格、`#`、中文。
  * `#` 尤其致命 —— 不编码的话浏览器会把它当成片段，请求的是另一个文件。
@@ -64,7 +61,7 @@ const MAX_EVENTS_PER_MESSAGE = 50;
  */
 function buildWebappSrc(webapp: ClassroomWebappSummary, port: number): string {
   const segments = webapp.entryPath.split('/').map((segment) => encodeURIComponent(segment));
-  return `http://${window.location.hostname}:${port}/webapps/${encodeURIComponent(webapp.id)}/${segments.join('/')}`;
+  return `${window.location.protocol}//${window.location.hostname}:${port}/webapps/${encodeURIComponent(webapp.id)}/${segments.join('/')}`;
 }
 
 /**
@@ -131,7 +128,8 @@ function ExplorePanelContent({ active, classroom, session, toast, setToast, wsRe
   // 而画面看起来完全正常（spec §1.2 ① / §4.6）。解析口径统一在 `@/lib/classroom-material`，
   // 高级模式下它**不回落**。
   const webapp: ClassroomWebappSummary | null = effectiveGroupWebapp(classroom, session);
-  const port = typeof classroom?.webappPort === 'number' ? classroom.webappPort : null;
+  const resolvedPort = typeof window !== 'undefined' && window.location.protocol === 'https:' ? classroom?.webappHttpsPort : classroom?.webappPort;
+  const port = typeof resolvedPort === 'number' ? resolvedPort : null;
   const classroomId = classroom?.id ?? null;
   const webappId = webapp?.id ?? null;
   // `classroom` 为空时 `webapp` 必然是 null，所以这里不会在预渲染（无 window）时读 location。

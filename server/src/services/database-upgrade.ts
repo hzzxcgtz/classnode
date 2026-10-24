@@ -75,7 +75,7 @@ function fingerprint(filename: string): string {
 async function preserveIdentities(prisma: PrismaClient): Promise<Map<string, Set<string>>> {
   const tables = new Set((await prisma.$queryRawUnsafe<{ name: string }[]>("SELECT name FROM sqlite_master WHERE type='table'")).map(row => row.name));
   const expected = new Map<string, Set<string>>();
-  for (const table of ['Class', 'ClassGroup', 'Student', 'Classroom', 'ClassroomGroup', 'ClassroomStudent', 'ClassroomGroupMember', 'Message', 'TeacherNotification', 'ShieldWarning', 'Interaction', 'Worksheet', 'WorksheetResponse', 'WorksheetAnswer', 'Webapp', 'WebappUsage', 'Agent', 'Avatar']) {
+  for (const table of ['Class', 'ClassGroup', 'Student', 'Classroom', 'ClassroomGroup', 'ClassroomStudent', 'ClassroomGroupMember', 'Message', 'TeacherNotification', 'ShieldWarning', 'Interaction', 'Worksheet', 'WorksheetResponse', 'WorksheetAnswer', 'ClassroomAnnotation', 'Webapp', 'WebappUsage', 'Agent', 'Avatar']) {
     if (!tables.has(table)) continue;
     // Removing the old virtual group accounts is the explicit exception;
     // their stable ClassroomStudent identities must still remain.

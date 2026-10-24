@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from './api-base';
 import { HttpError } from './http-error';
+import type { AnnotationDocument } from './image-annotation-session';
 import type { ActiveClassroom, AdvancedClassroomGroupInput, AgentInfoResponse, AgentSummary, AgentTestResponse, AvatarBatchResult, AvatarRandomCandidate, AvatarSummary, AvatarUploadResponse, BackupFile, ClassGroup, ClassSummary, ClassroomDetail, ClassroomHistoryItem, ClassroomMessage, ClassroomModuleKey, ClassroomModuleState, ClassroomStudentSummary, ClassroomSummary, ClassroomWarning, ClassroomWarningSummary, ConversationExportReport, DashboardClassroom, InitStatus, ShieldConfig, ShieldWord, ShieldWordCategory, StatsExportReport, StorageStats, StudentBatchCreateResponse, StudentClassroom, StudentSessionResponse, StudentSummary, TeacherNotification, WebappSummary, WebappUploadResult, RelatedClassroom, RelatedWorksheet, WorksheetBoard, WorksheetContent, WorksheetDetail, WorksheetListResponse, WorksheetSettings, WorksheetUsage, WorksheetAnalysisPayload, PlatformTokenSummary } from './types';
 
 let studentSessionToken = '';
@@ -103,6 +104,8 @@ async function formRequest<T>(path: string, method: 'POST' | 'PUT', body: FormDa
 }
 
 export const api = {
+  readAnnotations: (classroomId: string, target: string) => request<{document: AnnotationDocument | null; revision: number}>(`/api/classroom/${encodeURIComponent(classroomId)}/annotations/read`, {method:'POST', body:JSON.stringify({target})}, 15000),
+  saveAnnotations: (classroomId: string, target: string, document: AnnotationDocument, revision: number) => request<{revision: number}>(`/api/classroom/${encodeURIComponent(classroomId)}/annotations`, {method:'PUT', body:JSON.stringify({target,document,revision})}, 15000),
   // Health
   health: () => request<{ status: string }>('/api/health'),
 

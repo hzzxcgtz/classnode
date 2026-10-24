@@ -268,10 +268,11 @@ function PhotoBody({ draft, onChange, disabled, localOnly }: {
       />
       {draft.url ? (
         <div className={styles.photoAnswerPreview}>
-          <button type="button" className={styles.photoAnswerPreviewButton} onClick={() => setPreview(true)} aria-label="放大照片并调整方向">
-            <img src={photoSource} alt="已上传的照片作答" />
-          </button>
-          <button type="button" className={styles.photoAnswerAction} onClick={() => setPreview(true)}>查看大图 / 旋转方向</button>
+          <div className={styles.photoAnswerImage}>
+            <button type="button" className={styles.photoAnswerPreviewButton} onClick={() => setPreview(true)} aria-label="放大照片并调整方向">
+              <img src={photoSource} alt="已上传的照片作答" />
+            </button>
+          </div>
           {preview && <ClassroomImagePreview key={draft.url} src={worksheetAssetUrl(draft.url)} onClose={() => setPreview(false)} />}
           {!disabled && (
             <div className={styles.photoAnswerActions}>

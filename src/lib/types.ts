@@ -1095,6 +1095,7 @@ export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'stu
    * 更老的版本则根本不发这个字段 —— 读的地方必须按「不可用」处理，不能当成 0。
    */
   webappPort?: number;
+  webappHttpsPort?: number;
   /**
    * 本课堂关联的网页，按关联顺序；查询失败（老库缺表）时服务端降级为空数组。
    *

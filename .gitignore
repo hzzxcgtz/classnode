@@ -90,6 +90,10 @@ portal/
 docs/*
 !docs/project-notes/
 !docs/project-notes/**
+!docs/reference/
+docs/reference/*
+!docs/reference/coze/
+!docs/reference/coze/**
 
 # 本地包管理器缓存
 /.pnpm-store/
@@ -100,3 +104,6 @@ classnode-v*.tar.gz
 
 # Local acceptance installers and build manifests
 /release-candidates/
+
+# Local HTTPS signing identity and private keys (never distribute or commit).
+**/lan-https/

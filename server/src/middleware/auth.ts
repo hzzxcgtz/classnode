@@ -14,7 +14,7 @@ function parseCookies(header?: string): Record<string, string> {
   }));
 }
 
-function cookieOptions(maxAgeSeconds?: number): string {
+function cookieOptions(maxAgeSeconds?: number, secure = false): string {
   const parts = [
     `${SESSION_COOKIE}=`,
     'HttpOnly',
@@ -22,7 +22,7 @@ function cookieOptions(maxAgeSeconds?: number): string {
     'Path=/',
   ];
   if (maxAgeSeconds !== undefined) parts.push(`Max-Age=${maxAgeSeconds}`);
-  if (process.env.NODE_ENV === 'production' && process.env.CLASSNODE_HTTPS === 'true') {
+  if (secure || (process.env.NODE_ENV === 'production' && process.env.CLASSNODE_HTTPS === 'true')) {
     parts.push('Secure');
   }
   return parts.join('; ');
@@ -31,13 +31,13 @@ function cookieOptions(maxAgeSeconds?: number): string {
 export function createTeacherSession(res: Response): void {
   const token = crypto.randomBytes(32).toString('base64url');
   sessions.set(token, Date.now() + SESSION_TTL_MS);
-  res.setHeader('Set-Cookie', cookieOptions(Math.floor(SESSION_TTL_MS / 1000)).replace(`${SESSION_COOKIE}=`, `${SESSION_COOKIE}=${token}`));
+  res.setHeader('Set-Cookie', cookieOptions(Math.floor(SESSION_TTL_MS / 1000), res.req?.secure === true).replace(`${SESSION_COOKIE}=`, `${SESSION_COOKIE}=${token}`));
 }
 
 export function destroyTeacherSession(req: Request, res: Response): void {
   const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
   if (token) sessions.delete(token);
-  res.setHeader('Set-Cookie', cookieOptions(0));
+  res.setHeader('Set-Cookie', cookieOptions(0, req.secure));
 }
 
 export function revokeAllTeacherSessions(): void {

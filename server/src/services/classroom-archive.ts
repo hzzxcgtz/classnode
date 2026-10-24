@@ -32,7 +32,8 @@ export async function createClassroomArchive(prisma: PrismaClient, classroomId: 
     if (kind === 'word') {
       await writeWorksheetDocuments(data, content);
     } else {
-      assets.scan({ worksheets: data.worksheets, responses: data.responses, analyses: data.analyses, participants: data.participants });
+      if (data.annotations.length) fs.writeFileSync(path.join(content, '课堂批注.json'), JSON.stringify({format:'classnode-classroom-annotations',version:1,classroomId,annotations:data.annotations},null,2));
+      assets.scan({ annotationImages:data.annotations.map(row=>row.target), worksheets: data.worksheets, responses: data.responses, analyses: data.analyses, participants: data.participants });
       const webappLinks = new Map<string, string | null>();
       const now = new Date();
       let body = buildArchiveBody(data, new ArchiveView(assets), webappLinks, now);
@@ -46,7 +47,7 @@ export async function createClassroomArchive(prisma: PrismaClient, classroomId: 
       body = replaceLast(body, '__ARCHIVE_WARNINGS__', warningHtml);
       fs.writeFileSync(path.join(content, '打开课堂记录.html'), archiveHtml(data.classroom.title || '未命名课堂', body));
       fs.writeFileSync(path.join(content, '课堂完整记录.txt'), '\uFEFF' + archiveText(body));
-      const instructions = `ClassNode 课堂资料包\n\n课堂：${data.classroom.title || '未命名课堂'}\n导出时间：${now.toLocaleString('zh-CN', { hour12: false })}\n\n1. 请先解压整个 ZIP，再双击「打开课堂记录.html」。无需启动 ClassNode，也无需联网。\n2. 网页左侧切换学习模块，中间选择任务或学生／小组；顶部可搜索记录。点击图片可放大，支持「展开当前记录」和「打印当前记录」；在「附件与说明」可打印整堂课。\n3. 「课堂完整记录.txt」可用记事本、Word、WPS 阅读，也可交给其他工具分析。\n4. 「附件」保存引用的原始图片与文件。移动、分享时请保留目录结构。\n5. 探究空间不纳入课堂资料导出；如需迁移教学网页，请使用系统备份。\n6. 普通任务保存当前作答；AI 评价任务还包含已保存的作品与评价历史。未采集、已清除或文件缺失的内容无法还原。\n7. 旧课堂没有完整的材料及个人姓名历史快照，按系统当前保存内容导出；已有评价中的任务快照保留。导出后的资料包不会随系统修改而变化。\n8. 资料包供阅读和分析，不能用于恢复 ClassNode；迁移请使用「备份与恢复」。不包含管理密码、API 密钥或账号凭据。\n\n文件检查：${assets.warnings.length ? `${assets.warnings.length} 项需注意，详见「文件检查说明.txt」和网页末尾。` : '未发现引用的本地附件缺失。'}\n`;
+      const instructions = `ClassNode 课堂资料包\n\n课堂：${data.classroom.title || '未命名课堂'}\n导出时间：${now.toLocaleString('zh-CN', { hour12: false })}\n\n1. 请先解压整个 ZIP，再双击「打开课堂记录.html」。无需启动 ClassNode，也无需联网。\n2. 网页左侧切换学习模块，中间选择任务或学生／小组；顶部可搜索记录。点击图片可放大，支持「展开当前记录」和「打印当前记录」；在「附件与说明」可打印整堂课。\n3. 「课堂完整记录.txt」可用记事本、Word、WPS 阅读，也可交给其他工具分析。\n4. 「附件」保存引用的原始图片与文件。移动、分享时请保留目录结构。\n5. 探究空间不纳入课堂资料导出；如需迁移教学网页，请使用系统备份。\n6. 普通任务保存当前作答；AI 评价任务还包含已保存的作品与评价历史。未采集、已清除或文件缺失的内容无法还原。\n7. 旧课堂没有完整的材料及个人姓名历史快照，按系统当前保存内容导出；已有评价中的任务快照保留。导出后的资料包不会随系统修改而变化。\n8. 如有课堂批注，原始笔迹和文字画面参数保存在「课堂批注.json」；系统备份会连同课堂数据库完整保存和恢复批注。\n9. 资料包供阅读和分析，不能用于恢复 ClassNode；迁移请使用「备份与恢复」。不包含管理密码、API 密钥或账号凭据。\n\n文件检查：${assets.warnings.length ? `${assets.warnings.length} 项需注意，详见「文件检查说明.txt」和网页末尾。` : '未发现引用的本地附件缺失。'}\n`;
       fs.writeFileSync(path.join(content, '使用说明.txt'), '\uFEFF' + instructions);
       fs.writeFileSync(path.join(content, '文件检查说明.txt'), '\uFEFF' + (assets.warnings.join('\n') || '已引用的本地附件已检查，无缺失项。'));
       fs.writeFileSync(path.join(content, '附件清单.txt'), '\uFEFF文件路径\t字节数\tSHA-256\n' + assets.inventory.map(f => `${f.name}\t${f.size}\t${f.sha256}`).join('\n'));

@@ -4,16 +4,17 @@ import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from 
 import { createPortal } from 'react-dom';
 import { annotationHit, annotationPath, imageAnnotationPoint, type AnnotationPoint, type AnnotationStroke } from '@/lib/temporary-annotations';
 import styles from './temporary-annotations.module.css';
+import { readImageAnnotations, writeImageAnnotations } from '@/lib/image-annotation-session';
 
 const COLORS = [{name:'红色',value:'#ef4444'},{name:'蓝色',value:'#2563eb'},{name:'绿色',value:'#16a34a'},{name:'黄色',value:'#eab308'}];
 type Tool = 'pen' | 'highlight' | 'eraser';
 
 export interface AnnotationImageView {
-  zoom: number; offset: AnnotationPoint; angle: number;
+  zoom: number; coordinateScale?: number; offset: AnnotationPoint; angle: number;
   onZoom: (change: number) => void; onPan: (offset: AnnotationPoint) => void; onFit: () => void;
 }
-/** Disposable strokes use viewport coordinates for text and fitted-image coordinates for images. */
-export function TemporaryAnnotations({ toolbarHost, imageView }: { toolbarHost: HTMLElement | null; imageView?: AnnotationImageView }) {
+/** Text strokes are disposable; image strokes can be restored by their image key. */
+export function TemporaryAnnotations({ toolbarHost, imageView, annotationKey, frame, onChange }: { toolbarHost: HTMLElement | null; imageView?: AnnotationImageView; annotationKey?: string; frame?: {width: number; height: number}; onChange?: (strokes: AnnotationStroke[]) => void }) {
   const [panel, setPanel] = useState<'settings' | null>(null);
   const floating = useRef<HTMLElement>(null);
   const [moving, setMoving] = useState(false);
@@ -23,12 +24,18 @@ export function TemporaryAnnotations({ toolbarHost, imageView }: { toolbarHost: 
   const [color, setColor] = useState(COLORS[0].value);
   const [thick, setThick] = useState(false);
   const [visible, setVisible] = useState(true);
-  const [strokes, setStrokes] = useState<AnnotationStroke[]>([]);
+  const [strokes, setStrokes] = useState<AnnotationStroke[]>(() => annotationKey ? readImageAnnotations(annotationKey) : []);
   const [active, setActive] = useState<AnnotationStroke | null>(null);
   const [past, setPast] = useState<AnnotationStroke[][]>([]);
   const current = useRef(strokes); current.current = strokes;
   const gesture = useRef<{ pointer: number; before: AnnotationStroke[]; stroke: AnnotationStroke | null } | null>(null);
-  const nextId = useRef(0);
+  const nextId = useRef(strokes.reduce((max, stroke) => Math.max(max, stroke.id), 0));
+  const change = useRef(onChange); change.current = onChange;
+  useEffect(() => {
+    if (annotationKey) writeImageAnnotations(annotationKey, strokes);
+    change.current?.(strokes);
+  }, [annotationKey, strokes]);
+  const coordinateZoom = imageView ? imageView.zoom * (imageView.coordinateScale ?? 1) : 1;
   const svg = useRef<SVGSVGElement>(null);
   const viewRef = useRef(imageView); viewRef.current = imageView;
   const isImage = !!imageView;
@@ -58,12 +65,12 @@ export function TemporaryAnnotations({ toolbarHost, imageView }: { toolbarHost: 
   const remember = (before: AnnotationStroke[]) => setPast(previous => [...previous.slice(-49), before]);
   const pointOf = (event: PointerEvent<SVGSVGElement>): AnnotationPoint => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-    return imageView ? imageAnnotationPoint(point, {x: rect.width / 2 + imageView.offset.x, y: rect.height / 2 + imageView.offset.y}, imageView.zoom, imageView.angle) : point;
+    const point = { x: (event.clientX - rect.left) * (frame ? frame.width / rect.width : 1), y: (event.clientY - rect.top) * (frame ? frame.height / rect.height : 1) };
+    return imageView ? imageAnnotationPoint(point, {x: rect.width / 2 + imageView.offset.x, y: rect.height / 2 + imageView.offset.y}, coordinateZoom, imageView.angle) : point;
   };
   const erase = (point: AnnotationPoint) => {
     const before = current.current;
-    const hit = [...before].reverse().find(stroke => annotationHit(stroke, point, 10 / (imageView?.zoom ?? 1)));
+    const hit = [...before].reverse().find(stroke => annotationHit(stroke, point, 10 / coordinateZoom));
     if (!hit) return;
     const after = before.filter(stroke => stroke.id !== hit.id);
     current.current = after; setStrokes(after);
@@ -91,7 +98,7 @@ export function TemporaryAnnotations({ toolbarHost, imageView }: { toolbarHost: 
     const before = past[past.length - 1]; current.current = before; setStrokes(before); setPast(past.slice(0,-1));
   };
   return <>
-    <svg ref={svg} className={styles.canvas} aria-label="临时批注画布" role="img" data-tool={moving ? 'move' : tool}
+    <svg ref={svg} viewBox={frame ? `0 0 ${frame.width} ${frame.height}` : undefined} preserveAspectRatio="none" className={styles.canvas} aria-label="临时批注画布" role="img" data-tool={moving ? 'move' : tool}
       onContextMenu={event => event.preventDefault()}
       onPointerDown={event => {
         if (!event.isPrimary || event.button !== 0 || gesture.current) return;
@@ -103,7 +110,7 @@ export function TemporaryAnnotations({ toolbarHost, imageView }: { toolbarHost: 
         setVisible(true);
         const point = pointOf(event);
         const stroke: AnnotationStroke | null = tool === 'eraser' ? null : {
-          id: ++nextId.current, tool, color, width: (tool === 'highlight' ? (thick ? 28 : 16) : (thick ? 6 : 3)) / (imageView?.zoom ?? 1), points: [point],
+          id: ++nextId.current, tool, color, width: (tool === 'highlight' ? (thick ? 28 : 16) : (thick ? 6 : 3)) / coordinateZoom, points: [point],
         };
         gesture.current = { pointer: event.pointerId, before: current.current, stroke };
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -125,7 +132,7 @@ export function TemporaryAnnotations({ toolbarHost, imageView }: { toolbarHost: 
       }}
       onPointerUp={event => finish(event)} onPointerCancel={event => finish(event,true)}
       onLostPointerCapture={event => { if (gesture.current || pan.current) finish(event,true); }}>
-      <g transform={imageView ? `translate(${size.width/2 + imageView.offset.x} ${size.height/2 + imageView.offset.y}) scale(${imageView.zoom}) rotate(${imageView.angle})` : undefined} style={{visibility:visible?'visible':'hidden'}} pointerEvents="none">
+      <g transform={imageView ? `translate(${size.width/2 + imageView.offset.x} ${size.height/2 + imageView.offset.y}) scale(${coordinateZoom}) rotate(${imageView.angle})` : undefined} style={{visibility:visible?'visible':'hidden'}} pointerEvents="none">
         {[...strokes, ...(active ? [active] : [])].map(stroke => <path key={stroke.id} data-annotation-stroke="" d={annotationPath(stroke.points)} fill="none" stroke={stroke.color} strokeWidth={stroke.width} strokeOpacity={stroke.tool==='highlight' ? 0.3 : 1} strokeLinecap="round" strokeLinejoin="round" />)}
       </g>
     </svg>

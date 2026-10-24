@@ -13,6 +13,7 @@ import { useModuleViewport } from '../shell/use-module-viewport';
 import { MessageItem } from './message-item';
 import { StreamingIndicator } from './streaming-indicator';
 import { ThinkingContent } from './thinking-content';
+import { VoiceRecorder, type InputVoiceStatus } from './voice-recorder';
 import styles from './chat.module.css';
 
 const MAX_ATTACHED_FILES = 5;
@@ -85,6 +86,8 @@ export function StudentChatContent({
   // 所以下面不解构。
   const [input, setInput] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [inputVoiceStatus, setInputVoiceStatus] = useState<InputVoiceStatus>({ text: '', cancelling: false });
   const [attachedFiles, setAttachedFiles] = useState<{ url: string; name: string }[]>([]);
   const [fullscreenImg, setFullscreenImg] = useState<string | null>(null);
   const rotation = useImageRotation(active ? fullscreenImg : null);
@@ -238,6 +241,8 @@ export function StudentChatContent({
    * ⚠️ `student-home.tsx`（学伴卡名称）读的是同一个函数：两张卡说同一个名字。
    */
   const getCurrentAgent = () => effectiveGroupAgent(classroom, selectedStudent);
+  const voiceAvailable = !blacklisted && getCurrentAgent()?.platform === 'coze';
+  const voiceVisible = voiceAvailable && voiceMode && !waitingAI;
 
   const renderAgentAvatar = (size: number, borderRadius = 8, fontSize = 13, agent?: ChatAgent) => {
     const theAgent = agent || getCurrentAgent();
@@ -384,7 +389,7 @@ export function StudentChatContent({
   //     只取消定时器，`readOnly` 会**永久停在 true**，输入框再也打不了字。
   //   所以 cleanup 同时取消 rAF、取消定时器，并在确实设过 readOnly 时把它还回去。
   useEffect(() => {
-    if (!active || waitingAI) return;
+    if (!active || waitingAI || (voiceAvailable && voiceMode)) return;
     let frame: number | null = null;
     let readOnlyTimer: number | null = null;
     // 只在真的把 readOnly 设成 true 时才记下元素：cleanup 的还原条件与设置条件因此严格同源，
@@ -417,7 +422,7 @@ export function StudentChatContent({
         if (readOnlyEl) { readOnlyEl.readOnly = false; readOnlyEl = null; }
       }
     };
-  }, [active, waitingAI]);
+  }, [active, waitingAI, voiceAvailable, voiceMode]);
 
   const scrollToBottom = () => {
     const el = chatContainerRef.current;
@@ -448,6 +453,7 @@ export function StudentChatContent({
   };
 
   const handleRevise = (content: string) => {
+    setVoiceMode(false);
     if (waitingAI && classroom?.allowStudentStop === false) return;
     const stoppedCurrentAnswer = waitingAI;
     if (stoppedCurrentAnswer) handleStopGeneration();
@@ -549,25 +555,26 @@ export function StudentChatContent({
     setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const sendMessage = () => {
-    const text = (inputRef.current?.value || '').trim();
-    const files = attachedFiles;
+  const voiceUploadRef = useRef<AbortSignal | null>(null);
+  const submitMessage = (text: string, files: { url: string; name: string }[], preserveDraft = false): boolean => {
     setConnectionError(null);
-    if (!text && files.length === 0) return;
-    if (sendingRef.current || waitingAI || paused || askBlocked || agentDisabled || blacklisted || !selectedStudent) return;
+    if (!text && files.length === 0) return false;
+    if (!active || sendingRef.current || waitingAI || paused || askBlocked || agentDisabled || blacklisted || !selectedStudent) return false;
     if (!wsRef.current || !connected) {
       setToast({ msg: '连接暂不可用，请稍后重试', type: 'error' });
-      return;
+      return false;
     }
     sendingRef.current = true;
     setWaitingAI(true);
-    setInput('');
-    if (inputRef.current) {
-      inputRef.current.value = '';
-      inputRef.current.style.height = 'auto';
+    if (!preserveDraft) {
+      setInput('');
+      if (inputRef.current) {
+        inputRef.current.value = '';
+        inputRef.current.style.height = 'auto';
+      }
+      setAttachedFiles([]);
     }
     setShieldWarning(null);
-    setAttachedFiles([]);
     const userMsgContent = text || '(附件)';
     setMessages(prev => [...prev, {
       role: 'user', content: userMsgContent,
@@ -581,11 +588,40 @@ export function StudentChatContent({
       fileUrls: files.map(f => f.url),
       fileNames: files.map(f => f.name),
     });
+    return true;
+  };
+
+  const voiceContext = `${code}:${selectedStudent?.id}:${getCurrentAgent()?.id}`;
+  const voiceSubmitRef = useRef({ context: voiceContext, submit: submitMessage });
+  voiceSubmitRef.current = { context: voiceContext, submit: submitMessage };
+
+  const sendVoice = async (file: File, signal: AbortSignal) => {
+    if (voiceUploadRef.current || sendingRef.current || waitingAI || !connected) throw new Error('连接忙碌，请稍后重试。');
+    voiceUploadRef.current = signal;
+    const context = voiceContext;
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const response = await fetch(`${SOCKET_URL}/api/upload`, {
+        method: 'POST', body: form, headers: getStudentSessionAuthorization(), credentials: 'include', signal,
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '语音上传失败，请重试。');
+      if (signal.aborted || voiceSubmitRef.current.context !== context) throw new Error('会话已切换，请重新发送。');
+      if (!voiceSubmitRef.current.submit('(语音)', [{ url: result.url, name: file.name }], true)) throw new Error('当前无法发送，请稍后重试。');
+    } finally {
+      if (voiceUploadRef.current === signal) voiceUploadRef.current = null;
+    }
+  };
+
+  const sendMessage = () => {
+    if (voiceUploadRef.current || inputVoiceStatus.text) return;
+    submitMessage((inputRef.current?.value || '').trim(), attachedFiles);
   };
 
   /** 点击追问建议时自动发送该问题 */
   const handleFollowUp = (question: string) => {
-    if (sendingRef.current || waitingAI || paused || askBlocked || agentDisabled || blacklisted || !wsRef.current || !connected || !selectedStudent) return;
+    if (voiceUploadRef.current || sendingRef.current || waitingAI || paused || askBlocked || agentDisabled || blacklisted || !wsRef.current || !connected || !selectedStudent) return;
     sendingRef.current = true;
     setWaitingAI(true);
     setConnectionError(null);
@@ -904,7 +940,7 @@ export function StudentChatContent({
 
           {!blacklisted && (<>
           {/* 附件按钮 */}
-          <button onClick={() => fileInputRef.current?.click()} disabled={waitingAI || uploading || paused || askBlocked || agentDisabled}
+          <button onClick={() => fileInputRef.current?.click()} disabled={waitingAI || uploading || paused || askBlocked || agentDisabled || !!inputVoiceStatus.text}
             title="上传图片或文件"
             className={styles.attachmentButton}>
             {uploading ? (
@@ -916,9 +952,10 @@ export function StudentChatContent({
             )}
           </button>
           </>)}
+          {voiceAvailable && <VoiceRecorder key={voiceContext} mode={voiceVisible} onModeChange={voice => { inputRef.current?.blur(); setVoiceMode(voice); }} onSend={sendVoice} inputRef={inputRef} onInputStatus={setInputVoiceStatus} enabled={active && connected && !waitingAI && !uploading && !paused && !askBlocked && !agentDisabled} />}
           {/* 输入框 + 发送按钮（整合在一行） */}
-          <div className={styles.composerBox}>
-            <textarea ref={inputRef} value={input} onInput={e => {
+          <div className={styles.composerBox} style={voiceVisible ? { display: 'none' } : undefined}>
+            <textarea ref={inputRef} value={input} readOnly={!!inputVoiceStatus.text} onInput={e => {
               const el = e.target as HTMLTextAreaElement;
               setInput(el.value);
               el.style.height = 'auto';
@@ -929,9 +966,9 @@ export function StudentChatContent({
                 e.preventDefault();
                 sendMessage();
               }
-            }} placeholder={blacklisted ? '暂时无法输入' : paused ? '课堂已暂停' : askBlocked ? '老师暂时关闭了提问' : agentDisabled ? '智能体已停用' : '输入问题…'} disabled={waitingAI || paused || askBlocked || agentDisabled || blacklisted} autoComplete="off"
+            }} placeholder={inputVoiceStatus.text || (blacklisted ? '暂时无法输入' : paused ? '课堂已暂停' : askBlocked ? '老师暂时关闭了提问' : agentDisabled ? '智能体已停用' : voiceAvailable ? '输入问题，或长按空白输入框说话…' : '输入问题…')} disabled={waitingAI || paused || askBlocked || agentDisabled || blacklisted} autoComplete="off"
               rows={1}
-              className={styles.composerTextarea} />
+              className={`${styles.composerTextarea} ${voiceAvailable && !input ? styles.holdableTextarea : ''} ${inputVoiceStatus.text ? styles.recordingTextarea : ''} ${inputVoiceStatus.cancelling ? styles.cancellingTextarea : ''}`} />
             {waitingAI && classroom?.allowStudentStop !== false ? (
               <button type="button" onClick={handleStopGeneration}
                 className={`${styles.composerAction} ${styles.stopAction}`}

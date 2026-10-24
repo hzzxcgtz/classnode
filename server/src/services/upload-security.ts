@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 export { sanitizeSvg } from './svg-sanitizer.js';
 
-export type SafeFileKind = 'png' | 'jpg' | 'webp' | 'pdf' | 'doc' | 'docx' | 'txt';
+export type SafeFileKind = 'png' | 'jpg' | 'webp' | 'pdf' | 'doc' | 'docx' | 'txt' | 'ogg';
 
 function startsWith(buffer: Buffer, bytes: number[]): boolean {
   return bytes.every((byte, index) => buffer[index] === byte);
@@ -13,6 +13,8 @@ export function detectSafeChatFile(buffer: Buffer, originalName: string): SafeFi
   if (startsWith(buffer, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'png';
   if (startsWith(buffer, [0xff, 0xd8, 0xff])) return 'jpg';
   if (buffer.length >= 12 && buffer.subarray(0, 4).toString() === 'RIFF' && buffer.subarray(8, 12).toString() === 'WEBP') return 'webp';
+  // Ogg alone is insufficient: require a mono/stereo Opus identification packet.
+  if (buffer.length >= 47 && buffer.toString('ascii', 0, 4) === 'OggS' && buffer[4] === 0 && (buffer[5] & 2) && buffer[26] === 1 && buffer[27] >= 19 && buffer.toString('ascii', 28, 36) === 'OpusHead' && buffer[36] === 1 && [1, 2].includes(buffer[37]) && buffer[46] === 0) return 'ogg';
   if (buffer.subarray(0, 5).toString() === '%PDF-') return 'pdf';
   if (startsWith(buffer, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]) && ext === '.doc') return 'doc';
   if (startsWith(buffer, [0x50, 0x4b, 0x03, 0x04]) && ext === '.docx') return 'docx';

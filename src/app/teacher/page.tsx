@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { platformColors } from "@/lib/constants";
 import { getApiBaseUrl, getClassroomPort } from "@/lib/api-base";
 import { QRCodeSVG } from "qrcode.react";
+import { IconMicrophone } from "@tabler/icons-react";
 import QRCode from "qrcode";
 import { Toast, TeacherPageHeader, TeacherLoadingState } from "@/lib/components";
 import type { ActiveClassroom, AgentSummary, WebappSummary } from "@/lib/types";
@@ -371,6 +372,7 @@ export default function TeacherDashboard() {
           <span className={`network-status-dot ${lanAccess ? 'is-open' : ''}`} />
           {networkSaving ? '切换中…' : lanAccess ? '局域网访问已开放' : '局域网访问已关闭'}
         </button>
+        <button type="button" className="btn btn-ghost" onClick={() => router.push('/teacher/network/')}><IconMicrophone size={19} stroke={1.8} aria-hidden="true" />iPad 录音设置</button>
         <button className="btn btn-primary" onClick={() => router.push('/teacher/classroom/new')}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           创建新课堂

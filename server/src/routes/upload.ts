@@ -24,7 +24,7 @@ fs.mkdirSync(chatDir, { recursive: true });
 fs.mkdirSync(avatarDir, { recursive: true });
 
 const UPLOAD_ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
-const CHAT_UPLOAD_NAME = /^chat-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|webp|pdf|doc|docx|txt)$/i;
+const CHAT_UPLOAD_NAME = /^chat-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|webp|pdf|doc|docx|txt|ogg)$/i;
 const AVATAR_UPLOAD_NAME = /^avatar-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|webp)$/i;
 
 const storage = multer.diskStorage({
@@ -153,16 +153,17 @@ async function removeExpiredUnreferencedFiles(directory: string, referenced: Set
 
 /** 清理未被课堂消息、学习单或头像记录引用，且已超过宽限期的上传文件。 */
 export async function cleanupOrphanedUploads(
-  prisma: Pick<import('@prisma/client').PrismaClient, 'message' | 'avatar' | 'worksheet' | 'worksheetAnswer' | 'worksheetAnswerReview'>,
+  prisma: Pick<import('@prisma/client').PrismaClient, 'message' | 'avatar' | 'worksheet' | 'worksheetAnswer' | 'worksheetAnswerReview' | 'classroomAnnotation'>,
   options: { now?: number; chatDirectory?: string; avatarDirectory?: string } = {},
 ): Promise<{ chat: number; avatars: number }> {
   const now = options.now ?? Date.now();
-  const [messages, avatars, worksheets, worksheetAnswers, reviews] = await Promise.all([
+  const [messages, avatars, worksheets, worksheetAnswers, reviews, annotations] = await Promise.all([
     prisma.message.findMany({ select: { fileUrls: true } }),
     prisma.avatar.findMany({ select: { svgContent: true } }),
     prisma.worksheet.findMany({ select: { content: true, settings: true } }),
     prisma.worksheetAnswer.findMany({ select: { value: true } }),
     prisma.worksheetAnswerReview.findMany({ select: { value: true, question: true } }),
+    prisma.classroomAnnotation.findMany({ select: { target: true, document: true } }),
   ]);
   const chatReferences = collectReferencedChatFiles(messages.map(message => message.fileUrls));
   collectWorksheetImageFiles(worksheets.map(worksheet => worksheet.content)).forEach(name => chatReferences.add(name));
@@ -171,6 +172,10 @@ export async function cleanupOrphanedUploads(
   collectWorksheetImageFiles(worksheetAnswers.map(answer => answer.value)).forEach(name => chatReferences.add(name));
   // Older drafts and their frozen question/rubric images remain valid history assets.
   collectWorksheetImageFiles(reviews.flatMap(review => [review.value, review.question])).forEach(name => chatReferences.add(name));
+  collectWorksheetImageFiles(annotations.filter(row => {
+    const document = row.document as {kind?: string; strokes?: unknown[]} | null;
+    return document?.kind === 'image' && !!document.strokes?.length;
+  }).map(row => row.target)).forEach(name => chatReferences.add(name));
   const chat = await removeExpiredUnreferencedFiles(
     options.chatDirectory ?? chatDir,
     chatReferences,
@@ -303,7 +308,7 @@ router.post('/', requireActiveStudentUpload, upload.single('file'), (req, res) =
     const kind = detectSafeChatFile(content, req.file.originalname);
     if (!kind) {
       fs.rmSync(req.file.path, { force: true });
-      return res.status(400).json({ error: '文件内容与允许的图片、PDF、Word 或文本格式不符' });
+      return res.status(400).json({ error: '文件内容与允许的图片、PDF、Word、文本或 Ogg/Opus 语音格式不符' });
     }
     const safeName = `chat-${crypto.randomUUID()}.${kind}`;
     const target = path.join(path.dirname(req.file.path), safeName);

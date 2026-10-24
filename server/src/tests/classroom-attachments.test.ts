@@ -42,7 +42,7 @@ test('legacy and classroom files resolve safely, export to Word/archive, and cle
     fs.writeFileSync(path.join(scopedDir, orphan), image);fs.writeFileSync(path.join(scopedDir, recent), image);
     const old = new Date(Date.now()-25*3600_000);
     for (const file of [path.join(uploads,'chat',name),path.join(scopedDir,name),path.join(scopedDir,orphan)]) fs.utimesSync(file,old,old);
-    const prisma = { message:{findMany:async()=>[{fileUrls:JSON.stringify([oldUrl])}]}, avatar:{findMany:async()=>[]},worksheet:{findMany:async()=>[]},worksheetAnswer:{findMany:async()=>[]},worksheetAnswerReview:{findMany:async()=>[{value:{url:newUrl},question:{}}]} };
+    const prisma = { classroomAnnotation:{findMany:async()=>[]}, message:{findMany:async()=>[{fileUrls:JSON.stringify([oldUrl])}]}, avatar:{findMany:async()=>[]},worksheet:{findMany:async()=>[]},worksheetAnswer:{findMany:async()=>[]},worksheetAnswerReview:{findMany:async()=>[{value:{url:newUrl},question:{}}]} };
     const result = await cleanupOrphanedUploads(prisma as never,{chatDirectory:path.join(uploads,'chat'),avatarDirectory:path.join(uploads,'avatars')});
     assert.equal(result.chat,1);assert.ok(fs.existsSync(path.join(scopedDir,name)));assert.ok(fs.existsSync(path.join(scopedDir,recent)));assert.equal(fs.existsSync(path.join(scopedDir,orphan)),false);
     if (process.platform !== 'win32') {

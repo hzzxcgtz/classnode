@@ -7,6 +7,9 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import os from 'os';
+import { LanHttps } from './services/lan-https.js';
+import { certificateDirectory } from './services/lan-certificates.js';
+import { lanHttpsAdminRoutes, lanHttpsSetupRoutes } from './routes/lan-https.js';
 
 // 文件日志必须在最前面导入，确保任何后续模块加载失败都能被记录
 import './services/file-logger.js';
@@ -71,7 +74,7 @@ async function main() {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
     next();
   });
   app.use(express.json({ limit: '10mb' }));
@@ -146,9 +149,10 @@ async function main() {
   );
 
   // 生产版由后端同源提供打包后的前端。开发环境由 Next.js dev server
-  // 单独提供，禁止回退到 server/frontend 中可能过期的静态构建。
-  if (process.env.NODE_ENV !== 'development') {
-    const frontendDir = path.join(__dirname, '../frontend');
+  // 单独提供；新增 HTTPS 入口仅使用显式构建的 out/，HTTP 开发入口不回退到旧静态构建。
+  {
+    const development = process.env.NODE_ENV === 'development';
+    const frontendDir = development ? path.resolve(__dirname, '../../out') : path.join(__dirname, '../frontend');
     const frontendStaticOptions = {
       setHeaders(res: ServerResponse, filePath: string) {
         // Next 的带哈希资源可以长期缓存；HTML 必须每次重新验证，否则
@@ -160,14 +164,26 @@ async function main() {
         }
       },
     };
-    app.use(express.static(frontendDir, frontendStaticOptions));
+    const staticFrontend = express.static(frontendDir, frontendStaticOptions);
+    app.use((req, res, next) => {
+      if (development && !(req.socket as { encrypted?: boolean }).encrypted) return next();
+      staticFrontend(req, res, next);
+    });
     // 防御：如果构建时 out/ 被嵌套复制，也作为静态文件源
     const nestedFrontendDir = path.join(frontendDir, 'out');
     if (fs.existsSync(nestedFrontendDir)) {
-      app.use(express.static(nestedFrontendDir, frontendStaticOptions));
+      const nestedStatic = express.static(nestedFrontendDir, frontendStaticOptions);
+      app.use((req, res, next) => {
+        if (development && !(req.socket as { encrypted?: boolean }).encrypted) return next();
+        nestedStatic(req, res, next);
+      });
       console.log(`[server] Also serving frontend from nested: ${nestedFrontendDir}`);
     }
   }
+
+  // Public bootstrap only exposes the CA certificate, never its private key.
+  app.use('/network-setup', lanHttpsSetupRoutes());
+  app.use('/api/lan-https', requireTeacher, lanHttpsAdminRoutes());
 
   // Routes
   app.use('/api/agents', requireTeacher, agentRoutes);
@@ -233,15 +249,23 @@ async function main() {
     }
     const defaultFrontendPort = process.env.NODE_ENV === 'development' ? '4000' : String(port);
     const fePort = parseInt(process.env.FRONTEND_PORT || defaultFrontendPort, 10);
-    const studentUrl = `http://${selectedIp}:${fePort}/classroom`;
+    const lanHttps = app.get('lanHttps') as LanHttps | undefined;
+    try { await lanHttps?.refresh(); } catch { /* Status page reports renewal errors. */ }
+    const secure = lanHttps?.status();
+    const studentUrl = secure?.running ? `https://${selectedIp}:${secure.port}/classroom/` : `http://${selectedIp}:${fePort}/classroom`;
+    const isHttps = (req.socket as { encrypted?: boolean }).encrypted;
+    const webappProtocol = isHttps && secure?.running ? 'https' : 'http';
+    const previewPort = webappProtocol === 'https' ? secure!.webappPort : webappPort;
     res.json({
       port,
       localIPs: interfaces.map(i => i.ip),
       interfaces,
       selectedIp,
       studentUrl,
+      httpsSetupUrl: `http://${selectedIp}:${port}/network-setup/`,
+      https: secure,
       // 探究空间托管服务的源。端口来自 main() 里那一个 webappPort 变量，不在这里重算。
-      webappOrigin: `http://${selectedIp}:${webappPort}`,
+      webappOrigin: `${webappProtocol}://${selectedIp}:${previewPort}`,
       urls: interfaces.map(i => `http://${i.ip}:${port}`),
       classroomUrl: interfaces.map(i => `http://${i.ip}:${fePort}`),
     });
@@ -273,9 +297,27 @@ async function main() {
     webappsRoot: webappsRoot(),
   });
 
+  const dataRoot = process.env.CLASSNODE_DATA_DIR || path.resolve(__dirname, '..');
+  const lanHttps = new LanHttps({
+    directory: certificateDirectory(dataRoot), main: httpServer, webapp: webappServer,
+    httpPort: port, webappHttpPort: webappPort,
+    httpsPort: Number(process.env.CLASSNODE_HTTPS_PORT || port + 2),
+    webappHttpsPort: Number(process.env.CLASSNODE_WEBAPP_HTTPS_PORT || port + 3),
+    addresses: () => getLocalIPAddresses().map(item => item.ip),
+    onChange: () => {
+      const status = lanHttps.status();
+      app.set('webappHttpsPort', status.running ? status.webappPort : undefined);
+      originPolicy.webappHttpsPort = status.running ? status.webappPort : undefined;
+      io.emit('nic-changed');
+    },
+  });
+  app.set('lanHttps', lanHttps);
+  await lanHttps.initialize();
+
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     console.log(`[server] Received ${signal}, shutting down gracefully...`);
+    lanHttps.stop();
     httpServer.close();
     // 与 httpServer.close() 对称：两个监听同进程（Ruling 1），退出路径上把第二个监听
     // 也显式停掉，不再接收新连接。

@@ -4,6 +4,7 @@ import { maintenanceBusy, trackDataTask } from '../services/data-maintenance.js'
 import { Server, Socket } from 'socket.io';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { proxyAIRequestStream } from '../services/ai-proxy.js';
+import { studentAIErrorMessage } from '../services/student-ai-error.js';
 import type { AgentConfig } from '../services/ai-proxy.js';
 import { anonymizer } from '../services/anonymizer.js';
 import { buildShieldFilter } from '../services/shield-filter.js';
@@ -191,7 +192,7 @@ interface SendMessageData {
 
 const MAX_STUDENT_MESSAGE_LENGTH = 10_000;
 const MAX_CHAT_ATTACHMENTS = 5;
-const CHAT_UPLOAD_URL = /^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\/chat-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|webp|pdf|doc|docx|txt)$/i;
+const CHAT_UPLOAD_URL = /^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\/chat-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|webp|pdf|doc|docx|txt|ogg)$/i;
 
 /**
  * Socket 事件不具备 HTTP 路由的参数校验，必须在进入 AI 代理前收紧边界。
@@ -1915,6 +1916,11 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           return;
         }
 
+        if (data.fileUrls?.some(url => /\.ogg$/i.test(url)) && agent.platform !== 'coze') {
+          socket.emit('ai-error', { error: '语音消息目前仅支持扣子低代码智能体' });
+          return;
+        }
+
         // 智能体被停用时不调用 AI，给出温馨提示
         if (agent.enabled === false) {
           // 保存用户消息（保留对话记录）
@@ -2176,7 +2182,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
             });
           }
           io.to(socket.id).emit('ai-error', {
-            error: result.error || 'AI 响应失败',
+            error: studentAIErrorMessage(result.error, data.fileUrls),
           });
           io.to(`teacher:${classroom.id}`).emit('student-thinking', {
             studentId: data.studentId,

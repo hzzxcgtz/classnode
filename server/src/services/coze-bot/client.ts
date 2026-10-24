@@ -23,7 +23,7 @@ export class CozeClientError extends Error {
     public msg: string,
     public logid?: string
   ) {
-    super(`Coze API Error: code=${code} msg=${msg}`);
+    super(`Coze API Error: code=${code} msg=${msg}${logid ? ` [logid=${logid}]` : ''}`);
     this.name = 'CozeClientError';
   }
 }
@@ -205,10 +205,13 @@ export class CozeHttpClient {
 
     if (!response.ok) {
       const errText = await response.text();
+      let detail: CozeRawResponse = {};
+      try { detail = JSON.parse(errText) as CozeRawResponse; } catch { /* Non-JSON gateway response. */ }
       throw new CozeClientError(
         response.status,
-        response.status,
-        `HTTP ${response.status}: ${errText.slice(0, 500)}`
+        typeof detail?.code === 'number' ? detail.code : response.status,
+        typeof detail?.msg === 'string' ? detail.msg : `HTTP ${response.status}: ${errText.slice(0, 500)}`,
+        response.headers.get('x-tt-logid') || response.headers.get('x-coze-logid') || detail?.detail?.logid
       );
     }
 

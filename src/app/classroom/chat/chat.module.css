@@ -52,7 +52,17 @@
 
 .messageBubble { max-width: min(78%, 720px); min-width: min(300px, 62vw); padding: 15px 19px; position: relative; word-break: break-word; font-size: 1rem; line-height: 1.78; }
 .assistantBubble { border: 1px solid rgba(221, 225, 244, .92); border-radius: 8px 22px 22px 22px; color: #20283a; background: rgba(255, 255, 255, .94); box-shadow: 0 10px 30px rgba(72, 82, 118, .07), 0 2px 8px rgba(72, 82, 118, .04); }
-.userBubble { border-radius: 22px 22px 8px 22px; color: #fff; background: linear-gradient(135deg, #6667df 0%, #5655c8 55%, #6747b7 100%); box-shadow: 0 12px 28px rgba(81, 75, 190, .2); }
+.userBubble { --bubble-surface: #d4e2f3; --bubble-border: #bbcee6; border: 1px solid var(--bubble-border); border-radius: 22px 22px 8px 22px; color: #33465c; background: var(--bubble-surface); box-shadow: 0 4px 14px rgba(62, 81, 108, .045); }
+.textBubble { --bubble-surface: #d4e2f3; --bubble-border: #bbcee6; }
+.audioBubble { --bubble-surface: #d4e5dc; --bubble-border: #b9d2c4; }
+.imageBubble { --bubble-surface: #e9ddce; --bubble-border: #d7c6b1; }
+.messageBubble.mediaBubble { min-width: 0; padding: 10px; }
+.imageBubble { width: fit-content; }
+.mediaCaption { padding: 2px 5px 3px; }
+.audioPlayer { display: block; width: 280px; max-width: 100%; height: 48px; border-radius: 14px; color-scheme: light; }
+.audioBubble .audioPlayer { background: var(--bubble-surface); }
+.audioBubble .audioPlayer::-webkit-media-controls-enclosure,
+.audioBubble .audioPlayer::-webkit-media-controls-panel { background: var(--bubble-surface); }
 .systemBubble { min-width: 0; padding: 10px 16px; border: 1px solid #e2e8f0; border-radius: 14px; color: #64748b; background: rgba(255, 255, 255, .82); }
 .streamingBubble { min-width: 180px; }
 
@@ -134,3 +144,9 @@
   .chatScroller { scroll-behavior: auto; }
   .attachmentButton, .composerAction, .followUpButton, .starterPrompts button, .scrollToBottom { transition: none; }
 }
+
+.holdableTextarea { touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.recordingTextarea { background: #e0eee9; }
+.recordingTextarea::placeholder { color: #22543f; opacity: 1; }
+.cancellingTextarea { background: #fae5e5; box-shadow: inset 0 0 0 1px #d89191; }
+.cancellingTextarea::placeholder { color: #923b3b; opacity: 1; }

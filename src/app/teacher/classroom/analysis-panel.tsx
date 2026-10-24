@@ -364,7 +364,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
       })()}
 
       {!loading && payload?.perStudent && (payload.perStudent.scores.length > 0 || !!payload.pendingReviewIds?.length) && (
-        <details className={styles.scoreCard} aria-label="全班 AI 评分明细" open={payload.studentAiReviewEnabled || undefined} key={`${classroomId}:${worksheetId}:${questionId}`}>
+        <details className={styles.scoreCard} aria-label="全班 AI 评分明细" key={`${classroomId}:${worksheetId}:${questionId}`}>
           <summary className={styles.scoreHeader}>
             <div className={styles.scoreHeaderTitle}>
               <svg className={styles.scoreTableIcon} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -418,7 +418,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                       onClick={() => onOpenStudent(item.studentId)} title="查看这位学生的本题作答" aria-label={`查看${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位学生'}的本题作答`}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9M15 3h6v6m0-6L10 14M7 8h3M7 17h7" /></svg>
                     </button>}
-                    <ReviewPreviewButton title={`${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '学生'} · AI 评价与建议`}
+                    <ReviewPreviewButton annotationId={`${classroomId}:${worksheetId}:${questionId}:${item.studentId}`} title={`${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '学生'} · AI 评价与建议`}
                       reason={item.reason} advice={item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice}
                       score={item.score} maxScore={payload.perStudent!.maxScore} unit={payload.perStudent!.unit} />
                     </div>

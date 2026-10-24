@@ -5,6 +5,7 @@ import { isLoopbackAddress } from './auth.js';
 
 export interface OriginPolicy {
   webappPort: number;
+  webappHttpsPort?: number;
   /** Only set when a separate development frontend is running. */
   frontendPort?: number;
   https?: boolean;
@@ -16,7 +17,7 @@ const NATIVE_ORIGINS = new Set(['tauri://localhost', 'http://tauri.localhost', '
 function targetOrigin(req: OriginRequest, policy: OriginPolicy): URL | null {
   try {
     if (!req.headers.host || /[\s/@\\]/.test(req.headers.host)) return null;
-    return new URL(`${policy.https ? 'https' : 'http'}://${req.headers.host}`);
+    return new URL(`${policy.https || (req.socket as { encrypted?: boolean }).encrypted ? 'https' : 'http'}://${req.headers.host}`);
   } catch { return null; }
 }
 
@@ -29,7 +30,7 @@ function trustedOrigin(origin: string, req: OriginRequest, policy: OriginPolicy)
     const source = new URL(origin);
     if (source.origin !== origin || !['http:', 'https:'].includes(source.protocol)) return false;
     const sourcePort = Number(source.port || (source.protocol === 'https:' ? 443 : 80));
-    if (sourcePort === policy.webappPort) return false;
+    if (sourcePort === policy.webappPort || sourcePort === policy.webappHttpsPort) return false;
     if (source.origin === target.origin) return true;
     return policy.frontendPort !== undefined
       && source.hostname === target.hostname

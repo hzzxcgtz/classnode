@@ -1,5 +1,6 @@
 import { beginMaterialEdit, endMaterialEdit, hasClassroomRequests } from '../services/classroom-material-edit.js';
 import { Router, type RequestHandler } from 'express';
+import annotationRoutes from './classroom-annotations.js';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { createStudentToken, getStudentSession } from '../middleware/student-auth.js';
 import { hasTeacherSession, requireTeacher } from '../middleware/auth.js';
@@ -20,6 +21,7 @@ import { flattenAnswerable } from '../services/worksheet-heading.js';
 import type { WorksheetContent } from '../services/worksheet-questions.js';
 
 const router: Router = Router();
+router.use('/:id/annotations', annotationRoutes);
 
 /** Shared by the production mount and route integration tests. */
 export const classroomAccessGate: RequestHandler = (req, res, next) => {
@@ -1127,6 +1129,7 @@ router.get('/code/:code', async (req, res) => {
       // IP 进来的，所以永远正确、无缓存、不会陈旧。托管源必须与父页面**跨源**，
       // sandbox 的 allow-same-origin 才是安全的。端口在 index.ts 里只算一次，这里只读。
       webappPort: req.app.get('webappPort') as number | undefined,
+      webappHttpsPort: req.app.get('webappHttpsPort') as number | undefined,
       webapps,
       // 课堂级学习单（数组，与 `webapps` 同形）。学生端按 `mode` 二选一取用：
       // 高级 ⇒ `groups[].worksheet`（自己组那份）；标准/分组 ⇒ 本数组的第 0 个。

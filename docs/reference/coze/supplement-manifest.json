@@ -1,0 +1,72 @@
+{
+  "date": "2026-10-23",
+  "scope": "Official llms.txt section: 扣子编程",
+  "index_url": "https://docs.coze.cn/llms.txt",
+  "pages": [
+    {
+      "id": 89,
+      "title": "开发工具/SDK 参考/Web SDK（AI 编程）",
+      "url": "https://docs.coze.cn/developer_guides_vibe_coding_websdk.md",
+      "file": "developer_guides_vibe_coding_websdk.md",
+      "fetch_status": "ok",
+      "characters": 13563,
+      "content_type": "text/markdown; charset=utf-8",
+      "reading_status": "read",
+      "reading_date": "2026-10-23",
+      "sha256": "226f3668acea4c22c4950c107f3bcfa5aeb17016d1e78480886c92dfbfa5469d",
+      "note": "AI编程Web SDK支持JS/React/Iframe，使用PAT/OAuth/SAT而非部署API Token；推荐后端签发短期令牌并refreshToken续期。"
+    },
+    {
+      "id": 90,
+      "title": "计费项/AI 编程计费项/扣子编程任务费用",
+      "url": "https://docs.coze.cn/coze_pro_task_fee.md",
+      "file": "coze_pro_task_fee.md",
+      "fetch_status": "ok",
+      "characters": 2451,
+      "content_type": "text/markdown; charset=utf-8",
+      "reading_status": "read",
+      "reading_date": "2026-10-23",
+      "sha256": "7208c31a833b738e3fe2626e814e2f351fd7f4913d76045c951400011bf011d2",
+      "note": "编程任务按每轮执行资源扣积分；任务后存储查看部署不收该项任务费，不代表免托管/集成费。"
+    },
+    {
+      "id": 91,
+      "title": "计费项/AI 编程计费项/内置集成费用",
+      "url": "https://docs.coze.cn/coze_pro_internal_integrations_fee.md",
+      "file": "coze_pro_internal_integrations_fee.md",
+      "fetch_status": "ok",
+      "characters": 5329,
+      "content_type": "text/markdown; charset=utf-8",
+      "reading_status": "read",
+      "reading_date": "2026-10-23",
+      "sha256": "a7ce85741f5853de4b9c1ec98b8d55b639dbd86c7f04476e4daf7fa6f14389f6",
+      "note": "运行时模型按输入/输出/缓存分项；图片按张、语音按字符/时长、工具按次或时长；分享消费由项目开发者承担。"
+    },
+    {
+      "id": 92,
+      "title": "计费项/AI 编程计费项/部署服务托管费用",
+      "url": "https://docs.coze.cn/coze_pro_service_hosting_fee.md",
+      "file": "coze_pro_service_hosting_fee.md",
+      "fetch_status": "ok",
+      "characters": 1425,
+      "content_type": "text/markdown; charset=utf-8",
+      "reading_status": "read",
+      "reading_date": "2026-10-23",
+      "sha256": "66aa83a3d589d717e5c195c1a3094c3e4032f7ebf2b8bc028dfcff98d6999276",
+      "note": "服务托管按访问时算力CU秒加GiB出流量，专题写每日结算；技能发布不收托管费。"
+    },
+    {
+      "id": 93,
+      "title": "计费项/罗盘计费项/Trace 日志费用",
+      "url": "https://docs.coze.cn/coze_pro_trace_fee.md",
+      "file": "coze_pro_trace_fee.md",
+      "fetch_status": "ok",
+      "characters": 1794,
+      "content_type": "text/markdown; charset=utf-8",
+      "reading_status": "read",
+      "reading_date": "2026-10-23",
+      "sha256": "0f47f4c002003c8dbb7ef884427770512d057c9042969e8d0f3d6b9ed254acf4",
+      "note": "线上Trace按GB×天×单价上报时收费，调试免费；删除项目会删除Trace且不退已扣费用。"
+    }
+  ]
+}

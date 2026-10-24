@@ -29,6 +29,7 @@ const mimeMap: Record<string, string> = {
   '.avi': 'video/x-msvideo',
   '.mov': 'video/quicktime',
   '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
   '.mp3': 'audio/mpeg',
   '.flac': 'audio/flac',
   '.m4a': 'audio/mp4',

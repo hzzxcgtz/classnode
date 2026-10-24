@@ -201,6 +201,22 @@ model Classroom {
   notifications    TeacherNotification[]
   // ★ M7a：按题的分析载荷（反向关系）。加它**不改动 Classroom 自己的 DDL**。
   worksheetAnalyses WorksheetQuestionAnalysis[]
+  annotations ClassroomAnnotation[]
+}
+
+// Teacher presentation marks, kept independently from students' original files.
+model ClassroomAnnotation {
+  id String @id @default(uuid())
+  classroomId String
+  targetKey String
+  target String
+  document Json
+  revision Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  @@unique([classroomId, targetKey])
 }
 
 // 课堂关联的班级（标准模式）

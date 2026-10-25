@@ -1,3 +1,4 @@
+import { readAudioAnswer } from './worksheet-audio.js';
 import { readInkValue, type InkValue } from './ink-path.js';
 import { CHAT_IMAGE_URL } from './worksheet-ink.js';
 
@@ -114,6 +115,8 @@ const COARSE_LABEL: Record<string, string> = {
  * —— 一道手工改过的题可以让一整节课的报告导不出来。
  */
 export function answerCell(value: unknown): AnswerCell {
+  const audio = readAudioAnswer(value);
+  if (audio) return { kind: 'text', text: `语音作答（${Math.ceil(audio.durationMs / 1000)} 秒），原始录音：${audio.url}（请在课堂资料包中播放）` };
   if (value === undefined) return { kind: 'unanswered' };
   if (value === null) return { kind: 'cleared' };
   // ⚠️ 先读笔迹：它**只认 `format`**，所以「教师把题从手写改回键盘」之后，

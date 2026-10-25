@@ -151,6 +151,7 @@ export function subscribeDraftPreview(listener: DraftListener): () => void {
 export function resetWorksheetClearBusForTest(): void {
   listeners.clear();
   draftListeners.clear();
+  recordingListeners.clear();
   sequence = 0;
 }
 
@@ -164,4 +165,15 @@ export function publishWorksheetAnalysisUpdated(event: AnalysisUpdated) {
 export function subscribeWorksheetAnalysisUpdated(listener: (event: AnalysisUpdated) => void): () => void {
   analysisListeners.add(listener);
   return () => { analysisListeners.delete(listener); };
+}
+
+/** 仅同步录音状态，不传音频内容；心跳让断网、刷新后的提示自动过期。 */
+export type WorksheetRecording = { worksheetId: string; questionId: string; recording: boolean };
+const recordingListeners = new Set<(event: WorksheetRecording) => void>();
+export function publishWorksheetRecording(event: WorksheetRecording) {
+  for (const listener of recordingListeners) listener(event);
+}
+export function subscribeWorksheetRecording(listener: (event: WorksheetRecording) => void): () => void {
+  recordingListeners.add(listener);
+  return () => { recordingListeners.delete(listener); };
 }

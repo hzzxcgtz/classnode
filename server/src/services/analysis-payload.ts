@@ -1,3 +1,4 @@
+import { readAudioAnswer } from './worksheet-audio.js';
 import { INK_DEFAULT_TEXT_SIZE, INK_STROKE_COLOR, isInkColor, isInkFormat, isInkShapeKind, isInkTextSize, type InkValue } from './ink-path.js';
 import { CHAT_IMAGE_URL } from './worksheet-ink.js';
 import { analysisAnswerText } from './analysis-question.js';
@@ -82,10 +83,12 @@ export function participantLabel(participant: Participant): string {
  */
 export interface AnalyzeEntry {
   studentId: string;
-  kind: 'text' | 'ink' | 'photo' | 'unknown';
+  kind: 'text' | 'ink' | 'photo' | 'audio' | 'unknown';
   text?: string;
   ink?: InkValue;
   photoUrl?: string;
+  audioUrl?: string;
+  durationMs?: number;
   gradeState?: 'correct' | 'partial' | 'incorrect' | null;
   // 🔴 **这里刻意没有 `displayName`。**
   // 原先有，而它**只写不读**：标签由 `payloadLabels` 从**名册**派生（★ 2026-10-07 起；
@@ -271,6 +274,11 @@ export function selectAnalyzeEntries(
     if (answer.questionId !== questionId) continue;
     if (answer.status !== 'submitted') continue;
     if (!known.has(answer.participantId)) continue;
+    const audio = readAudioAnswer(answer.value);
+    if (audio) {
+      out.push({ studentId: answer.participantId, kind: 'audio', audioUrl: audio.url, durationMs: audio.durationMs, gradeState: null });
+      continue;
+    }
     const text = readText(answer.value);
     if (text !== null) {
       out.push({ studentId: answer.participantId, kind: 'text', text, gradeState: answer.gradeState ?? null });
@@ -319,7 +327,7 @@ export function payloadKindOf(entries: AnalyzeEntry[]): 'text' | 'image' | 'mixe
   let hasText = false;
   let hasInk = false;
   for (const entry of entries) {
-    if (entry.kind === 'text') hasText = true;
+    if (entry.kind === 'text' || entry.kind === 'audio') hasText = true;
     else if (entry.kind === 'ink' || entry.kind === 'photo') hasInk = true;
   }
   if (hasText && hasInk) return 'mixed';
@@ -448,12 +456,14 @@ export function buildTextDocument(
     ...(question.openEnded ? [] : [localStatsLine(entries)]),
   ].join('\n');
   if (entries.length === 0) return `${head}\n\n尚无已提交的作答。\n`;
+  let audioIndex = 0;
   const body = entries.map((entry) => {
     const who = labels.get(entry.studentId) ?? entry.studentId;
     const verdict = question.openEnded ? null : gradeLabel(entry.gradeState);
     const label = verdict ? `${who}｜${verdict}` : who;
     if (entry.kind === 'unknown') return `【${label}】（这一份的形状本版认不出，未纳入）`;
     if (entry.kind === 'photo') return `【${label}】（照片作答，见联系表）`;
+    if (entry.kind === 'audio') return `【${label}】（语音作答，对应第 ${++audioIndex} 段音频，时长 ${Math.ceil((entry.durationMs || 0) / 1000)} 秒；依据实际音频内容评价，听不清时不得猜测或按缺交评分。）`;
     const raw = entry.text ?? '';
     if (raw.trim() === '') return `【${label}】（空白）`;
     return `【${label}】\n${truncate(raw, textLimit)}`;
@@ -656,6 +666,7 @@ export interface AnalysisPayload {
   unscorableIds: string[];
   text: string | null;
   sheetLayouts: SheetLayout[];
+  audioAnswers?: Array<{ url: string; label: string }>;
   knobs: SheetKnobs;
   aiScoring: { enabled: boolean; maxScore: number; unit: string; criteria: string; parts?: Array<{ index: number; maxScore: number }> };
 }
@@ -754,6 +765,7 @@ export function buildAnalysisPayload(input: {
     drawingStarter: question.drawingStarter === true,
     localStats: localStatsOf(entries),
     payloadKind,
+    ...(entries.some(entry => entry.kind === 'audio') ? { audioAnswers: entries.filter(entry => entry.kind === 'audio' && entry.audioUrl).map(entry => ({ url: entry.audioUrl!, label: labels.get(entry.studentId)! })) } : {}),
     covered: entries.length,
     total,
     entries: entries.map((entry) => ({ studentId: entry.studentId, anonLabel: labels.get(entry.studentId)! })),
@@ -794,6 +806,7 @@ export function entriesToAggregate(entries: AnalyzeEntry[]): Array<Record<string
     text: entry.text ?? null,
     ink: entry.ink ?? null,
     photoUrl: entry.photoUrl ?? null,
+    ...(entry.kind === 'audio' ? { audioUrl: entry.audioUrl, durationMs: entry.durationMs } : {}),
     gradeState: entry.gradeState ?? null,
   }));
 }
@@ -827,6 +840,11 @@ export function entriesFromAggregate(raw: unknown): AnalyzeEntry[] {
       out.push(ink
         ? { studentId: row.studentId, kind: 'ink', ink, gradeState }
         : { studentId: row.studentId, kind: 'unknown', gradeState });
+      continue;
+    }
+    if (row.kind === 'audio') {
+      const audio = readAudioAnswer({ format: 'audio/v1', url: row.audioUrl, durationMs: row.durationMs });
+      out.push(audio ? { studentId: row.studentId, kind: 'audio', audioUrl: audio.url, durationMs: audio.durationMs, gradeState } : { studentId: row.studentId, kind: 'unknown', gradeState });
       continue;
     }
     if (row.kind === 'photo') {

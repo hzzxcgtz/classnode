@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { applyRecording, expireRecordings, type RecordingState } from './worksheet-recording-state';
 import { useSocket } from '@/lib/socket';
 import { WORKSHEET_ANALYSIS_CHANGED_EVENT } from '@/lib/worksheet-analysis-background';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
@@ -68,6 +69,7 @@ export interface WorksheetBoardData {
    * 已按教师要求删掉（「『正在写』意义不大」）⇒ **两条数据流本身仍然分开**，
    * 只是界面不再给草稿一个记号。
    */
+  recordings: RecordingState;
   liveDrafts: Record<string, { worksheetId: string; questionId: string; value: unknown }>;
   /** 立刻重拉一次（教师清除了数据之后调它）。 */
   refresh: () => void;
@@ -127,6 +129,7 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
    * ⚠️ ★ 2026-09-29：那个界面记号（「正在写」）已按教师要求删掉，**但这个区分本身仍是
    * 这两条数据流分开的理由**（一条会被落库广播取代，另一条不会）。
    */
+  const [recordings, setRecordings] = useState<RecordingState>({});
   const [liveDrafts, setLiveDrafts] = useState<
     Record<string, { worksheetId: string; questionId: string; value: unknown }>
   >({});
@@ -335,6 +338,17 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
     });
   }, [classroomId, on]);
 
+  useEffect(() => {
+    setRecordings({});
+    if (!classroomId) return;
+    const off = on('worksheet-recording', data => {
+      if (data?.classroomId !== classroomId || !data.participantId || !data.worksheetId || !data.questionId || typeof data.recording !== 'boolean') return;
+      setRecordings(prev => applyRecording(prev, data, Date.now()));
+    });
+    const timer = window.setInterval(() => setRecordings(prev => expireRecordings(prev, Date.now())), 2000);
+    return () => { off(); window.clearInterval(timer); };
+  }, [classroomId, on]);
+
   /** 快照那一份的进度（跨时钟换算在这里做一次，见 `restProgress`）。 */
   const rest = useMemo(
     () => (snapshot ? restProgress(snapshot.board, snapshot.fetchedAt) : {}),
@@ -385,6 +399,7 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
     nodesByWorksheet,
     settingsByWorksheet,
     progress,
+    recordings,
     liveDrafts,
     refresh,
     markReviewed,

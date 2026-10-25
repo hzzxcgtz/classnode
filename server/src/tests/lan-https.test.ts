@@ -91,6 +91,16 @@ test('HTTPS shares HTTP app and Socket.IO, verifies trusted CA, serves isolated 
   assert.ok(!profile.body.includes('PRIVATE KEY'));
   const setup = await request(`http://127.0.0.1:${mainPort}/network-setup/?code=ABC123`);
   assert.ok(setup.body.includes(`${secured}/classroom/?code=ABC123`));
+  assert.match(String(setup.headers['content-security-policy']), /img-src 'self'/);
+  assert.ok(setup.body.includes('再开启证书的“完全信任”'));
+  assert.ok(setup.body.includes('下载完成还不等于安装完成'));
+  assert.ok(setup.body.includes('images/install.jpg'));
+  assert.ok(setup.body.includes('images/trust.jpg'));
+  assert.ok(setup.body.includes('images/microphone-allow.jpg'));
+  const picture = await request(`http://127.0.0.1:${mainPort}/network-setup/images/install.jpg`);
+  assert.equal(picture.status, 200);
+  assert.match(String(picture.headers['content-type']), /image\/jpeg/);
+
   const login = await request(`${secured}/api/login-test`, root, { method: 'POST', headers: { Origin: secured } });
   assert.match(login.headers['set-cookie']![0], /Secure/);
   const cookie = login.headers['set-cookie']![0].split(';')[0];

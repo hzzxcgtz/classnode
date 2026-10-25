@@ -122,6 +122,7 @@ export type WorksheetAnswerValue =
   | { format: 'order/v1'; order: string[] }
   | { format: 'match/v1'; links: Array<{ leftId: string; rightId: string }> }
   | { format: 'categorize/v1'; assignment: Record<string, string> }
+  | { format: 'audio/v1'; url: string; durationMs: number }
   | { format: 'photo/v1'; url: string }
   | InkValue;
 
@@ -151,6 +152,7 @@ export type AnswerDraft =
   | { kind: 'order'; order: string[] }
   | { kind: 'match'; links: Array<{ leftId: string; rightId: string }> }
   | { kind: 'categorize'; assignment: Record<string, string> }
+  | { kind: 'audio'; url: string; durationMs: number }
   | { kind: 'photo'; url: string }
   | {
       kind: 'ink';
@@ -161,6 +163,15 @@ export type AnswerDraft =
       /** 绘图题第三方编辑器文档；手写问答不使用。 */
       drawing?: DrawingDocument;
     };
+
+export const WORKSHEET_AUDIO_URL = /^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\/chat-[0-9a-f-]+\.ogg$/i;
+export const MAX_AUDIO_DURATION_MS = 300_000;
+export function isAudioNode(node: { type: string; inputMode?: unknown }): boolean {
+  return (node.type === 'short-answer' || node.type === 'open-ended') && node.inputMode === 'audio';
+}
+export function validAudioDuration(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 500 && value <= MAX_AUDIO_DURATION_MS;
+}
 
 /** 问答题与绘图题的拍照作答档。 */
 export function isPhotoNode(node: { type: string; inputMode?: unknown }): boolean {
@@ -374,6 +385,7 @@ function readLinks(raw: unknown): Array<{ leftId: string; rightId: string }> {
  * 要的是 `inputMode` 那一条赢（它决定屏幕上给不给画布，见 `isInkNode` 自己的注释）。
  */
 function draftKindOf(node: WorksheetQuestionNode): AnswerDraft['kind'] | null {
+  if (isAudioNode(node)) return 'audio';
   if (isPhotoNode(node)) return 'photo';
   if (isInkNode(node)) return 'ink';
   const type = node.type;
@@ -421,6 +433,7 @@ function draftKindOf(node: WorksheetQuestionNode): AnswerDraft['kind'] | null {
  */
 export function emptyDraftFor(node: WorksheetQuestionNode): AnswerDraft {
   const kind = draftKindOf(node);
+  if (kind === 'audio') return { kind: 'audio', url: '', durationMs: 0 };
   if (kind === 'photo') return { kind: 'photo', url: '' };
   if (kind === 'ink') return { kind: 'ink', box: defaultInkBox(node), strokes: [] };
   if (kind === 'choice') return { kind: 'choice', selected: [] };
@@ -490,6 +503,7 @@ export function isDraftEmpty(draft: AnswerDraft): boolean {
   if (draft.kind === 'order') return draft.order.length === 0;
   if (draft.kind === 'match') return draft.links.length === 0;
   if (draft.kind === 'categorize') return Object.keys(draft.assignment).length === 0;
+  if (draft.kind === 'audio') return !WORKSHEET_AUDIO_URL.test(draft.url) || !validAudioDuration(draft.durationMs);
   if (draft.kind === 'photo') return draft.url.trim() === '';
   return !draft.text.trim();
 }
@@ -497,6 +511,10 @@ export function isDraftEmpty(draft: AnswerDraft): boolean {
 /** 输入态 → 作答值。`null` = 「这一题没有内容可提交」（面板据此把按钮按死）。 */
 function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): WorksheetAnswerValue | null {
   const type = node.type;
+  if (isAudioNode(node)) {
+    if (draft.kind !== 'audio' || !WORKSHEET_AUDIO_URL.test(draft.url) || !validAudioDuration(draft.durationMs)) return null;
+    return { format: 'audio/v1', url: draft.url, durationMs: draft.durationMs };
+  }
   if (isPhotoNode(node)) {
     if (draft.kind !== 'photo' || !CHAT_IMAGE_URL.test(draft.url)) return null;
     return { format: 'photo/v1', url: draft.url };
@@ -745,9 +763,14 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
     : format === 'order/v1' ? 'order'
     : format === 'match/v1' ? 'match'
     : format === 'categorize/v1' ? 'categorize'
+    : format === 'audio/v1' ? 'audio'
     : format === 'photo/v1' ? 'photo'
     : draftKindOf(node);
 
+  if (kind === 'audio') {
+    return typeof row.url === 'string' && WORKSHEET_AUDIO_URL.test(row.url) && validAudioDuration(row.durationMs)
+      ? { kind: 'audio', url: row.url, durationMs: row.durationMs } : empty;
+  }
   if (kind === 'photo') {
     return typeof row.url === 'string' && CHAT_IMAGE_URL.test(row.url)
       ? { kind: 'photo', url: row.url }

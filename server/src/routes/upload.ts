@@ -32,7 +32,7 @@ const storage = multer.diskStorage({
     try {
       const session = getStudentSession(req);
       const relative = session && !hasTeacherSession(req)
-        ? classroomUploadRelative(session.classroomId, req.path.replace(/\/+$/, '') === '/worksheet-image' ? 'worksheet' : 'chat') : 'chat';
+        ? classroomUploadRelative(session.classroomId, ['/worksheet-image', '/worksheet-audio'].includes(req.path.replace(/\/+$/, '')) ? 'worksheet' : 'chat') : 'chat';
       cb(null, file.fieldname === 'avatar' ? avatarDir : ensureAttachmentDirectory(uploadsBase, relative));
     } catch (error) { cb(error as Error, ''); }
   },
@@ -296,6 +296,23 @@ router.post('/worksheet-image', requireActiveStudentUpload, upload.single('file'
   } catch {
     res.status(500).json({ error: '题目配图上传失败' });
   }
+});
+
+// Recorded answers are Ogg/Opus only; keep them with this classroom's worksheet assets.
+router.post('/worksheet-audio', requireActiveStudentUpload, upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '请先录制语音' });
+    const kind = detectSafeChatFile(fs.readFileSync(req.file.path), req.file.originalname);
+    if (kind !== 'ogg' || req.file.size > 2 * 1024 * 1024) {
+      fs.rmSync(req.file.path, { force: true });
+      return res.status(400).json({ error: '请上传有效的 Ogg/Opus 录音，文件不能超过 2 MB' });
+    }
+    const target = path.join(path.dirname(req.file.path), `chat-${crypto.randomUUID()}.ogg`);
+    fs.renameSync(req.file.path, target);
+    const url = '/uploads/' + path.relative(uploadsBase, target).split(path.sep).join('/');
+    rememberImageOwner(req, url);
+    return res.json({ success: true, url, size: req.file.size });
+  } catch { return res.status(500).json({ error: '录音上传失败，请重试' }); }
 });
 
 // 聊天文件上传

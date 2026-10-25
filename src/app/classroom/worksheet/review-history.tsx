@@ -1,5 +1,8 @@
 'use client';
 import { useId, useState, type ReactNode } from 'react';
+import { answerView } from '@/lib/worksheet-answer-view';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { VoiceAnswerPlayer } from '@/components/voice-answer-player';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import styles from './worksheet.module.css';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
@@ -15,7 +18,7 @@ export interface AnswerReview {
   reason: string | null; advice: string | null; error: string | null;
   createdAt: string; evaluatedAt: string | null; evaluationDurationMs?: number | null;
 }
-export function ReviewHistory({ reviews, onRetry, renderReviewActions }: { node: WorksheetQuestionNode; reviews: AnswerReview[]; onRetry?: (id: string) => void | Promise<void>; renderReviewActions?: (review: AnswerReview) => ReactNode }) {
+export function ReviewHistory({ node, reviews, onRetry, renderReviewActions }: { node: WorksheetQuestionNode; reviews: AnswerReview[]; onRetry?: (id: string) => void | Promise<void>; renderReviewActions?: (review: AnswerReview) => ReactNode }) {
   const accordionName = useId();
   const [retrying, setRetrying] = useState<string | null>(null);
   const retry = async (id: string) => {
@@ -38,6 +41,7 @@ export function ReviewHistory({ reviews, onRetry, renderReviewActions }: { node:
       <div className={styles.reviewRevisionBody}>
       {r.evaluatedAt && <ReviewTiming review={r} />}
 
+      {(() => { const view = answerView(node, r.value); return view.kind === 'audio' ? <VoiceAnswerPlayer src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="这次提交的语音" /> : null; })()}
       {r.status === 'superseded' && <p role="status">{r.error || '历史结果，不计入当前成绩和评价次数'}</p>}
       <div className={styles.reviewEvaluation}><div className={styles.reviewEvaluationText}>
       {r.reason && <p><strong>AI 评价：</strong><span className={styles.reviewPointText}>{formatReviewText(r.reason)}</span></p>}

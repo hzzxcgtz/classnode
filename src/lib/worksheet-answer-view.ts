@@ -97,6 +97,7 @@ export type AnswerView =
   | { kind: 'none' }
   | { kind: 'text'; text: string }
   | { kind: 'ink'; ink: InkValue | null }
+  | { kind: 'audio'; url: string; durationMs: number }
   | { kind: 'photo'; url: string }
   | { kind: 'choice'; options: ChoiceOptionView[] }
   | {
@@ -249,6 +250,7 @@ export function answerView(node: WorksheetQuestionNode, value: unknown): AnswerV
     return { kind: 'ink', ink: readInkValue(value) };
   }
 
+  if (draft.kind === 'audio') return draft.url ? { kind: 'audio', url: draft.url, durationMs: draft.durationMs } : { kind: 'none' };
   if (draft.kind === 'photo') {
     return draft.url ? { kind: 'photo', url: draft.url } : { kind: 'none' };
   }

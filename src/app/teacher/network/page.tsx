@@ -7,6 +7,7 @@ import { IconArrowLeft, IconArrowUpRight, IconChevronDown, IconDownload, IconMic
 import { TeacherPageHeader } from '@/lib/components';
 import { getApiBaseUrl } from '@/lib/api-base';
 import styles from './network.module.css';
+import { IpadCertificateGuide } from './ipad-certificate-guide';
 
 type HttpsStatus = { enabled: boolean; running: boolean; busy: boolean; error: string; port: number; webappPort: number; root: { fingerprint: string; expiresAt: string } | null };
 type ServerInfo = { selectedIp: string; studentUrl: string; httpsSetupUrl: string };
@@ -59,22 +60,17 @@ export default function NetworkPage() {
     {(error || status?.error) && <p className={styles.error} role="alert">{error || status?.error}</p>}
     {status?.running && info && <>
       <section className={styles.panel} aria-labelledby="setup-title">
-        <div className={styles.setupHeading}><h2 id="setup-title">学生设备设置</h2><p>先进入课堂试录，首次使用时允许麦克风。</p></div>
+        <div className={styles.setupHeading}><h2 id="setup-title">学生设备设置</h2><p>先在教师电脑启用 HTTPS，再为每台学生 iPad 完成首次设置。</p></div>
         <div className={styles.classroomEntry}><span>学生入口</span><a href={info.studentUrl} target="_blank" rel="noreferrer">{info.studentUrl}<IconArrowUpRight size={18} aria-hidden="true" /></a></div>
         <div className={styles.setup}>
           <div className={styles.qr}><QRCodeSVG value={info.httpsSetupUrl} size={184} level="M" /><p>用相机扫码，再用 Safari 打开</p></div>
           <div className={styles.steps}>
-            <div className={styles.stepTitle}><IconShieldCheck size={22} stroke={1.7} aria-hidden="true" /><h3>需要证书时，再完成安装</h3></div>
-            <p className={styles.intro}>已经能正常录音的设备，无需重复设置。若出现证书警告，请先按引导安装并信任证书。</p>
-            <ol><li>用相机扫码，在 Safari 中下载证书，再到「设置 → 已下载描述文件」安装。</li><li>在「通用 → 关于本机 → 证书信任设置」中开启完全信任。</li><li>重新进入课堂，允许麦克风后开始录音。</li></ol>
+            <div className={styles.stepTitle}><IconShieldCheck size={22} stroke={1.7} aria-hidden="true" /><h3>首次使用，先安装并信任证书</h3></div>
+            <p className={styles.intro}>用学生 iPad 的相机扫描左侧二维码，在 Safari 打开安装引导。已经安装并完全信任同一证书的设备无需重装。</p>
             <a className={styles.guideLink} href={info.httpsSetupUrl} target="_blank" rel="noreferrer">打开安装引导<IconArrowUpRight size={17} aria-hidden="true" /></a>
           </div>
         </div>
-        <div className={styles.microphoneSetup}>
-          <div className={styles.stepTitle}><IconMicrophone size={22} stroke={1.7} aria-hidden="true" /><h3>减少录音时的重复询问</h3></div>
-          <ol><li>在 iPad / iPhone 的 Safari 中打开上方 <strong>HTTPS 学生入口</strong>。</li><li>点击地址栏旁的“页面菜单”（旧版为“大小 / aA”），进入“网站设置”；部分版本需先点“更多”。</li><li>将“麦克风”从“询问”改为 <strong>“允许”</strong>，返回课堂再试录。</li></ol>
-          <p>请在课堂页面设置，安装引导页是另一个地址。更换访问地址后，可能需要重新授权。</p>
-        </div>
+        <IpadCertificateGuide />
         <div className={styles.footerNote}>学生与教师电脑需连接同一局域网，并保持局域网访问开放。</div>
       </section>
       <details className={styles.details}>

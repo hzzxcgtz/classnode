@@ -10,6 +10,8 @@ import { WorksheetTableView } from '@/lib/worksheet-table-view';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
+import { VoiceAnswerPlayer } from '@/components/voice-answer-player';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { AnswerPhoto } from './answer-photo';
 import { InkPreview } from './ink-preview';
 
@@ -77,6 +79,9 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
       return view.ink
         ? <InkPreview value={view.ink} node={node} />
         : <span style={{ fontSize: '0.813rem', color: FAINT }}>读不出这幅画</span>;
+
+    case 'audio':
+      return <VoiceAnswerPlayer src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="语音作答" />;
 
     case 'photo':
       return <AnswerPhoto url={view.url} />;

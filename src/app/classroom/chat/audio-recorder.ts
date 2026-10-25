@@ -61,9 +61,18 @@ export class AudioRecorderSession {
         this.cancel();
         this.options.onError(new Error('录音被设备中断，请重新录音'));
       }; });
+      recorder.onstart = () => {
+        if (generation !== this.generation || this.state !== 'requesting') return;
+        if (this.timer) clearTimeout(this.timer);
+        this.update('recording');
+        this.timer = setTimeout(() => this.stop(), MAX_RECORDING_SECONDS * 1000);
+      };
+      this.timer = setTimeout(() => {
+        if (generation !== this.generation || this.state !== 'requesting') return;
+        this.cancel();
+        this.options.onError(new Error('录音启动超时，请重新试一次'));
+      }, 15_000);
       recorder.start(250);
-      this.update('recording');
-      this.timer = setTimeout(() => this.stop(), MAX_RECORDING_SECONDS * 1000);
     } catch (error) {
       if (generation !== this.generation) return;
       this.cancel();
@@ -83,6 +92,7 @@ export class AudioRecorderSession {
   cancel() {
     ++this.generation;
     if (this.recorder) {
+      this.recorder.onstart = null;
       this.recorder.ondataavailable = null;
       this.recorder.onstop = null;
       this.recorder.onerror = null;

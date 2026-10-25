@@ -2,6 +2,7 @@
 
 import type { TileAnswer, WorksheetCellStatus, WorksheetTileState } from './worksheet-tile-state';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
+import { IconMicrophone } from '@tabler/icons-react';
 import { TileAnswerBody } from './tile-answer';
 
 /**
@@ -96,7 +97,8 @@ function stateTone(state: WorksheetTileState): { background: string; border: str
   return { background: '#f8fafc', border: '1px solid #eef2f6', color: 'var(--text-secondary, #475569)' };
 }
 
-export function WorksheetTileContent({ state, answer, compact }: {
+export function WorksheetTileContent({ state, answer, compact, recording = false }: {
+  recording?: boolean;
   state: WorksheetTileState;
   /**
    * ★ 2026-09-28：下方那一块要显示的那一题（教师：「留出下方最大的空间用来显示
@@ -106,6 +108,17 @@ export function WorksheetTileContent({ state, answer, compact }: {
   /** 全屏网格里格子更小、字更小 —— 与 `renderTileContent` 的同一个旋钮同义。 */
   compact: boolean;
 }) {
+  if (recording) return (
+    <div role="status" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: compact ? 6 : 10, padding: compact ? '8px' : '10px 12px', borderRadius: 8, background: '#f0f7f5', border: '1px solid #bcd8ce' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#326d58', fontWeight: 600, fontSize: compact ? '0.8rem' : '0.9rem' }}>
+        <IconMicrophone size={compact ? 17 : 20} stroke={1.8} aria-hidden="true" />正在录音
+      </div>
+      {answer && <div style={{ color: '#475569', fontSize: '0.75rem', lineHeight: 1.5 }}>{answer.heading} · {answer.typeLabel}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#527367', fontSize: '0.75rem', paddingTop: 4, borderTop: '1px dashed #cbded6' }}>
+        <span style={{ width: 7, height: 7, flexShrink: 0, borderRadius: '50%', background: '#39846a' }} aria-hidden="true" />语音作答中，录好后即可提交
+      </div>
+    </div>
+  );
   switch (state.kind) {
     // ── 画不出格子的那几种情形（各自的说法不同，别合成一句）──────────────
     case 'unconfigured':

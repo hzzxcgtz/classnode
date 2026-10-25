@@ -1,3 +1,4 @@
+import { findAudioValueError } from '../services/worksheet-audio.js';
 import { normalizeWorksheetCurriculum, worksheetCurriculumError, worksheetCurriculumContext } from '../services/worksheet-curriculum.js';
 import { ANALYSIS_PROMPT_VERSION } from '../services/analysis-teaching-policy.js';
 import { individualReviewSettings, enqueueIndividualReview, reviewConfigurationKey, classAnalysisConfigurationKey } from '../services/individual-review.js';
@@ -459,7 +460,7 @@ function normalizeNode(
     id,
     type: type as QuestionType,
     prompt: typeof node.prompt === 'string' ? node.prompt : '',
-    inputMode: (type === 'short-answer' || type === 'open-ended' || type === 'drawing') && node.inputMode === 'photo'
+    inputMode: (type === 'short-answer' || type === 'open-ended') && node.inputMode === 'audio' ? 'audio' : (type === 'short-answer' || type === 'open-ended' || type === 'drawing') && node.inputMode === 'photo'
       ? 'photo'
       : node.inputMode === 'handwriting' ? 'handwriting' : 'keyboard',
     // ⚠️ 只在**有值**时写这个键：`points: undefined` 落到 JSON 里是**整个键消失**
@@ -1879,7 +1880,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const agentConfig = toAgentConfig(agent, agent.credential);
     const proxy = (req.app.get('analysisProxy') as typeof proxyAnalysisRequest | undefined) ?? proxyAnalysisRequest;
     operation.controller.signal.throwIfAborted();
-    const result = await proxy(agentConfig, buildAnalysisMessage(payload, labeled, scoped ? 'supplement' : 'class'), images, operation.controller.signal);
+    const result = await proxy(agentConfig, buildAnalysisMessage(payload, labeled, scoped ? 'supplement' : 'class'), images, operation.controller.signal, payload.audioAnswers);
     operation.controller.signal.throwIfAborted();
     if (!result.success) return res.status(502).json({ error: result.error ?? '分析失败' });
     /*
@@ -2639,7 +2640,7 @@ async function evaluateIndividualReview(req: Request, reviewId: string) {
         images.push(...rendered.sheets); labeled = rendered.labeled;
       }
       const proxy = (req.app.get('analysisProxy') as typeof proxyAnalysisRequest | undefined) ?? proxyAnalysisRequest;
-      const result = await proxy(toAgentConfig(agent, agent.credential), buildAnalysisMessage(payload, labeled, 'individual'), images);
+      const result = await proxy(toAgentConfig(agent, agent.credential), buildAnalysisMessage(payload, labeled, 'individual'), images, undefined, payload.audioAnswers);
       if (!result.success) throw new Error(result.error ?? 'AI 评价失败，请重试');
       const parsedFeedback = parseAnalysisFeedback(result.content ?? '', payload.entries);
       const parsed = parseAiAnalysisResult(parsedFeedback.narrative, payload.aiScoring, payload.entries, { allowScoreOnly: true });
@@ -2986,6 +2987,10 @@ router.put('/:id/answers', worksheetMutation(async (req, res, database) => {
     // `worksheet-answer-value.ts:48-76`（那段「`format` 在服务端只被读两处」）那条纪律 —— 见 `services/worksheet-ink.ts` 的 🔴。
     const inkError = findInkValueError(body.value);
     if (inkError) return res.status(400).json({ error: inkError });
+    const audioError = findAudioValueError(body.value);
+    if (audioError) return res.status(400).json({ error: audioError });
+    if (body.value && typeof body.value === 'object' && (body.value as { format?: string }).format === 'audio/v1'
+      && node.type !== 'short-answer' && node.type !== 'open-ended') return res.status(400).json({ error: '语音作答仅适用于表达题' });
     const photoError = findPhotoValueError(body.value);
     if (photoError) return res.status(400).json({ error: photoError });
 

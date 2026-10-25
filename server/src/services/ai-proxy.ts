@@ -1204,6 +1204,7 @@ export async function proxyAnalysisRequest(
   message: string,
   images: Buffer[],
   signal?: AbortSignal,
+  audioAnswers: Array<{ url: string; label: string }> = [],
 ): Promise<{ success: boolean; content?: string; error?: string }> {
   if (images.length > 0 && agent.platform !== 'coze') {
     return {
@@ -1219,13 +1220,20 @@ export async function proxyAnalysisRequest(
     const coze = createCozeBot(agent);
     signal?.throwIfAborted();
     const history: EnterMessage[] = [];
-    if (images.length > 0) {
+    if (images.length > 0 || audioAnswers.length > 0) {
       const items: CozeMultimodalItem[] = [{ type: 'text', text: message }];
       for (const [index, buffer] of images.entries()) {
         signal?.throwIfAborted();
         const file = await coze.file.uploadBuffer(buffer, `analysis-${index}.png`);
         items.push({ type: 'image', file_id: file.id });
       }
+      for (const [index, audio] of audioAnswers.entries()) {
+        signal?.throwIfAborted();
+        if (!/^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128}\/(?:worksheet|chat))\/chat-[0-9a-f-]+\.ogg$/i.test(audio.url)) throw new Error('语音作答地址无效');
+        const file = await coze.file.upload(resolveLocalPath(audio.url), `answer-${index + 1}.ogg`);
+        items.push({ type: 'audio', file_id: file.id });
+      }
+      if (audioAnswers.length) items[0] = { type: 'text', text: message + '\n\n【音频附件对应表】\n' + audioAnswers.map((audio, index) => `第 ${index + 1} 段音频：${audio.label}`).join('\n') };
       history.push({
         role: 'user',
         type: 'question',
@@ -1241,6 +1249,17 @@ export async function proxyAnalysisRequest(
     // 这里给一个**中性常量**：分析是班级级的、没有「那个学生」，而把学生的名字发过去
     // 正是本项目匿名化要防的事。每次调用都会 `chats.create` 出一个**新会话**
     // （不传 `conversationId`）⇒ 两次分析之间不会串上下文。
+    if (audioAnswers.length) {
+      const timeoutSignal = AbortSignal.timeout(ANALYSIS_POLL_TIMEOUT_SECONDS * 1000);
+      const streamSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+      let content = '';
+      await coze.chatStream('', { userName: ANALYSIS_USER_ID, history }, {
+        onDelta: chunk => { content += chunk; },
+        onMessageCompleted: item => { if (!content && item.role === 'assistant' && item.type === 'answer' && item.content_type === 'text') content = item.content; },
+      }, streamSignal);
+      if (!content.trim()) throw new Error('语音评价未返回文字结果，请重试');
+      return { success: true, content };
+    }
     const result = await coze.chat(images.length > 0 ? '' : message, {
       userName: ANALYSIS_USER_ID,
       history,

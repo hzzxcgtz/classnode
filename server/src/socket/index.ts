@@ -2250,6 +2250,19 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
      * 最坏后果是教师那一格收到一份画不出来的内容（`answerView` 会落成「未作答」）——
      * 比在这里加一次数据库往返划算得多。
      */
+    // 身份只取已认证连接，状态仅发给教师，不写入作答。
+    onManaged('worksheet-recording', (data: { worksheetId?: unknown; questionId?: unknown; recording?: unknown }) => {
+      const classroomId = socket.data.classroomId as string | undefined;
+      const participantId = socket.data.studentId as string | undefined;
+      if (!classroomId || !participantId || !data) return;
+      if (typeof data.worksheetId !== 'string' || !data.worksheetId || data.worksheetId.length > 128) return;
+      if (typeof data.questionId !== 'string' || !data.questionId || data.questionId.length > 128) return;
+      if (typeof data.recording !== 'boolean') return;
+      io.to(`teacher:${classroomId}`).emit('worksheet-recording', {
+        classroomId, participantId, worksheetId: data.worksheetId, questionId: data.questionId, recording: data.recording,
+      });
+    });
+
     onManaged('worksheet-draft-preview', (data: {
       classroomId?: unknown; worksheetId?: unknown; questionId?: unknown; value?: unknown;
     }) => {

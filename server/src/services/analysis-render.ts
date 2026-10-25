@@ -171,7 +171,7 @@ export function buildSheetSvg(entries: AnalyzeEntry[], layout: SheetLayout, labe
         // 而他答了字，答案就在同一屏的文档里。这张图将来是发给模型的那份东西，
         // 「（空白）」会让模型读到「这几位没答」。
         const why = entry?.kind === 'unknown' ? '（形状认不出）'
-          : entry?.kind === 'text' ? '（文字作答，见文档）'
+          : entry?.kind === 'audio' ? '（语音作答，见音频附件）' : entry?.kind === 'text' ? '（文字作答，见文档）'
             : '（空白）';
         parts.push(`<text x="${cell.x + 8}" y="${cell.y + Math.round(cell.h / 2)}" font-size="18" font-family="sans-serif" fill="${PLACEHOLDER_FILL}">${esc(why)}</text>`);
       }

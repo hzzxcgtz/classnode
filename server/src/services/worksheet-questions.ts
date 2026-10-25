@@ -205,7 +205,7 @@ export interface QuestionNode {
   id: string;
   type: QuestionType;
   prompt: string;
-  inputMode: 'keyboard' | 'handwriting' | 'photo';
+  inputMode: 'keyboard' | 'handwriting' | 'photo' | 'audio';
   /**
    * ★ M4a：逐题分值。**留空 = 继承学习单级**（规格 §12 裁定 4）——
    * 所以 `undefined` 是一个**有意义的取值**，不是「还没填」。

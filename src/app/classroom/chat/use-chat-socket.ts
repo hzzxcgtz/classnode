@@ -9,7 +9,7 @@ import { applyModuleState, isClassroomModuleKey, isClassroomModuleState } from '
 import type { ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 // ★ 2026-09-30：「逐题开放」那条广播的载荷要收干净（判据在那个文件里，有用例）。
 import { normalizeOpenQuestions } from '@/lib/worksheet-answer-mode';
-import { publishWorksheetClear, publishWorksheetAnalysisUpdated, subscribeDraftPreview } from '../worksheet/worksheet-socket-bus';
+import { publishWorksheetClear, publishWorksheetAnalysisUpdated, subscribeDraftPreview, subscribeWorksheetRecording } from '../worksheet/worksheet-socket-bus';
 // 线缆上的类型住在 socket-events（与 ServerToClientEvents 的声明同处），不从
 // classroom-types 转一手 —— 那边只是**消费**它。
 import type { WebappDemand } from '@/lib/socket-events';
@@ -93,6 +93,10 @@ export function useChatSocket(options: ChatSocketOptions) {
    */
   useEffect(() => subscribeDraftPreview((preview) => {
     optionsRef.current.wsRef.current?.emit('worksheet-draft-preview', preview);
+  }), []);
+
+  useEffect(() => subscribeWorksheetRecording(event => {
+    optionsRef.current.wsRef.current?.emit('worksheet-recording', event);
   }), []);
 
   const startChatSession = async (studentId: string, studentName: string, classroomCode?: string, token?: string) => {

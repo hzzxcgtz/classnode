@@ -22,3 +22,5 @@
 开发命令请查看 [scripts/README.md](../../scripts/README.md)。过时的根目录 SCRIPTS.md 已移除，新的命令参考以该文件为准。
 
 - [局域网 HTTPS 与 iPad 录音](LAN-HTTPS.md)：教师启用、证书持久化、学生安装引导、端口及迁移边界。
+
+- [表达题语音作答](WORKSHEET-AUDIO-ANSWERS.md)：第 4 种输入方式、试听卡片、保存提交、教师查看及音频评价链路。

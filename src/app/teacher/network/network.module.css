@@ -49,8 +49,20 @@
 @media(max-width: 900px) { .setup { gap: 24px; padding: 24px; grid-template-columns: 200px minmax(0, 1fr); } .setupHeading { padding: 24px 24px 18px; } .classroomEntry { margin: 0 24px; } }
 @media(max-width: 640px) { .connection { padding: 18px; gap: 16px; flex-wrap: wrap; } .serviceIcon { width: 44px; height: 44px; } .connectionInfo { gap: 12px; } .setup { grid-template-columns: 1fr; padding: 22px 20px; } .qr { width: 224px; max-width: 100%; margin: 0 auto; } .classroomEntry { flex-direction: column; gap: 5px; margin: 0 20px; } .setupHeading { padding: 22px 20px 18px; } .footerNote { padding: 14px 20px; } .details summary { padding: 17px 20px; } .detailBody { padding: 0 20px 20px; } .detailBody dl > div { grid-template-columns: 1fr; gap: 2px; } }
 
-.microphoneSetup { margin: 0 32px 26px; padding: 20px 22px; border: 1px solid #dbe5ef; border-radius: 12px; background: #f5f8fc; color: #3c4f63; font-size: .86rem; line-height: 1.8; }
-.microphoneSetup ol { margin: 12px 0; padding-left: 21px; }
-.microphoneSetup li { margin: 7px 0; padding-left: 3px; }
-.microphoneSetup p { margin: 0; color: #5e6d80; font-size: .8rem; }
-@media(max-width: 640px) { .microphoneSetup { margin: 0 20px 22px; padding: 16px; } }
+.walkthrough { margin: 0 32px 28px; border-top: 1px solid #e3eaf1; padding-top: 26px; }
+.guideSteps { list-style: none; padding: 0; margin: 18px 0 0; }
+.guideSteps > li { display: flex; gap: 14px; padding: 20px 0; border-top: 1px solid #edf0f4; }
+.stepNumber { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; background: #eaf0f7; color: #365f8d; font-size: .9rem; font-weight: 650; }
+.stepContent { flex: 1; min-width: 0; }
+.stepContent h4 { margin: 3px 0 9px; color: #263b50; font-size: .95rem; font-weight: 650; }
+.stepContent p { margin: 7px 0; color: #3c4f63; font-size: .87rem; line-height: 1.85; }
+.stepContent .stepNote { padding: 10px 13px; background: #f5f8fb; border-left: 3px solid #b6c9de; border-radius: 0 6px 6px 0; color: #5c6f83; font-size: .81rem; }
+.photoDetails summary { display: flex; align-items: center; min-height: 44px; color: #365f8d; font-size: .84rem; font-weight: 600; cursor: pointer; }
+.guidePhotos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; margin-top: 8px; align-items: start; }
+.guidePhotos figure { margin: 0; min-width: 0; }
+.guidePhotos a { display: block; border: 1px solid #dce4ee; border-radius: 10px; overflow: hidden; background: #f5f7fa; }
+.guidePhotos img { display: block; width: auto; max-width: 100%; height: auto; margin: 0 auto; }
+.guidePhotos figcaption { margin-top: 8px; color: #5e6d80; font-size: .77rem; line-height: 1.6; }
+.sourceNote { margin: 12px 0 0; font-size: .77rem; color: #687b8e; line-height: 1.8; }
+.photoDetails summary:focus-visible { outline: 2px solid #365f8d; outline-offset: 2px; }
+@media(max-width: 640px) { .walkthrough { margin: 0 20px 22px; padding-top: 20px; } .guideSteps > li { gap: 10px; } .stepNumber { width: 26px; height: 26px; } }

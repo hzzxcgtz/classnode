@@ -190,6 +190,7 @@ export interface ServerToClientEvents {
    * ★ 2026-09-28：学生**正在输入**的实时预览（服务端**只转发给教师房间**，不写库）。
    * 与上面那条客户端事件同名、方向相反 —— 学生发、教师收。
    */
+  'worksheet-recording': (data: { classroomId: string; participantId: string; worksheetId: string; questionId: string; recording: boolean }) => void;
   'worksheet-draft-preview': (data: {
     classroomId: string;
     participantId: string;
@@ -245,6 +246,7 @@ export interface ClientToServerEvents {
    * ⚠️ 所以看板上「格子里的实时内容」与「库里的已保存内容」**不是同一份** ——
    * 教师看到的是学生在写什么，不是已经存下了什么。
    */
+  'worksheet-recording': (data: { worksheetId: string; questionId: string; recording: boolean }) => void;
   'worksheet-draft-preview': (data: {
     classroomId: string;
     worksheetId: string;

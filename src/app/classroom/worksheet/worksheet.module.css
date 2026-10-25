@@ -3284,3 +3284,20 @@
 .reviewEvaluationText > p:first-child { margin-top: 0; }
 
 .reviewPointText { display: block; margin-top: 6px; white-space: pre-wrap; }
+
+.voiceAnswer { display: flex; flex-direction: column; gap: 10px; margin: 8px 0; }
+.voiceRecordButton { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 76px; min-width: 44px; width: 100%; max-width: 540px; padding: 16px; border: 1.5px solid #b9d2c4; border-radius: 16px; background: #edf5f0; color: #365e4d; font: inherit; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.voiceRecordButton strong { font-size: 1rem; font-weight: 600; }
+.voiceRecordButton time { font-size: .9rem; font-variant-numeric: tabular-nums; }
+.voiceRecording { background: #d4e7db; border-color: #78a58b; }
+.voiceCancel { color: #923b3b; background: #fae5e5; border-color: #d89191; }
+.voiceRecordButton:disabled { opacity: .65; cursor: default; }
+.voiceActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; max-width: 540px; }
+.voiceActions button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 4px 0; border: 0; background: transparent; font: inherit; font-size: .85rem; color: #526d62; cursor: pointer; touch-action: manipulation; }
+.voiceActions button:disabled { opacity: .5; cursor: default; }
+.voiceActions span { color: #64748b; font-size: .85rem; }
+.voiceNote { margin: 0; color: #687b73; font-size: .82rem; line-height: 1.6; }
+.voiceError { margin: 0; color: #9a4d43; font-size: .85rem; }
+.voiceRecordButton:focus-visible, .voiceActions button:focus-visible { outline: 3px solid #729e8a; outline-offset: 3px; }
+
+.voiceAction { min-height: 44px; min-width: 44px; }

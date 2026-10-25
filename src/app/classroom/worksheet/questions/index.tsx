@@ -3,13 +3,14 @@
 import { useRef, useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
-import { emptyDraftFor, isPhotoNode } from '@/lib/worksheet-answer-value';
+import { emptyDraftFor, isPhotoNode, isAudioNode } from '@/lib/worksheet-answer-value';
 import { isInkNode } from '@/lib/worksheet-ink';
 import { api } from '@/lib/api';
 import { prepareWorksheetPhoto } from '@/lib/worksheet-photo-upload';
 import { ClassroomImagePreview } from '@/app/teacher/classroom/image-preview';
 import { useRotatedImageSource } from '@/components/use-image-rotation';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { AudioBody } from './audio-body';
 import { CategorizeBody } from './categorize-body';
 import { ChoiceBody } from './choice-body';
 import { InkBody } from './ink-body';
@@ -42,6 +43,7 @@ import styles from '../worksheet.module.css';
  * 因为它现在与分派是同一件事。
  */
 export interface QuestionInputProps {
+  worksheetId?: string;
   localOnly?: boolean;
   node: WorksheetQuestionNode;
   /**
@@ -74,7 +76,7 @@ export interface QuestionInputProps {
   correctBlanks?: Record<string, string>;
 }
 
-export function QuestionInput({ node, draft, onChange, disabled, correctKeys, correctBlanks, localOnly = false }: QuestionInputProps) {
+export function QuestionInput({ worksheetId, node, draft, onChange, disabled, correctKeys, correctBlanks, localOnly = false }: QuestionInputProps) {
   /**
    * 这一题的**起点**（形状一定与 `node.type` 同族）。
    *
@@ -104,6 +106,8 @@ export function QuestionInput({ node, draft, onChange, disabled, correctKeys, co
     if (start.kind === kind) return start as Extract<AnswerDraft, { kind: K }>;
     return null;
   };
+
+  if (isAudioNode(node)) return <AudioBody worksheetId={worksheetId} questionId={node.id} key={node.id} draft={pick('audio') ?? { kind: 'audio', url: '', durationMs: 0 }} onChange={next => onChange?.(node, next)} disabled={disabled} localOnly={localOnly} />;
 
   if (isPhotoNode(node)) {
     return (

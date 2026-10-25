@@ -117,8 +117,8 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   { value: 'order', label: '排序题', nickname: '顺序高手', hint: '把打乱的条目排成正确顺序', graded: true },
   { value: 'match', label: '连线题', nickname: '巧手连线', hint: '学生连接左右条目，可设置一对多连线', graded: true },
   { value: 'categorize', label: '归类题', nickname: '分类达人', hint: '把若干条目拖到对应的框里', graded: true },
-  { value: 'short-answer', label: '表达题', nickname: '自由表达', hint: '适合简答、说明、习作或观点收集，支持文字、手写、照片，可选 AI 评分', graded: false },
-  { value: 'open-ended', label: '表达题', nickname: '自由表达', hint: '不设标准答案、不评分，支持文字、手写或照片作答，仅进行 AI 作答分析', graded: false },
+  { value: 'short-answer', label: '表达题', nickname: '自由表达', hint: '适合简答、说明、习作或观点收集，支持文字、手写、照片、语音，可选 AI 评分', graded: false },
+  { value: 'open-ended', label: '表达题', nickname: '自由表达', hint: '不设标准答案、不评分，支持文字、手写、照片或语音作答，仅进行 AI 作答分析', graded: false },
   // ★ M4b：`drawing` 这个题型名是**本计划的裁定**（规格没有给）—— 见 `QuestionType` 的注释。
   // `graded: false` **是有意的决定，不是补测试**：手写 / 绘图不参与自动判分（规格 §12 裁定 3）。
   // 服务端那一侧有**两条**闸（B1，提交 `e1ff80c`）：`JUDGES.drawing` 恒回 `null`；

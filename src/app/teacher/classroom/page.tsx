@@ -2399,13 +2399,14 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         // ⚠️ 按 `worksheetId` 过滤：两份学习单若有同名题号（复制出来的），只靠题号判会串。
         const liveDraft = participant ? wb.liveDrafts[participant.id] : undefined;
         const draft = liveDraft && worksheet && liveDraft.worksheetId === worksheet.id ? liveDraft : null;
+        const recording = participant && online && worksheet && wb.recordings[participant.id]?.worksheetId === worksheet.id ? wb.recordings[participant.id] : null;
         const state = worksheetTileState({
           worksheet,
           // 键不在 = 题目还没加载到（`null`，格子如实说「内容还没加载到」）。
           nodes: worksheet ? wb.nodesByWorksheet[worksheet.id] ?? null : null,
           // `undefined` = 打开看板后没收到过这个人的作答（不是「零作答」，见 state 的注释）。
           progress: participant ? wb.progress[participant.id] : undefined,
-          liveQuestionId: draft?.questionId ?? null,
+          liveQuestionId: recording?.questionId ?? draft?.questionId ?? null,
           online,
           now: nowMs,
         });
@@ -2425,6 +2426,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           : [];
         return (
           <WorksheetTileContent
+            recording={Boolean(recording)}
             state={state}
             // ★ 2026-09-28（教师）：下方那一块 ——「学生此刻正在做的那一题」的实时作答。
             // 🔴 那一题由 `activeAnswer` 挑，而它**复用格子正文同一个判据**
@@ -2432,14 +2434,14 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             // 那一题（各挑各的会让教师照着另一道题的答案去讲这一道，且两边都不报错）。
             // ⚠️ `cells` 取 `state.cells`（不是 `progress.cells`）：那是格子正文真正用的
             // 那一份，另取一份就是第二条合并路径，可能与正文分叉。
-            answer={participant && stateHasCells(state) && worksheet
+            answer={participant && (stateHasCells(state) || recording) && worksheet
               ? activeAnswer(
                 tileNodes,
                 tileRows,
-                state.cells,
+                stateHasCells(state) ? state.cells : [],
                 wb.progress[participant.id]?.lastQuestionId ?? null,
                 // ★ **同一份**实时预览（与上面 `liveQuestionId` 同源，见那里的注释）。
-                draft,
+                recording ? { questionId: recording.questionId, value: null } : draft,
               )
               : null}
             compact={compact}

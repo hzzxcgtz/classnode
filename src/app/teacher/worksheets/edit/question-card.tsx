@@ -73,6 +73,7 @@ import { normalizePastedText } from '@/lib/worksheet-text-normalize';
 // ★ 2026-10-06：判断「这一题的作图工具是不是流程图」只有这一份判据 —— 教师端那个
 // 作图工具选择器（`bodies/drawing-settings.tsx`）与学生端画布读的是同一个函数。
 import { readDrawingTool } from '@/lib/worksheet-drawing';
+import { IconMicrophone } from '@tabler/icons-react';
 import { EditorIcon, TrashIcon } from './editor-icons';
 
 /**
@@ -237,7 +238,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
   onPointsInputChange: (input: RejectedPointInput | null) => void;
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
   /** ★ M4b/D1：逐题的作答方式（键盘 / 手写）。走 reducer，所以进撤销栈。 */
-  onInputModeChange: (inputMode: 'keyboard' | 'handwriting' | 'photo') => void;
+  onInputModeChange: (inputMode: 'keyboard' | 'handwriting' | 'photo' | 'audio') => void;
   /** ★ 2026-09-26：「允许自动评分」那个开关。 */
   onAutoGradeChange: (autoGrade: boolean) => void;
   /** ★ 2026-09-26：部分给分的容错档。`null` = 缺省（旧规则「只要有一部分对就给分」）。 */
@@ -1421,7 +1422,7 @@ function ToleranceRow({ node, onToleranceChange }: {
  */
 function InputModeRow({ node, onInputModeChange }: {
   node: WorksheetQuestionNode;
-  onInputModeChange: (inputMode: 'keyboard' | 'handwriting' | 'photo') => void;
+  onInputModeChange: (inputMode: 'keyboard' | 'handwriting' | 'photo' | 'audio') => void;
 }) {
   // ⚠️ 「键盘」那一档的判据写成 `!== 'handwriting'`（不是 `=== 'keyboard'`）：
   // 库里的值域虽然就是这两个字面量（服务端 `normalizeNode` 保证），但草稿是**外部输入**
@@ -1430,6 +1431,8 @@ function InputModeRow({ node, onInputModeChange }: {
   // 屏幕上显示的档与运行时的档必须一致。
   const handwriting = node.inputMode === 'handwriting';
   const photo = node.inputMode === 'photo';
+  const expression = node.type === 'short-answer' || node.type === 'open-ended';
+  const audio = expression && node.inputMode === 'audio';
   const drawing = node.type === 'drawing';
   return (
     <>
@@ -1439,7 +1442,7 @@ function InputModeRow({ node, onInputModeChange }: {
             <input
               type="radio"
               name={`worksheet-inputmode-${node.id}`}
-              checked={!handwriting && !photo}
+              checked={!handwriting && !photo && !audio}
               onChange={() => onInputModeChange('keyboard')}
             />
             <span><EditorIcon kind="keyboard" />键盘输入</span>
@@ -1463,11 +1466,15 @@ function InputModeRow({ node, onInputModeChange }: {
           />
           <span><EditorIcon kind="photo" />照片上传</span>
         </label>
+        {expression && <label className="worksheet-editor-option-correct">
+          <input type="radio" name={`worksheet-inputmode-${node.id}`} checked={audio} onChange={() => onInputModeChange('audio')} />
+          <span><IconMicrophone size={16} stroke={1.8} aria-hidden="true" />语音录入</span>
+        </label>}
       </div>
       {/* 🔴 后果提示，写在开关旁边（不是藏在悬停里、也不是只在选中「手写」之后才出现）：
           它说的是一件**已经发生**的事，教师要在点下去**之前**就看得见。 */}
       <p className="worksheet-editor-hint">
-        {photo
+        {audio ? '学生录音、试听后提交，需使用 HTTPS 并允许麦克风。语音可供教师播放和扣子智能体评价。' : photo
           ? '照片提交后可供教师查看和 AI 分析。'
           : '支持教师查看和 AI 分析，是否评分由评价设置决定。'}
       </p>

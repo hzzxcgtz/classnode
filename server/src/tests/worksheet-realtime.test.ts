@@ -875,3 +875,34 @@ test('★ 广播上限：value 超限时不发内容但置 valueOmitted，其余
   assert.equal(small.payload.valueOmitted, false);
   assert.deepEqual(small.payload.value, { format: 'text/v1', text: '短答案' }, '未超限时原样下发');
 });
+
+
+test('录音状态只转发给教师，身份取认证连接，不接受伪造学生身份', () => {
+  const handlers = new Map<string, (data: unknown) => unknown>();
+  const broadcasts: Broadcast[] = [];
+  const socket = {
+    id: 'recording-socket', rooms: new Set(['recording-socket']),
+    handshake: { headers: {} }, data: {} as Record<string, unknown>,
+    join() {}, leave() {}, emit() {},
+    on(event: string, handler: (data: unknown) => unknown) { handlers.set(event, handler); },
+  };
+  const io = {
+    on(event: string, handler: (client: typeof socket) => void) { if (event === 'connection') handler(socket); },
+    to(room: string) { return { emit(event: string, payload: Record<string, unknown>) { broadcasts.push({ room, event, payload }); } }; },
+  };
+  setupSocketHandlers(io as unknown as Server, {} as PrismaClientType);
+  const send = handlers.get('worksheet-recording')!;
+  assert.ok(send);
+  const event = { worksheetId: 'w1', questionId: 'q1', recording: true, participantId: 'forged', classroomId: 'forged' };
+  send(event);
+  assert.equal(broadcasts.length, 0);
+  socket.data.classroomId = 'classroom-1'; socket.data.studentId = 'student-1';
+  send(event);
+  assert.deepEqual(broadcasts.pop(), { room: 'teacher:classroom-1', event: 'worksheet-recording', payload: {
+    classroomId: 'classroom-1', participantId: 'student-1', worksheetId: 'w1', questionId: 'q1', recording: true,
+  } });
+  send({ ...event, recording: 'true' }); send({ ...event, worksheetId: '' }); send(null);
+  assert.equal(broadcasts.length, 0);
+  send({ ...event, recording: false });
+  assert.equal(broadcasts[0].payload.recording, false);
+});

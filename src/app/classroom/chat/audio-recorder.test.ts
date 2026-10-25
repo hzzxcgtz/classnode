@@ -23,9 +23,10 @@ function fixture(getMedia?: () => Promise<MediaStream>, failCreation = false) {
   const stream = { getTracks: () => [track], getAudioTracks: () => [track] } as unknown as MediaStream;
   const recorder = {
     state: 'inactive', mimeType: 'audio/webm',
+    onstart: null as null | (() => void),
     ondataavailable: null as null | ((event: { data: Blob }) => void),
     onstop: null as null | (() => void), onerror: null as null | (() => void),
-    start() { this.state = 'recording'; },
+    start() { this.state = 'recording'; this.onstart?.(); },
     stop() { this.state = 'inactive'; },
   };
   const session = new AudioRecorderSession({
@@ -100,5 +101,16 @@ test('device interruption discards unfinished audio instead of automatically sen
   lateStop?.();
   assert.equal(f.clips.length, 0);
   assert.equal(f.errors.length, 1);
+  assert.equal(f.released(), 1);
+});
+
+test('encoder initialization does not display recording until the actual start event', async () => {
+  const f = fixture();
+  f.recorder.start = function () { this.state = 'recording'; };
+  await f.session.start();
+  assert.equal(f.states[f.states.length - 1], 'requesting');
+  const lateStart = f.recorder.onstart;
+  f.session.cancel(); lateStart?.();
+  assert.equal(f.states[f.states.length - 1], 'idle');
   assert.equal(f.released(), 1);
 });

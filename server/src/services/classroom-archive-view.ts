@@ -1,3 +1,4 @@
+import { readAudioAnswer } from './worksheet-audio.js';
 import { createHash } from 'node:crypto';
 import { ARCHIVE_STYLE } from './classroom-archive-style.js';
 import { ARCHIVE_SCRIPT } from './classroom-archive-interaction.js';
@@ -97,6 +98,11 @@ export class ArchiveView {
       return list(values).map(v => map.has(String(v)) ? `${showKey ? `${String(v)} · ` : ''}${map.get(String(v))}` : showKey ? String(v) : '原条目已无法关联');
     };
     let readable = '';
+    const audio = readAudioAnswer(value);
+    if (audio) {
+      const target = this.assets.attachment(audio.url);
+      readable = target ? `<figure><audio controls preload="none" src="${esc(archiveLink(target))}" aria-label="语音作答"></audio><figcaption>语音作答 · ${Math.ceil(audio.durationMs / 1000)} 秒 · <a href="${esc(archiveLink(target))}" download>下载原始录音</a></figcaption></figure>` : '<p class="notice">语音原文件缺失</p>';
+    }
     if (['text/v1', 'fill/v1'].includes(String(row.format)) && typeof row.text === 'string') readable = this.text(row.text);
     if (row.format === 'fill-multi/v1') readable = this.fields(row.texts);
     if (row.format === 'choice/v1') readable = this.fields(names(row.selected, question?.type === 'true-false' ? [{ key: 'T', text: '对' }, { key: 'F', text: '错' }] : data.options, true));

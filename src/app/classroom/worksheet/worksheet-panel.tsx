@@ -317,6 +317,7 @@ const NO_OPEN_QUESTIONS: readonly string[] = [];
  * 「屏幕上画几道」这条口径也只有一处。
  */
 export interface WorksheetQuestionListProps {
+  worksheetId?: string;
   /**
    * 要画的**段** —— 一个任务一段（标题 + 它的小题），连续散题合一段（无标题）。
    *
@@ -388,6 +389,7 @@ export interface WorksheetQuestionListProps {
 }
 
 export function WorksheetQuestionList({
+  worksheetId,
   groups,
   drafts,
   statuses,
@@ -689,6 +691,7 @@ export function WorksheetQuestionList({
                 学生那里画不出来，**没有任何报错**）。见 `questions/index.tsx` 的文件头。
                 ⚠️ `draft` 而不是 `raw`：渲染用的起点必须是有形状的那一份。 */}
             <QuestionInput
+              worksheetId={worksheetId}
               node={node}
               draft={draft}
               onChange={onChange}
@@ -845,6 +848,9 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   // 见文件头 ②：`cssVar` 与学伴面板共用同一个名字，**不要**改成模块专属的名字。
+  useEffect(() => {
+    if (!active) containerRef.current?.querySelectorAll('audio').forEach(element => element.pause());
+  }, [active]);
   useModuleViewport({ active, containerRef, cssVar: '--module-viewport-height' });
 
   /**
@@ -1201,6 +1207,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             style={{ ...backgroundStyle, ...surfaceStyle }}
           >
             <WorksheetQuestionList
+              worksheetId={worksheetId ?? undefined}
               groups={load.worksheet.groups}
               drafts={answers.drafts}
               statuses={answers.statuses}
@@ -1226,7 +1233,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
               onChange={handleChange}
               onSubmit={handleSubmit}
               // ★ M5a：课堂级锁定（与 `allowResubmit` 那道**题级**闸门是两件事）。
-              answersLocked={answersLocked}
+              answersLocked={answersLocked || !active}
             />
           </div>
         </>

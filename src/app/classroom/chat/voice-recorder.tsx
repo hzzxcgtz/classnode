@@ -4,21 +4,11 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { IconKeyboard, IconMicrophone, IconHandClick } from '@tabler/icons-react';
 import { AudioRecorderSession, MAX_RECORDING_SECONDS, type RecordingState } from './audio-recorder';
 import { bindInputHold } from './input-hold';
+import { prepareAudioCodec, createAudioRecorder } from './audio-codec';
 import { VoiceGesture } from './voice-gesture';
 import styles from './voice-recorder.module.css';
 
 export type InputVoiceStatus = { text: string; cancelling: boolean };
-
-let fallbackRecorder: typeof import('opus-media-recorder').default | undefined;
-const supportsOgg = () => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/ogg;codecs=opus');
-function createFallbackRecorder(stream: MediaStream, options: MediaRecorderOptions): MediaRecorder {
-  if (!fallbackRecorder) throw new Error('录音组件尚未加载，请重试。');
-  const base = '/vendor/opus-media-recorder-0.8.0/';
-  return new fallbackRecorder(stream, options, {
-    encoderWorkerFactory: () => new Worker(`${base}encoderWorker.umd.js`),
-    OggOpusEncoderWasmPath: new URL(`${base}OggOpusEncoder.wasm`, window.location.href).href,
-  });
-}
 
 function microphoneError(error: unknown): string {
   const name = error instanceof Error ? error.name : '';
@@ -68,18 +58,13 @@ export function VoiceRecorder({ enabled, mode, onModeChange, onSend, inputRef, o
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
-    const prepare = async () => {
-      if (!supportsOgg()) fallbackRecorder = (await import('opus-media-recorder')).default;
-    };
+    const prepare = prepareAudioCodec;
     // Warm the codec while the voice input is visible, without requesting microphone access.
     if (mode) void prepare().catch(() => {});
     const recorder = new AudioRecorderSession({
       prepare,
       getMedia: () => navigator.mediaDevices.getUserMedia({ audio: { channelCount: { ideal: 1 }, echoCancellation: true, noiseSuppression: true } }),
-      createRecorder: stream => {
-        const options = { mimeType: 'audio/ogg;codecs=opus', audioBitsPerSecond: 32_000 };
-        return supportsOgg() ? new MediaRecorder(stream, options) : createFallbackRecorder(stream, options);
-      },
+      createRecorder: createAudioRecorder,
       onState: next => {
         if (!alive) return;
         if (next === 'recording') gesture.current?.recordingStarted();

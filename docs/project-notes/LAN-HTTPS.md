@@ -61,6 +61,6 @@
 
 ## iPad 实拍图文引导（2026-10-25）
 
-教师 `/teacher/network/` 和设备扫码 `/network-setup/` 使用同一份 `public/guides/ipad-recording/steps.json`，依次说明下载、系统设置、安装、完全信任、当前网站麦克风允许及试录。常显简短流程，实拍图按步骤折叠并可打开大图。截图来自用户实机，已裁去账户、Wi-Fi 和其他无关内容；不把示例 IP、证书名称末尾字符写成用户必须匹配的值。
+教师 `/teacher/network/` 和设备扫码 `/network-setup/` 使用同一份 `public/guides/ipad-recording/steps.json`，依次说明下载、下载完成、系统设置、安装、信任设置入口、完全信任、Safari 菜单、麦克风允许及试录。采用用户重新整理的 8 张 PNG 截图，按实际操作先后排列（先打开系统设置，再安装），保留红箭头标注。截图始终展开，可打开大图；每张图配对应操作和完成标志。不把示例 IP、证书名称末尾字符写成用户必须匹配的值。
 
 Express 通过 `/network-setup/images/` 提供引导资源，因此 HTTP 安装页不依赖 Next 开发端口或证书已被信任。发行时由 `out/guides/ipad-recording/` 随前端一起打包。服务端读取相同 JSON，避免两份提示漂移；CSP 仅允许同源截图。安装描述文件后仍需手动完全信任，和设置麦克风是两件事。

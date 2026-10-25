@@ -57,12 +57,10 @@
 .stepContent h4 { margin: 3px 0 9px; color: #263b50; font-size: .95rem; font-weight: 650; }
 .stepContent p { margin: 7px 0; color: #3c4f63; font-size: .87rem; line-height: 1.85; }
 .stepContent .stepNote { padding: 10px 13px; background: #f5f8fb; border-left: 3px solid #b6c9de; border-radius: 0 6px 6px 0; color: #5c6f83; font-size: .81rem; }
-.photoDetails summary { display: flex; align-items: center; min-height: 44px; color: #365f8d; font-size: .84rem; font-weight: 600; cursor: pointer; }
-.guidePhotos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; margin-top: 8px; align-items: start; }
+.guidePhotos { display: grid; grid-template-columns: minmax(0, 1fr); max-width: 680px; gap: 16px; margin-top: 8px; align-items: start; }
 .guidePhotos figure { margin: 0; min-width: 0; }
 .guidePhotos a { display: block; border: 1px solid #dce4ee; border-radius: 10px; overflow: hidden; background: #f5f7fa; }
 .guidePhotos img { display: block; width: auto; max-width: 100%; height: auto; margin: 0 auto; }
 .guidePhotos figcaption { margin-top: 8px; color: #5e6d80; font-size: .77rem; line-height: 1.6; }
 .sourceNote { margin: 12px 0 0; font-size: .77rem; color: #687b8e; line-height: 1.8; }
-.photoDetails summary:focus-visible { outline: 2px solid #365f8d; outline-offset: 2px; }
 @media(max-width: 640px) { .walkthrough { margin: 0 20px 22px; padding-top: 20px; } .guideSteps > li { gap: 10px; } .stepNumber { width: 26px; height: 26px; } }

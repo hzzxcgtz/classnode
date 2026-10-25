@@ -92,14 +92,18 @@ test('HTTPS shares HTTP app and Socket.IO, verifies trusted CA, serves isolated 
   const setup = await request(`http://127.0.0.1:${mainPort}/network-setup/?code=ABC123`);
   assert.ok(setup.body.includes(`${secured}/classroom/?code=ABC123`));
   assert.match(String(setup.headers['content-security-policy']), /img-src 'self'/);
-  assert.ok(setup.body.includes('再开启证书的“完全信任”'));
+  assert.ok(setup.body.includes('打开 ClassNode 的完全信任'));
   assert.ok(setup.body.includes('下载完成还不等于安装完成'));
-  assert.ok(setup.body.includes('images/install.jpg'));
-  assert.ok(setup.body.includes('images/trust.jpg'));
-  assert.ok(setup.body.includes('images/microphone-allow.jpg'));
-  const picture = await request(`http://127.0.0.1:${mainPort}/network-setup/images/install.jpg`);
+  assert.ok(setup.body.includes('images/install.png'));
+  assert.ok(setup.body.includes('images/trust.png'));
+  assert.ok(setup.body.includes('images/microphone.png'));
+  assert.equal((setup.body.match(/<figure>/g) || []).length, 8);
+  assert.ok(!setup.body.includes('<details><summary>查看这一步'));
+  assert.ok(setup.body.indexOf('images/settings.png') < setup.body.indexOf('images/install.png'));
+
+  const picture = await request(`http://127.0.0.1:${mainPort}/network-setup/images/install.png`);
   assert.equal(picture.status, 200);
-  assert.match(String(picture.headers['content-type']), /image\/jpeg/);
+  assert.match(String(picture.headers['content-type']), /image\/png/);
 
   const login = await request(`${secured}/api/login-test`, root, { method: 'POST', headers: { Origin: secured } });
   assert.match(login.headers['set-cookie']![0], /Secure/);

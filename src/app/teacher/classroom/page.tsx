@@ -3236,7 +3236,18 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   <button className="btn btn-secondary" style={{ fontSize: "0.875rem", padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4 }}
-                    onClick={() => { setConversationFontSize(24); setShowFullscreen(true); }}>
+                    onClick={() => {
+                      if (loadingMessages) {
+                        setToast({ msg: '对话正在加载，请稍后再投屏', type: 'error' });
+                        return;
+                      }
+                      if (projMsgs.length === 0) {
+                        setToast({ msg: messages.length === 0 ? '暂无可投屏的对话' : '请先勾选需要投屏的对话', type: 'error' });
+                        return;
+                      }
+                      setConversationFontSize(24);
+                      setShowFullscreen(true);
+                    }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
                     投屏
                   </button>
@@ -3483,9 +3494,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             flex: 1, minHeight: 0, overflow: 'auto', overscrollBehavior: 'contain', padding: '40px 60px',
             maxWidth: 1100, width: '100%', margin: '0 auto',
           }}>
-            {messages.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 100, color: 'var(--text-muted)', fontSize: "1.375rem" }}>
-                暂无对话记录
+            {projMsgs.length === 0 ? (
+              <div role="status" style={{ textAlign: 'center', padding: 100, color: 'var(--text-muted)', fontSize: "1.375rem" }}>
+                {messages.length === 0 ? '暂无对话记录' : '当前没有选中的对话，请关闭投屏后勾选需要展示的对话。'}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>

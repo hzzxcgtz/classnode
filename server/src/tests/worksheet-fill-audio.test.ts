@@ -20,7 +20,8 @@ test('voice fills validate, keep scores pending, then combine exact-match and AI
  assert.equal(individualReviewSettings(node).enabled,true);
  const student=stripAnswers({schemaVersion:1,nodes:[node]}).nodes[0];
  assert.equal(JSON.stringify(student).includes('说清依据'),false);
- assert.equal((student.data.fillBlankSettings as any).b.mode,'audio');
+ const studentSettings=student.data.fillBlankSettings as Record<string,{mode:string}>;
+ assert.equal(studentSettings.b.mode,'audio');
 });
 test('mixed payload preserves audio attachment IDs, blank labels and snapshot round trip',()=>{
  const participants=[{participantId:'p',name:'甲',labelNo:'1'}];

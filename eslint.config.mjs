@@ -78,6 +78,7 @@ const eslintConfig = defineConfig([
     "server/frontend/**",
     // Vendored browser bundles are upstream build artifacts, not project source.
     "server/vendor/**",
+    "public/vendor/**",
     "src-tauri/resources/**",
     "src-tauri/target/**",
     "next-env.d.ts",

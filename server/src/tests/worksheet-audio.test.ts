@@ -118,4 +118,52 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
     await new Promise(resolve=>setTimeout(resolve,20));
   }
 
+  // Ordinary fills and tables share this same per-slot submission contract.
+  const fillNode = { id: 'qfill', type: 'fill-blank', inputMode: 'keyboard', prompt: '{填空域}{填空域}', data: {
+    promptRuns: [{start:0,end:5,blank:'text-slot'},{start:5,end:10,blank:'voice-slot'}], answers:[['甲'],[]],
+    fillBlankSettings:{'text-slot':{mode:'text',gradingMode:'auto',maxScore:2},'voice-slot':{mode:'audio',gradingMode:'ai',maxScore:3,audioCriteria:'说清理由'}}, studentAiReviewEnabled:true,
+  }, children:[] };
+  await db.worksheet.update({where:{id:sheet.id},data:{content:{schemaVersion:1,nodes:[fillNode]}}});
+  const mixedValue = {format:'fill-multi/v1',texts:['甲',''],audios:{'voice-slot':value}};
+  const savedFill = await call('PUT', `/${sheet.id}/answers`, {questionId:'qfill',value:mixedValue},token);
+  assert.equal(savedFill.status,200,await savedFill.text());
+  app.set('analysisProxy', async (_agent:unknown,message:string,_images:unknown,_signal:unknown,clips:Array<{url:string;label:string}>)=>{
+    assert.equal(clips[0].url,upload.url); assert.match(clips[0].label,/第 2 空/); assert.match(message,/说清理由/);
+    const studentLabel=clips[0].label.split(' · ')[0];
+    return {success:true,content:`<classnode-scores>${JSON.stringify({scores:[{student:studentLabel,score:2,reason:'你说明了理由',advice:'再补充依据',parts:[{index:1,score:2,reason:'理由基本清楚',advice:'举一个观察到的例子'}]}]})}</classnode-scores>`};
+  });
+  const fillSubmitResponse=await call('POST',`/${sheet.id}/answers/submit`,{questionId:'qfill',requestId:'fill_audio_personal_review'},token);
+  assert.equal(fillSubmitResponse.status,200);
+  const fillSubmit=await fillSubmitResponse.json(); assert.ok(fillSubmit.reviewId);
+  let succeeded=false;
+  for(let i=0;i<100;i++){
+    const review=await db.worksheetAnswerReview.findUnique({where:{id:fillSubmit.reviewId}});
+    if(review?.status!=='pending'){assert.equal(review?.status,'succeeded',review?.error ?? '');succeeded=true;break;}
+    await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  assert.equal(succeeded,true);
+  const filled=await db.worksheetAnswer.findFirst({where:{questionId:'qfill'}});
+  assert.equal(filled?.score,4); assert.equal(filled?.gradeState,'partial');
+  assert.deepEqual(filled?.value,mixedValue);
+
+  const currentFill=await (await call('GET',`/${sheet.id}/answers`,undefined,token)).json();
+  const currentRow=currentFill.rows.find((row:{questionId:string})=>row.questionId==='qfill');
+  assert.equal(currentRow.aiReferenceScore.score,2);
+  assert.match(currentRow.aiReferenceScore.comment,/第 2 空/);
+  assert.match(currentRow.aiReferenceScore.advice,/观察到的例子/);
+
+  const emptyNode={...fillNode,id:'qempty'};
+  await db.worksheet.update({where:{id:sheet.id},data:{content:{schemaVersion:1,nodes:[emptyNode]}}});
+  assert.equal((await call('PUT',`/${sheet.id}/answers`,{questionId:'qempty',value:mixedValue},token)).status,200);
+  app.set('analysisProxy',async()=>({success:true,content:'<classnode-scores>'+JSON.stringify({scores:[{student:'User_001',score:null,reason:'无有效内容',advice:'请重新录音',parts:[{index:1,score:null,reason:'没有听到讲话',advice:'请重新录音'}]}]})+'</classnode-scores>'}));
+  const emptySubmission=await (await call('POST',`/${sheet.id}/answers/submit`,{questionId:'qempty',requestId:'fill_empty_audio_review'},token)).json();
+  assert.ok(emptySubmission.reviewId);
+  for(let i=0;i<100;i++){
+    const review=await db.worksheetAnswerReview.findUnique({where:{id:emptySubmission.reviewId}});
+    if(review?.status!=='pending'){assert.equal(review?.status,'failed');break;}
+    if(i===99) assert.fail('空白语音评价未结束');
+    await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  assert.equal((await db.worksheetAnswer.findFirst({where:{questionId:'qempty'}}))?.score,null);
+
 });

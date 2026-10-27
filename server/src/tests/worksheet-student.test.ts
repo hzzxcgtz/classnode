@@ -165,7 +165,7 @@ const SAMPLE_CONTENT = {
       //   ⚠️ 夹具里**必须真的建一份** —— 红线用例的中间那层是「教师端读同一份时每个答案键都在」，
       //   它遍历的是整个 `ANSWER_KEYS`。夹具里没有 ⇒ 那层对照塌了，
       //   剩下的「学生端搜不到」就什么都证明不了（没有的东西当然搜不到）。
-      data: { rubricText: '要点完整 3 分，能举出实例再加 2 分', rubricImageUrl: '/uploads/rubric/photosynthesis.png', analysisFocus: '重点关注证据与结论的联系', __analysisContext: '仅供教师分析的教学情境' },
+      data: { evaluationText:'评价依据', evaluationImages:['/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.png'], audioCriteria: '口头解释原因', audioReference: '参考观察依据', rubricText: '要点完整 3 分，能举出实例再加 2 分', rubricImageUrl: '/uploads/rubric/photosynthesis.png', analysisFocus: '重点关注证据与结论的联系', __analysisContext: '仅供教师分析的教学情境' },
       children: [],
     },
     {

@@ -1,3 +1,6 @@
+import { aiEvaluationEnabled, hasEvaluation, countsEvaluation, evaluationRequirements } from './worksheet-evaluation.js';
+import { fillAudioSlots } from './worksheet-fill-audio.js';
+import { grade, DEFAULT_POINTS, resolvePoints } from './worksheet-questions.js';
 import { extractAnalysisProtocol, analysisProtocolJson } from './analysis-protocol.js';
 import { type QuestionNode } from './worksheet-questions.js';
 import { rubricTextOf } from './analysis-question.js';
@@ -9,17 +12,13 @@ export const AI_SCORE_ADVICE_MAX = 1200;
 export const AI_SCORE_BLOCK_START = '<classnode-scores>';
 export const AI_SCORE_BLOCK_END = '</classnode-scores>';
 
+/** enabled means an AI evaluation request is allowed; maxScore=0 means feedback only. */
 export interface AiScoringConfig {
   enabled: boolean;
   maxScore: number;
   unit: string;
   criteria: string;
-  /**
-   * ⊘ ★ 2026-10-09（教师裁定）：**新数据不再产出它** —— 逐空 AI 那一档（填空题）整个删了，
-   * 今天能 AI 评分的题型（问答题 / 绘图题）都是整题一份分。
-   * ⚠️ 字段留着只为**读**老结果：`readStoredAiScoring` / `readStudentAiReferenceScore` 用它对账
-   * （库里那些含 `parts` 的历史 AI 结果仍在，只是 `enabled` 恒为 false ⇒ 读的时候先被挡掉）。
-   */
+  /** 语音填空的逐空评分范围；历史普通文字填空不会因此恢复 AI 评分。 */
   parts?: Array<{ index: number; maxScore: number }>;
 }
 
@@ -114,11 +113,22 @@ export function answerGradeFromAiScore(
   return { isCorrect: gradeState === 'correct', gradeState, score };
 }
 
-export function supportsAiScoring(node: Pick<QuestionNode, 'type'>): boolean {
-  return node.type === 'short-answer' || node.type === 'drawing';
+export function supportsAiScoring(node: Pick<QuestionNode, 'type'> & { data?: Record<string, unknown> }): boolean {
+  return aiEvaluationEnabled(node) || node.type === 'short-answer' || node.type === 'drawing' || fillAudioSlots({ ...node, data: node.data ?? {} }).length > 0;
 }
 
 export function aiScoringConfigOf(node: QuestionNode, unit = '分'): AiScoringConfig {
+  const settings = Object.values((node.data.fillBlankSettings as Record<string, Record<string, unknown>>) ?? {});
+  const versionedParts = settings.flatMap((item,index) => hasEvaluation(item) ? item.evaluationMode === 'ai' ? [{index, maxScore: countsEvaluation(item) ? Number(item.maxScore) || 1 : 0}] : [] : item.mode === 'audio' && item.gradingMode === 'ai' && node.autoGrade !== false ? [{index,maxScore:Number(item.maxScore)||1}] : []);
+  const audioParts = fillAudioSlots(node).filter(slot => slot.scored);
+  if (node.type === 'fill-blank' || node.type === 'choice-blank') {
+    const parts = settings.some(hasEvaluation) ? versionedParts : audioParts.map(slot => ({index:slot.index,maxScore:slot.maxScore}));
+    return { enabled: parts.length > 0, maxScore:parts.reduce((sum,p)=>sum+p.maxScore,0), unit,
+      criteria: parts.map(p => `第 ${p.index+1} 空：${evaluationRequirements(settings[p.index])}`).join('\n'),
+      ...(parts.length ? {parts} : {}) };
+  }
+  if (hasEvaluation(node.data)) return {enabled:node.data.evaluationMode === 'ai',maxScore:countsEvaluation(node.data) ? Number(node.data.aiScoringMaxScore) || 1 : 0,unit,criteria:evaluationRequirements(node.data)};
+
   // ★ 2026-10-09（教师裁定）：「填空题简化 —— 所有空都不涉及 AI 评分；想让学生自由写就用
   //    **问答题**。删 `'ai'` 与 `'none'` 两档。」⇒ 逐空 AI 那一支（`fillParts`）整个删掉。
   // 🔴 老数据里写着 `gradingMode: 'ai'` 的空因此**不再计分**：判分侧 `grade()`
@@ -199,16 +209,39 @@ export function parseAiAnalysisResult(
     const row = item as Record<string, unknown>;
     const studentId = typeof row.student === 'string' ? byLabel.get(row.student) : undefined;
     if (!studentId || found.has(studentId)) continue;
-    const score = row.score === null
+    if (row.unavailable === true) {
+      if (options.allowScoreOnly && entries.length === 1) return {error:'这份作答暂时无法清楚识别，请检查内容后重新提交。录音时请靠近麦克风说话。'};
+      continue;
+    }
+    let score = row.score === null
       ? null
       : typeof row.score === 'number' && Number.isFinite(row.score) && row.score >= 0 && row.score <= config.maxScore
         ? normalizeAiScore(row.score, config) : undefined;
     if (score === undefined) continue;
-    const reason = typeof row.reason === 'string' ? row.reason.trim().slice(0, 200) : '';
-    const advice = typeof row.advice === 'string' ? row.advice.trim().slice(0, AI_SCORE_ADVICE_MAX) : '';
+    let reason = typeof row.reason === 'string' ? row.reason.trim().slice(0, 200) : '';
+    let advice = typeof row.advice === 'string' ? row.advice.trim().slice(0, AI_SCORE_ADVICE_MAX) : '';
     // 「一句评价 + 详细建议」缺一不可：缺的那一行**不算数**（学生那边不能只看到半张卡），
     // ★ 但只丢这一行 —— 其余照存（原来这里是整次作废，40 人的班上等于全丢）。
     if (!reason || !advice) continue;
+    if (config.parts?.length) {
+      if (!Array.isArray(row.parts) || row.parts.length !== config.parts.length) continue;
+      const seen = new Set<number>();
+      const parts: Array<{index:number; score:number|null; reason:string; advice:string}> = [];
+      for (const rawPart of row.parts) {
+        if (!rawPart || typeof rawPart !== 'object') break;
+        const part = rawPart as Record<string, unknown>;
+        const spec = config.parts.find(spec => spec.index === part.index);
+        if (!spec || seen.has(spec.index) || (part.score !== null && (typeof part.score !== 'number' || !Number.isFinite(part.score) || part.score < 0 || part.score > spec.maxScore)) || typeof part.reason !== 'string' || !part.reason.trim() || typeof part.advice !== 'string' || !part.advice.trim()) break;
+        seen.add(spec.index);
+        parts.push({index: spec.index, score: spec.maxScore === 0 || part.score === null ? null : normalizeAiScore(part.score as number, config), reason: part.reason.trim().slice(0,200), advice: part.advice.trim().slice(0,400)});
+      }
+      if (parts.length !== config.parts.length) continue;
+      parts.sort((a,b)=>a.index-b.index);
+      score = config.maxScore === 0 || parts.some(part=>part.score === null && config.parts!.find(spec=>spec.index===part.index)!.maxScore > 0) ? null : Math.round(parts.reduce((sum,part)=>sum+(part.score ?? 0),0)*10)/10;
+      reason = parts.map(part=>`第 ${part.index+1} 空${part.score === null ? '' : `（${part.score} ${config.unit}）`}：${part.reason}`).join('\n');
+      advice = parts.map(part=>`第 ${part.index+1} 空：${part.advice}`).join('\n');
+    }
+    if (config.maxScore === 0) score = null;
     found.set(studentId, { studentId, score, reason, advice });
   }
   const scores = entries.map((entry) => found.get(entry.studentId)).filter((row): row is NonNullable<typeof row> => !!row);
@@ -250,9 +283,9 @@ export function readStoredAiScoring(
       studentId: row.studentId,
       // 旧数据里若已经存在半个奖杯，这里也按离散奖励归一化，避免再次显示出来。
       score: row.score === null ? null : normalizeAiScore(row.score as number, config),
-      reason: typeof row.reason === 'string' ? row.reason.slice(0, 200) : '',
+      reason: typeof row.reason === 'string' ? row.reason.slice(0, config.parts?.length ? 12000 : 200) : '',
       // 兼容升级前的已保存结果：旧数据没有 advice，仍可显示原来的一句评价。
-      advice: typeof row.advice === 'string' ? row.advice.slice(0, AI_SCORE_ADVICE_MAX) : '',
+      advice: typeof row.advice === 'string' ? row.advice.slice(0, config.parts?.length ? 12000 : AI_SCORE_ADVICE_MAX) : '',
     });
   }
   /*
@@ -302,10 +335,20 @@ export function readStudentAiReferenceScore(
     maxScore: config.maxScore,
     unit: config.unit,
     comment: typeof (item as Record<string, unknown>).reason === 'string'
-      ? ((item as Record<string, unknown>).reason as string).trim().slice(0, 200)
+      ? ((item as Record<string, unknown>).reason as string).trim().slice(0, config.parts?.length ? 12000 : 200)
       : '',
     advice: readAnalysisFeedback(raw, [studentId])?.students.find(row => row.studentId === studentId)?.advice || (typeof (item as Record<string, unknown>).advice === 'string'
-      ? ((item as Record<string, unknown>).advice as string).trim().slice(0, AI_SCORE_ADVICE_MAX)
+      ? ((item as Record<string, unknown>).advice as string).trim().slice(0, config.parts?.length ? 12000 : AI_SCORE_ADVICE_MAX)
       : ''),
   };
+}
+
+/** Mixed fills stay pending until AI succeeds; exact-match text scores are then added once. */
+export function answerGradeWithFillAudio(node: QuestionNode, value: unknown, aiScore: number, aiMax: number) {
+  if (node.type !== 'fill-blank' && node.type !== 'choice-blank') return answerGradeFromAiScore(aiScore, aiMax, aiMax);
+  const settings = node.data.fillBlankSettings as Record<string, Record<string, unknown>>;
+  const localNode = { ...node, data: { ...node.data, fillBlankSettings: Object.fromEntries(Object.entries(settings).map(([id, item]) => [id, (hasEvaluation(item) ? item.evaluationMode === 'ai' : item.mode === 'audio') ? { ...item, evaluationMode: 'collect', gradingMode: 'none' } : item])) } };
+  const local = grade(localNode, value, resolvePoints(node, DEFAULT_POINTS));
+  const localMax = Object.values(settings).filter(item => hasEvaluation(item) ? item.evaluationMode === 'answer' && item.evaluationScored === true : item.mode !== 'audio' && item.gradingMode === 'auto').reduce((sum, item) => sum + (typeof item.maxScore === 'number' ? item.maxScore : 1), 0);
+  return answerGradeFromAiScore((local?.score ?? 0) + aiScore, localMax + aiMax, localMax + aiMax);
 }

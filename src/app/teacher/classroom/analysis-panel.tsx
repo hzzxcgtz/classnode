@@ -400,7 +400,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                 </span>
                 {!payload.pendingReviewIds?.includes(item.studentId) && <strong className={styles.scoreValue}>
                   {(() => {
-                    if (item.score === null) return '暂无法评分';
+                    if (item.score === null) return payload.perStudent!.maxScore === 0 ? '评价完成' : '暂无法评分';
                     if (item.score === 0) return null;
                     const unit = payload.perStudent!.unit;
                     const reward = REWARD_STYLE_OPTIONS.find(option => option.value !== 'points' && pointsUnitLabel(option.value) === unit);

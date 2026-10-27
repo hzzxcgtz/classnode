@@ -136,7 +136,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
                   </span>
                 )}
               </div>
-              {blank.text.trim()
+              {blank.audio ? <VoiceAnswerPlayer src={worksheetAssetUrl(blank.audio.url)} durationMs={blank.audio.durationMs} title={blank.label}/> : blank.text.trim()
                 ? <div style={answerBox}>{blank.text}</div>
                 : <span style={{ fontSize: '0.813rem', color: FAINT }}>（这一空留空了）</span>}
             </div>
@@ -151,6 +151,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
                 table={(node.data as Record<string, unknown> | undefined)?.table}
                 blanks={{
                   values: view.texts,
+                  renderOf: index => view.blanks[index]?.audio ? <VoiceAnswerPlayer src={worksheetAssetUrl(view.blanks[index].audio!.url)} durationMs={view.blanks[index].audio!.durationMs} title={view.blanks[index].label}/> : undefined,
                   base: view.tableBase,
                   onChange: () => {},
                   disabled: true,

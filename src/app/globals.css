@@ -11104,3 +11104,271 @@ tr:hover td {
   .worksheet-editor-topbar-actions { flex-wrap: wrap; }
   .worksheet-editor-history-actions { width: 100%; padding: 0 0 6px; border-right: 0; }
 }
+
+/* 题面直接编辑：横线显示，稳定 ID 继续负责答案关联。 */
+.worksheet-editor-visual-fill { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 22px; align-items: start; }
+.worksheet-editor-visual-content { min-width: 0; }
+.worksheet-editor-blank-inspector { position: sticky; top: 18px; min-width: 0; border: 1px solid #d8e3ee; border-radius: 12px; background: #f8fafc; padding: 18px; }
+.worksheet-editor-inspector-head { display: grid; gap: 14px; margin-bottom: 16px; color: #263b50; }
+.worksheet-editor-inspector-head label { display: grid; gap: 7px; color: #64748b; font-size: .8rem; }
+.worksheet-editor-inspector-head select { width: 100%; min-width: 0; }
+.worksheet-editor-inspector-hint { color: #64748b; font-size: .85rem; line-height: 1.8; }
+.worksheet-editor-choice-blank-setup.is-inspector { display: block; }
+.is-inspector .worksheet-editor-fill-mode-card { border: 0; padding: 0; background: transparent; }
+.is-inspector .worksheet-editor-fill-mode-head { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+.is-inspector .worksheet-editor-mode-tabs { flex-wrap: wrap; }
+.is-inspector .worksheet-editor-fill-answer-field { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.is-inspector .worksheet-editor-fill-answer-editor { min-width: 0; flex-basis: 100%; }
+.is-inspector .worksheet-editor-fill-answer-score { flex-wrap: wrap; }
+.is-inspector .worksheet-editor-choice-words { margin-top: 18px; }
+.worksheet-editor-inline-blank { position: relative; min-width: 110px; height: 38px; padding: 0 12px; margin: 6px 6px; background: #eaf3ff; font-size: 0 !important; color: transparent !important; border: 1px solid transparent; border-radius: 6px; vertical-align: middle; cursor: pointer; user-select: all; }
+.worksheet-editor-inline-blank::after { content: ''; display: block; position: absolute; left: 12px; right: 12px; bottom: 7px; border-bottom: 1px solid #527ca8; }
+.worksheet-editor-inline-blank::before { content: attr(data-blank-number); position: absolute; top: -6px; left: -4px; display: grid; place-items: center; width: 18px; height: 18px; background: #365f8d; color: white; border-radius: 50%; font: 11px/1 system-ui; }
+.worksheet-editor-inline-blank[aria-pressed="true"], .worksheet-editor-inline-blank:focus { border-color: #365f8d; outline: 2px solid #c3d8ef; }
+.worksheet-editor-table-mark { font-size: 0 !important; color: transparent !important; cursor: pointer; }
+.worksheet-editor-table-mark::after { content: attr(data-label); color: #52718e; font-size: 12px; }
+.worksheet-editor-table-picker { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin: 10px 0; padding: 14px; border: 1px solid #d8e3ee; border-radius: 8px; background: #f5f8fc; }
+.worksheet-editor-table-picker label { display: grid; gap: 5px; font-size: .8rem; color: #52677c; }
+.worksheet-editor-table-picker input { width: 80px; }
+.worksheet-editor-live-table { margin-top: 16px; padding: 16px; border: 1px solid #dbe4ed; border-radius: 10px; background: #fff; }
+.worksheet-editor-live-table-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; margin-bottom: 12px; color: #334d68; }
+.worksheet-editor-live-table-head > span, .worksheet-editor-live-table-footer > span { font-size: .75rem; color: #6b8095; }
+.worksheet-editor-cell-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; min-height: 44px; }
+.worksheet-editor-cell-tools > span { font-size: .77rem; color: #64748b; margin-right: auto; }
+.worksheet-editor-cell-tools .btn { min-height: 36px; padding: 6px 10px; font-size: .8rem; }
+.worksheet-editor-row-column-tools { position: relative; }
+.worksheet-editor-row-column-tools summary { min-height: 36px; padding: 7px 10px; cursor: pointer; color: #365f8d; font-size: .8rem; }
+.worksheet-editor-row-column-tools > div { position: absolute; right: 0; top: 100%; z-index: 6; display: grid; gap: 8px; width: 200px; background: #fff; border: 1px solid #d8e3ee; border-radius: 8px; padding: 12px; box-shadow: 0 8px 22px #1e3a5f18; }
+.worksheet-editor-row-column-tools label { font-size: .8rem; color: #52677c; display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+.worksheet-editor-live-table-scroll { overflow-x: auto; }
+.worksheet-editor-live-table table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 300px; }
+.worksheet-editor-live-table td { border: 1px solid #d8e2ec; padding: 5px; vertical-align: middle; min-width: 90px; }
+.worksheet-editor-live-table td.is-heading { background: #f0f4f8; font-weight: 600; }
+.worksheet-editor-live-table td.is-active { background: #eef5fe; outline: 2px solid #5d85b2; outline-offset: -2px; }
+.worksheet-editor-visual-fill .worksheet-editor-live-table td textarea { display: block; width: 100%; min-height: 54px; border: none; background: transparent; padding: 9px 7px; resize: none; font: inherit; font-size: .88rem; color: #263b50; line-height: 1.6; box-shadow: none; border-radius: 3px; }
+.worksheet-editor-visual-fill .worksheet-editor-live-table td textarea::placeholder { color: #96a6b7; }
+.worksheet-editor-visual-fill .worksheet-editor-live-table td textarea:focus { outline: none; }
+.worksheet-editor-table-blank-line { position: relative; display: flex; align-items: flex-end; width: 100%; min-height: 54px; padding: 12px; border: 0; border-radius: 4px; background: #eaf3ff; color: #365f8d; cursor: pointer; }
+.worksheet-editor-table-blank-line span { position: absolute; top: 4px; left: 5px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: #365f8d; color: #fff; font-size: 11px; }
+.worksheet-editor-table-blank-line i { width: 100%; border-bottom: 1px solid #527ca8; }
+.worksheet-editor-table-blank-line:focus { outline: 2px solid #365f8d; outline-offset: -2px; }
+.worksheet-editor-live-table-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 5px; }
+@media(max-width: 1050px) { .worksheet-editor-visual-fill { grid-template-columns: minmax(0,1fr); } .worksheet-editor-blank-inspector { position: static; } }
+
+/* 表格作为任务描述内的独立编辑岛，字符坐标只计它的模型标记。 */
+.worksheet-editor-table-mark[data-table-editor='true'] { display: block; width: 100%; margin: 14px 0; padding: 0; border-radius: 0; background: transparent; color: inherit !important; font-size: .94rem !important; font-weight: 400 !important; white-space: normal; vertical-align: baseline; cursor: default; }
+.worksheet-editor-table-mark[data-table-editor='true']::after { display: none; }
+.worksheet-editor-table-island { display: block; font-size: .9rem; line-height: 1.6; white-space: normal; }
+.worksheet-editor-table-island .worksheet-editor-live-table { border: 0; border-radius: 0; padding: 0; margin: 0; }
+.worksheet-editor-table-island .worksheet-editor-live-table-head { display: none; }
+.worksheet-editor-table-edge-actions { display: flex; justify-content: space-between; gap: 12px; padding-top: 4px; }
+.worksheet-editor-table-edge-actions button { min-height: 32px; border: 0; padding: 4px 0; background: transparent; color: #617d99; font-size: .75rem; cursor: pointer; }
+.worksheet-editor-blank-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 8px 12px; border-top: 1px solid #dbe6f1; border-bottom: 1px solid #dbe6f1; background: #f1f7fe; color: #365f8d; font-size: .77rem; }
+.worksheet-editor-blank-actions button { min-height: 32px; padding: 4px 8px; border: 1px solid #d2e0ef; border-radius: 5px; color: #365f8d; background: #fff; font-size: .76rem; cursor: pointer; }
+.worksheet-editor-blank-actions span { color: #6f859b; font-size: .72rem; }
+.worksheet-editor-blank-actions button:focus { outline: 2px solid #7b9ec7; outline-offset: 1px; }
+.worksheet-editor-inline-blank[draggable='true'] { cursor: grab; }
+.worksheet-editor-inline-blank[draggable='true']:active { cursor: grabbing; }
+.worksheet-editor-blank-drop-hint { padding: 5px 12px; background: #eaf4ed; color: #326d58; font-size: .77rem; }
+
+/* 仅编辑时出现的表格工具，不占题面正文的空间。 */
+.worksheet-editor-floating-table-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; z-index: 110; width: max-content; box-sizing: border-box; padding: 6px 8px; border: 1px solid #d4dfeb; border-radius: 8px; background: #fff; color: #36516d; box-shadow: 0 4px 14px #16375718; font: 12px/1.4 system-ui; }
+.worksheet-editor-floating-table-tools .worksheet-editor-cell-tools { display: contents; }
+.worksheet-editor-floating-table-tools .worksheet-editor-live-table-footer { display: contents; }
+.worksheet-editor-floating-table-tools .worksheet-editor-table-paste { padding: 0; margin: 0; }
+.worksheet-editor-floating-table-tools .worksheet-editor-table-paste[open] { flex-basis: 100%; }
+.worksheet-editor-floating-table-tools .worksheet-editor-table-paste summary { min-height: 30px; font-size: 12px; cursor: pointer; }
+.worksheet-editor-floating-table-tools .worksheet-editor-table-paste textarea { min-width: min(460px, 70vw); max-width: 100%; font-size: 13px; }
+.worksheet-editor-floating-table-tools .btn { min-height: 32px; font-size: 12px; padding: 5px 9px; }
+.worksheet-editor-caret-stop { display: inline-block; min-width: 8px; max-width: 100%; min-height: 1em; white-space: pre-wrap; cursor: text; color: inherit; font-size: inherit; vertical-align: baseline; }
+.worksheet-editor-caret-stop[data-caret-block='true'] { display: block; min-height: 1.3em; width: 100%; line-height: 1.3; }
+.worksheet-editor-caret-stop:focus { outline: none; }
+
+/* 表格填空题：描述与作答网格各自编辑。 */
+.worksheet-editor-table-task { margin-top: 20px; }
+.worksheet-editor-table-task > h4 { margin: 0; color: #263b50; font-size: .95rem; }
+.worksheet-editor-table-task > p { margin: 7px 0 12px; color: #6b8095; font-size: .8rem; }
+.worksheet-editor-table-task .worksheet-editor-live-table { padding: 0; border: 0; margin: 0; }
+
+/* 独立表格题的结构操作常驻网格上方；浮层只负责当前格子的转换。 */
+.worksheet-editor-table-structure-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 10px; padding: 9px 12px; border: 1px solid #dbe4ed; border-radius: 8px; background: #f6f8fb; color: #52677c; font-size: .8rem; }
+.worksheet-editor-table-structure-tools .worksheet-editor-live-table-footer { display: contents; }
+.worksheet-editor-table-structure-tools .worksheet-editor-live-table-footer > span { margin-left: auto; }
+.worksheet-editor-table-structure-tools .btn { min-height: 34px; padding: 5px 10px; font-size: .8rem; }
+.worksheet-editor-table-structure-tools .worksheet-editor-row-column-tools > div { left: 0; right: auto; }
+.worksheet-editor-table-structure-tools .worksheet-editor-table-paste { margin: 0; padding: 0; }
+.worksheet-editor-table-structure-tools .worksheet-editor-table-paste > summary { padding: 7px 4px; cursor: pointer; color: #365f8d; }
+.worksheet-editor-table-structure-tools .worksheet-editor-table-paste[open] { flex-basis: 100%; }
+.worksheet-editor-table-structure-tools .worksheet-editor-table-paste textarea { display: block; width: 100%; margin: 8px 0; }
+.worksheet-editor-table-structure-tools .worksheet-editor-table-note { flex-basis: 100%; margin: 0; }
+.worksheet-editor-floating-table-tools .worksheet-editor-convert-blank { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; padding: 5px 10px; font-size: 12px; font-weight: 600; border-radius: 6px; }
+.worksheet-editor-convert-blank.btn-primary { background: #365f8d; color: #fff; border: 1px solid #365f8d; box-shadow: 0 2px 5px #24446420; }
+.worksheet-editor-convert-blank.btn-primary:hover { background: #294e79; }
+
+.worksheet-editor-floating-table-tools .worksheet-editor-cell-tools > span { font-size: 11px; color: #75869a; }
+
+/* 结构工具贴在表格右缘，不再占用一整行。 */
+.worksheet-editor-live-table.is-standalone { position: relative; padding-right: 40px; padding-bottom: 20px; }
+.worksheet-editor-table-task .worksheet-editor-live-table.is-standalone { padding-right: 40px; padding-bottom: 20px; }
+.worksheet-editor-table-structure-tools.worksheet-editor-table-icon-rail { position: absolute; right: 0; top: 0; display: flex; flex-direction: column; flex-wrap: nowrap; gap: 3px; width: 32px; margin: 0; padding: 3px 0; border: 0; border-radius: 6px; background: transparent; }
+.worksheet-editor-table-icon-rail > button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid transparent; border-radius: 5px; color: #627d98; background: transparent; cursor: pointer; }
+.worksheet-editor-table-icon-rail > button:hover, .worksheet-editor-table-icon-rail > button[aria-pressed='true'] { background: #eaf1f9; color: #365f8d; border-color: #d8e4ef; }
+.worksheet-editor-table-icon-rail > button:disabled { opacity: .3; cursor: default; }
+.worksheet-editor-table-rail-divider { width: 18px; height: 1px; background: #dce5ef; margin: 3px 0; align-self: center; }
+.worksheet-editor-table-blank-count { position: absolute; bottom: 0; right: 40px; color: #8a9bad; font-size: 11px; }
+.worksheet-editor-table-paste-panel { position: relative; z-index: 2; margin-right: 0; }
+.worksheet-editor-table-paste-panel textarea { flex-basis: 100%; }
+.worksheet-editor-live-table.is-standalone .worksheet-editor-table-note { margin: 8px 0 0; font-size: .8rem; color: #627d98; }
+
+.worksheet-editor-live-table.is-standalone, .worksheet-editor-table-task .worksheet-editor-live-table.is-standalone { padding-right: 72px; }
+.worksheet-editor-table-structure-tools.worksheet-editor-table-icon-rail { display: grid; grid-template-columns: repeat(2, 30px); gap: 3px; width: 64px; }
+.worksheet-editor-table-icon-rail .worksheet-editor-table-rail-divider { grid-column: 1 / -1; width: 48px; justify-self: center; }
+.worksheet-editor-table-blank-count { right: 72px; }
+.worksheet-editor-live-table.is-standalone { min-height: 180px; }
+
+/* 主题说明是整组任务的上下文，用连续浅蓝灰底与具体任务区分。 */
+.worksheet-editor-theme-overview { margin-bottom: 18px; padding: 12px 16px 8px; border: 1px solid #d8e3ef; border-radius: 10px; background: #edf3f9; }
+.worksheet-editor-canvas-head.is-theme-overview { margin-bottom: 0; padding: 12px 16px 4px; border: 1px solid #d8e3ef; border-bottom: 0; border-radius: 10px 10px 0 0; background: #edf3f9; }
+.worksheet-editor-canvas-head.is-theme-overview > div > span { color: #52718f; font-weight: 600; }
+.worksheet-editor-canvas .worksheet-editor-theme-overview { padding-top: 0; border-top: 0; border-radius: 0 0 10px 10px; }
+.worksheet-editor-canvas .worksheet-editor-theme-overview .worksheet-editor-task-head { margin: 0; padding: 6px 0 10px; border-bottom: 1px solid #d8e3ef; background: transparent; }
+.worksheet-editor-theme-overview .worksheet-editor-task-title { color: #263e58; }
+.worksheet-editor-theme-overview .worksheet-editor-task-desc-details { margin: 0; padding: 0; border: 0; background: transparent; }
+.worksheet-editor-theme-overview .worksheet-editor-task-desc-details > summary { color: #52718f; }
+.worksheet-editor-theme-overview .worksheet-editor-task-desc-details > summary em { color: #7d91a8; }
+.worksheet-editor-theme-overview .worksheet-editor-task-desc { background: #fff; border-color: #ccdbea; }
+
+/* 表格题：描述与所选填空等高，作答网格另起一行占满宽度。 */
+.worksheet-editor-visual-fill.worksheet-editor-table-fill { display: block; }
+.worksheet-editor-table-top { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 22px; align-items: stretch; }
+.worksheet-editor-table-description { display: flex; flex-direction: column; min-width: 0; }
+.worksheet-editor-table-description > div,
+.worksheet-editor-table-description .worksheet-editor-visual-content,
+.worksheet-editor-table-description .worksheet-editor-rich-field,
+.worksheet-editor-table-description .worksheet-editor-rich-box { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.worksheet-editor-table-description .worksheet-editor-prompt-input { flex: 1; min-height: 100px; }
+.worksheet-editor-table-top > .worksheet-editor-blank-inspector { position: static; box-sizing: border-box; }
+.worksheet-editor-paste-table-dialog { width: 560px; }
+.worksheet-editor-paste-table-dialog > p { margin: 8px 0 16px; font-size: .85rem; line-height: 1.6; color: #6b8095; }
+.worksheet-editor-paste-table-dialog > textarea { width: 100%; resize: vertical; min-height: 150px; }
+.worksheet-editor-paste-table-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+@media(max-width: 1050px) { .worksheet-editor-table-top { grid-template-columns: minmax(0, 1fr); } }
+.worksheet-editor-table-fill { margin-top: 14px; }
+
+/* 单元格工具：只呈现排版图标与紧凑的填空操作，不再显示行列位置。 */
+.worksheet-editor-floating-table-tools { gap: 6px; padding: 4px 5px; border-radius: 7px; box-shadow: 0 3px 10px #16375714; }
+.worksheet-editor-cell-alignment { display: flex; gap: 1px; padding-right: 5px; border-right: 1px solid #e2e8f0; }
+.worksheet-editor-cell-alignment > button { display: grid; place-items: center; width: 25px; height: 26px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #7890a7; cursor: pointer; }
+.worksheet-editor-cell-alignment > button:hover, .worksheet-editor-cell-alignment > button[aria-pressed='true'] { background: #eaf1f9; color: #365f8d; }
+.worksheet-editor-cell-alignment > button:disabled { opacity: .35; cursor: default; }
+.worksheet-editor-floating-table-tools .worksheet-editor-convert-blank { min-height: 26px; height: 26px; padding: 3px 7px; gap: 4px; font-size: 11px; font-weight: 500; border-radius: 4px; box-shadow: none; }
+
+/* 合并/拆分用方向明确的格线图形，并给出短标签。 */
+.worksheet-editor-live-table.is-standalone, .worksheet-editor-table-task .worksheet-editor-live-table.is-standalone { padding-right: 92px; min-height: 200px; }
+.worksheet-editor-table-structure-tools.worksheet-editor-table-icon-rail { width: 84px; grid-template-columns: repeat(2, 40px); gap: 3px; }
+.worksheet-editor-table-icon-rail > button { width: 40px; min-height: 30px; height: auto; padding: 4px 0; gap: 3px; }
+.worksheet-editor-table-icon-rail > button > small { font-size: 9px; line-height: 1.2; white-space: nowrap; font-weight: 500; }
+.worksheet-editor-table-icon-rail .worksheet-editor-table-rail-divider { width: 56px; }
+.worksheet-editor-table-blank-count { right: 92px; }
+
+/* 普通填空编辑：增加题面宽度，辅助操作压为图标。 */
+.worksheet-editor-visual-fill { grid-template-columns: minmax(0, 1fr) 270px; gap: 20px; }
+.worksheet-editor-blank-actions { min-height: 34px; gap: 5px; padding: 4px 10px; }
+.worksheet-editor-blank-actions > strong { margin-right: 5px; font-size: 11px; font-weight: 500; }
+.worksheet-editor-blank-actions > button { display: inline-grid; place-items: center; width: 27px; min-height: 27px; padding: 0; border: 0; background: transparent; }
+.worksheet-editor-blank-actions > button:hover { background: #e0ebf8; }
+.worksheet-editor-caret-stop { display: inline; padding-inline: 4px; min-height: 0; font-size: inherit; line-height: inherit; vertical-align: baseline; }
+.worksheet-editor-caret-stop[data-caret-block='true'] { display: block; padding: 0; min-height: 1.3em; }
+@media(max-width: 1050px) { .worksheet-editor-visual-fill { grid-template-columns: minmax(0, 1fr); } }
+.worksheet-editor-blank-actions > button:disabled { opacity: .3; cursor: default; }
+
+/* 普通填空题同样保持描述框与设置框等高，并与题型标题留出呼吸间距。 */
+.worksheet-editor-visual-fill.worksheet-editor-text-fill { align-items: stretch; margin-top: 14px; }
+.worksheet-editor-text-fill > .worksheet-editor-visual-content,
+.worksheet-editor-text-fill > .worksheet-editor-visual-content > .worksheet-editor-rich-field,
+.worksheet-editor-text-fill > .worksheet-editor-visual-content > .worksheet-editor-rich-field > .worksheet-editor-rich-box { display: flex; flex-direction: column; min-width: 0; }
+.worksheet-editor-text-fill > .worksheet-editor-visual-content > .worksheet-editor-rich-field,
+.worksheet-editor-text-fill > .worksheet-editor-visual-content > .worksheet-editor-rich-field > .worksheet-editor-rich-box { flex: 1; }
+.worksheet-editor-text-fill .worksheet-editor-prompt-input { flex: 1; min-height: 100px; }
+.worksheet-editor-text-fill > .worksheet-editor-blank-inspector { position: static; box-sizing: border-box; }
+
+/* 横线占位贴合正文行高，不再撑出高卡片与额外行距。 */
+.worksheet-editor-inline-blank { height: 1.25rem; min-width: 110px; margin: 0 4px; padding: 0 9px; line-height: 0; border-radius: 4px; vertical-align: middle; }
+.worksheet-editor-inline-blank::after { left: 9px; right: 9px; bottom: 4px; }
+.worksheet-editor-inline-blank::before { width: 14px; height: 14px; top: -4px; left: -4px; font: 9px/1 system-ui; }
+.worksheet-editor-caret-stop[data-caret-tail='true'] { padding: 0; }
+
+/* 设置内容在自身内部滚动，选中填空或切换作答方式不再撑高整行。 */
+.worksheet-editor-text-fill > .worksheet-editor-blank-inspector,
+.worksheet-editor-table-top > .worksheet-editor-blank-inspector {
+  contain: size;
+  min-height: 320px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+@media(max-width: 1050px) {
+  .worksheet-editor-text-fill > .worksheet-editor-blank-inspector,
+  .worksheet-editor-table-top > .worksheet-editor-blank-inspector {
+    contain: none;
+    min-height: 320px;
+    max-height: 380px;
+  }
+}
+.worksheet-editor-blank-inspector .worksheet-editor-mode-tabs label > span {
+  padding-inline: 4px;
+  white-space: nowrap;
+}
+.worksheet-editor-audio-blank-settings { display: grid; gap: 12px; margin-top: 14px; font-size: .8rem; }
+.worksheet-editor-audio-blank-settings .input { width: 100%; box-sizing: border-box; }
+.worksheet-editor-audio-blank-settings small { color: #6b8095; line-height: 1.6; }
+.worksheet-editor-blank-inspector .worksheet-editor-mode-tabs { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.worksheet-editor-inline-blank[data-audio-blank='true'] { background: #e9f3ed; min-width: 80px; }
+.worksheet-editor-inline-blank[data-audio-blank='true']::after { content: '语音作答'; border: 0; color: #426c55; font: 11px/16px system-ui; bottom: 2px; text-align: center; }
+/* 右侧只选作答方式；答案、候选词、评分要求在下方宽区编辑。 */
+.worksheet-editor-text-fill > .worksheet-editor-blank-inspector,
+.worksheet-editor-table-top > .worksheet-editor-blank-inspector { min-height: 260px; }
+.worksheet-editor-blank-detail-panel { margin: 16px 0; padding: 20px 22px; border: 1px solid #d7e3ed; border-radius: 12px; background: #f8fafc; }
+.worksheet-editor-blank-detail-heading { margin: 0 0 16px; font-size: .9rem; color: #304b64; }
+.worksheet-editor-blank-detail-empty { color: #7a8c9f; font-size: .8rem; line-height: 1.7; }
+.worksheet-editor-blank-detail-panel .worksheet-editor-fill-answer-field { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; margin-top: 0; padding-top: 0; border-top: 0; }
+.worksheet-editor-blank-detail-panel .worksheet-editor-fill-answer-editor { flex-basis: auto; }
+.worksheet-editor-blank-detail-panel .worksheet-editor-fill-answer-score { white-space: nowrap; }
+.worksheet-editor-blank-detail-panel .worksheet-editor-audio-blank-settings { grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; gap: 16px 24px; margin-top: 0; }
+.worksheet-editor-blank-detail-panel .worksheet-editor-compact-note { margin-bottom: 0; }
+.worksheet-editor-blank-detail-panel .worksheet-editor-inline-word-field { margin-top: 0; }
+@media(max-width:700px) {
+  .worksheet-editor-blank-detail-panel { padding: 16px; }
+  .worksheet-editor-blank-detail-panel .worksheet-editor-fill-answer-field,
+  .worksheet-editor-blank-detail-panel .worksheet-editor-audio-blank-settings { grid-template-columns: minmax(0,1fr); }
+}
+.worksheet-editor-blank-score-rule { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; padding: 10px 12px; margin: 0 0 16px; background: #edf3f8; border-radius: 7px; font-size: .8rem; color: #657d93; }
+.worksheet-editor-blank-score-rule strong { color: #365b7e; font-weight: 600; white-space: nowrap; }
+/* 语音评价：材料并列等高，评分与调用设置各自成组。 */
+.worksheet-editor-audio-blank-settings,
+.worksheet-editor-blank-detail-panel .worksheet-editor-audio-blank-settings { display: flex; flex-direction: column; gap: 16px; }
+.worksheet-editor-audio-materials,
+.worksheet-editor-audio-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; width: 100%; }
+.worksheet-editor-audio-materials .worksheet-editor-field { display: grid; gap: 7px; margin: 0; }
+.worksheet-editor-audio-materials textarea.input { height: 108px; min-height: 108px; padding: 11px 13px; font-size: .875rem; line-height: 1.65; font-weight: 400; resize: vertical; }
+.worksheet-editor-audio-options.is-single { grid-template-columns: minmax(0,1fr); }
+.worksheet-editor-audio-option-group { padding: 14px 16px; border: 1px solid #dce5ee; border-radius: 9px; background: #fff; min-width: 0; }
+.worksheet-editor-audio-option-toggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 24px; font-size: .85rem; font-weight: 600; color: #36536d; cursor: pointer; }
+.worksheet-editor-audio-option-toggle input { flex-shrink: 0; width: 16px; height: 16px; margin: 0; accent-color: #3c658b; }
+.worksheet-editor-audio-option-group > p { margin: 5px 0 14px; color: #7b8b9c; font-size: .75rem; line-height: 1.6; }
+.worksheet-editor-audio-number { display: flex; align-items: center; gap: 9px; color: #536a81; font-size: .8rem; }
+.worksheet-editor-audio-blank-settings .worksheet-editor-audio-number .input { width: 80px; min-height: 34px; height: 34px; padding: 5px 9px; font-weight: 500; font-size: .85rem; }
+.worksheet-editor-audio-settings-note { margin: 0; font-size: .75rem; color: #7b8b9c; line-height: 1.6; }
+@media(max-width:700px) { .worksheet-editor-audio-materials, .worksheet-editor-audio-options { grid-template-columns: minmax(0,1fr); gap: 14px; } }
+
+/* Unified worksheet evaluation: materials first, scoring and invocation independent. */
+.worksheet-evaluation{display:grid;gap:18px;min-width:0}
+.worksheet-evaluation-modes{display:flex;flex-wrap:wrap;gap:8px}
+.worksheet-evaluation-modes button{display:inline-flex;align-items:center;gap:7px;padding:10px 15px;border:1px solid #d4dfeb;border-radius:9px;background:#fff;color:#526780;font-size:14px;font-weight:600}
+.worksheet-evaluation-modes button.is-selected{border-color:#3b628d;color:#2e557f;background:#eaf1f9;box-shadow:inset 0 0 0 1px #3b628d}
+.worksheet-evaluation-help{margin:0;color:#6b8098;font-size:13px;line-height:1.7}
+.worksheet-evaluation-requirements{display:grid;gap:8px}.worksheet-evaluation-requirements strong{font-size:15px;color:#304b65}.worksheet-evaluation-requirements>span{font-size:13px;color:#6b8098}
+.worksheet-evaluation-requirements textarea{min-height:116px;resize:vertical;font-weight:400!important;line-height:1.65}
+.worksheet-evaluation-images{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.worksheet-evaluation-images figure{position:relative;margin:0;width:100px;height:80px;background:white;border:1px solid #d4dfeb;border-radius:8px;padding:4px}.worksheet-evaluation-images img{width:100%;height:100%;object-fit:contain}.worksheet-evaluation-images figure button{position:absolute;right:-6px;top:-6px;border:1px solid #d4dfeb;border-radius:50%;padding:4px;background:#fff;display:flex}
+.worksheet-evaluation-upload{display:inline-flex;align-items:center;gap:8px;background:white;border:1px dashed #a7b9ce;border-radius:8px;padding:12px 14px;color:#41678c;font-size:13px}.worksheet-evaluation-upload small{color:#7a8ea5}
+.worksheet-evaluation-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;border-top:1px solid #dce5ef;padding-top:16px}.worksheet-evaluation-options>div{display:flex;flex-direction:column;gap:9px;align-items:flex-start}.worksheet-evaluation-options label{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:#344e67}.worksheet-evaluation-options span{font-size:12px;color:#72869b;line-height:1.6}.worksheet-evaluation-options .worksheet-evaluation-number{font-weight:400;font-size:13px}.worksheet-evaluation-number input{width:76px;min-height:34px;padding:5px 8px}.worksheet-evaluation-validation{font-size:13px;color:#985424;margin:0}
+@media(max-width:700px){.worksheet-evaluation-options{grid-template-columns:1fr}}

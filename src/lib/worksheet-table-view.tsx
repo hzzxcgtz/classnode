@@ -2,7 +2,7 @@ import { Fragment, type CSSProperties, type ReactNode } from 'react';
 
 import { blankAriaLabel, blankValueStyle } from './worksheet-prompt-marks.ts';
 import { BlankSlot } from './worksheet-blank-slot.tsx';
-import { cellLabel, type WorksheetTable } from './worksheet-table.ts';
+import { cellLabel, coveredTableCells, readTableFor, type WorksheetTable } from './worksheet-table.ts';
 // ★ 2026-09-30：单元格里的字也走题面那**同一个**渲染器 —— 所以单元格里能写公式。
 // 🔴 由此 `worksheet-table-view.tsx` 与 `worksheet-prompt-text.tsx` **互为依赖**
 //    （前者要被后者画进题干，后者要用前者画单元格的字）。这是**有意**的、且是安全的：
@@ -43,6 +43,7 @@ import { PromptText } from './worksheet-prompt-text.tsx';
 /** 表格里那些空的绑定。⚠️ `values` 用**全局**下标（题干里的空排在表格的空之前）。 */
 export interface TableBlankBinding {
   values: string[];
+  renderOf?: (index: number) => ReactNode | undefined;
   /** 表格里第 0 个空在 `values` 里的下标（= `blankLayout(node).tableBase`）。 */
   base: number;
   onChange: (index: number, value: string) => void;
@@ -101,24 +102,13 @@ const HEADER_STYLE: CSSProperties = { ...CELL_STYLE, background: '#f1f5f9', font
  * 本组件只负责画。⚠️ 与 `PromptText` 同一条纪律：渲染层不做判断。
  */
 function rowsOf(table: unknown): WorksheetTable['rows'] {
-  if (!table || typeof table !== 'object' || Array.isArray(table)) return [];
-  const rows = (table as Record<string, unknown>).rows;
-  if (!Array.isArray(rows)) return [];
-  return rows.map((row) => {
-    if (!Array.isArray(row)) return [];
-    return row.map((item) => {
-      const cell = (item && typeof item === 'object' && !Array.isArray(item)) ? item as Record<string, unknown> : {};
-      return {
-        text: typeof cell.text === 'string' ? cell.text : '',
-        blank: typeof cell.blank === 'string' ? cell.blank : '',
-      };
-    });
-  });
+  return readTableFor({data:{table}})?.rows ?? [];
 }
 
 export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
   if (!table || typeof table !== 'object' || Array.isArray(table)) return null;
   const rows = rowsOf(table);
+  const covered = coveredTableCells(table);
   if (rows.length === 0) return null;
   const headerRow = (table as Record<string, unknown>).headerRow !== false;
 
@@ -134,21 +124,23 @@ export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
           {rows.map((cells, row) => (
             <tr key={row}>
               {cells.map((cell, col) => {
+                if (covered.has(`${row}:${col}`)) return null;
                 const isBlank = cell.blank !== '';
                 if (isBlank) slot += 1;
                 const label = cellLabel(row, col);
                 const globalIndex = blanks ? blanks.base + slot : -1;
                 const wrong = isBlank && blanks?.wrongOf ? blanks.wrongOf(globalIndex) : false;
                 return (
-                  <td key={col} style={headerRow && row === 0 ? HEADER_STYLE : CELL_STYLE}>
+                  <td key={col} rowSpan={cell.rowSpan} colSpan={cell.colSpan} style={{...(headerRow && row === 0 ? HEADER_STYLE : CELL_STYLE), textAlign:cell.align, verticalAlign:cell.verticalAlign ?? 'middle'}}>
                     {isBlank ? (
                       <Fragment>
-                        {blanks && blanks.drop && blanks.modeOf?.(globalIndex) !== 'input' ? (
+                        {blanks?.renderOf?.(globalIndex) !== undefined ? blanks.renderOf(globalIndex) : blanks && blanks.drop && blanks.modeOf?.(globalIndex) !== 'input' ? (
                           /* ★ 2026-09-28：这一格是**落点槽**（右侧选词 / 下方选词）——
                              与题干里那种槽**同一个组件**（`BlankSlot`），所以两处长得一样。
                              ⚠️ 宽度给 `100%`：表格里的槽跟着格子走（题干里那个跟着占位文字走）。 */
                           <BlankSlot
                             run={PLAIN_RUN}
+                            align={cell.align}
                             width="100%"
                             value={blanks.values[globalIndex] ?? ''}
                             label={label}
@@ -173,7 +165,7 @@ export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
                               // 与题干输入、选择填空槽走同一个最终样式：学生填写的内容恒为
                               // 600 字重；答错时再由同一函数叠加暗红色与删除线。
                               style={{
-                                flex: '1 1 auto', minWidth: 0, boxSizing: 'border-box',
+                                flex: '1 1 auto', minWidth: 0, boxSizing: 'border-box', textAlign:cell.align,
                                 ...(blankValueStyle(PLAIN_RUN, wrong) as CSSProperties),
                               }}
                             />

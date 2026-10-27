@@ -117,7 +117,7 @@ import { blankLayout } from './worksheet-table.ts';
 export type WorksheetAnswerValue =
   | { format: 'choice/v1'; selected: string[] }
   | { format: 'fill/v1'; text: string }
-  | { format: 'fill-multi/v1'; texts: string[] }
+  | { format: 'fill-multi/v1'; texts: string[]; audios?: Record<string, { format: 'audio/v1'; url: string; durationMs: number }> }
   | { format: 'text/v1'; text: string }
   | { format: 'order/v1'; order: string[] }
   | { format: 'match/v1'; links: Array<{ leftId: string; rightId: string }> }
@@ -147,7 +147,7 @@ export type WorksheetAnswerValue =
  */
 export type AnswerDraft =
   | { kind: 'choice'; selected: string[] }
-  | { kind: 'fill'; texts: string[] }
+  | { kind: 'fill'; texts: string[]; pendingAudio?: string[]; audios?: Record<string, { format: 'audio/v1'; url: string; durationMs: number }> }
   | { kind: 'text'; text: string }
   | { kind: 'order'; order: string[] }
   | { kind: 'match'; links: Array<{ leftId: string; rightId: string }> }
@@ -495,7 +495,7 @@ export function inkDraftHasContent(draft: InkAnswerDraft): boolean {
 
 export function isDraftEmpty(draft: AnswerDraft): boolean {
   if (draft.kind === 'choice') return draft.selected.length === 0;
-  if (draft.kind === 'fill') return !draft.texts.some((text) => text.trim() !== '');
+  if (draft.kind === 'fill') return Boolean(draft.pendingAudio?.length) || (!draft.texts.some((text) => text.trim() !== '') && !Object.values(draft.audios ?? {}).some(audio => WORKSHEET_AUDIO_URL.test(audio.url) && validAudioDuration(audio.durationMs)));
   // ★ M4b：判据是「有没有内容」（笔画 / 文字 / 第三方文档），定义在 `inkDraftHasContent` 一处。
   // ⚠️ 不看 `box`：起点那个默认框是占位，把它当内容会让一道**没画过**的
   // 画布题变成「有内容可提交」。
@@ -577,9 +577,11 @@ function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): Worksh
     return { format: 'choice/v1', selected: [...draft.selected] };
   }
   if (type === 'fill-blank' || type === 'choice-blank') {
-    if (draft.kind !== 'fill') return null;
+    if (draft.kind !== 'fill' || draft.pendingAudio?.length) return null;
     // ⚠️ **逐位对齐 `data.blanks`**（服务端按位取 `texts[index]`）：
     // 多填的空会被服务端忽略，少填的空按「没作答」算。
+    const audios = Object.fromEntries(Object.entries(draft.audios ?? {}).filter(([id, audio]) => (node.data.fillBlankSettings as Record<string, {mode?:string}> | undefined)?.[id]?.mode === 'audio' && WORKSHEET_AUDIO_URL.test(audio.url) && validAudioDuration(audio.durationMs)));
+    if (Object.keys(audios).length) return { format: 'fill-multi/v1', texts: draft.texts.slice(0, readBlankCount(node)), audios };
     if (!draft.texts.some((text) => text.trim() !== '')) return null;
     if (!isMultiBlank(node)) return { format: 'fill/v1', text: draft.texts[0] ?? '' };
     return { format: 'fill-multi/v1', texts: draft.texts.slice(0, readBlankCount(node)) };
@@ -810,7 +812,13 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
     const count = readBlankCount(node);
     const aligned: string[] = [];
     for (let index = 0; index < count; index += 1) aligned.push(texts[index] ?? '');
-    return { kind: 'fill', texts: aligned };
+    const audioMap = row.audios && typeof row.audios === 'object' && !Array.isArray(row.audios) ? row.audios as Record<string, unknown> : {};
+    const audios: NonNullable<Extract<AnswerDraft, { kind: 'fill' }>['audios']> = {};
+    for (const [id, rawAudio] of Object.entries(audioMap)) {
+      const audio = rawAudio as { format?: string; url?: unknown; durationMs?: unknown } | null;
+      if (audio?.format === 'audio/v1' && typeof audio.url === 'string' && WORKSHEET_AUDIO_URL.test(audio.url) && validAudioDuration(audio.durationMs)) audios[id] = { format: 'audio/v1', url: audio.url, durationMs: audio.durationMs as number };
+    }
+    return { kind: 'fill', texts: aligned, ...(Object.keys(audios).length ? { audios } : {}) };
   }
   if (kind === 'order') return reconcileWithNode(node, { kind: 'order', order: readStringList(row.order) });
   if (kind === 'match') return reconcileWithNode(node, { kind: 'match', links: readLinks(row.links) });

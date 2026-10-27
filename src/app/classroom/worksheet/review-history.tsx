@@ -73,6 +73,7 @@ export function ReviewTiming({ review }: { review: AnswerReview }) {
   return <span className={styles.reviewTiming}>{reviewSourceLabel(review.source)} · 最近评价：{new Date(review.evaluatedAt).toLocaleString('zh-CN')}{duration ? ` · 耗时 ${duration}` : ' · 耗时未记录'}</span>;
 }
 function ReviewReward({ score, maxScore, unit }: { score: number | null; maxScore: number; unit: string }) {
+  if (maxScore === 0) return <span>评价完成</span>;
   const style = REWARD_STYLE_OPTIONS.find(option => option.value !== 'points' && pointsUnitLabel(option.value) === unit)?.value;
   if (!style) return <span>{score}/{maxScore} {unit}</span>;
   const count = Math.min(10, Math.max(0, Math.floor(maxScore)));

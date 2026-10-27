@@ -299,3 +299,17 @@ test('教师参考保留完整评分标准与配图，信息收集不印参考�
   assert.equal(inlineText(result.answer), '');
   assert.match(result.answerNote || '', /不设标准答案/);
 });
+
+test('合并单元格的跨度与覆盖位置保留到教师用卷，损坏跨度不隐藏内容', () => {
+  const node=q('merge','fill-blank',{table:{rows:[[{text:'合并',blank:'',colSpan:2,rowSpan:2},{text:'',blank:''}],[{text:'',blank:''},{text:'',blank:''}]],headerRow:true},answers:[]},'{表格域}');
+  const table=questionAt([node],0).prompt.find(part=>part.kind==='table');
+  assert.ok(table?.kind==='table');assert.equal(table.rows[0][0].rowSpan,2);assert.equal(table.rows[0][0].colSpan,2);assert.equal(table.rows[1][1].covered,true);
+  const damaged=q('bad','fill-blank',{table:{rows:[[{text:'甲',colSpan:2},{text:'乙'}]]}},'{表格域}');
+  const visible=questionAt([damaged],0).prompt.find(part=>part.kind==='table');assert.ok(visible?.kind==='table');assert.equal(visible.rows[0][0].colSpan,undefined);assert.equal(visible.rows[0][1].covered,undefined);
+});
+
+test('教师用卷保留有效的单元格对齐，未知值忽略', () => {
+  const node=q('align','fill-blank',{table:{rows:[[{text:'甲',align:'right',verticalAlign:'bottom'},{text:'乙',align:'bad',verticalAlign:'bad'}]]}},'{表格域}');
+  const table=questionAt([node],0).prompt.find(part=>part.kind==='table');assert.ok(table?.kind==='table');
+  assert.equal(table.rows[0][0].align,'right');assert.equal(table.rows[0][0].verticalAlign,'bottom');assert.equal(table.rows[0][1].align,undefined);assert.equal(table.rows[0][1].verticalAlign,undefined);
+});

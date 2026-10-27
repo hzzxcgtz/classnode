@@ -4,6 +4,8 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { EvaluationSettings } from './evaluation-settings';
+import { hasEvaluation, aiEvaluationEnabled } from '@/lib/worksheet-evaluation';
 import { EditorRewardUnit } from './editor-reward-unit';
 import type { RewardStyle } from '@/lib/worksheet-reward';
 import { PromptText } from '@/lib/worksheet-prompt-text';
@@ -11,10 +13,12 @@ import { PromptText } from '@/lib/worksheet-prompt-text';
 // 它单独一个文件是因为里面全是**本机验不了的** DOM 原语（光标 / 选区 / 重建），
 // 混在这张卡片里会把「卡片只负责画控件」这条分工冲掉。
 import { PromptEditor } from './prompt-editor';
+import { fillEditorKind } from '@/lib/worksheet-fill-layout';
+import { TableFillEditor } from './table-fill-editor';
 // ★ 2026-09-27：「粘贴题目」的确认窗（题干 + 选项一起识别）—— 单独一个文件，
 // 因为它是**一次粘贴**的界面，与「画一道题的控件」不是同一件事。
 import { PasteQuestionDialog, type PasteQuestionResult } from './paste-question-dialog';
-import { aiScoredFor, supportsAiScoring } from '@/lib/worksheet-questions';
+import { aiScoredFor } from '@/lib/worksheet-questions';
 import {
   canGivePartial,
   maximumPointsFor,
@@ -35,7 +39,6 @@ import {
   POINTS_MAX,
   pointsSignature,
   QUESTION_TYPE_OPTIONS,
-  readBlankAnswers,
   type RejectedPointInput,
   shouldWarnZeroHalfCredit,
   showsPartialPoints,
@@ -67,9 +70,7 @@ import { DrawingSettings } from './bodies/drawing-settings';
 // 重写一遍就是两份真源，而它们漂移的后果是「教师在教师端选的档」与「学生端拿到的输入形态」
 // 不一致，且屏幕上看不出来。
 import { isInkNode } from '@/lib/worksheet-ink';
-import { questionTypeIcon } from '@/lib/worksheet-question-icons';
-import { api } from '@/lib/api';
-import { normalizePastedText } from '@/lib/worksheet-text-normalize';
+import { questionTypeIcon, TABLE_QUESTION_ICON } from '@/lib/worksheet-question-icons';
 // ★ 2026-10-06：判断「这一题的作图工具是不是流程图」只有这一份判据 —— 教师端那个
 // 作图工具选择器（`bodies/drawing-settings.tsx`）与学生端画布读的是同一个函数。
 import { readDrawingTool } from '@/lib/worksheet-drawing';
@@ -120,20 +121,6 @@ const QUESTION_EDITOR_COPY: Partial<Record<string, { title: string; description:
   },
 };
 
-/**
- * ★ 2026-10-06（教师，信息科技课的流程图作业）：AI 评分那一块的**结构要点模板**。
- *
- * 🔴 这段文字是**信息科技课标对流程图的结构要求**（判断框要两分出边并标 是/否、循环要有回边、
- *    一个框只说一步操作、要有明确的开始与结束）—— 面向中小学信息科技课的标准流程图作业，
- *    判的是**结构**（这几条对不对），不是画得好不好看。
- *    ⇒ 所以模板里一个字都不讲美观，只讲结构。
- * ⚠️ 标注写法必须与**画板的默认值**一致：画板判断框出边的默认标注是「是 / 否」
- *    （`DECISION_BRANCH_LABELS`，中文教材口径），快照那边也照它画 ⇒ 这里写 `Y/N` 会自相矛盾
- *    （学生照着模板写 Y/N，画板给的是是/否，两边都不报错）。
- * ⚠️ 放在**命名常量**里：课标表述将来要跟着教材改时，只改这一处（与按钮上的写入共用它）。
- */
-const STRUCTURE_POINTS_TEMPLATE =
-  '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。';
 
 /**
  * 标题栏右上角那个**滑动开关**（★ 2026-09-27）。
@@ -186,7 +173,7 @@ function HeadSwitch({ checked, onChange, label, title, text }: {
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ heading, label, expanded, focusedMode = false, onToggle, taskId, onDragStart, node, inheritedPoints, pointsUnit, rewardStyle, rejectedPointInput, onPromptChange, onDataChange, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onNotice, onRemove }: {
+export function QuestionCard({ heading, label, expanded, focusedMode = false, onToggle, taskId, onDragStart, node, inheritedPoints, pointsUnit, rewardStyle, rejectedPointInput, onPromptChange, onDataChange, onAppendEvaluationImages, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onNotice, onRemove }: {
   /**
    * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
    * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
@@ -235,6 +222,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
    */
   onPromptChange: (prompt: string, data?: Record<string, unknown>) => void;
   onDataChange: (patch: Record<string, unknown>) => void;
+  onAppendEvaluationImages?: (urls: string[], blankId?: string) => void;
   onPointsInputChange: (input: RejectedPointInput | null) => void;
   onPointsChange: (points: QuestionPointsDraft | undefined) => void;
   /** ★ M4b/D1：逐题的作答方式（键盘 / 手写）。走 reducer，所以进撤销栈。 */
@@ -255,7 +243,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
   const typeOption = QUESTION_TYPE_OPTIONS.find(option => option.value === node.type);
   const typeLabel = node.type === 'single-choice' || node.type === 'multi-choice'
     ? (isMultipleChoice(node) ? '多选题' : '单选题')
-    : typeOption?.label ?? node.type;
+    : node.type === 'fill-blank' && fillEditorKind(node) === 'table' ? '表格题' : typeOption?.label ?? node.type;
   const promptRuns = readPromptRunsFor(node);
   const promptImage = readPromptImage(node);
 
@@ -268,24 +256,6 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
    */
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
-  const rubricImageInputRef = useRef<HTMLInputElement>(null);
-  const [rubricUploading, setRubricUploading] = useState(false);
-  const rubricText = typeof node.data.rubricText === 'string' ? node.data.rubricText : '';
-  const rubricImageUrl = typeof node.data.rubricImageUrl === 'string' ? node.data.rubricImageUrl : '';
-
-  const uploadRubricImage = async (file: File) => {
-    setRubricUploading(true);
-    try {
-      const result = await api.uploadWorksheetImage(file);
-      onDataChange({ rubricImageUrl: result.url });
-      onNotice('评分标准图片已上传', 'success');
-    } catch (error) {
-      onNotice(error instanceof Error ? error.message : '评分标准图片上传失败', 'error');
-    } finally {
-      setRubricUploading(false);
-      if (rubricImageInputRef.current) rubricImageInputRef.current.value = '';
-    }
-  };
 
   /**
    * 点「粘贴题目」：**只开窗**，不碰剪贴板。
@@ -369,6 +339,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
    * ⚠️ 不再是「展开/收起」：标记在不在就是显示/隐藏（教师第二轮：「这里不用展开收拢？」）。
    */
   const tableBlockRef = useRef<HTMLDivElement | null>(null);
+  const [selectedBlankId, setSelectedBlankId] = useState<string | null>(null);
   const answerBlock: { title: string; hint: string } | null =
     node.type === 'true-false'
       ? null
@@ -377,7 +348,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         : isBlankType
           // ★ 2026-10-06：「填空域与表格域会自动同步」与「表格域作答设置」那一块里的
           // 「表格里的空与题干里的空是同一批」是同一个事实（表格域不出现时这句还是错的）⇒ 删这边半句。
-          ? { title: '填空设置', hint: '' }
+          ? null
           : { title: editorCopy.title, hint: editorCopy.description };
   const shownPoints = displayPoints(node, inheritedPoints);
   // ★ 2026-09-28（表格填空）：这笔账搬去了 `maximumPointsFor`（有用例）。
@@ -385,8 +356,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
   //    一道两个空的表格题显示「最高 1 分」，而服务端按逐空给分、学生实际能拿 2 分。
   //    教师看到的数字与实际给分对不上，而**没有任何报错**（本仓最防的那一类）。
   const maximumPoints = maximumPointsFor(node, shownPoints.full);
-  const fillSettings = node.type === 'fill-blank' ? fillSettingsFor(node, readPromptRunsFor(node)) : [];
-  const explicitFillScoring = node.type === 'fill-blank' && hasExplicitFillGrading(fillSettings);
+  const fillSettings = node.type === 'fill-blank' || (node.type === 'choice-blank' && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation)) ? fillSettingsFor(node, readPromptRunsFor(node)) : [];
+  const explicitFillScoring = hasExplicitFillGrading(fillSettings);
   const fillTotals = fillGradingTotals(fillSettings);
   /**
    * 这一型有没有**整题级**的 AI 评分设置块（开关 + 满额 + 评分标准 + 图片）。
@@ -402,42 +373,27 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
    */
   // ★ 2026-10-09：判据搬进 `lib/worksheet-questions.ts`（题卡与教师看板共用一份 ——
   //    看板那一列从前自己判 `data.aiScoringEnabled`，一道老填空题会挂着「AI 评分」而没人给它评分）。
-  const aiSupported = supportsAiScoring(node);
+
   // 🔴 填空题**没有** AI 评分的路（教师 2026-10-09 裁定：逐空 AI 那一档已删）⇒
   //    这里不再有「填空按逐空 AI 空数推导」那一支：老库里留着的 `aiScoringEnabled` 不算数。
   const aiScoringEnabled = aiScoredFor(node);
   const aiScoringMaxScore = typeof node.data.aiScoringMaxScore === 'number'
     ? node.data.aiScoringMaxScore : 10;
-  const aiScoringCriteria = typeof node.data.aiScoringCriteria === 'string'
-    ? node.data.aiScoringCriteria : '';
-  const gradingStatus = explicitFillScoring
+
+  const gradingStatus = aiEvaluationEnabled(node) && !aiScoringEnabled && fillTotals.total === 0 ? 'AI 评价 · 不计分' : explicitFillScoring
     // ★ 2026-10-09（教师裁定）：逐空只剩「本地评分」一笔账（AI / 不算分两档已删），
     //    所以不叫「混合评分」了 —— 那个词指的是「本地 + AI 混着」，今天不存在。
     // 🔴 还有一个**老数据**的岔口：整道题的空如果**全是**历史值（`'ai'` / `'none'`），
     //    总分就是 0 —— 那时说「逐空评分 · 最高 0 分」是一句让人以为界面坏了的话。
     //    判分侧这时**根本不出分**（`grade()` 里 `auto.length === 0` 直接回 null），
     //    与「仅统计作答」逐字对应，所以走它。
-    ? (gradedOn && fillTotals.total > 0 ? `逐空评分 · 最高 ${fillTotals.total}` : '仅统计作答')
+    ? ((gradedOn || aiScoringEnabled) && fillTotals.total > 0 ? `逐空评分 · 最高 ${fillTotals.total}` : '仅统计作答')
     : aiScoringEnabled
     ? `AI 评分 · 最高 ${aiScoringMaxScore}`
     : isGradedQuestionType(node.type)
       ? (gradedOn ? `自动评分 · 最高 ${maximumPoints}` : '仅统计作答')
       : '教师查看';
 
-  const analysisFocusSettings = (
-    <div className="worksheet-editor-block worksheet-editor-analysis-focus">
-      <div className="worksheet-editor-block-head">
-        <div>
-          <h4><EditorIcon kind="content" /><label htmlFor={`analysis-focus-${node.id}`}>当前任务分析重点（选填）</label></h4>
-          <p id={`analysis-focus-help-${node.id}`}>说明重点关注什么、暂不分析什么。留空时按任务要求和评价依据分析，不改变评分标准。</p>
-        </div>
-      </div>
-      <textarea id={`analysis-focus-${node.id}`} className="input worksheet-editor-evaluation-input" rows={3} maxLength={1200}
-        aria-describedby={`analysis-focus-help-${node.id}`} value={typeof node.data.analysisFocus === 'string' ? node.data.analysisFocus : ''}
-        placeholder={isGradedQuestionType(node.type) && !gradedOn ? '例如：了解学生的活动偏好，关注选择理由与实施条件，不评价偏好的优劣。' : '例如：重点看是否把经过写具体，暂不重点评价修辞和个别错别字。'}
-        onChange={event => onDataChange({ analysisFocus: event.target.value })} />
-    </div>
-  );
 
   return (
     <section
@@ -490,10 +446,10 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           <span className="worksheet-editor-question-index">{focusedMode && node.type === 'drawing' ? `第 ${badgeLabel} 项任务` : badgeLabel}</span>
           {focusedMode ? (
             <span className="worksheet-editor-question-heading-copy">
-              <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(node.type)}</span>{typeLabel}</strong>
+              <strong><span className="worksheet-editor-type-glyph">{node.type === 'fill-blank' && fillEditorKind(node) === 'table' ? TABLE_QUESTION_ICON : questionTypeIcon(node.type)}</span>{typeLabel}</strong>
             </span>
           ) : (
-            <span className="worksheet-editor-question-type"><span className="worksheet-editor-type-glyph">{questionTypeIcon(node.type)}</span>{typeLabel}</span>
+            <span className="worksheet-editor-question-type"><span className="worksheet-editor-type-glyph">{node.type === 'fill-blank' && fillEditorKind(node) === 'table' ? TABLE_QUESTION_ICON : questionTypeIcon(node.type)}</span>{typeLabel}</span>
           )}
           <span className={`worksheet-editor-grade-status${gradedOn ? ' is-on' : ' is-manual'}`}>
             {gradingStatus}{gradingStatus.includes('最高') && <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />}
@@ -576,8 +532,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         </div>
 
         <div className={`worksheet-editor-block${(node.type === 'drawing' || node.type === 'short-answer' || node.type === 'open-ended') ? ' drawing-prompt-block' : ''}`}>
-          <PromptEditor
-            heading={<h4><EditorIcon kind="prompt" />任务要求{node.type === 'drawing' && <span className="drawing-required">*</span>}</h4>}
+          {node.type === 'fill-blank' && fillEditorKind(node) === 'table' ? <TableFillEditor node={node} onPromptChange={onPromptChange} onDataChange={onDataChange} onNotice={onNotice} onBlankSelect={setSelectedBlankId} selectedBlankId={selectedBlankId} inspector={<ChoiceBlankSetup section="mode" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId} />} /> : <PromptEditor
+            heading={<h4><EditorIcon kind="prompt" />任务描述{node.type === 'drawing' && <span className="drawing-required">*</span>}</h4>}
             node={node}
             onPromptChange={onPromptChange}
             onDataChange={onDataChange}
@@ -585,8 +541,15 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             // ★ 2026-09-28：点题干里的 {表格域} chip（或刚插入一个）⇒ 展开设置面板
             onTableMarkClick={() => tableBlockRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })}
             onNotice={onNotice}
-          />
+            onBlankSelect={setSelectedBlankId}
+            selectedBlankId={selectedBlankId}
+            tableEditor={node.type === 'fill-blank' && hasTableMark ? <div ref={tableBlockRef}><TableBody node={node} onDataChange={onDataChange} onBlankSelect={setSelectedBlankId} selectedBlankId={selectedBlankId} /></div> : undefined}
+            blankInspector={isBlankType ? <ChoiceBlankSetup section="mode" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId} /> : undefined}
+          />}
         </div>
+        {isBlankType && <div className="worksheet-editor-blank-detail-panel" data-blank-settings-for={node.id}>
+          <ChoiceBlankSetup onAppendEvaluationImages={onAppendEvaluationImages} section="details" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId}/>
+        </div>}
         {/*
           ★ 2026-10-06（教师）：「判断题的答案设置移到上面题干的后面」。
           ⊘ 它原来在**最下面**（自动评分、分值设置之后）—— 判分相关的设置都堆在那里，
@@ -640,30 +603,6 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             {(node.type === 'single-choice' || node.type === 'multi-choice') && (
               <ChoiceOptionsBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />
             )}
-            {node.type === 'fill-blank' && hasTableMark && (
-              <div className="worksheet-editor-block worksheet-editor-table-setup" ref={tableBlockRef}>
-                <div className="worksheet-editor-block-head">
-                  <div>
-                    <h4><EditorIcon kind="content" />表格设置</h4>
-                  </div>
-                </div>
-                <TableBody node={node} onDataChange={onDataChange} />
-              </div>
-            )}
-            {/* ★ 2026-09-28：这一块现在覆盖**这道题全部的空**（题干里的 + 表格里的），
-                所以它排在表格面板**之后**（表格在上、空的清单在下，读起来才是一条线）。 */}
-            {(node.type === 'fill-blank' || node.type === 'choice-blank') && (
-              // ★ 2026-10-05（教师最新裁定）：每个空的**答案**也在这里（卡片最下方的独立第三行），
-              // 所以要把「全对的奖励数量」传进去 —— 「逐空评分」那笔账是在这里算给教师看的。
-              <ChoiceBlankSetup
-                node={node}
-                onDataChange={onDataChange}
-                fullPoints={shownPoints.full}
-                pointsUnit={pointsUnit}
-                rewardStyle={rewardStyle}
-              />
-            )}
-
             {/* ★ 2026-09-28（表格填空，裁定③）：网格面板 —— 表格属于**题面**，
                 所以它排在题干这一侧，不排到答案那一块里。
                 ⚠️ **它排在「每个空的作答方式」之前是刻意的**（2026-09-28 教师反馈）：
@@ -683,208 +622,6 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
             {node.type === 'open-ended' && <p className="worksheet-editor-answer-disabled">开放题不设置标准答案和评分规则。教师可在课堂中对学生作答进行 AI 分析。</p>}
 
-            <div className={(node.type === 'drawing' || node.type === 'short-answer') ? 'drawing-evaluation-settings' : undefined}>
-            {(node.type === 'drawing' || node.type === 'short-answer') && <h3 className="drawing-zone-heading"><EditorIcon kind="grading" />评价设置</h3>}
-            {(node.type === 'short-answer' || node.type === 'drawing') && (
-              <div className="worksheet-editor-block worksheet-editor-reference-block">
-                <div className="worksheet-editor-block-head">
-                  <div>
-                    <h4><EditorIcon kind="answer" /><label htmlFor={`reference-answer-${node.id}`}>参考作答（选填）</label></h4>
-                    <p id={`reference-answer-help-${node.id}`}>填写合理的作答示例，帮助 AI 理解任务；其他符合要求的表达和方法也可接受。</p>
-                  </div>
-                </div>
-                <textarea id={`reference-answer-${node.id}`} className="input worksheet-editor-evaluation-input" aria-describedby={`reference-answer-help-${node.id}`} rows={4} maxLength={12000}
-                  value={(readBlankAnswers(node)[0] ?? []).join('\n\n')}
-                  placeholder={node.type === 'drawing' ? '例如：参考作品中的对象、关系和标注，也可提供不同的合理方案' : '填写示例习作、解释或解题过程，无需穷尽所有合理答案'}
-                  onPaste={event => {
-                    const raw = event.clipboardData.getData('text/plain');
-                    if (!raw) return;
-                    event.preventDefault();
-                    const element = event.currentTarget;
-                    const next = element.value.slice(0, element.selectionStart) + normalizePastedText(raw) + element.value.slice(element.selectionEnd);
-                    onDataChange({ answers: next.trim() ? [[next]] : [] });
-                  }}
-                  onChange={event => onDataChange({ answers: event.target.value.trim() ? [[event.target.value]] : [] })} />
-              </div>
-            )}
-            {aiSupported && <div className="worksheet-editor-block worksheet-editor-evaluation-basis">
-
-                    <div className="worksheet-editor-block-head">
-                      <div>
-                        <h4><EditorIcon kind="grading" /><label htmlFor={`evaluation-rubric-${node.id}`}>评价标准{aiScoringEnabled ? '（必填）' : '（选填）'}</label></h4>
-                        <p id={`evaluation-rubric-help-${node.id}`}>说明怎样算达到要求；开启 AI 评分时须写清给分条件，可填写文字或上传量表图片。</p>
-                      </div>
-                    </div>
-                      <textarea
-                        id={`evaluation-rubric-${node.id}`}
-                        className="input worksheet-editor-evaluation-input"
-                        aria-describedby={`evaluation-rubric-help-${node.id}`}
-                        required={aiScoringEnabled && !rubricImageUrl}
-                        value={rubricText || aiScoringCriteria}
-                        maxLength={2400}
-                        rows={4}
-                        placeholder="例如：经过清楚4分，动作或对话具体4分，感受与事件相关2分。不评分时可只写评价要求。"
-                        onPaste={(event) => {
-                          const raw = event.clipboardData.getData('text/plain');
-                          if (!raw) return;
-                          event.preventDefault();
-                          const element = event.currentTarget;
-                          const start = element.selectionStart ?? element.value.length;
-                          const end = element.selectionEnd ?? element.value.length;
-                          const next = `${element.value.slice(0, start)}${normalizePastedText(raw)}${element.value.slice(end)}`;
-                          onDataChange({ rubricText: next, aiScoringCriteria: undefined });
-                        }}
-                        onBlur={(event) => {
-                          const next = normalizePastedText(event.target.value);
-                          if (next !== event.target.value) onDataChange({ rubricText: next, aiScoringCriteria: undefined });
-                        }}
-                        onChange={(event) => onDataChange({
-                          rubricText: event.target.value,
-                          aiScoringCriteria: undefined,
-                        })}
-                      />
-                    {node.type === 'drawing' && readDrawingTool(node) === 'flowchart' && (
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => {
-                          // 显示值可能是旧数据里的 `aiScoringCriteria`（见上面那段说明）⇒ 取合并后的那一份。
-                          const current = rubricText || aiScoringCriteria;
-                          onDataChange({
-                            rubricText: current ? `${current}\n${STRUCTURE_POINTS_TEMPLATE}` : STRUCTURE_POINTS_TEMPLATE,
-                            aiScoringCriteria: undefined,
-                          });
-                        }}
-                      >
-                        插入结构要点模板
-                      </button>
-                    )}
-                    <input
-                      ref={rubricImageInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      hidden
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) void uploadRubricImage(file);
-                      }}
-                    />
-                    {rubricImageUrl ? (
-                      <div className="worksheet-editor-rubric-image">
-                        <img src={worksheetAssetUrl(rubricImageUrl)} alt="评价标准" />
-                        <div>
-                          <button type="button" className="btn btn-secondary" disabled={rubricUploading} onClick={() => rubricImageInputRef.current?.click()}>
-                            {rubricUploading ? '正在上传…' : '更换图片'}
-                          </button>
-                          <button type="button" className="btn btn-secondary" onClick={() => onDataChange({ rubricImageUrl: undefined })}>移除图片</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button type="button" className="btn btn-secondary worksheet-editor-rubric-upload" disabled={rubricUploading} onClick={() => rubricImageInputRef.current?.click()}>
-                        {rubricUploading ? '正在上传图片…' : '上传评价标准图片'}
-                      </button>
-                    )}
-            </div>}
-            {aiSupported && analysisFocusSettings}
-            {aiSupported && (
-              <div className="worksheet-editor-block worksheet-editor-ai-scoring">
-                <div className="worksheet-editor-block-head">
-                  <div>
-                    <h4><EditorIcon kind="grading" />AI 评分</h4>
-                    <p>{node.data.studentAiReviewEnabled === true ? '学生提交后自动评分，结果计入成绩。' : '由教师在课堂看板发起 AI 评分，结果计入成绩。'}</p>
-                  </div>
-                  <HeadSwitch
-                    checked={aiScoringEnabled}
-                    onChange={(enabled) => onDataChange({
-                      aiScoringEnabled: enabled,
-                      ...(enabled ? {
-                        studentAiReviewEnabled: true,
-                        aiReviewLimit: Number.isInteger(node.data.aiReviewLimit) && Number(node.data.aiReviewLimit) >= 1 && Number(node.data.aiReviewLimit) <= 20 ? node.data.aiReviewLimit : 1,
-                      } : {}),
-                    })}
-                    label="AI 评分"
-                    title={aiScoringEnabled ? '已开启 AI 评分' : '已关闭 AI 评分'}
-                  />
-                </div>
-                {aiScoringEnabled && (
-                  <div className="worksheet-editor-ai-scoring-fields">
-                    <div className="worksheet-editor-ai-settings">
-                      <div className="worksheet-editor-individual-review">
-                        <div className="worksheet-editor-individual-review-head">
-                          <div>
-                            <h5>学生自主评价</h5>
-                            <p>学生提交作品后，自动获得 AI 评分与建议</p>
-                          </div>
-                          <HeadSwitch checked={node.data.studentAiReviewEnabled === true} onChange={enabled => onDataChange({ studentAiReviewEnabled: enabled })} label="学生自主评价" title={node.data.studentAiReviewEnabled === true ? '已开启学生自主评价' : '已关闭学生自主评价'} />
-                        </div>
-                        {node.data.studentAiReviewEnabled === true && <>
-                          <div className="worksheet-editor-review-quota">
-                            <label htmlFor={`ai-review-limit-${node.id}`}>每人每项任务评价次数</label>
-                            <div className="worksheet-editor-ai-scoring-stepper">
-                              <button type="button" disabled={(Number(node.data.aiReviewLimit) || 1) <= 1} onClick={() => onDataChange({ aiReviewLimit: Math.max(1, (Number(node.data.aiReviewLimit) || 1) - 1) })} aria-label="减少评价次数">−</button>
-                              <input id={`ai-review-limit-${node.id}`} type="number" min={1} max={20} step={1} value={typeof node.data.aiReviewLimit === 'number' ? node.data.aiReviewLimit : 1} onChange={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 1 && value <= 20) onDataChange({ aiReviewLimit: value }); }} />
-                              <button type="button" disabled={(Number(node.data.aiReviewLimit) || 1) >= 20} onClick={() => onDataChange({ aiReviewLimit: Math.min(20, (Number(node.data.aiReviewLimit) || 1) + 1) })} aria-label="增加评价次数">+</button>
-                            </div>
-                            <span>次</span>
-                          </div>
-                          <p className="worksheet-editor-review-help">成功评价才扣次，失败可重试。剩余次数内可修改并再次提交，评价中不能修改。<br />次数用完后作品定稿，教师增加次数可继续修改；不受学习单「提交后可以修改」开关限制。<br />最新有效评分替换旧分，奖励不累计。</p>
-                        </>}
-                      </div>
-                      <div className="worksheet-editor-ai-scoring-field">
-                        <label htmlFor={`ai-scoring-max-${node.id}`}>
-                          {/* ★ 2026-10-06：这一格与本地判分块那一格是**同一个字段**
-                              （这道题最多给多少），原来两边各叫各的（满分 / 满额 / 分值）。
-                              ⇒ 现在两处**同名**，而且名字跟着学习单的奖励形式走：
-                                分数档叫「分值」，图标 / 奖杯那一档叫「奖励数量」——
-                                同一个字段，量词要对得上后面那个单位（「3 座奖杯」不是「分值 3 座奖杯」）。 */}
-                          {pointsUnit === '分' ? '分值' : '奖励数量'} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />
-                        </label>
-                        <div className="worksheet-editor-ai-scoring-stepper">
-                          <button
-                            type="button"
-                            disabled={aiScoringMaxScore <= 1}
-                            onClick={() => onDataChange({ aiScoringMaxScore: Math.max(1, aiScoringMaxScore - 1) })}
-                            aria-label={`减少 1 ${pointsUnit}`}
-                          >−</button>
-                          <input
-                            id={`ai-scoring-max-${node.id}`}
-                            type="number"
-                            min={1}
-                            max={100}
-                            step={1}
-                            value={aiScoringMaxScore}
-                            onChange={(event) => {
-                              const value = Number.parseInt(event.target.value, 10);
-                              if (Number.isInteger(value) && value >= 1 && value <= 100) {
-                                onDataChange({ aiScoringMaxScore: value });
-                              }
-                            }}
-                            aria-label={`AI 评分分值（${pointsUnit}）`}
-                          />
-                          <button
-                            type="button"
-                            disabled={aiScoringMaxScore >= 100}
-                            onClick={() => onDataChange({ aiScoringMaxScore: Math.min(100, aiScoringMaxScore + 1) })}
-                            aria-label={`增加 1 ${pointsUnit}`}
-                          >+</button>
-                        </div>
-                        <p className="worksheet-editor-review-help">设置本项任务的满分，评价标准中的分值应与此一致。</p>
-                      </div>
-                    </div>
-                    {node.data.studentAiReviewEnabled === true && <p className="worksheet-editor-ai-template-note">使用前，请将分析智能体的提示词更新为最新模板。评价次数默认 1 次，可按需增加。</p>}
-                    <p className="worksheet-editor-ai-scoring-note">
-                      {/* ★ 2026-10-07（教师裁定 2）：AI 的分**会写回成绩**（进总分、进奖励、进报告的
-                          对错标记），所以原来那句「仅供参考，不会覆盖教师评价」已经不成立了。
-                          ⚠️ 这里**没有**「教师改分」入口（教师端唯一改答案的动作是「已查看」），
-                          所以「覆盖」这件事不存在；真正要提醒教师的是「这个分会算进成绩」。 */}
-                      AI 评分会计入成绩 · 当前任务满分 <span className="worksheet-editor-ai-score-value">{aiScoringMaxScore} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>
-                      {pointsUnit === '分' ? '，分数最多保留一位小数。' : '，奖励按整数发放。'}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-            </div>
           </div>
         )}
 
@@ -905,20 +642,20 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         🔴 这不是纯显隐：服务端 `grade()` 与 AI 评分入口也必须先读 `node.autoGrade`，
         否则教师看到关闭，学生提交后仍会得到分数。
       */}
-      {isGradedQuestionType(node.type) && (
+      {isGradedQuestionType(node.type) && (isBlankType ? !Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation) : !hasEvaluation(node.data) || node.data.evaluationMode === 'answer') && (
         <section className={`worksheet-editor-question-section is-grading${gradedOn ? '' : ' is-collection'}`}>
           <div className="worksheet-editor-section-head">
             <div>
-              <h3><EditorIcon kind="grading" />作答用途</h3>
-              <p>选择是否设置答案。信息收集不判对错、不计分，可进行 AI 分析。</p>
+              <h3><EditorIcon kind="grading" />{isBlankType ? '整题计分' : '答案核对设置'}</h3>
+              <p>{isBlankType ? '逐空评分：文字和选词按标准答案给分，语音可由 AI 按评价要求评分。仅收集作答时，整题不计分，可由教师发起内容分析。' : '选择是否设置答案。信息收集不判对错、不计分，可进行 AI 分析。'}</p>
             </div>
             <div className="worksheet-editor-head-actions">
               {/* ⚠️ 徽章里**不写「自动评分」** —— 卡片标题就是它（原来那句
                   `gradingStatus`（「自动评分 · 最高 1 颗星星」）是给**折叠态那一行**用的，
                   那里没有标题，所以不能直接搬过来）。 */}
               {gradedOn && <span className="worksheet-editor-points-badge">当前任务满分 {explicitFillScoring ? fillTotals.total : maximumPoints} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>}
-              <label><input type="radio" checked={gradedOn} onChange={() => onAutoGradeChange(true)} name={`worksheet-purpose-${node.id}`} /> 有答案，自动评分</label>
-              <label><input type="radio" checked={!gradedOn} onChange={() => onAutoGradeChange(false)} name={`worksheet-purpose-${node.id}`} /> 无标准答案，收集信息</label>
+              {isBlankType && <label><input type="radio" checked={gradedOn} onChange={() => onAutoGradeChange(true)} name={`worksheet-purpose-${node.id}`} /> {isBlankType ? '逐空评分' : '有答案，自动评分'}</label>}
+              {isBlankType && <label><input type="radio" checked={!gradedOn} onChange={() => onAutoGradeChange(false)} name={`worksheet-purpose-${node.id}`} /> {isBlankType ? '仅收集作答，不计分' : '无标准答案，收集信息'}</label>}
             </div>
           </div>
 
@@ -1021,7 +758,13 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         </section>
       )}
 
-        {!aiSupported && <div className="worksheet-editor-analysis-settings">{analysisFocusSettings}</div>}
+        {!isBlankType && <div className="worksheet-editor-block worksheet-editor-analysis-settings">
+          <h3 className="drawing-zone-heading"><EditorIcon kind="grading" />评价方式</h3>
+          <EvaluationSettings onImagesUploaded={urls=>onAppendEvaluationImages?.(urls)} unit={pointsUnit} scoreLimit={100} template={node.type === 'drawing' && readDrawingTool(node) === 'flowchart' ? '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。' : undefined} data={node.data} allowAnswer={isGradedQuestionType(node.type)} legacyMode={aiScoredFor(node) ? 'ai' : gradedOn && isGradedQuestionType(node.type) ? 'answer' : 'collect'} legacyScored={aiScoredFor(node) || gradedOn} reference={node.type === 'short-answer' || node.type === 'drawing' ? node.data.answers : undefined} maxScore={aiScoringMaxScore} automatic={node.data.studentAiReviewEnabled === true} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onNotice={onNotice} onChange={patch => {
+            onDataChange({...patch, aiScoringEnabled:patch.evaluationMode === 'ai' && patch.evaluationScored === true});
+            onAutoGradeChange(patch.evaluationMode === 'answer');
+          }}/>
+        </div>}
 
       {/*
         ⊘ ★ 2026-10-05（教师）：「这部分是不是多余了？」—— 是，已整块删除。
@@ -1063,7 +806,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             <PromptText
               text={node.prompt}
               runs={promptRuns}
-              placeholder="（任务要求还没写）"
+              placeholder="（任务描述还没写）"
               table={node.data.table}
             />
           </div>
@@ -1071,7 +814,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             <img
               className="worksheet-editor-question-preview-image"
               src={worksheetAssetUrl(promptImage)}
-              alt="任务要求配图预览"
+              alt="任务描述配图预览"
             />
           )}
           <QuestionInput node={node} draft={undefined} disabled />

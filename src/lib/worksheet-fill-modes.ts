@@ -1,24 +1,14 @@
+import type { EvaluationSettings } from './worksheet-evaluation.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 import { blankRuns, type PromptRun } from './worksheet-prompt-marks.ts';
 import { blankLayout, cellAtSlot, cellLabel, tableBlankIds } from './worksheet-table.ts';
 // ★ 2026-09-30：落词要按**判分口径**写进草稿（见 `placedValue`）。
 import { mathText, splitMath } from './worksheet-math.ts';
 
-export type FillAnswerMode = 'text' | 'pool' | 'inline';
+/** 作答方式独立于评价方式。evaluationVersion=1 使用统一评价设置；缺失时沿用历史规则。 */
+export type FillAnswerMode = 'text' | 'pool' | 'inline' | 'audio';
 
-/**
- * 逐空评分方式。
- *
- * ★ 2026-10-09（教师裁定）：「**填空题简化** —— 所有空都不涉及 AI 评分；想让学生自由写就用
- *    **问答题**。删 `'ai'`（AI 评分）与 `'none'`（逐空不算分）两档，一律『每空有答案键、都算分』。」
- *
- * 🔴 **今天只有 `'auto'` 会被写出去**（`FILL_GRADING_MODE`）。`'ai'` / `'none'` 留在类型里只因为
- *    **库里有历史值**：老学习单照样读得出来（编辑器才能逐空提示教师去补答案键），
- *    而它们一律按**不算分**处置 —— 判分侧 `grade()` 本来就只把 `'auto'` 的空计入命中。
- * ⚠️ 所以下面每个消费点都要问一句：我读的是「今天能写的值」还是「历史值」？
- *    前者只有一个取值；后者要按 `isLegacyFillGrading` 分流（提示 / 不计分），
- *    千万别把历史值当成「另一种正常档位」顺手支持起来。
- */
+/** Legacy storage bridge. New records resolve evaluationMode/evaluationScored first. */
 export type FillGradingMode = 'auto' | 'ai' | 'none';
 
 /** 今天**唯一**会写出去的逐空评分方式（历史值的处置见 `FillGradingMode`）。 */
@@ -34,9 +24,11 @@ export function isLegacyFillGrading(mode: FillGradingMode | undefined): mode is 
   return mode === 'ai' || mode === 'none';
 }
 
-export interface FillBlankSetting {
+export interface FillBlankSetting extends EvaluationSettings {
   mode: FillAnswerMode;
   choices: string[];
+  audioCriteria?: string;
+  audioReference?: string;
   /** 逐空评分；缺失表示老题，继续走题目级评分规则。 */
   gradingMode?: FillGradingMode;
   /** 该空答对时的满额。图标奖励同样只能设置完整个数。 */
@@ -59,7 +51,7 @@ export function fillGradingTotals(settings: readonly FillBlankSetting[]): { auto
   let auto = 0;
   settings.forEach((setting) => {
     const score = Number.isInteger(setting.maxScore) && (setting.maxScore ?? 0) > 0 ? setting.maxScore! : 1;
-    if (setting.gradingMode === 'auto') auto += score;
+    if (setting.evaluationVersion === 1 ? setting.evaluationMode !== 'collect' && setting.evaluationScored === true : setting.gradingMode === 'auto' || (setting.mode === 'audio' && setting.gradingMode === 'ai')) auto += score;
   });
   return { auto, total: auto };
 }
@@ -240,12 +232,12 @@ export function fillSettingsFor(node: WorksheetQuestionNode, runs: PromptRun[]):
     const raw = stored[slot.id];
     if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
       const item = raw as Record<string, unknown>;
-      const mode: FillAnswerMode = item.mode === 'pool' || item.mode === 'inline' ? item.mode : 'text';
+      const mode: FillAnswerMode = item.mode === 'pool' || item.mode === 'inline' || item.mode === 'audio' ? item.mode : 'text';
       const gradingMode: FillGradingMode | undefined = item.gradingMode === 'auto' || item.gradingMode === 'ai' || item.gradingMode === 'none'
         ? item.gradingMode : undefined;
       const maxScore = typeof item.maxScore === 'number' && Number.isInteger(item.maxScore) && item.maxScore >= 1 && item.maxScore <= 99
         ? item.maxScore : undefined;
-      return { mode, choices: splitChoiceLines(item.choices), gradingMode, maxScore };
+      return { ...item as unknown as FillBlankSetting, mode, choices: splitChoiceLines(item.choices), gradingMode, maxScore, ...(typeof item.audioCriteria === 'string' ? {audioCriteria:item.audioCriteria} : {}), ...(typeof item.audioReference === 'string' ? {audioReference:item.audioReference} : {}) };
     }
     // 表格里的空：缺省「手工填写」（v1 不给表格开选词 —— 存过的设置上面已经读到了）
     if (slot.kind === 'table') return { mode: 'text', choices: [] };
@@ -272,7 +264,10 @@ export function writeFillSettings(
   blankSlots(node, runs).forEach((slot, index) => {
     const setting = settings[index] ?? { mode: 'text' as const, choices: [] };
     result[slot.id] = {
+      ...setting,
       mode: setting.mode,
+      ...(setting.audioCriteria !== undefined ? {audioCriteria:setting.audioCriteria} : {}),
+      ...(setting.audioReference !== undefined ? {audioReference:setting.audioReference} : {}),
       choices: splitChoiceLines(setting.choices),
       ...(setting.gradingMode ? { gradingMode: setting.gradingMode } : {}),
       ...(setting.maxScore ? { maxScore: setting.maxScore } : {}),

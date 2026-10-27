@@ -43,24 +43,9 @@ test('阳性对照：这条网真的在读这几个文件（否则下面几条�
   assert.ok(fs.readFileSync(GLOBALS, 'utf8').includes('.worksheet-editor-order-columns'), 'CSS 里要真的有这个类');
 });
 
-test('★ 主观题的参考答案：有输入框、写回 data.answers，但**不判分**', () => {
-  const card = body(CARD);
-  // 这里要从真正渲染参考答案的 JSX 条件开始找。题卡顶部还有
-  // `supportsAiScoring` 的题型判定，只找第一个 `short-answer` 会截错代码块。
-  const at = card.indexOf("{(node.type === 'short-answer' || node.type === 'drawing') && (");
-  assert.ok(at >= 0, '找不到主观题那一块');
-  const block = card.slice(at, at + 2300);
-  // 输入框走**与填空题同一个**组件（`SymbolListInput` 本来就是待选词与标准答案共用的那个）
-  assert.ok(block.includes('<textarea'), '主观题没有参考答案输入框');
-  // 写回**nested 形状**（内核的纪律：写一律写 nested）
-  assert.ok(block.includes('[[event.target.value]]'), '参考答案没有按 nested 形状写回 data.answers');
-  // 🔴 反面：主观题**不许**被判分 —— 教师 2026-09-30 明确说「主观题不需要评分」。
-  //    这一条钉的是**题型表**（`graded` 是判据，决定抽屉里画不画判分那一行）。
-  const types = fs.readFileSync(QTYPES, 'utf8');
-  assert.match(
-    types, /\{ value: 'short-answer'[^}]*graded: false/,
-    '主观题被改成 graded: true 了 —— 教师明确说过它不需要评分',
-  );
+test('主观题旧参考内容传给统一评价要求，默认仍不走本地判分', () => {
+  assert.match(body(CARD), /reference=\{node.type === 'short-answer' \|\| node.type === 'drawing' \? node.data.answers/);
+  assert.match(fs.readFileSync(QTYPES,'utf8'), /\{ value: 'short-answer'[^}]*graded: false/);
 });
 
 test('★ 排序题：正确顺序与选项顺序**并排**，且右栏不再住在评分卡里', () => {  const order = body(ORDER);
@@ -314,7 +299,7 @@ test('★ 2026-10-06（教师）：判断题的正确答案块摆在**题干后�
   const live = stripImports(stripComments(CARD));
   // ⚠️ 判据用**这一块的标题**，不要用 `node.type === 'true-false'`：那个条件在卡片靠上处
   //    （摘要/只读预览那条路）也出现过，第一次出现的位置比题干还早 ⇒ 拿它当判据会假红。
-  const stem = live.search(/<h4><EditorIcon[^>]*\/>任务要求(?:\{node\.type === 'drawing' && <span className="drawing-required">\*<\/span>\})?<\/h4>/);
+  const stem = live.search(/<h4><EditorIcon[^>]*\/>任务描述(?:\{node\.type === 'drawing' && <span className="drawing-required">\*<\/span>\})?<\/h4>/);
   const answer = live.search(/<h4><EditorIcon[^>]*\/>正确答案<\/h4>/);
   assert.ok(stem !== -1 && answer !== -1, '题干或判断题的正确答案块不见了');
   assert.ok(answer > stem, '判断题的正确答案没有排在题干之后');

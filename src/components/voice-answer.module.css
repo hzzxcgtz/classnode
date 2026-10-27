@@ -11,3 +11,12 @@
 .error { flex-basis: 100%; font-size: .82rem; color: #944d43; }
 .error button { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; border: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; min-height: 44px; }
 @media(max-width: 480px) { .player { padding: 12px; gap: 10px; } .trackHeader { font-size: .8rem; } }
+/* 填空中的播放器只占正文一行，长语音播放器保持原样。 */
+.player.compact { display: inline-flex; flex-wrap: nowrap; width: auto; max-width: none; height: 100%; gap: 6px; padding: 0; border: 0; border-radius: 0; background: transparent; position: relative; }
+.compact .play { width: 24px; height: 24px; }
+.compact .play svg { width: 13px; height: 13px; }
+.compactTime { font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.compact .error { position: absolute; z-index: 5; top: 100%; left: 0; width: 230px; background: #fff; padding: 8px 10px; border: 1px solid #decac3; border-radius: 8px; box-shadow: 0 4px 12px #17203318; }
+.compactProgress { width: clamp(60px, 8vw, 110px); min-width: 60px; min-height: 26px; margin: 0; accent-color: #3d7560; cursor: pointer; }
+.compactProgress:focus-visible { outline: 2px solid #729e8a; outline-offset: 2px; }
+.compactTime { font-size: 11px; }

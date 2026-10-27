@@ -269,3 +269,15 @@ test('🔴 n 元算符之后的**裸文本**也要转义（`escapeMathText` 不�
   // 阳性对照：那段的文字必须**还在**（别为了转义把内容吃了）
   assert.ok(xml.includes('f'), '公式里的内容被吃掉了');
 });
+
+test('Word 表格同时保留横向与纵向合并，覆盖格不重复生成', async () => {
+  const paper:WorksheetPaper={title:'合并表格',description:'',questionCount:1,blocks:[{kind:'question',question:{heading:'1',meta:'表格填空',prompt:[{kind:'table',rows:[[{text:P('合并标题'),blank:false,colSpan:2,rowSpan:2},{text:P(''),blank:false,covered:true}],[{text:P(''),blank:false,covered:true},{text:P(''),blank:false,covered:true}]]}],body:[],answer:P(''),answerNote:null}}]};
+  const xml=readDocumentXml(await writeTemp(paper));
+  assert.match(xml,/<w:gridSpan w:val="2"/);assert.match(xml,/<w:vMerge w:val="restart"/);assert.match(xml,/<w:vMerge w:val="continue"/);
+  assert.equal((xml.match(/合并标题/g)??[]).length,1);
+});
+
+test('Word 单元格保留显式的水平/垂直对齐', async () => {
+  const paper:WorksheetPaper={title:'对齐',description:'',questionCount:1,blocks:[{kind:'question',question:{heading:'1',meta:'表格',prompt:[{kind:'table',rows:[[{text:P('靠右'),blank:false,align:'right',verticalAlign:'bottom'}]]}],body:[],answer:P(''),answerNote:null}}]};
+  const xml=readDocumentXml(await writeTemp(paper));assert.match(xml,/<w:jc w:val="right"/);assert.match(xml,/<w:vAlign w:val="bottom"/);
+});

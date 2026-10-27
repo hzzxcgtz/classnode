@@ -1,4 +1,5 @@
 'use client';
+import type { FillLayout } from '@/lib/worksheet-fill-layout';
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -620,12 +621,12 @@ export function useWorksheetEditor({ id, onNotice }: {
    * 否则进指定的任务 —— 迁移之后顶层的题都在任务里，只看顶层的旧写法会让
    * 教师新加的题永远落在任务外面。
    */
-  const addQuestion = useCallback((questionType: QuestionType, parentId: string | null = null) => {
+  const addQuestion = useCallback((questionType: QuestionType, parentId: string | null = null, fillLayout?: FillLayout) => {
     // ★ 2026-09-26（教师裁定）：新题的分值**落成真实数字**，于是框里显示的是数字而不是灰提示。
     // ⚠️ 它取的是**默认档**（1 / 0）：学习单级的那两档已经不再参与判分
     //（教师当天裁定「默认给分不要了，已经在每小题中设置了」），逐题的值就是最终的值。
     dispatch({
-      kind: 'addQuestion', questionType, parentId,
+      kind: 'addQuestion', questionType, parentId, fillLayout,
       points: { full: DEFAULT_REWARD_STEP, half: DEFAULT_HALF_STEP },
     });
   }, []);
@@ -661,6 +662,10 @@ export function useWorksheetEditor({ id, onNotice }: {
   const updatePrompt = useCallback((questionId: string, prompt: string, data?: Record<string, unknown>) => {
     dispatch({ kind: 'updatePrompt', id: questionId, prompt, ...(data ? { data } : {}) });
   }, []);
+
+  const appendEvaluationImages = useCallback((questionId:string, urls:string[], blankId?:string) => {
+    dispatch({kind:'appendEvaluationImages',id:questionId,urls,blankId});
+  },[]);
 
   const updateData = useCallback((questionId: string, patch: Record<string, unknown>) => {
     dispatch({ kind: 'updateData', id: questionId, patch });
@@ -723,7 +728,7 @@ export function useWorksheetEditor({ id, onNotice }: {
     saveStatus,
     usage,
     draftFound, acceptDraft, discardDraft,
-    addQuestion, addTask, updateAutoGrade, updateTolerance, reorderQuestion, updatePrompt, updateData, updatePoints, updateInputMode, setPointsInput, moveQuestion, removeQuestion,
+    addQuestion, addTask, updateAutoGrade, updateTolerance, reorderQuestion, updatePrompt, updateData, appendEvaluationImages, updatePoints, updateInputMode, setPointsInput, moveQuestion, removeQuestion,
     rejectedPoints,
     save, saveSettings, goBack, ensureUsage, confirmationDialog,
   };

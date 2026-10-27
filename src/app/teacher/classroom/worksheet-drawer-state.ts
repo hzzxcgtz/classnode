@@ -297,6 +297,7 @@ export function formatAnswer(node: WorksheetQuestionNode, value: unknown): strin
   const draft = draftFromValue(node, value);
   // 照片作答不是文字，但在仅支持文本摘要的调用点至少要明确说明其存在，不能误报“未作答”。
   // 能显示图片的教师界面会进一步读取原值并渲染缩略图。
+  if (draft.kind === 'fill' && Object.keys(draft.audios ?? {}).length) return [draft.texts.filter(Boolean).join('；'), `语音作答 ${Object.keys(draft.audios ?? {}).length} 段`].filter(Boolean).join('；');
   if (draft.kind === 'audio') return draft.url ? `语音作答（${Math.floor(draft.durationMs / 60000)}:${String(Math.floor(draft.durationMs / 1000) % 60).padStart(2, '0')}）` : null;
   if (draft.kind === 'photo') return draft.url ? '照片作答' : null;
   // ★ 2026-09-25：**条目型（排序 / 连线 / 归类）**。这三支过去**根本不存在** ——

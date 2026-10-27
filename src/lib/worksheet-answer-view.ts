@@ -1,3 +1,5 @@
+import { readPromptRuns } from './worksheet-prompt-marks.ts';
+import { blankSlots } from './worksheet-fill-modes.ts';
 // ⚠️ **相对路径 + `.ts` 后缀**：本文件要被 `node --test` 直接跑（与 `worksheet-table.ts` /
 // `worksheet-drawer-state.ts` 同一条写法）。加一行 `@/…` 的运行时 import 就会让
 // `worksheet-answer-view.test.ts` 整个跑不起来。
@@ -66,6 +68,7 @@ export interface ChoiceOptionView {
 
 /** 一个空的呈现。 */
 export interface FillBlankView {
+  audio?: { url: string; durationMs: number };
   /** 给人看的格号（`第 3 空`）。 */
   label: string;
   /** 学生写的字。空串 = 他留空了（**不是**「读不出来」）。 */
@@ -286,7 +289,8 @@ export function answerView(node: WorksheetQuestionNode, value: unknown): AnswerV
       blanks: draft.texts.map((text, index) => ({
         label: `第 ${index + 1} 空`,
         text,
-        accepted: accepted[index] ?? [],
+        ...(draft.audios?.[blankSlots(node, readPromptRuns(node.data.promptRuns, node.prompt))[index]?.id] ? { audio: draft.audios[blankSlots(node, readPromptRuns(node.data.promptRuns, node.prompt))[index].id] } : {}),
+        accepted: draft.audios?.[blankSlots(node, readPromptRuns(node.data.promptRuns, node.prompt))[index]?.id] ? [] : accepted[index] ?? [],
       })),
       texts: draft.texts,
       tableBase: blankLayout(node).tableBase,

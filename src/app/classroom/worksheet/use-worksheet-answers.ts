@@ -658,6 +658,8 @@ export function useWorksheetAnswers({
    */
   const setDraft = useCallback((node: WorksheetQuestionNode, draft: AnswerDraft) => {
     setDrafts((prev) => ({ ...prev, [node.id]: draft }));
+    // Recording/upload state is local UI state, never a request to erase the last saved answer.
+    if (draft.kind === 'fill' && draft.pendingAudio?.length) return;
     const value = buildAnswerValue(node, draft);
     // ★ 实时预览（不写库）。⚠️ 放在这里而不是 flush 里：flush 要等 1.5 秒，
     // 而这一条的全部意义就是**不等那 1.5 秒**。

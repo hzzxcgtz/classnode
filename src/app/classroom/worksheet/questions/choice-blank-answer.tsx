@@ -5,6 +5,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { availableChoices, type AnswerDraft } from '@/lib/worksheet-answer-value';
 import { blankLabelAt, blankLayout } from '@/lib/worksheet-table';
 import type { WorksheetQuestionNode } from '@/lib/types';
+import { AudioBody } from './audio-body';
+import { blankSlots } from '@/lib/worksheet-fill-modes';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { fillSettingsFor, placedValue, sharedPoolChoices } from '@/lib/worksheet-fill-modes';
@@ -38,6 +40,8 @@ import styles from '../worksheet.module.css';
  * 不是一份「已用」的清单 —— 存清单就会与撤销 / 读回对不上。
  */
 export interface ChoiceBlankAnswerProps {
+  worksheetId?: string;
+  localOnly?: boolean;
   node: WorksheetQuestionNode;
   draft: Extract<AnswerDraft, { kind: 'fill' }>;
   onChange: (next: AnswerDraft) => void;
@@ -63,7 +67,7 @@ const BLANK_PREFIX = 'blank:';
 const WORD_PREFIX = 'word:';
 
 /** `data.choices`：待选词。读不出来就是空表（学生没词可拖 ⇒ 界面要说实话）。 */
-export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankIndexes, correctBlanks, leadingIcon, status }: ChoiceBlankAnswerProps) {
+export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankIndexes, correctBlanks, leadingIcon, status, worksheetId, localOnly = false }: ChoiceBlankAnswerProps) {
   const [picked, setPicked] = useState<{ word: string; target: number | null } | null>(null);
   const runs = useMemo(() => readPromptRunsFor(node), [node]);
   const settings = useMemo(() => fillSettingsFor(node, runs), [node, runs]);
@@ -139,7 +143,7 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
     const value = placedValue(word);
     const texts = Array.from({ length: count }, (_, i) => (i === index ? value : (draft.texts[i] || '')));
     setPicked(null);
-    onChange({ kind: 'fill', texts });
+    onChange({ ...draft, texts });
   };
 
   /** 点一个空：手里有词就放进去；手里没词就把它**清空**（学生要有退路）。 */
@@ -151,7 +155,7 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
     if (!draft.texts[index]) return;
     const texts = draft.texts.slice();
     texts[index] = '';
-    onChange({ kind: 'fill', texts });
+    onChange({ ...draft, texts });
   };
 
   const drag = usePointerDrag({
@@ -190,9 +194,24 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
    */
   const sharedBlankBinding = {
     values: draft.texts,
+    renderOf: (index: number) => {
+      if (settings[index]?.mode !== 'audio') return undefined;
+      const slot = blankSlots(node, runs)[index];
+      if (!slot) return undefined;
+      const audio = draft.audios?.[slot.id];
+      return <span className={styles.fillAudioSlot} key={slot.id} aria-label={`${slot.label}，语音作答`}><AudioBody compact onBusyChange={busy => {
+        const pending = new Set(draft.pendingAudio ?? []);
+        if (busy) pending.add(slot.id); else pending.delete(slot.id);
+        if (pending.size !== (draft.pendingAudio?.length ?? 0)) onChange({ ...draft, pendingAudio: [...pending] });
+      }} worksheetId={worksheetId} questionId={node.id} draft={{ kind: 'audio', url: audio?.url ?? '', durationMs: audio?.durationMs ?? 0 }} disabled={disabled} localOnly={localOnly} onChange={next => {
+        const audios = { ...draft.audios };
+        if (next.url) audios[slot.id] = { format: 'audio/v1', url: next.url, durationMs: next.durationMs }; else delete audios[slot.id];
+        onChange({ ...draft, audios });
+      }}/></span>;
+    },
     onChange: (index: number, value: string) => {
       const texts = Array.from({ length: Math.max(draft.texts.length, settings.length) }, (_, itemIndex) => itemIndex === index ? value : (draft.texts[itemIndex] ?? ''));
-      onChange({ kind: 'fill', texts });
+      onChange({ ...draft, texts });
     },
     disabled,
     // 手工填写 ⇒ 输入框；其余两档 ⇒ 落点槽

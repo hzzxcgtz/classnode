@@ -1,3 +1,5 @@
+import { aiEvaluationEnabled, hasEvaluation, countsEvaluation } from './worksheet-evaluation.js';
+import { fillAudioSlots } from './worksheet-fill-audio.js';
 /** 学习单的题型注册表。**纯函数，全部在服务端** —— 本项目不引入前端测试框架（规格 §11）。 */
 
 // ★ M4b：判分前的 ink 短路，以及写入口的体积校验，都建立在同一份格式判据上。
@@ -344,7 +346,7 @@ export function flattenQuestions(content: WorksheetContent): QuestionNode[] {
 export const ANSWER_KEYS = [
   'correctKeys', 'answers', 'explanation', 'correctOrder', 'pairs', 'placement',
   // 评分标准只供教师与 AI 分析使用，不能随学生版学习单下发。
-  'rubricText', 'rubricImageUrl', 'analysisFocus', '__analysisContext',
+  'evaluationText', 'evaluationImages', 'rubricText', 'rubricImageUrl', 'analysisFocus', '__analysisContext', 'audioCriteria', 'audioReference',
 ] as const;
 
 /**
@@ -435,8 +437,11 @@ export function grade(node: QuestionNode, value: unknown, points: QuestionPoints
     ? node.data as Record<string, unknown>
     : {};
   // 题目级开关是所有本地 / 逐空评分的总闸。设置仍保留在 data 中，重新开启即可恢复。
-  if (node.autoGrade === false) return null;
-  const mixedFill = node.type === 'fill-blank' ? explicitFillGrading(data) : [];
+  if (hasEvaluation(data) && (data.evaluationMode !== 'answer' || !countsEvaluation(data))) return null;
+  if ((node.type === 'fill-blank' || node.type === 'choice-blank') && aiEvaluationEnabled(node) && Object.values((data.fillBlankSettings as Record<string, Record<string, unknown>>) ?? {}).some(s => hasEvaluation(s) && s.evaluationMode === 'ai' && countsEvaluation(s))) return null;
+  if (node.autoGrade === false && !((node.type === 'fill-blank' || node.type === 'choice-blank') && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation))) return null;
+  if (fillAudioSlots(node).some(slot => slot.scored)) return null;
+  const mixedFill = node.type === 'fill-blank' || (node.type === 'choice-blank' && Object.values((data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation)) ? explicitFillGrading(data) : [];
   if (mixedFill.length > 0) {
     const auto = mixedFill
       .map((setting, index) => ({ ...setting, index }))
@@ -853,7 +858,7 @@ export function explicitFillGrading(data: Record<string, unknown>): ExplicitFill
     if (setting.gradingMode !== 'auto' && setting.gradingMode !== 'ai' && setting.gradingMode !== 'none') return [];
     const maxScore = typeof setting.maxScore === 'number' && Number.isInteger(setting.maxScore)
       && setting.maxScore >= 1 && setting.maxScore <= POINTS_MAX ? setting.maxScore : 1;
-    out.push({ gradingMode: setting.gradingMode, maxScore });
+    out.push({ gradingMode: hasEvaluation(setting) ? setting.evaluationMode === 'answer' && countsEvaluation(setting) ? 'auto' : 'none' : setting.gradingMode, maxScore });
   }
   return out;
 }
@@ -1250,7 +1255,7 @@ function judge(node: QuestionNode, value: unknown): GradeState | null {
   //    它们只管「按题面判」，而「判不判」是分派层的事。
   // ⚠️ 以**开关**为准，不以「有没有答案」推断：关掉开关时答案**保留在库里**（教师再打开时
   //    原来勾的还在），所以「有答案却不判分」是一个**正常状态**，不能当成坏数据。
-  if (node.autoGrade === false) return null;
+  if (node.autoGrade === false && !((node.type === 'fill-blank' || node.type === 'choice-blank') && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation))) return null;
   // ⚠️ `node.data` 也走「先判类型再取」：`Record<string, unknown>` 是**编译期的承诺**，
   // 而库里的 JSON 可能是 `null` / 数组 / 别的标量 —— `null.correctKeys` 会在提交路径上
   // 抛一次 500，学生看到的是「提交失败」。
@@ -1487,11 +1492,11 @@ function validateFillBlank(node: QuestionNode, errors: string[]): void {
       return;
     }
     // 总开关关闭时保留答案与逐空设置，但不再要求它们完整，也不参与判分。
-    if (node.autoGrade === false) return;
+    if (node.autoGrade === false && !Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation)) return;
     const explicit = explicitFillGrading(node.data);
     if (explicit.length > 0) {
       for (let index = 0; index < total; index += 1) {
-        if (explicit[index]?.gradingMode === 'auto'
+        if (!fillAudioSlots(node).some(slot => slot.index === index) && explicit[index]?.gradingMode === 'auto'
             && !acceptableAnswersFor(node.data, index).some(answer => answer.trim())) {
           // ★ 2026-10-09（教师裁定）：逐空只剩「每空有答案键、都算分」一条路 ⇒
           //    文案里不再点名任何一档（`FILL_GRADING_LABELS` 整张表已删，写「本地评分」
@@ -1527,8 +1532,15 @@ function validateFillModes(node: QuestionNode, errors: string[]): void {
       return;
     }
     const setting = entry as Record<string, unknown>;
-    if (setting.mode !== 'text' && setting.mode !== 'pool' && setting.mode !== 'inline') {
+    if (setting.mode !== 'text' && setting.mode !== 'pool' && setting.mode !== 'inline' && setting.mode !== 'audio') {
       errors.push(`填空题第 ${index + 1} 空的作答方式不合法`);
+    }
+    if (setting.mode === 'audio' && !hasEvaluation(setting)) {
+      if (setting.gradingMode !== 'ai' && setting.gradingMode !== 'none') errors.push(`第 ${index+1} 空的语音评分方式无效`);
+      if (setting.gradingMode === 'ai' && (typeof setting.maxScore !== 'number' || !Number.isInteger(setting.maxScore) || setting.maxScore < 1 || setting.maxScore > 99)) errors.push(`第 ${index+1} 空请设置 1–99 的语音满分`);
+      if (node.type !== 'fill-blank') errors.push('语音填空仅用于普通填空题和表格题');
+      if (typeof setting.audioCriteria !== 'string' || !setting.audioCriteria.trim() || setting.audioCriteria.length > 1200) errors.push(`第 ${index + 1} 空请填写 1200 字以内的语音评价要求`);
+      if (setting.audioReference !== undefined && (typeof setting.audioReference !== 'string' || setting.audioReference.length > 1200)) errors.push(`第 ${index + 1} 空参考要点过长`);
     }
     if (setting.mode === 'pool') needsPool = true;
     if (setting.mode === 'inline' && readStrings(setting.choices).length < 2) {

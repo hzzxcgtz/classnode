@@ -1,3 +1,4 @@
+import { readFillAudios, fillAudioSlots } from './worksheet-fill-audio.js';
 import { readAudioAnswer } from './worksheet-audio.js';
 import { INK_DEFAULT_TEXT_SIZE, INK_STROKE_COLOR, isInkColor, isInkFormat, isInkShapeKind, isInkTextSize, type InkValue } from './ink-path.js';
 import { CHAT_IMAGE_URL } from './worksheet-ink.js';
@@ -89,6 +90,7 @@ export interface AnalyzeEntry {
   photoUrl?: string;
   audioUrl?: string;
   durationMs?: number;
+  fillAudios?: Array<{ url: string; durationMs: number; index: number }>;
   gradeState?: 'correct' | 'partial' | 'incorrect' | null;
   // 🔴 **这里刻意没有 `displayName`。**
   // 原先有，而它**只写不读**：标签由 `payloadLabels` 从**名册**派生（★ 2026-10-07 起；
@@ -274,6 +276,15 @@ export function selectAnalyzeEntries(
     if (answer.questionId !== questionId) continue;
     if (answer.status !== 'submitted') continue;
     if (!known.has(answer.participantId)) continue;
+    if (question && fillAudioSlots(question).length) {
+      const audios = readFillAudios(question, answer.value);
+      const row = answer.value && typeof answer.value === 'object' ? answer.value as Record<string, unknown> : {};
+      const texts = Array.isArray(row.texts) ? row.texts : [row.text];
+      const audioIndices = new Set(fillAudioSlots(question).map(slot => slot.index));
+      const description = texts.map((text, index) => `第 ${index + 1} 空：${audioIndices.has(index) ? audios.some(audio => audio.index === index) ? '见对应原始音频附件' : '未提交录音，不得猜测内容或评分' : typeof text === 'string' && text ? text : '未填写'}`).join('\n');
+      out.push({ studentId: answer.participantId, kind: 'text', text: description, fillAudios: audios.map(audio => ({url: audio.url, durationMs: audio.durationMs, index: audio.index})), gradeState: null });
+      continue;
+    }
     const audio = readAudioAnswer(answer.value);
     if (audio) {
       out.push({ studentId: answer.participantId, kind: 'audio', audioUrl: audio.url, durationMs: audio.durationMs, gradeState: null });
@@ -373,6 +384,7 @@ export interface QuestionMeta {
   /** 教师补充的主观题评分标准与示例图片。 */
   rubricText?: string;
   rubricImageUrl?: string | null;
+  rubricImageUrls?: string[];
   /** 拍照问答含密集文字，发送联系表时保留更大的阅读区域。 */
   photoWriting?: boolean;
   /**
@@ -650,6 +662,7 @@ export interface AnalysisPayload {
   referenceAnswer: string;
   rubricText: string;
   rubricImageUrl: string | null;
+  rubricImageUrls?: string[];
   /**
    * ★ 2026-10-06：这题有没有教师给的「初始图」（见 `QuestionMeta.drawingStarter`）。
    * 提示词据此追加 `DRAWING_STARTER_NOTE` 那一句；`false` ⇒ **一个字都不加**。
@@ -760,12 +773,13 @@ export function buildAnalysisPayload(input: {
     referenceAnswer: question.referenceAnswer || '（未提供参考答案）',
     rubricText: question.rubricText || '',
     rubricImageUrl: question.rubricImageUrl ?? null,
+    rubricImageUrls: question.rubricImageUrls,
     // ⚠️ `=== true` 不是啰嗦：题面字面量可能没这个键（老调用点），`undefined` 必须落成 `false`
     //    —— 落成真值的后果是**每一道题**的提示词都多一句「图里有教师的初始图」。
     drawingStarter: question.drawingStarter === true,
     localStats: localStatsOf(entries),
     payloadKind,
-    ...(entries.some(entry => entry.kind === 'audio') ? { audioAnswers: entries.filter(entry => entry.kind === 'audio' && entry.audioUrl).map(entry => ({ url: entry.audioUrl!, label: labels.get(entry.studentId)! })) } : {}),
+    audioAnswers: entries.flatMap(entry => [...(entry.kind === 'audio' && entry.audioUrl ? [{url: entry.audioUrl, label: labels.get(entry.studentId)!}] : []), ...(entry.fillAudios ?? []).map(audio => ({url: audio.url, label: `${labels.get(entry.studentId)!} · 第 ${audio.index + 1} 空`}))]),
     covered: entries.length,
     total,
     entries: entries.map((entry) => ({ studentId: entry.studentId, anonLabel: labels.get(entry.studentId)! })),
@@ -807,6 +821,7 @@ export function entriesToAggregate(entries: AnalyzeEntry[]): Array<Record<string
     ink: entry.ink ?? null,
     photoUrl: entry.photoUrl ?? null,
     ...(entry.kind === 'audio' ? { audioUrl: entry.audioUrl, durationMs: entry.durationMs } : {}),
+    ...(entry.fillAudios ? { fillAudios: entry.fillAudios } : {}),
     gradeState: entry.gradeState ?? null,
   }));
 }
@@ -831,6 +846,7 @@ export function entriesFromAggregate(raw: unknown): AnalyzeEntry[] {
       out.push({
         studentId: row.studentId, kind: 'text',
         text: typeof row.text === 'string' ? row.text : '',
+        ...(Array.isArray(row.fillAudios) ? {fillAudios: row.fillAudios.filter(audio => audio && Number.isInteger(audio.index) && audio.index >= 0 && readAudioAnswer({format:'audio/v1',url:audio.url,durationMs:audio.durationMs}))} : {}),
         gradeState,
       });
       continue;

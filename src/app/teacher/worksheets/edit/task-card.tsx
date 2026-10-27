@@ -100,6 +100,7 @@ export function TaskCard({
       data-row-id={node.id}
       data-layer=""
     >
+      <div className="worksheet-editor-theme-overview">
       <header className="worksheet-editor-task-head">
         {/*
           🔴 任务的 `prompt` **就是它的标题**（教师裁定 ①a 的口径 + 迁移写下的「任务一」）。
@@ -189,6 +190,7 @@ export function TaskCard({
           />
         </label>
       </details>
+      </div>
 
       <div className="worksheet-editor-task-body">
         {/*

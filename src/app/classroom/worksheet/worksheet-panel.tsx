@@ -1,4 +1,5 @@
 'use client';
+import { aiEvaluationEnabled } from '@/lib/worksheet-evaluation';
 
 import { ReviewFailure, ReviewHistory, ReviewTiming, type AnswerReview } from './review-history';
 
@@ -469,7 +470,7 @@ export function WorksheetQuestionList({
         const state = questionDisplayState(statuses[node.id], raw);
         const submitted = statuses[node.id] === 'submitted';
         // 已提交 + 不许重交 ⇒ 这一题对学生是「定稿」。控件收起，按钮不出现。
-        const personalReview = (node.type === 'short-answer' || node.type === 'drawing') && node.data.studentAiReviewEnabled === true && node.data.aiScoringEnabled === true;
+        const personalReview = aiEvaluationEnabled(node) && node.data.studentAiReviewEnabled === true;
         const questionReviews = reviews.filter(r => r.questionId === node.id);
         const latestReview = questionReviews.filter(r => r.status === 'succeeded' && r.evaluatedAt).sort((a, b) => Date.parse(b.evaluatedAt!) - Date.parse(a.evaluatedAt!))[0];
         const pendingReview = questionReviews.find(r => r.status === 'pending');
@@ -485,7 +486,7 @@ export function WorksheetQuestionList({
         const locked = personalReview ? reviewPending || reviewRemaining === 0 : submitted && !allowResubmit;
         const untouched = raw === undefined || isDraftEmpty(raw);
         // 没内容可提交、又还没交过 ⇒ 按钮按不动（点下去必然被服务端 400 拒）。
-        const submitDisabled = Boolean(submitting[node.id]) || reviewPending || (!submitted && untouched);
+        const submitDisabled = Boolean(submitting[node.id]) || reviewPending || (raw?.kind === 'fill' && Boolean(raw.pendingAudio?.length)) || (!submitted && untouched);
         // ★ M5a：课堂级锁定也禁用控件（停笔），但它**不**收起提交按钮 ——
         // 裁定 ③ 是「停笔，但还能交卷」。见下面渲染那一段。
         const controlsDisabled = !interactive || locked || classroomLocked;
@@ -596,14 +597,14 @@ export function WorksheetQuestionList({
                   className={`${styles.resultCell} ${styles.aiReferenceCell}`}
                   data-tone="ai-reference"
                   aria-label={aiReferenceScore.score === null
-                    ? 'AI 暂时无法可靠评分，但给出了学习建议'
+                    ? aiReferenceScore.maxScore === 0 ? 'AI 评价与学习建议' : 'AI 暂时无法可靠评分，但给出了学习建议'
                     : `AI 评分 ${aiReferenceScore.score}/${aiReferenceScore.maxScore} ${aiReferenceScore.unit}。AI 参考评分`}
                 >
                   {!reward && aiReferenceScore.score !== null && <>
                     <b>{`${aiReferenceScore.score}/${aiReferenceScore.maxScore}`}</b>
                     <em>{aiReferenceScore.unit}</em>
                   </>}
-                  <small>{aiReferenceScore.score === null ? 'AI 暂无法评分' : 'AI 参考评分'}</small>
+                  <small>{aiReferenceScore.score === null ? aiReferenceScore.maxScore === 0 ? 'AI 评价' : 'AI 暂无法评分' : 'AI 参考评分'}</small>
                 </span>
               )}
             </div>
@@ -633,6 +634,8 @@ export function WorksheetQuestionList({
                 🔴 所以这里要**跳过**下面那两块 —— 否则题干会画两遍。 */}
             {(node.type === 'choice-blank' || node.type === 'fill-blank') ? (
               <ChoiceBlankAnswer
+                worksheetId={worksheetId}
+                localOnly={previewOnly}
                 node={node}
                 draft={fillDraft ?? { kind: 'fill', texts: [] }}
                 disabled={controlsDisabled}

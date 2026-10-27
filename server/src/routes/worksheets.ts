@@ -1,3 +1,7 @@
+import { mayKeepPriorAiGrade, removedEvaluationScore } from '../services/worksheet-evaluation-grades.js';
+import { hasEvaluation, evaluationImages, evaluationRequirements, countsEvaluation } from '../services/worksheet-evaluation.js';
+import { findFillAudioValueError, fillAudioSlots } from '../services/worksheet-fill-audio.js';
+import { answerGradeWithFillAudio } from '../services/analysis-scoring.js';
 import { findAudioValueError } from '../services/worksheet-audio.js';
 import { normalizeWorksheetCurriculum, worksheetCurriculumError, worksheetCurriculumContext } from '../services/worksheet-curriculum.js';
 import { ANALYSIS_PROMPT_VERSION } from '../services/analysis-teaching-policy.js';
@@ -71,7 +75,7 @@ import { labelsRenderOk, renderSheets } from '../services/analysis-render.js';
 // ★ M7b：编排层的三个纯函数（平台闸门 / 消息构造 / 解读归一化）
 import { analysisGateOf, buildAnalysisMessage, normalizeNarrative } from '../services/analysis-agent.js';
 import {
-  aiScoringConfigOf, supportsAiScoring, answerGradeFromAiScore, mergeAiScoring, parseAiAnalysisResult,
+  aiScoringConfigOf, supportsAiScoring, mergeAiScoring, parseAiAnalysisResult,
   readStoredAiScoring, readStudentAiReferenceScore,
 } from '../services/analysis-scoring.js';
 // ★ M7b：**全仓唯一一处 fetch 到第三方**
@@ -390,13 +394,28 @@ function normalizeNode(
   const data = (node.data && typeof node.data === 'object' && !Array.isArray(node.data))
     ? { ...node.data as Record<string, unknown> }
     : {};
-  if (legacyOpen) {
+  if (legacyOpen && !hasEvaluation(data)) {
     for (const key of ['answers', 'referenceAnswer', 'correctKeys', 'correctOrder', 'pairs', 'placement', 'rubricText', 'rubricImageUrl', 'aiScoringCriteria', 'aiScoringEnabled', 'aiScoringMaxScore', 'studentAiReviewEnabled', 'aiReviewLimit']) delete data[key];
     data.aiScoringEnabled = false;
     data.studentAiReviewEnabled = false;
   }
+  const evaluationData = [data, ...Object.values((data.fillBlankSettings as Record<string, Record<string, unknown>>) ?? {})];
+  for (const item of evaluationData) {
+    if (!item || typeof item !== 'object') continue;
+    if (item.evaluationVersion !== undefined && !hasEvaluation(item)) errors.push(`${label}：评价方式无效`);
+    if (!hasEvaluation(item)) continue;
+    if (typeof item.evaluationScored !== 'boolean') errors.push(`${label}：是否计分设置无效`);
+    if (item.evaluationText !== undefined && (typeof item.evaluationText !== 'string' || item.evaluationText.length > 12000)) errors.push(`${label}：AI 评价要求须为 12000 字以内的文字`);
+    if (item.evaluationImages !== undefined && (!Array.isArray(item.evaluationImages) || item.evaluationImages.length > 6 || evaluationImages(item).length !== item.evaluationImages.length)) errors.push(`${label}：评价图片无效，请重新上传`);
+    if (item.evaluationMode === 'ai' && countsEvaluation(item) && !evaluationRequirements(item).trim() && !evaluationImages(item).length) errors.push(`${label}：AI 计分时，请提供文字给分条件或评分量表图片`);
+    if (item.mode === 'audio' && item.evaluationMode === 'answer') errors.push(`${label}：语音作答请选择 AI 评价或仅收集`);
+    if (item.evaluationMode === 'ai' && countsEvaluation(item)) {
+      const score = item === data ? item.aiScoringMaxScore : item.maxScore;
+      if (!Number.isInteger(score) || Number(score) < 1 || Number(score) > (item === data ? 100 : 99)) errors.push(`${label}：AI 满分超出允许范围`);
+    }
+  }
   if (data.analysisFocus !== undefined && (typeof data.analysisFocus !== 'string' || data.analysisFocus.length > 1200)) errors.push(`${label}：当前任务分析重点须为 1200 字以内的文字`);
-  if ((type === 'short-answer' || type === 'drawing') && data.aiScoringEnabled === true && !String(data.rubricText || data.aiScoringCriteria || '').trim() && !data.rubricImageUrl) errors.push(`${label}：开启 AI 评分时，请填写评价标准或上传评价标准图片，并说明给分条件`);
+  if (!hasEvaluation(data) && (type === 'short-answer' || type === 'drawing') && data.aiScoringEnabled === true && !String(data.rubricText || data.aiScoringCriteria || '').trim() && !data.rubricImageUrl) errors.push(`${label}：开启 AI 评分时，请填写评价标准或上传评价标准图片，并说明给分条件`);
 
   if (data.aiReviewLimit !== undefined && (!Number.isInteger(data.aiReviewLimit) || Number(data.aiReviewLimit) < 1 || Number(data.aiReviewLimit) > 20)) errors.push(`${label}：个人评价次数须为 1–20 次`);
   if (data.studentAiReviewEnabled !== undefined && typeof data.studentAiReviewEnabled !== 'boolean') errors.push(`${label}：学生 AI 评价开关无效`);
@@ -472,7 +491,7 @@ function normalizeNode(
     // `normalizeNode` 是**白名单式**的（逐个字段列出），漏一个的后果是教师设置完之后
     // 保存一次**静默丢光**（键没了、判分器回落到缺省，而屏幕上什么都没变）。
     // ⚠️ 与 `points` 同一条规矩：只在**有值**时写（`undefined` 与「键不存在」在库里长得一样）。
-    ...(node.autoGrade === false ? { autoGrade: false } : {}),
+    ...(hasEvaluation(data) && type !== 'fill-blank' ? {autoGrade:data.evaluationMode === 'answer'} : node.autoGrade === false ? {autoGrade:false} : {}),
     ...(typeof node.partialTolerance === 'number' && Number.isInteger(node.partialTolerance) && node.partialTolerance >= 1
       ? { partialTolerance: node.partialTolerance }
       : {}),
@@ -748,7 +767,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const existing = await prisma.worksheet.findUnique({ where: { id: req.params.id }, select: { id: true, settings: true } });
+    const existing = await prisma.worksheet.findUnique({ where: { id: req.params.id }, select: { id: true, settings: true, content: true } });
     if (!existing) return res.status(404).json({ error: '学习单不存在' });
 
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -779,7 +798,29 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ error: '没有需要更新的内容' });
     }
 
-    const worksheet = await prisma.worksheet.update({ where: { id: req.params.id }, data });
+    const changedAnswers: Array<{answer:AnswerRow;classroomId:string;participantId:string}> = [];
+    const worksheet = await prisma.$transaction(async tx=>{
+      const updated = await tx.worksheet.update({where:{id:req.params.id},data});
+      if (body.content !== undefined) {
+        const oldQuestions = new Map(flattenAnswerable((existing.content as unknown as WorksheetContent).nodes ?? []).map(item=>[item.node.id,item.node]));
+        const affected = flattenAnswerable((updated.content as unknown as WorksheetContent).nodes ?? []).filter(({node})=>{
+          const old=oldQuestions.get(node.id);
+          return old && removedEvaluationScore(old,node);
+        });
+        for (const {node} of affected) {
+          const answers = await tx.worksheetAnswer.findMany({where:{questionId:node.id,response:{worksheetId:updated.id}},include:{response:{select:{classroomId:true,participantId:true}}}});
+          for (const answer of answers) {
+            const result = answer.status === 'submitted' ? grade(node,answer.value,resolvePoints(node,DEFAULT_POINTS)) : null;
+            const nextGrade = {score:result?.score ?? null,gradeState:result?.state ?? null,isCorrect:result ? result.state==='correct' : null};
+            if (answer.score===nextGrade.score && answer.gradeState===nextGrade.gradeState && answer.isCorrect===nextGrade.isCorrect) continue;
+            const saved=await tx.worksheetAnswer.update({where:{id:answer.id},data:nextGrade});
+            changedAnswers.push({answer:saved,...answer.response});
+          }
+        }
+      }
+      return updated;
+    });
+    for (const {answer,classroomId,participantId} of changedAnswers) broadcastAnswerUpdate(req,{classroomId,participantId},answer);
     res.json(worksheet);
   } catch (error) {
     console.error('[worksheets] 更新学习单失败:', error);
@@ -1461,10 +1502,10 @@ function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: 
   const aiScoring = aiScoringConfigOf(node, scoringUnit);
   const subjective = node.type === 'short-answer' || node.type === 'drawing' || node.type === 'open-ended';
   const hasReference = Array.isArray(node.data.answers) && node.data.answers.some(slot => Array.isArray(slot) ? slot.some(value => typeof value === 'string' && value.trim()) : typeof slot === 'string' && slot.trim());
-  const analysisMode = node.type === 'open-ended' ? 'open' : !subjective && node.autoGrade === false ? 'collection' : aiScoring.enabled ? 'scored' : subjective && !hasReference && !rubric.text && !rubric.imageUrl ? 'open' : 'guided';
+  const analysisMode = aiScoring.enabled ? 'scored' : node.type === 'open-ended' ? 'open' : !subjective && node.autoGrade === false ? 'collection' : aiScoring.enabled ? 'scored' : subjective && !hasReference && !rubric.text && !rubric.imageUrl ? 'open' : 'guided';
   return {
     analysisMode,
-    analysisFocus: typeof node.data.analysisFocus === 'string' ? node.data.analysisFocus : '',
+    analysisFocus: !hasEvaluation(node.data) && typeof node.data.analysisFocus === 'string' ? node.data.analysisFocus : '',
     context,
     questionId: node.id,
     typeLabel: questionTypeLabel(node.type),
@@ -1472,8 +1513,9 @@ function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: 
     heading,
     details: analysisQuestionDetails(node),
     referenceAnswer: analysisReferenceAnswer(node),
-    rubricText: rubric.text,
+    rubricText: !rubric.text && fillAudioSlots(node).length ? fillAudioSlots(node).map(slot => `第 ${slot.index+1} 空：${slot.criteria}；参考要点：${slot.reference || '未提供'}`).join('\n') : rubric.text,
     rubricImageUrl: rubric.imageUrl,
+    rubricImageUrls: rubric.imageUrls,
     photoWriting: (node.type === 'short-answer' || node.type === 'open-ended') && node.inputMode === 'photo',
     openEnded: analysisMode === 'open' || analysisMode === 'collection',
     // ★ 2026-10-06：这题有没有教师给的「初始图」—— 判据与前端 `readDrawingStarter` 同一把尺子
@@ -1487,7 +1529,7 @@ function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: 
 
 /** 保存报告的教学依据版本，重算统计不会让旧报告被误认为最新。 */
 function analysisBasisKey(payload: ReturnType<typeof buildAnalysisPayload>) {
-  return crypto.createHash('sha256').update(JSON.stringify({ version: ANALYSIS_PROMPT_VERSION, prompt: payload.prompt, details: payload.questionDetails, reference: payload.referenceAnswer, rubric: payload.rubricText, rubricImage: payload.rubricImageUrl, context: payload.context ?? '', focus: payload.analysisFocus ?? '', mode: payload.analysisMode, scoring: payload.aiScoring })).digest('hex');
+  return crypto.createHash('sha256').update(JSON.stringify({ version: ANALYSIS_PROMPT_VERSION, prompt: payload.prompt, details: payload.questionDetails, reference: payload.referenceAnswer, rubric: payload.rubricText, rubricImage: payload.rubricImageUrls ?? payload.rubricImageUrl, context: payload.context ?? '', focus: payload.analysisFocus ?? '', mode: payload.analysisMode, scoring: payload.aiScoring })).digest('hex');
 }
 
 /**
@@ -1850,8 +1892,8 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     // 联系表按需渲染（M7a 决定 1）—— 只有需要图时才渲
     let labeled = true;
     const images: Buffer[] = [];
-    if (payload.rubricImageUrl) {
-      const rubricPath = resolveLocalPath(payload.rubricImageUrl);
+    for (const imageUrl of payload.rubricImageUrls ?? (payload.rubricImageUrl ? [payload.rubricImageUrl] : [])) {
+      const rubricPath = resolveLocalPath(imageUrl);
       if (!rubricPath) return res.status(502).json({ error: '评分标准图片路径无效，请重新上传后再分析' });
       try {
         // 评分标准图固定放在首张，消息中会把附件顺序明确告诉智能体。
@@ -1901,7 +1943,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
       { allowScoreOnly: scoped },
     );
     if ('error' in parsed) return res.status(502).json({ error: parsed.error });
-    if (scoped && payload.scorableLabels.length > 0 && !parsed.perStudent?.scores.some(score => score.score !== null)) {
+    if (scoped && payload.scorableLabels.length > 0 && !parsed.perStudent?.scores.some(score => score.score !== null || payload.aiScoring.maxScore === 0)) {
       return res.status(502).json({ error: 'AI 未返回可用评分，补评未完成；已有评分保留，请重试。' });
     }
     const narrative = normalizeNarrative(parsed.narrative);
@@ -1940,7 +1982,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
         // Preserve completed grades as history, without attaching an obsolete result to the current report.
         for (const score of parsed.perStudent?.scores ?? []) {
           const frozen = frozenAnswers.find(a => a.response.participantId === score.studentId);
-          if (!frozen || score.score === null) continue;
+          if (!frozen || (score.score === null && payload.aiScoring.maxScore > 0)) continue;
           const generation = await readAnswerGeneration(tx as PrismaClient, classroomId, worksheetId, score.studentId);
           await tx.worksheetAnswerReview.create({ data: { answerId: frozen.id, requestId: crypto.randomUUID(), generation: answerGenerationFor(generation, questionId), value: frozen.value === null ? Prisma.DbNull : frozen.value as Prisma.InputJsonValue,
             question: { node: target.node, heading: target.heading, context: target.context, agentId: agent.id } as unknown as Prisma.InputJsonValue,
@@ -2015,16 +2057,18 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
 
       if (payload.aiScoring.enabled && parsed.perStudent) {
         for (const score of parsed.perStudent!.scores) {
-          if (score.score === null || protectedIds.has(score.studentId)) continue;
+          if ((score.score === null && payload.aiScoring.maxScore > 0) || protectedIds.has(score.studentId)) continue;
           const frozen = frozenAnswers.find(a => a.response.participantId === score.studentId);
-          if (!frozen || grade(target.node, frozen.value, resolvePoints(target.node, DEFAULT_POINTS)) !== null) continue;
+          if (!frozen || (payload.aiScoring.maxScore > 0 && grade(target.node, frozen.value, resolvePoints(target.node, DEFAULT_POINTS)) !== null)) continue;
           const current = await tx.worksheetAnswer.findUnique({ where: { id: frozen.id } });
           // A teacher analysis must never attach its result to a later submission or overwrite a pending personal evaluation.
           if (!current || current.submittedAt?.getTime() !== frozen.submittedAt?.getTime() || current.status !== 'submitted') continue;
           if (await tx.worksheetAnswerReview.count({ where: { answerId: frozen.id, status: 'pending' } })) continue;
 
-          const gradedAnswer = await tx.worksheetAnswer.update({ where: { id: frozen.id }, data: answerGradeFromAiScore(score.score, payload.aiScoring.maxScore, payload.aiScoring.maxScore) });
-          changedAnswers.push({ participantId: score.studentId, answer: gradedAnswer });
+          if (score.score !== null && payload.aiScoring.maxScore > 0) {
+            const gradedAnswer = await tx.worksheetAnswer.update({ where: { id: frozen.id }, data: answerGradeWithFillAudio(target.node, frozen.value, score.score, payload.aiScoring.maxScore) });
+            changedAnswers.push({ participantId: score.studentId, answer: gradedAnswer });
+          }
           const generation = await readAnswerGeneration(tx as PrismaClient, classroomId, worksheetId, score.studentId);
           await tx.worksheetAnswerReview.create({ data: { answerId: frozen.id, requestId: crypto.randomUUID(), generation: answerGenerationFor(generation, questionId), value: frozen.value === null ? Prisma.DbNull : frozen.value as Prisma.InputJsonValue, question: { node: target.node, heading: target.heading, context: target.context, agentId: agent.id } as unknown as Prisma.InputJsonValue, status: 'succeeded', source: 'teacher', score: score.score, maxScore: payload.aiScoring.maxScore, unit: payload.aiScoring.unit, reason: score.reason, advice: score.advice, evaluatedAt: new Date(), evaluationDurationMs: Math.max(0, Date.now() - analysisStartedAt) } });
         }
@@ -2628,8 +2672,8 @@ async function evaluateIndividualReview(req: Request, reviewId: string) {
       if (!gate.ok) throw new Error(gate.reason);
       if (payload.scorableLabels.length !== 1) throw new Error('这份作品暂时无法读取，请重新上传或联系老师');
       const images: Buffer[] = [];
-      if (payload.rubricImageUrl) {
-        const file = resolveLocalPath(payload.rubricImageUrl);
+      for (const imageUrl of payload.rubricImageUrls ?? (payload.rubricImageUrl ? [payload.rubricImageUrl] : [])) {
+        const file = resolveLocalPath(imageUrl);
         if (!file) throw new Error('评分标准图片无法读取，请联系老师');
         images.push(await readFile(file));
       }
@@ -2646,7 +2690,7 @@ async function evaluateIndividualReview(req: Request, reviewId: string) {
       const parsed = parseAiAnalysisResult(parsedFeedback.narrative, payload.aiScoring, payload.entries, { allowScoreOnly: true });
       if ('error' in parsed) throw new Error(parsed.error);
       const scored = parsed.perStudent?.scores.find(s => s.studentId === participantId);
-      if (!scored || scored.score === null) throw new Error(scored?.reason || 'AI 未返回有效评分，请重试');
+      if (!scored || (payload.aiScoring.maxScore > 0 && scored.score === null)) throw new Error(scored?.reason || 'AI 未返回有效评分，请重试');
       let gradedAnswer: AnswerRow | undefined;
       // Recheck revision after the external call, inside the same atomic commit as the score.
       await prisma.$transaction(async tx => {
@@ -2675,7 +2719,11 @@ async function evaluateIndividualReview(req: Request, reviewId: string) {
           await tx.worksheetQuestionAnalysis.update({ where: { id: classRow.id }, data: { perStudent: { ...existing, ...merged } as unknown as Prisma.InputJsonValue } });
         }
         // Replacing the per-question score adjusts the total by its difference, never accumulates rewards.
-        gradedAnswer = await tx.worksheetAnswer.update({ where: { id: review.answerId }, data: answerGradeFromAiScore(scored.score!, review.maxScore, review.maxScore) });
+        if (scored.score === null && payload.aiScoring.maxScore === 0) {
+          const local=grade(node,review.value,resolvePoints(node,DEFAULT_POINTS));
+          gradedAnswer=await tx.worksheetAnswer.update({where:{id:review.answerId},data:{score:local?.score ?? null,gradeState:local?.state ?? null,isCorrect:local ? local.state==='correct' : null}});
+        }
+        if (scored.score !== null && payload.aiScoring.maxScore > 0) gradedAnswer = await tx.worksheetAnswer.update({ where: { id: review.answerId }, data: answerGradeWithFillAudio(node, review.value, scored.score, review.maxScore) });
       });
       if (gradedAnswer && req.app.get('io')) broadcastAnswerUpdate(req, { classroomId, participantId }, gradedAnswer);
       req.app.get('io')?.to(`classroom:${classroomId}`).emit('worksheet-analysis-updated', { worksheetId });
@@ -2914,7 +2962,7 @@ router.get('/:id/answers', worksheetMutation(async (req, res, database) => {
     for (const row of rows) {
       const latest = personal.find(p => p.answer.questionId === row.questionId);
       if (latest && latest.status !== 'succeeded') { scoringByQuestion.delete(row.questionId); continue; }
-      if (latest) scoringByQuestion.set(row.questionId, { maxScore: latest.maxScore, unit: latest.unit, scores: [{ studentId: ctx.participantId, score: latest.score, reason: latest.reason, advice: latest.advice }] } as unknown as Prisma.JsonValue);
+      if (latest) scoringByQuestion.set(row.questionId, { ...(byId.has(row.questionId) ? aiScoringConfigOf(byId.get(row.questionId)!, scoringUnit) : {}), maxScore: latest.maxScore, unit: latest.unit, scores: [{ studentId: ctx.participantId, score: latest.score, reason: latest.reason, advice: latest.advice }] } as unknown as Prisma.JsonValue);
     }
     res.json({ generation: await readAnswerGeneration(ctx.prisma, ctx.classroomId, ctx.worksheet.id, ctx.participantId), rows: rows.map(row => ({
       ...row,
@@ -2987,6 +3035,8 @@ router.put('/:id/answers', worksheetMutation(async (req, res, database) => {
     // `worksheet-answer-value.ts:48-76`（那段「`format` 在服务端只被读两处」）那条纪律 —— 见 `services/worksheet-ink.ts` 的 🔴。
     const inkError = findInkValueError(body.value);
     if (inkError) return res.status(400).json({ error: inkError });
+    const fillAudioError = findFillAudioValueError(node, body.value);
+    if (fillAudioError) return res.status(400).json({ error: fillAudioError });
     const audioError = findAudioValueError(body.value);
     if (audioError) return res.status(400).json({ error: audioError });
     if (body.value && typeof body.value === 'object' && (body.value as { format?: string }).format === 'audio/v1'
@@ -3073,7 +3123,7 @@ router.put('/:id/answers', worksheetMutation(async (req, res, database) => {
       where: { responseId_questionId: { responseId: response.id, questionId } },
       select: { isCorrect: true, gradeState: true, score: true },
     });
-    const keepAi = previous && previous.score !== null ? previous : null;
+    const keepAi = mayKeepPriorAiGrade(node) && previous && previous.score !== null ? previous : null;
 
     const answer = await ctx.prisma.worksheetAnswer.upsert({
       where: { responseId_questionId: { responseId: response.id, questionId } },
@@ -3234,7 +3284,7 @@ router.post('/:id/answers/submit', worksheetMutation(async (req, res, database) 
      */
     // ⚠️ 「本地有没有结论」用的是 `localGradingOwns`（**假设开关是开着的**），不是 `verdict`：
     //    教师事后关掉自动评分时，行里那三列是**上一次本地判分的残留**，不是 AI 的分。
-    const keepAi = verdict === null && !localGradingOwns(node, answer.value, points) && answer.score !== null;
+    const keepAi = mayKeepPriorAiGrade(node) && verdict === null && !localGradingOwns(node, answer.value, points) && answer.score !== null;
     const isCorrect = verdict ? verdict.state === 'correct' : keepAi ? answer.isCorrect : null;
     const gradeState = verdict ? verdict.state : keepAi ? answer.gradeState : null;
     // ⚠️ `score` 与 `gradeState` **同生共死**：`verdict` 为 null 时两个都是 null
@@ -3286,7 +3336,7 @@ router.post('/:id/answers/submit', worksheetMutation(async (req, res, database) 
     // questionId 可带，而看板的「已交 N/M」由逐题广播累加即可。
     let reviewId: string | null = null;
     let reviewStatus: string | null = null;
-    if (node.type === 'short-answer' || node.type === 'drawing') {
+    if (supportsAiScoring(node)) {
       const evaluate = reviewSettings.enabled;
       const scoringUnit = aiScoringUnitForRewardStyle(readStudentSettings(ctx.worksheet.settings).rewardStyle);
       const config = aiScoringConfigOf(node, scoringUnit);

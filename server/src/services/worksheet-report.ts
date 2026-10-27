@@ -117,6 +117,11 @@ const COARSE_LABEL: Record<string, string> = {
 export function answerCell(value: unknown): AnswerCell {
   const audio = readAudioAnswer(value);
   if (audio) return { kind: 'text', text: `语音作答（${Math.ceil(audio.durationMs / 1000)} 秒），原始录音：${audio.url}（请在课堂资料包中播放）` };
+  if (value && typeof value === 'object' && 'audios' in value) {
+    const row = value as {texts?:unknown[];audios?:Record<string,unknown>};
+    const recordings = Object.values(row.audios ?? {}).map(readAudioAnswer).filter(audio => audio !== null);
+    if (recordings.length) return {kind:'text',text: [...(row.texts ?? []).map((text,index)=>`第 ${index+1} 空：${typeof text === 'string' ? text : ''}`), ...recordings.map((audio,index)=>`录音 ${index+1}（${Math.ceil(audio!.durationMs/1000)} 秒）：${audio!.url}`)].join('\n')};
+  }
   if (value === undefined) return { kind: 'unanswered' };
   if (value === null) return { kind: 'cleared' };
   // ⚠️ 先读笔迹：它**只认 `format`**，所以「教师把题从手写改回键盘」之后，

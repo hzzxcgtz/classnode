@@ -404,7 +404,7 @@ test('🔴 `aiScoredFor`：题型支持 **且** 开关开着 —— 老填空题
 test('🔴 题卡与看板都必须走这两条判据（判据被断言 ≠ 判据被使用）', () => {
   const card = fs.readFileSync(path.resolve(HERE, '../app/teacher/worksheets/edit/question-card.tsx'), 'utf8');
   const drawer = fs.readFileSync(path.resolve(HERE, '../app/teacher/classroom/worksheet-drawer.tsx'), 'utf8');
-  assert.match(card, /supportsAiScoring\(node\)/, '题卡没有用共用的判据');
+  assert.match(card, /aiScoredFor\(node\)/, '题卡没有用共用的判据');
   assert.match(drawer, /aiScoredFor\(node\)/,
     '看板那一列又自己判 `data.aiScoringEnabled` 了 —— 一道老填空题会挂着「AI 评分」，而没人给它评分');
   assert.ok(!/aiScoringEnabled === true/.test(drawer), '看板里还留着第二份判据');

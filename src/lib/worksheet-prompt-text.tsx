@@ -70,6 +70,7 @@ export interface PromptTextProps {
 export interface PromptBlankBinding {
   /** 每个空的当前值（按从左到右）。长度不足时缺的那几格当空串。 */
   values: string[];
+  renderOf?: (index: number) => ReactNode | undefined;
   /** 第 `index` 个空（**从 0 起、从左到右**）被改了。⚠️ 落点模式下**不会**被调用（不许打字）。 */
   onChange: (index: number, value: string) => void;
   disabled: boolean;
@@ -177,9 +178,13 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
   let tableOffset = 0;
   return (
     <>
-      {segments.map((run) => {
+      {segments.map((run, runIndex) => {
+        const previous = segments[runIndex - 1];
+        const adjacentBlank = Boolean(previous && isBlankRun(previous) && isBlankRun(run) && previous.end === run.start);
         if (isBlankRun(run)) {
           blankIndex += 1;
+          const custom = blanks?.renderOf?.(blankIndex + tableOffset);
+          if (custom !== undefined) return <Fragment key={run.start}>{custom}</Fragment>;
           if (blanks && blanks.drop && blanks.modeOf?.(blankIndex + tableOffset) !== 'input') {
             const index = blankIndex + tableOffset;
             const dropId = blanks.drop.idOf(index);
@@ -189,6 +194,7 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
               <BlankSlot
                 key={run.start}
                 run={run}
+                gapBefore={adjacentBlank}
                 width={`${Math.max(3, run.end - run.start)}ch`}
                 value={blanks.values[index] ?? ''}
                 label={`第 ${index + 1} 空`}
@@ -242,6 +248,7 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
                   // ⚠️ 同时**不小于占位那一段**（`run.end - run.start`）——
                   // 空着的时候要与那串下划线一样宽，否则一填字版面就跳。
                   width: `${Math.max(Math.max(3, run.end - run.start), inputWidthCh(blanks.values[index] ?? '') + 2)}ch`,
+                  marginInlineStart: adjacentBlank ? '0.5em' : undefined,
                 }}
               />
             );

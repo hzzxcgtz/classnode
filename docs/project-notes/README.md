@@ -24,3 +24,9 @@
 - [局域网 HTTPS 与 iPad 录音](LAN-HTTPS.md)：教师启用、证书持久化、学生安装引导、端口及迁移边界。
 
 - [表达题语音作答](WORKSHEET-AUDIO-ANSWERS.md)：第 4 种输入方式、试听卡片、保存提交、教师查看及音频评价链路。
+
+- [填空题面直接编辑](VISUAL-FILL-EDITOR.md)：横线填空、表格直接编辑、答案按 ID 对齐。
+
+- [填空与表格题原始语音作答](FILL-AUDIO-ANSWERS.md)：逐空录音、混合作答、AI 评分与本地分数汇总。
+
+- [学习单统一评价设置](UNIFIED-WORKSHEET-EVALUATION.md)：题型与逐空评价、文字图片依据、反馈与计分分离及兼容规则。

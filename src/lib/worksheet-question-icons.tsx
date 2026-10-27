@@ -45,6 +45,11 @@ function Glyph({ children }: { children: ReactNode }) {
   );
 }
 
+/** 表格题沿用填空的数据类型，展示时用疏朗的两行三列表格。 */
+export const TABLE_QUESTION_ICON = (
+  <Glyph><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M9 4v16M15 4v16" /></Glyph>
+);
+
 export const QUESTION_TYPE_ICONS: Record<QuestionType, ReactNode> = {
   // 单选：一个圈 + 一个实心点（收音机按钮）
   'single-choice': (

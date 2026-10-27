@@ -1,3 +1,4 @@
+import { analysisRubric } from './analysis-question.js';
 import {
   FILL_BLANK_TEXT,
   PAPER_BLANK_TEXT,
@@ -99,6 +100,11 @@ export interface PaperTableCell {
   /** ★ 2026-09-30：原来是 `string` —— 单元格里也能写公式。 */
   text: PaperInline[];
   blank: boolean;
+  align?: 'left' | 'center' | 'right';
+  verticalAlign?: 'top' | 'middle' | 'bottom';
+  rowSpan?: number;
+  colSpan?: number;
+  covered?: boolean;
 }
 
 /** 纸上一道题。 */
@@ -187,7 +193,8 @@ function entryRows(raw: unknown, textKey: 'text' | 'label'): Array<{ id: string;
  *    库里那个字段是空的 id 串，`true` / `1` 之类的坏值不算空。
  */
 function tableCells(raw: unknown): PaperTableCell[][] {
-  return tableRowList(raw).map((row) => row.map((entry) => {
+  const source = tableRowList(raw);
+  const result: PaperTableCell[][] = source.map((row) => row.map((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
       return { text: inlineOf(''), blank: false };
     }
@@ -195,8 +202,27 @@ function tableCells(raw: unknown): PaperTableCell[][] {
     const text = typeof cell.text === 'string' ? cell.text.replace(/[\r\n]+/g, ' ').trim() : '';
     const blank = typeof cell.blank === 'string' && cell.blank !== '';
     // ★ 2026-09-30：单元格里也能写公式 ⇒ 文字过 `inlineOf`。
-    return { text: inlineOf(text), blank };
+    return { text: inlineOf(text), blank,
+      ...(cell.align === 'left' || cell.align === 'center' || cell.align === 'right' ? {align:cell.align} : {}),
+      ...(cell.verticalAlign === 'top' || cell.verticalAlign === 'middle' || cell.verticalAlign === 'bottom' ? {verticalAlign:cell.verticalAlign} : {}),
+      ...(typeof cell.rowSpan === 'number' && Number.isInteger(cell.rowSpan) && cell.rowSpan > 1 ? {rowSpan:cell.rowSpan} : {}),
+      ...(typeof cell.colSpan === 'number' && Number.isInteger(cell.colSpan) && cell.colSpan > 1 ? {colSpan:cell.colSpan} : {}),
+    };
   }));
+  // 与网页端相同：只有完整覆盖空位置的合法矩形才隐藏后续格子。
+  result.forEach((cells,r) => cells.forEach((cell,c) => {
+    const height=cell.rowSpan ?? 1, width=cell.colSpan ?? 1;
+    if (height===1 && width===1) return;
+    let valid = !cell.covered && r+height<=result.length && c+width<=cells.length;
+    if (valid) for(let y=r;y<r+height;y++) for(let x=c;x<c+width;x++) {
+      if(y===r && x===c) continue;
+      const other=result[y]?.[x];
+      if(!other || inlineText(other.text) || other.blank || other.rowSpan || other.colSpan || other.covered) valid=false;
+    }
+    if(!valid){delete cell.rowSpan;delete cell.colSpan;return;}
+    for(let y=r;y<r+height;y++) for(let x=c;x<c+width;x++) if(y!==r || x!==c) result[y][x].covered=true;
+  }));
+  return result;
 }
 
 /**
@@ -362,11 +388,12 @@ export function paperQuestion(node: QuestionNode, heading: string, fallbackPoint
   if (rubricTextOf(node)) guidance.push(`评分标准：${rubricTextOf(node)}`);
   if (typeof node.data.explanation === 'string' && node.data.explanation) guidance.push(`答案说明：${node.data.explanation}`);
   if (!collect && !ai.enabled && node.type === 'multi-choice') guidance.push(toleranceOf(node) !== null ? `部分给分条件：只漏选且未选错，漏选不超过 ${toleranceOf(node)} 项。` : node.data.partialCredit === 'allow-missing' ? '部分给分条件：只漏选且未选错。' : '评分规则：全部选对才得分。');
-  if (!collect) guidance.push(ai.enabled ? `评分方式：AI 评分，满分 ${ai.maxScore} 分。` : `分值：完全正确 ${points.full} 分；部分答对 ${points.half} 分。`);
+  if (!collect) guidance.push(ai.enabled ? ai.maxScore === 0 ? '评价方式：AI 评价与建议，不计分。' : `评分方式：AI 评分，满分 ${ai.maxScore} 分。` : `分值：完全正确 ${points.full} 分；部分答对 ${points.half} 分。`);
   const images: { url: string; caption: string }[] = [];
   for (const [key, caption] of [['promptImageUrl', '任务配图'], ['referenceImageUrl', '参考图片'], ['rubricImageUrl', '评分标准图片']]) {
     if (typeof node.data[key] === 'string' && node.data[key]) images.push({ url: node.data[key] as string, caption });
   }
+  for (const [index,url] of (analysisRubric(node).imageUrls ?? []).entries()) if (!images.some(image=>image.url===url)) images.push({url,caption:`AI 评价依据 ${index+1}`});
   if (Array.isArray(node.data.options)) node.data.options.forEach((raw, i) => {
     const option = raw as Record<string, unknown>;
     if (typeof option.imageUrl === 'string' && option.imageUrl) images.push({ url: option.imageUrl, caption: `选项 ${option.key || String.fromCharCode(65 + i)} 配图` });

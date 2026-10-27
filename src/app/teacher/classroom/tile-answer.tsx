@@ -163,7 +163,7 @@ function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.Rea
     }
 
     case 'fill': {
-      const filled = view.blanks.filter((blank) => blank.text.trim());
+      const filled = view.blanks.filter((blank) => blank.text.trim() || blank.audio);
       // 表格填空：这一格画不下一张表 ⇒ 把值按空序排出来（表格那一屏在抽屉里）。
       return (
         <>
@@ -173,7 +173,7 @@ function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.Rea
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                 {filled.map((blank) => (
                   <span key={blank.label} style={chipStyle('#e2e8f0')}>
-                    <span style={{ color: FAINT }}>{blank.label.replace('第 ', '').replace(' 空', '空')}</span> {blank.text}
+                    <span style={{ color: FAINT }}>{blank.label.replace('第 ', '').replace(' 空', '空')}</span> {blank.audio ? `语音 ${Math.ceil(blank.audio.durationMs / 1000)}秒` : blank.text}
                   </span>
                 ))}
               </div>

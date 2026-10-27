@@ -1,3 +1,4 @@
+import { evaluationRequirements, evaluationImages, hasEvaluation } from './worksheet-evaluation.js';
 import {
   acceptableAnswersFor,
   answerSlotCount,
@@ -43,18 +44,22 @@ const WORKSHEET_IMAGE_URL = /^\/uploads\/(?:chat|classrooms\/[A-Za-z0-9_-]{1,128
  * 两份口径会慢慢不一样，而两边都不报错。
  */
 export function rubricTextOf(node: QuestionNode): string {
-  return textOf(node.data.rubricText) ?? textOf(node.data.aiScoringCriteria) ?? '';
+  return hasEvaluation(node.data) ? evaluationRequirements(node.data) : textOf(node.data.rubricText) ?? textOf(node.data.aiScoringCriteria) ?? '';
 }
 
 /** 教师为主观题提供的评分依据。手工填空 = 关闭本地自动判分的普通填空。 */
-export function analysisRubric(node: QuestionNode): { text: string; imageUrl: string | null } {
+export function analysisRubric(node: QuestionNode): { text: string; imageUrl: string | null; imageUrls?: string[] } {
   const supported = node.type === 'short-answer' || node.type === 'drawing'
     || (node.type === 'fill-blank' && node.autoGrade === false);
-  if (!supported) return { text: '', imageUrl: null };
+  const versionedSlots = (node.type === 'fill-blank' || node.type === 'choice-blank') && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation);
+  if (!supported && !hasEvaluation(node.data) && !versionedSlots) return {text:'',imageUrl:null};
+  const slots = node.type === 'fill-blank' || node.type === 'choice-blank' ? Object.values((node.data.fillBlankSettings as Record<string, Record<string, unknown>>) ?? {}) : [];
+  const imageUrls = [...new Set([...evaluationImages(node.data), ...slots.flatMap(item=>evaluationImages(item))])];
   const imageUrl = textOf(node.data.rubricImageUrl);
   return {
-    text: rubricTextOf(node),
-    imageUrl: imageUrl && WORKSHEET_IMAGE_URL.test(imageUrl) ? imageUrl : null,
+    text: (node.type === 'fill-blank' || node.type === 'choice-blank') && slots.some(hasEvaluation) ? slots.flatMap((item,index)=>(hasEvaluation(item) ? item.evaluationMode==='ai' : item.mode==='audio' && item.gradingMode==='ai' && node.autoGrade !== false) ? [`第 ${index+1} 空：${evaluationRequirements(item)}${evaluationImages(item).length ? `；本空图片依据：附件 ${evaluationImages(item).map(url=>imageUrls.indexOf(url)+1).join('、')}` : ''}`] : []).join('\n') : rubricTextOf(node),
+    ...(hasEvaluation(node.data) || versionedSlots ? {imageUrls} : {}),
+    imageUrl: imageUrls[0] ?? (imageUrl && WORKSHEET_IMAGE_URL.test(imageUrl) ? imageUrl : null),
   };
 }
 

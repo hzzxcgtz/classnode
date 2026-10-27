@@ -1,3 +1,7 @@
+import { appendQuestionEvaluationImages } from '../../../../lib/worksheet-evaluation-edit.ts';
+import { hasEvaluation, countsEvaluation } from '../../../../lib/worksheet-evaluation.ts';
+import { createTable, TABLE_MARK_TEXT } from '../../../../lib/worksheet-table.ts';
+import type { FillLayout } from '../../../../lib/worksheet-fill-layout.ts';
 import { normalizeWorksheetCurriculum } from '../../../../lib/worksheet-curriculum.ts';
 /**
  * 学习单编辑器的**纯函数内核**：不碰 React、不碰 DOM、不碰网络，只依赖类型。
@@ -133,6 +137,7 @@ export type ContentAction =
   | {
     kind: 'addQuestion';
     questionType: QuestionType;
+    fillLayout?: FillLayout;
     parentId: string | null;
     /**
      * ★ 2026-09-25（教师裁定）：新题的**分值**直接写成学习单当前那两档
@@ -154,6 +159,7 @@ export type ContentAction =
    * 就是这么清掉的），不是「没变」—— 别拿 `===` 一律当成「没变」。
    */
   | { kind: 'updatePrompt'; id: string; prompt: string; data?: Record<string, unknown> }
+  | { kind: 'appendEvaluationImages'; id: string; urls: string[]; blankId?: string }
   | { kind: 'updateData'; id: string; patch: Record<string, unknown> }
   | { kind: 'updatePoints'; id: string; points: QuestionPointsDraft | undefined }
   // ★ M4b/D1：逐题的作答方式（键盘 / 手写）。它是**唯一**能让手写笔迹变成可达的开关 ——
@@ -251,7 +257,8 @@ export function newZoneId(): string {
  * 两个数从此一致（原来不一致，而屏幕上只是「最高 0 颗星星」这种没人会读的显示）。
  */
 export function maximumPointsFor(node: WorksheetQuestionNode, fullPoints: number): number {
-  if (node.type === 'fill-blank') {
+  if (hasEvaluation(node.data) && node.type !== 'fill-blank') return countsEvaluation(node.data) ? node.data.evaluationMode === 'ai' ? Number(node.data.aiScoringMaxScore) || 1 : fullPoints : 0;
+  if (node.type === 'fill-blank' || (node.type === 'choice-blank' && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation))) {
     const settings = fillSettingsFor(node, readPromptRuns(node.data.promptRuns, node.prompt));
     if (hasExplicitFillGrading(settings)) return fillGradingTotals(settings).total;
   }
@@ -423,7 +430,7 @@ export function hasPromptBlankSlots(type: string): boolean {
   return type === 'fill-blank' || type === 'choice-blank';
 }
 
-export function newQuestion(type: QuestionType): WorksheetQuestionNode {
+export function newQuestion(type: QuestionType, fillLayout: FillLayout = 'text'): WorksheetQuestionNode {
   const question: WorksheetQuestionNode = {
     id: `q_${randomIdSuffix()}`,
     type,
@@ -480,7 +487,8 @@ export function newQuestion(type: QuestionType): WorksheetQuestionNode {
   } else if (type === 'fill-blank') {
     // ⚠️ **单空形状，不是 `blanks`**（规格 §12：单空仍是 `{ answers }`，不动）。
     // 编辑体把它画成**一个空**，教师点「＋ 增加一个空」时才升级成多空。
-    question.data = { answers: [], fillScoring: 'per-blank' };
+    question.data = { answers: [], fillScoring: 'per-blank', ...(fillLayout === 'table' ? { fillLayout, table: createTable(3, 3) } : {}) };
+    if (fillLayout === 'table') question.prompt = TABLE_MARK_TEXT;
   } else if (type === 'order') {
     question.data = {
       // ⚠️ 条目文字**空串**（灰字提示是 `条目 1` / `条目 2`），与其余「加一行」的格子同一条。
@@ -2098,7 +2106,7 @@ export function scoreSummary(
   const items = flattenAnswerable(nodes);
   let maxScore = 0;
   for (const { node } of items) {
-    if (!gradesOnSubmit(node)) continue;
+    if (!gradesOnSubmit(node) && !aiScoredFor(node) && !(node.type === 'fill-blank' && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation))) continue;
     /*
       ★ 2026-10-05：**走 `maximumPointsFor`** —— 同一份算术只有一处。
       原来自带一份 `full × 空数`，两处都会错，而屏幕上只是「页面头的满分比卡片上的小」：
@@ -2738,7 +2746,7 @@ export function newTask(): WorksheetQuestionNode {
 function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetContent {
   switch (action.kind) {
     case 'addQuestion': {
-      const fresh = { ...newQuestion(action.questionType), ...(action.points ? { points: action.points } : {}) };
+      const fresh = { ...newQuestion(action.questionType, action.fillLayout), ...(action.points ? { points: action.points } : {}) };
       if (action.parentId === null) return { ...content, nodes: [...content.nodes, fresh] };
       // ⚠️ 走 `replaceNode`（递归找）而不是只看顶层：父任务在树里的任何一层都找得到。
       // 找不到 ⇒ 原对象返回（不制造空历史）。
@@ -2765,6 +2773,9 @@ function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetC
         if (node.prompt === action.prompt && !dataChanged) return node;
         return { ...node, prompt: action.prompt, data: dataChanged ? { ...node.data, ...data } : node.data };
       });
+
+    case 'appendEvaluationImages':
+      return replaceNode(content, action.id, node => appendQuestionEvaluationImages(node,action.urls,action.blankId));
 
     case 'updateData':
       // 与 `updatePrompt` 同一条规矩：补丁里每个键的值都与现值相同时返回原对象，

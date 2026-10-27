@@ -80,7 +80,7 @@ test('★ 填空题的答案住在每张空卡片里，并受题目级自动评�
 
   assert.match(bodySrc, /\bworksheet-editor-fill-answer-field\b/, '空卡片里没有答案格');
   assert.match(bodySrc, /writeFillAnswers\(/, '答案没有按原来那个 nested 形状写回（存储形状一个字都不该变）');
-  assert.match(bodySrc, /\{gradingEnabled && <div className="worksheet-editor-fill-answer-field">/, '答案行没有受总开关控制');
+  assert.match(bodySrc, /gradingEnabled && settings\[index\]\.mode !== 'audio' && \(.*evaluationMode === 'answer'/, '答案行没有受总开关控制');
   // ★ 2026-10-09：「评分方式」那一排随两档一起删了，总开关现在管的是**作答方式 + 答案**两行。
   assert.ok(!/worksheet-editor-fill-grading-row/.test(bodySrc), '「评分方式」那一排又回来了');
 
@@ -143,23 +143,10 @@ test('★ 服务端那条「请填写标准答案」不再点名任何一档（�
   assert.ok(!body(BODY).includes('本地评分'), '界面上还有「本地评分」这个名字');
 });
 
-test('★ 填空题**没有**整题 AI 块（裁定 B）：标准只在每一空，整块只服务问答 / 绘图', () => {
-  // ★ 2026-10-05（教师裁定 B）：「评分标准已经细化到每一空（如果选了手工填写），不需要整体的
-  // 评分标准。……为了简化，填空题的评分标准不需要上传图片。」
-  // ⇒ 上一版（裁定 A）把这块缩成「AI 评分标准」还留着；教师看到之后否掉了整块。
-  const card = body(CARD);
-
-  // 🔴 ★ 2026-10-09：判据搬进了 `lib/worksheet-questions.ts` 的 `supportsAiScoring`
-  //    （题卡与教师看板共用一份），所以这里钉**调用点**、判据本体在 `worksheet-questions.test.ts`
-  //    （那一条逐题型断言填空题不在里面）。两边任一被改回去，必有一条红。
-  assert.match(card, /supportsAiScoring\(node\)/, '题卡没有走共用的题型判据');
-  assert.match(card, /\{aiSupported && \(/, 'AI 那一块没有按题型判据收口');
-  // 那一块里不许再出现「按题型分叉」的痕迹（它现在只服务问答 / 绘图，一个分叉都没有）。
-  assert.ok(!card.includes("'AI 评分标准'"), '「AI 评分标准」那个分叉标题又回来了');
-
-  // 但整块的开关 / 满额 / 评分标准对**问答与绘图**必须还在 —— 那是它们唯一的入口。
-  assert.match(card, /worksheet-editor-ai-scoring-stepper/, '问答 / 绘图那个满额步进器丢了');
-  assert.match(card, /worksheet-editor-rubric-upload/, '问答 / 绘图的评分标准图片上传丢了');
+test('填空和表格共享逐空评价编辑器，题目卡不再重复评价标准', () => {
+  assert.match(body(BODY), /!needsConversion && <EvaluationSettings/);
+  assert.ok(body(BODY).includes('data={settings[index]'));
+  assert.match(body(CARD), /!isBlankType &&/);
 });
 
 test('★ 评分方式那一排由**作答方式**决定（手工填写三项 / 选词两项），答案标签跟着变', () => {
@@ -200,7 +187,7 @@ test('★ 「分值」那一格只在**真的有人读它**的地方画（选择
   const server = fs.readFileSync(SERVER_QUESTIONS, 'utf8');
   assert.match(
     server,
-    /const mixedFill = node\.type === 'fill-blank' \? explicitFillGrading\(data\) : \[\];/,
+    /const mixedFill = node\.type === 'fill-blank' \|\| \(node\.type === 'choice-blank' && Object.values/ ,
     '服务端的逐空判分不再限定填空题 —— 界面的收口依据跟着失效',
   );
   // ★ 2026-10-09：AI 评分那条路**没有填空题分支了**（逐空 AI 档已删）——
@@ -240,25 +227,14 @@ test('★「每个空 X × N 空」那句只在**旧口径**下说（接管逐�
   );
 });
 
-test('🔴 旧口径「整题给分」的老题：照实说明 + 一个**明确的**转换按钮（不替教师猜一个数）', () => {
-  // ★ 2026-10-05（教师裁定）：「总开关只需要负责是否自动评分……已经不涉及按整题给的问题」。
-  // 那两个选项已从界面上删掉，但库里还躺着 `fillScoring: 'whole'` 的老题 —— 它们**仍然按
-  // 「全对才给一份分」在给学生发分**。这里钉的是处置方式：
-  //   · **不猜**（`worksheet-points-migration.ts` 纪律 1）：不替教师把整题那一份分摊到每个空上
-  //     —— 摊成几份就凭空改了整题的分，而屏幕上没有任何东西会红；
-  //   · 转化必须由教师按一下按钮**明确**触发，且按钮上写的是「改成逐空给分」。
-  const bodySrc = body(BODY);
-  assert.match(bodySrc, /\{node\.type === 'fill-blank' && !explicitGrading && node\.data\.fillScoring !== 'per-blank' && \(/, '旧口径「整题给分」那一句没有判据（且必须挡住选择填空 —— 它的整题给分是今天合法的口径）');
-  assert.match(bodySrc, /worksheet-editor-fill-legacy-note/, '那一句没有用上带按钮的那个类');
-  assert.match(bodySrc, /所有空都答对才得 \{inheritScore\}/, '那句话没有说清旧口径是什么');
-  assert.match(
-    bodySrc,
-    /onClick=\{\(\) => updateSettings\(explicitSettings\(\)\)\}/,
-    '转换按钮没有走 `explicitSettings()`（那才是把逐空分值一次写全的那一处）',
-  );
-  assert.match(bodySrc, />\s*改成逐空给分\s*</, '按钮文案变了 —— 它得说清按下去会发生什么');
-  // ⚠️ 转换写进去的必须是 `inheritScore`（题目级分值），不是 1 —— 与上面那条同一件事的写入侧。
-  assert.match(bodySrc, /maxScore: setting\.maxScore \?\? inheritScore/, '转换会把分值写成 1');
+test('旧整题规则必须经明确转换，转换前显示新总分并拦住逐空评价编辑', () => {
+  const code=body(BODY);
+  assert.match(code,/needsWholeFillConversion\(node,settings\)/);
+  assert.match(code,/!needsConversion && <EvaluationSettings/);
+  assert.match(code,/if \(needsConversion\) \{/);
+  assert.match(code,/onClick=\{\(\)=>updateSettings\(convertWholeFillSettings\(node,settings,inheritScore\)\)\}/);
+  assert.match(code,/转换后整题满分 \{inheritScore \* slots.length\}/);
+  assert.match(code,/转换前总分保持不变/);
 });
 
 test('★ 「共用选词」在所有空设置的**下面**（单列），且逐空那一档叫「本地评分」', () => {
@@ -330,7 +306,8 @@ test('③ 每空答案 / 参考答案共用的那个列表输入已接「粘贴�
   assert.ok(answerAt > 0, '找不到每空答案那一格');
   assert.match(source.slice(answerAt, answerAt + 700), /<SymbolListInput/, '每空答案那一格换控件了 —— 粘贴去格式接不到它');
   const card = body(CARD);
-  const referenceAt = card.indexOf('worksheet-editor-reference-block');
-  assert.ok(referenceAt > 0, '找不到主观题「参考答案 / 参考要点」那一块');
-  assert.match(card.slice(referenceAt, referenceAt + 2300), /<textarea[\s\S]*onPaste=[\s\S]*normalizePastedText/, '段落式参考作答必须保留粘贴去格式');
+  assert.match(card, /reference=\{node.type === 'short-answer'/);
+  const evaluation = fs.readFileSync(path.join(HERE,'..','evaluation-settings.tsx'),'utf8');
+  assert.match(evaluation, /<textarea[\s\S]*onPaste=[\s\S]*normalizePastedText/);
+
 });

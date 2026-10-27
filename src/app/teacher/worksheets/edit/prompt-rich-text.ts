@@ -1,6 +1,6 @@
 import { locateInLengths } from '@/lib/text-offsets';
 import { TABLE_MARK_TEXT } from '@/lib/worksheet-table';
-import { isBlankRun, promptRunStyle, type PromptRun } from '@/lib/worksheet-prompt-marks';
+import { blankRuns, isBlankRun, promptRunStyle, type PromptRun } from '@/lib/worksheet-prompt-marks';
 
 /**
  * 所见即所得题干编辑器的**那一层 DOM 原语**（★ 2026-09-26）。
@@ -41,20 +41,37 @@ function applyRunStyle(span: HTMLSpanElement, style: Record<string, unknown>, co
   span.textContent = content;
 }
 
+const CARET_SENTINEL = '\u200b';
+function caretStop(block = false): HTMLElement {
+  const stop = document.createElement('span');
+  stop.dataset.caretStop = 'true';
+  if (block) stop.dataset.caretBlock = 'true';
+  stop.className = 'worksheet-editor-caret-stop';
+  stop.textContent = CARET_SENTINEL;
+  return stop;
+}
+function modelTextPart(node: Node, raw: string): string {
+  return node.parentElement?.closest('[data-caret-stop]') ? raw.replace(/\u200b/g, '') : raw;
+}
+
 export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[]): void {
   el.replaceChildren();
   runs.forEach((run) => {
     const style = promptRunStyle(run);
     if (isBlankRun(run)) {
-      // ★ 2026-09-27 教师裁定：**`{填空域}` 就是 5 个普通字符**。
-      // 这里只负责「画成灰底」，**不再** `contenteditable=false`、不再接管光标与删除键：
-      // 光标能像普通文字一样停在里面、退格能删掉一个字符（那正是规则②：删坏了就不算空了）。
-      // ⇒ 原子化那一整套（光标锚点 / `placeCaretBesideNode` / 方向键与退格接管 / 点选接管）
-      //   全部删掉 —— 它们曾经是本模块**唯一**无法在本机验证的部分。
+      // 横线是不可拆开的结构化填空；保留底层文本长度以兼容历史题面和字符偏移。
       const span = document.createElement('span');
       applyRunStyle(span, style, text.slice(run.start, run.end));
       span.className = 'worksheet-editor-inline-blank';
-      el.appendChild(span);
+      span.contentEditable = 'false';
+      span.draggable = true;
+      span.title = '点击选中；拖动调整位置；Alt + 左右方向键移动';
+      span.setAttribute('data-blank-id', run.blank);
+      span.setAttribute('data-blank-number', String(blankRuns(runs).findIndex(item => item.blank === run.blank) + 1));
+      span.setAttribute('role', 'button');
+      span.setAttribute('tabindex', '0');
+      span.setAttribute('aria-label', `设置第 ${blankRuns(runs).findIndex(item => item.blank === run.blank) + 1} 个文字填空`);
+      el.append(caretStop(), span, caretStop());
       return;
     }
     const whole = text.slice(run.start, run.end);
@@ -65,14 +82,7 @@ export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[])
       el.appendChild(span);
       return;
     }
-    // ★ 2026-09-28（教师）：**表格域标记**画成一块灰底 chip（与 `{填空域}` 同一种观感）。
-    // 🔴 它与空**不同的地方**：空有身份（`blank` 那一段进 `promptRuns`），标记没有 ——
-    //    它是纯文本，「有没有表」完全由这段文字决定（`tableMarkIndex`）。
-    // ⚠️ `textContent` 必须**逐字**等于标记串：编辑器靠 `el.textContent === node.prompt`
-    //    判断 DOM 是不是过期（见 `prompt-editor.tsx`）—— 这里多一个字符都会让它每帧重建 DOM。
-    // ⚠️ **不设 `contenteditable=false`**：原子化那一整套 2026-09-27 已经删掉了
-    //    （理由逐字在上面那一节）。光标能进去、退格能删掉一个字符 —— 删坏了就不再有表，
-    //    而 `TableBody` 会**如实报出来**（「题干里没有表格域标记」），不是静默消失。
+    // 表格标记保留历史协议，显示成简洁入口，实际表格紧邻题面编辑。
     const head = whole.slice(0, markAt);
     const tail = whole.slice(markAt + TABLE_MARK_TEXT.length);
     if (head) {
@@ -83,14 +93,42 @@ export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[])
     const chip = document.createElement('span');
     applyRunStyle(chip, style, TABLE_MARK_TEXT);
     chip.className = 'worksheet-editor-table-mark';
+    chip.contentEditable = 'false';
+    chip.setAttribute('data-label', '表格 · 点击编辑');
     chip.setAttribute('data-table-mark', '1');
-    el.appendChild(chip);
+    el.append(caretStop(true), chip, caretStop(true));
     if (tail) {
       const tailSpan = document.createElement('span');
       applyRunStyle(tailSpan, style, tail);
       el.appendChild(tailSpan);
     }
   });
+  // pre-wrap 的末尾换行本身没有可见行盒；补一个不入库的文字落点，让光标立即进入新行。
+  if (text.endsWith('\n')) {
+    const tail = caretStop(); tail.dataset.caretTail = 'true'; el.appendChild(tail);
+  }
+}
+
+/** 表格是独立编辑岛：它在题面字符坐标中只占一个历史位置标记。 */
+export function promptModelText(node: Node): string {
+  if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).hasAttribute('data-table-mark')) return TABLE_MARK_TEXT;
+  if (node.nodeType === Node.TEXT_NODE) return modelTextPart(node, node.textContent || '');
+  return Array.from(node.childNodes).map(promptModelText).join('');
+}
+
+export function promptNodeOffset(el: HTMLElement, node: Node): number {
+  return charsBefore(el, node, 0);
+}
+
+export function promptOffsetAtPoint(el: HTMLElement, x: number, y: number): number | null {
+  const doc = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null; caretRangeFromPoint?: (x: number, y: number) => Range | null };
+  const point = doc.caretPositionFromPoint?.(x, y);
+  const range = point ? null : doc.caretRangeFromPoint?.(x, y);
+  const node = point?.offsetNode ?? range?.startContainer;
+  const offset = point?.offset ?? range?.startOffset;
+  if (!node || offset === undefined || !el.contains(node)) return null;
+  const at = charsBefore(el, node, offset);
+  return at < 0 ? null : at;
 }
 
 /** 从 `root` 走到 (`node`, `offset`) 为止一共走过多少个**字符**。 */
@@ -99,20 +137,25 @@ function charsBefore(root: HTMLElement, node: Node, offset: number): number {
   let hit = false;
   const walk = (current: Node): void => {
     if (hit) return;
+    if (current.nodeType === Node.ELEMENT_NODE && (current as HTMLElement).hasAttribute('data-table-mark')) {
+      if (current === node || current.contains(node)) { hit = true; total += offset > 0 ? TABLE_MARK_TEXT.length : 0; }
+      else total += TABLE_MARK_TEXT.length;
+      return;
+    }
     if (current === node) {
       hit = true;
       if (current.nodeType === Node.TEXT_NODE) {
-        total += offset;
+        total += modelTextPart(current, (current.textContent || '').slice(0, offset)).length;
       } else {
         // `offset` 是**子节点下标**：它前面那几个子节点的文本全算。
         for (let i = 0; i < offset && i < current.childNodes.length; i += 1) {
-          total += (current.childNodes[i].textContent || '').length;
+          total += promptModelText(current.childNodes[i]).length;
         }
       }
       return;
     }
     if (current.nodeType === Node.TEXT_NODE) {
-      total += (current.textContent || '').length;
+      total += promptModelText(current).length;
       return;
     }
     for (let i = 0; i < current.childNodes.length; i += 1) walk(current.childNodes[i]);
@@ -149,16 +192,26 @@ export function placeSelection(el: HTMLElement, from: number, to: number): void 
   const selection = typeof window === 'undefined' ? null : window.getSelection();
   if (!selection) return;
   const range = document.createRange();
+  // 空白落点具备真实文本节点，浏览器能显示光标；它的哨兵不计入模型坐标。
+  if (from === to) {
+    for (const stop of Array.from(el.querySelectorAll<HTMLElement>('[data-caret-stop]'))) {
+      const at = charsBefore(el, stop, 0);
+      const text = stop.firstChild;
+      if (at !== from || !text || text.nodeType !== Node.TEXT_NODE) continue;
+      range.setStart(text, (text.textContent || '').startsWith(CARET_SENTINEL) ? 1 : 0);
+      range.collapse(true); selection.removeAllRanges(); selection.addRange(range); return;
+    }
+  }
 
   // 各文本节点的长度，按文档顺序 —— 与 `locateInLengths` 的 `lengths` 同一份口径。
-  const texts: Text[] = [];
+  const texts: Node[] = [];
   const collect = (node: Node): void => {
-    if (node.nodeType === Node.TEXT_NODE) { texts.push(node as Text); return; }
+    if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).hasAttribute('data-table-mark')) { texts.push(node); return; }
     for (let i = 0; i < node.childNodes.length; i += 1) collect(node.childNodes[i]);
   };
   for (let i = 0; i < el.childNodes.length; i += 1) collect(el.childNodes[i]);
 
-  const lengths = texts.map(text => (text.textContent || '').length);
+  const lengths = texts.map(text => promptModelText(text).length);
   const start = locateInLengths(lengths, from);
   const end = locateInLengths(lengths, to);
   if (!start || !end) {
@@ -166,7 +219,21 @@ export function placeSelection(el: HTMLElement, from: number, to: number): void 
     range.selectNodeContents(el);
     range.collapse(false);
   } else {
-    range.setStart(texts[start.index], start.offset);
+    const endpoint = (text: Node, offset: number): [Node, number] => {
+      const atom = text.nodeType === Node.ELEMENT_NODE && (text as HTMLElement).hasAttribute('data-table-mark') ? text as HTMLElement : text.parentElement?.closest('[contenteditable="false"]');
+      if (atom?.parentNode) {
+        const index = Array.prototype.indexOf.call(atom.parentNode.childNodes, atom);
+        return [atom.parentNode, index + (offset > 0 ? 1 : 0)];
+      }
+      if (text.nodeType === Node.TEXT_NODE && text.parentElement?.closest('[data-caret-stop]')) {
+        const raw = text.textContent || ''; let logical = 0; let physical = 0;
+        while (physical < raw.length && (logical < offset || raw[physical] === CARET_SENTINEL)) { if (raw[physical] !== CARET_SENTINEL) logical++; physical++; }
+        return [text, physical];
+      }
+      return [text, offset];
+    };
+    const startPoint = endpoint(texts[start.index], start.offset);
+    range.setStart(...startPoint);
     // ⚠️ 终点**必须**用同一个函数算（见上面那段）。这里再补一道防线：真出现反序
     // 就折到起点，而不是让 `setEnd` 静默把整个选区折没。
     const startAt = { index: start.index, offset: start.offset };
@@ -175,7 +242,7 @@ export function placeSelection(el: HTMLElement, from: number, to: number): void 
     if (before) {
       range.collapse(true);
     } else {
-      range.setEnd(texts[end.index], end.offset);
+      range.setEnd(...endpoint(texts[end.index], end.offset));
     }
   }
   selection.removeAllRanges();
@@ -202,4 +269,19 @@ export function selectedRange(el: HTMLElement): { from: number; to: number } | n
   const to = charsBefore(el, range.endContainer, range.endOffset);
   if (from < 0 || to < 0 || to <= from) return null;
   return { from, to };
+}
+
+/** 点击或上下移动落在对象旁的父节点时，改落真实文本节点，避免光标撑成整行高度。 */
+export function normalizePromptCaret(el: HTMLElement): void {
+  const selection=window.getSelection();
+  if (document.activeElement !== el || !selection?.isCollapsed || !selection.anchorNode || !el.contains(selection.anchorNode)) return;
+  const anchor=selection.anchorNode;
+  const atom=anchor.parentElement?.closest('[data-blank-id], [data-table-mark]');
+  if (anchor.nodeType === Node.TEXT_NODE && !atom) return;
+  const at=caretOffset(el);
+  if(at===null) return;
+  if(atom?.hasAttribute('data-blank-id')) {
+    const start=promptNodeOffset(el,atom), end=start+promptModelText(atom).length;
+    placeSelection(el,at-start < end-at ? start : end,at-start < end-at ? start : end);
+  } else placeSelection(el,at,at);
 }

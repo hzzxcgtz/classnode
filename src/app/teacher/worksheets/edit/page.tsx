@@ -1,4 +1,5 @@
 'use client';
+import { fillEditorKind, type FillLayout } from '@/lib/worksheet-fill-layout';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // ★ 2026-09-27：「悬停看大图」那张浮层要 portal 到 body（理由见 SettingsModal 里那段注释）。
@@ -22,7 +23,7 @@ import { TaskCard } from './task-card';
 import { dropIndexAt, editorRenderBlocks, placeHoverPreview, scoreSummary } from './worksheet-editor-core';
 import { flattenAnswerable, TASK_TYPE } from '@/lib/worksheet-questions';
 import { WorksheetPreviewModal } from './preview-modal';
-import { questionTypeIcon } from '@/lib/worksheet-question-icons';
+import { questionTypeIcon, TABLE_QUESTION_ICON } from '@/lib/worksheet-question-icons';
 import {
   WORKSHEET_BACKGROUND_OPTIONS,
   // ★ 2026-09-30：背景那一段收成了折叠摘要，摘要行上「当前：×××」这个名字读它 ——
@@ -54,6 +55,7 @@ function editorQuestionTypeLabel(node: WorksheetQuestionNode): string {
   if (node.type === 'single-choice' || node.type === 'multi-choice') {
     return isMultipleChoice(node) ? '多选题' : '单选题';
   }
+  if (node.type === 'fill-blank' && fillEditorKind(node) === 'table') return '表格题';
   return QUESTION_TYPE_OPTIONS.find(option => option.value === node.type)?.label ?? node.type;
 }
 
@@ -439,6 +441,7 @@ function WorksheetEditorBody() {
       rejectedPointInput={editor.rejectedPoints[row.node.id]}
       onPromptChange={(prompt, data) => editor.updatePrompt(row.node.id, prompt, data)}
       onDataChange={patch => editor.updateData(row.node.id, patch)}
+      onAppendEvaluationImages={(urls,blankId) => editor.appendEvaluationImages(row.node.id,urls,blankId)}
       onPointsInputChange={input => editor.setPointsInput(row.node.id, input)}
       onPointsChange={points => editor.updatePoints(row.node.id, points)}
       onInputModeChange={inputMode => editor.updateInputMode(row.node.id, inputMode)}
@@ -575,8 +578,8 @@ function WorksheetEditorBody() {
                     <button type="button" onClick={() => selectQuestion(row.node.id, null)}>
                       <span className="worksheet-editor-outline-number">{row.heading}</span>
                       <span className="worksheet-editor-outline-question-copy">
-                        <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{editorQuestionTypeLabel(row.node)}</strong>
-                        <em>{row.node.prompt.trim() || '未填写任务要求'}</em>
+                        <strong><span className="worksheet-editor-type-glyph">{row.node.type === 'fill-blank' && fillEditorKind(row.node) === 'table' ? TABLE_QUESTION_ICON : questionTypeIcon(row.node.type)}</span>{editorQuestionTypeLabel(row.node)}</strong>
+                        <em>{row.node.prompt.trim() || '未填写任务描述'}</em>
                       </span>
                     </button>
                   </div>
@@ -623,8 +626,8 @@ function WorksheetEditorBody() {
                         <button type="button" onClick={() => selectQuestion(row.node.id, task.node.id)}>
                           <span className="worksheet-editor-outline-number">{row.label}</span>
                           <span className="worksheet-editor-outline-question-copy">
-                            <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(row.node.type)}</span>{editorQuestionTypeLabel(row.node)}</strong>
-                            <em>{row.node.prompt.trim() || '未填写任务要求'}</em>
+                            <strong><span className="worksheet-editor-type-glyph">{row.node.type === 'fill-blank' && fillEditorKind(row.node) === 'table' ? TABLE_QUESTION_ICON : questionTypeIcon(row.node.type)}</span>{editorQuestionTypeLabel(row.node)}</strong>
+                            <em>{row.node.prompt.trim() || '未填写任务描述'}</em>
                           </span>
                         </button>
                         <button
@@ -661,7 +664,7 @@ function WorksheetEditorBody() {
             </div>
           ) : activeBlock?.task ? (
             <>
-              <div className="worksheet-editor-canvas-head">
+              <div className="worksheet-editor-canvas-head is-theme-overview">
                 <div>
                   <span>主题 {activeBlock.task.index + 1}</span>
                   {!activeQuestion && <h2>编辑主题</h2>}
@@ -714,9 +717,9 @@ function WorksheetEditorBody() {
 
       {pickerFor && (
         <AddQuestionPicker
-          onPick={questionType => {
+          onPick={(questionType, fillLayout) => {
             pendingNewQuestionIds.current = new Set(blocks.flatMap(block => block.questions.map(row => row.node.id)));
-            editor.addQuestion(questionType, pickerFor.parentId);
+            editor.addQuestion(questionType, pickerFor.parentId, fillLayout);
             setPickerFor(null);
           }}
           onClose={() => setPickerFor(null)}
@@ -779,9 +782,15 @@ function DraftBanner({ draft, onAccept, onDiscard }: {
 
 /** 题型选择（规格 §6.2：「加题 = 点底部『＋ 添加题目』，弹出题型选择后追加到末尾」）。 */
 function AddQuestionPicker({ onPick, onClose }: {
-  onPick: (questionType: QuestionType) => void;
+  onPick: (questionType: QuestionType, fillLayout?: FillLayout) => void;
   onClose: () => void;
 }) {
+  const choices: Array<(typeof QUESTION_TYPE_OPTIONS)[number] & { fillLayout?: FillLayout }> = [];
+  for (const option of QUESTION_TYPE_OPTIONS) {
+    if (option.value === 'choice-blank' || option.value === 'multi-choice' || option.value === 'open-ended') continue;
+    choices.push(option);
+    if (option.value === 'fill-blank') choices.push({ ...option, label: '表格题', hint: '编辑行列与单元格，选中格子设为填空', fillLayout: 'table' });
+  }
   return (
     <>
       <div className="modal-overlay" onClick={onClose} />
@@ -794,12 +803,12 @@ function AddQuestionPicker({ onPick, onClose }: {
             指的是键盘 / 手写 / 拍照，两处撞词（教师在这里选的是**题型**）。 */}
         <p className="worksheet-editor-dialog-note">选择作答形式。添加后可从左侧抓住拖动把手调整顺序。</p>
         <div className="worksheet-editor-type-list">
-          {QUESTION_TYPE_OPTIONS.filter(option => option.value !== 'choice-blank' && option.value !== 'multi-choice' && option.value !== 'open-ended').map(option => (
-            <button key={option.value} type="button" className="worksheet-editor-type-option" onClick={() => onPick(option.value)}>
-              <span className="worksheet-editor-type-option-icon">{questionTypeIcon(option.value)}</span>
+          {choices.map(option => (
+            <button key={`${option.value}-${option.fillLayout ?? 'default'}`} type="button" className="worksheet-editor-type-option" onClick={() => onPick(option.value, option.fillLayout)}>
+              <span className="worksheet-editor-type-option-icon">{option.fillLayout === 'table' ? TABLE_QUESTION_ICON : questionTypeIcon(option.value)}</span>
               <span className="worksheet-editor-type-option-copy">
                 <span className="worksheet-editor-type-option-label">{option.value === 'single-choice' ? '选择题' : option.label}</span>
-                <span className="worksheet-editor-type-option-hint">{option.value === 'single-choice' ? '可在任务内设置为单选或多选' : option.value === 'fill-blank' ? '每个空可设置手工填写、右侧选词或下方选词' : option.hint}</span>
+                <span className="worksheet-editor-type-option-hint">{option.value === 'single-choice' ? '可在任务内设置为单选或多选' : option.value === 'fill-blank' && option.fillLayout !== 'table' ? '在句子或段落中插入横线，支持多个填空' : option.hint}</span>
               </span>
             </button>
           ))}

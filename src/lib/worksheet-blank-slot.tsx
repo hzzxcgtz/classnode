@@ -29,6 +29,8 @@ export interface BlankSlotProps {
   value: string;
   /** 读屏要能说清这是哪一格（题干里是「第 2 空」，表格里是「第 2 行第 3 格」）。 */
   label: string;
+  align?: 'left' | 'center' | 'right';
+  gapBefore?: boolean;
   /**
    * ★ 2026-09-29（教师）：答错的槽 ⇒ 槽里的**字**改成暗红 + 删除线。
    * ⚠️ 它**不再**在槽后面多画一枚红叉 —— 那个形状整体退休了（四个填空渲染点一起换）。
@@ -48,7 +50,7 @@ export interface BlankSlotProps {
 }
 
 export function BlankSlot({
-  run, width, value, label, wrong, disabled, active, pending, dropId, onPlace, children,
+  run, width, value, label, align, gapBefore, wrong, disabled, active, pending, dropId, onPlace, children,
 }: BlankSlotProps) {
   const filled = value !== '';
   return (
@@ -60,11 +62,12 @@ export function BlankSlot({
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center',
           minWidth: width,
           minHeight: '34px',
           padding: '3px 8px 1px',
           margin: '-3px 3px -4px',
+          marginInlineStart: gapBefore ? '0.5em' : undefined,
           borderBottom: active ? '2px solid #527198' : '1.5px solid #94a3b8',
           background: active ? '#eaf2ff' : filled ? '#f1f5f9' : '#f8fafc',
           boxShadow: active ? 'inset 0 0 0 1px rgba(82, 113, 152, .22)' : 'none',
@@ -77,7 +80,7 @@ export function BlankSlot({
           // 对象后面的 `color: undefined` 仍会覆盖上面 `blankValueStyle` 给出的暗红色，
           // 于是错误答案只剩删除线、文字却退回黑色。
           ...(pending && !filled && !wrong ? { color: '#527198' } : {}),
-          textAlign: 'center',
+          textAlign: align ?? 'center',
           verticalAlign: 'baseline',
           cursor: disabled ? 'default' : 'pointer',
           transition: 'background-color .16s ease-out, border-color .16s ease-out',

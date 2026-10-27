@@ -76,6 +76,10 @@ export const MAX_TABLE_BLANKS = 30;
 export interface WorksheetTableCell {
   text: string;
   blank: string;
+  align?: 'left' | 'center' | 'right';
+  verticalAlign?: 'top' | 'middle' | 'bottom';
+  rowSpan?: number;
+  colSpan?: number;
 }
 
 /**
@@ -103,6 +107,10 @@ function readCell(raw: unknown): WorksheetTableCell {
   return {
     text: typeof row.text === 'string' ? row.text : '',
     blank: typeof row.blank === 'string' ? row.blank : '',
+    ...(row.align === 'left' || row.align === 'center' || row.align === 'right' ? {align: row.align} : {}),
+    ...(row.verticalAlign === 'top' || row.verticalAlign === 'middle' || row.verticalAlign === 'bottom' ? {verticalAlign: row.verticalAlign} : {}),
+    ...(typeof row.rowSpan === 'number' && Number.isInteger(row.rowSpan) && row.rowSpan > 1 ? { rowSpan: row.rowSpan } : {}),
+    ...(typeof row.colSpan === 'number' && Number.isInteger(row.colSpan) && row.colSpan > 1 ? { colSpan: row.colSpan } : {}),
   };
 }
 
@@ -116,10 +124,21 @@ function readTable(raw: unknown): WorksheetTable {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { rows: [], headerRow: true };
   const source = raw as Record<string, unknown>;
   const rows = Array.isArray(source.rows) ? source.rows : [];
-  return {
-    rows: rows.map((row) => (Array.isArray(row) ? row.map(readCell) : [])),
-    headerRow: source.headerRow !== false,
-  };
+  const result = { rows: rows.map((row) => (Array.isArray(row) ? row.map(readCell) : [])), headerRow: source.headerRow !== false };
+  const covered = new Set<string>();
+  result.rows.forEach((cells, r) => cells.forEach((cell, c) => {
+    const height = cell.rowSpan ?? 1, width = cell.colSpan ?? 1;
+    if (height === 1 && width === 1) return;
+    let valid = r + height <= result.rows.length && c + width <= cells.length && !covered.has(`${r}:${c}`);
+    if (valid) for (let y = r; y < r + height; y++) for (let x = c; x < c + width; x++) {
+      if (y === r && x === c) continue;
+      const other = result.rows[y]?.[x];
+      if (!other || other.text || other.blank || other.rowSpan || other.colSpan || covered.has(`${y}:${x}`)) valid = false;
+    }
+    if (!valid) { delete cell.rowSpan; delete cell.colSpan; return; }
+    for (let y = r; y < r + height; y++) for (let x = c; x < c + width; x++) if (y !== r || x !== c) covered.add(`${y}:${x}`);
+  }));
+  return result;
 }
 
 /** 夹进 `[low, high]`。**不是数字就当成 `low`**（与 `worksheet-prompt-marks` 同一把尺子）。 */
@@ -407,6 +426,7 @@ export function insertTableRow(
   if (!canAddTableRow(current)) return { table: current, answers: answers.slice() };
   const cols = tableColumnCount(current);
   const index = clampIndex(at, 0, current.rows.length);
+  if (tableAxisBlocked(current, 'row', index, true)) return { table: current, answers: answers.slice() };
   const rows = current.rows.slice();
   rows.splice(index, 0, Array.from({ length: cols }, () => emptyCell()));
   return { table: { ...current, rows }, answers: answers.slice() };
@@ -422,6 +442,7 @@ export function insertTableColumn(
   const current = readTable(table);
   if (!canAddTableColumn(current)) return { table: current, answers: answers.slice() };
   const index = clampIndex(at, 0, tableColumnCount(current));
+  if (tableAxisBlocked(current, 'col', index, true)) return { table: current, answers: answers.slice() };
   const rows = current.rows.map((cells) => {
     const next = cells.slice();
     next.splice(Math.min(index, next.length), 0, emptyCell());
@@ -443,6 +464,7 @@ export function removeTableRow(
   if (!Number.isInteger(at) || at < 0 || at >= current.rows.length) {
     return { table: current, answers: answers.slice() };
   }
+  if (tableAxisBlocked(current, 'row', at, false)) return { table: current, answers: answers.slice() };
   const slots: number[] = [];
   current.rows[at].forEach((cell, col) => {
     if (cell.blank !== '') slots.push(base + blankSlotIndex(current, at, col));
@@ -465,6 +487,7 @@ export function removeTableColumn(
   // ⚠️ 最后一列不许删（与最后一行同一条理由）
   if (cols <= 1) return { table: current, answers: answers.slice() };
   if (!Number.isInteger(at) || at < 0 || at >= cols) return { table: current, answers: answers.slice() };
+  if (tableAxisBlocked(current, 'col', at, false)) return { table: current, answers: answers.slice() };
   const slots: number[] = [];
   current.rows.forEach((cells, row) => {
     const cell = cells[at];
@@ -514,4 +537,65 @@ export function parseTablePaste(raw: unknown): {
     droppedRows,
     droppedCols,
   };
+}
+
+
+/** 被合并起点覆盖的位置仍保留空格子，矩形下标与历史答案协议保持不变。 */
+export function coveredTableCells(raw: unknown): Set<string> {
+  const table = readTable(raw); const out = new Set<string>();
+  table.rows.forEach((cells, r) => cells.forEach((cell, c) => {
+    for (let y = r; y < r + (cell.rowSpan ?? 1); y++) for (let x = c; x < c + (cell.colSpan ?? 1); x++) if (y !== r || x !== c) out.add(`${y}:${x}`);
+  }));
+  return out;
+}
+
+/** 穿过合并格的结构操作须先拆分，避免删除或挪丢它的文字和答案。 */
+export function tableAxisBlocked(raw: unknown, axis: 'row' | 'col', at: number, insert: boolean): boolean {
+  return readTable(raw).rows.some((cells, r) => cells.some((cell, c) => {
+    if (!cell.rowSpan && !cell.colSpan) return false;
+    const start = axis === 'row' ? r : c, end = start + (axis === 'row' ? cell.rowSpan ?? 1 : cell.colSpan ?? 1);
+    return insert ? start < at && at < end : start <= at && at < end;
+  }));
+}
+
+export function mergeTableCells(raw: unknown, row: number, col: number, direction: 'right' | 'down'): { table: WorksheetTable; error?: string } {
+  const table = readTable(raw); const first = table.rows[row]?.[col];
+  if (!first || coveredTableCells(table).has(`${row}:${col}`)) return { table, error: '请先选择一个单元格。' };
+  let height = first.rowSpan ?? 1, width = first.colSpan ?? 1;
+  const next = table.rows[direction === 'down' ? row + height : row]?.[direction === 'right' ? col + width : col];
+  if (!next) return { table, error: direction === 'right' ? '右侧已经没有单元格了。' : '下方已经没有单元格了。' };
+  if (direction === 'right') width += next.colSpan ?? 1; else height += next.rowSpan ?? 1;
+  if (row + height > table.rows.length || col + width > tableColumnCount(table)) return { table, error: '合并范围超出了表格。' };
+  // 与范围相交的已有合并格必须被完整包含。
+  let overlap = false;
+  table.rows.forEach((cells, r) => cells.forEach((cell, c) => {
+    const bottom = r + (cell.rowSpan ?? 1), right = c + (cell.colSpan ?? 1);
+    if (r < row + height && bottom > row && c < col + width && right > col && (r < row || c < col || bottom > row + height || right > col + width)) overlap = true;
+  }));
+  if (overlap) return { table, error: '相邻区域包含其他合并格，请先拆分后再合并。' };
+  const cells: WorksheetTableCell[] = [];
+  for (let r = row; r < row + height; r++) for (let c = col; c < col + width; c++) cells.push(table.rows[r][c]);
+  const blanks = cells.filter(cell => cell.blank);
+  if (blanks.length > 1) return { table, error: '这些格子有多个填空，请先将多余的填空改为文字格，再合并。' };
+  const text = cells.map(cell => cell.text).filter(Boolean).join('\n');
+  const rows = table.rows.map(cells => cells.map(cell => ({ ...cell })));
+  for (let r = row; r < row + height; r++) for (let c = col; c < col + width; c++) rows[r][c] = emptyCell();
+  rows[row][col] = { text, blank: blanks[0]?.blank ?? '', ...(first.align ? {align:first.align} : {}), ...(first.verticalAlign ? {verticalAlign:first.verticalAlign} : {}), ...(height > 1 ? {rowSpan: height} : {}), ...(width > 1 ? {colSpan: width} : {}) };
+  return { table: { ...table, rows } };
+}
+
+export function splitTableCell(raw: unknown, row: number, col: number): WorksheetTable {
+  const table = readTable(raw); const cell = table.rows[row]?.[col];
+  if (cell) { delete cell.rowSpan; delete cell.colSpan; }
+  return table;
+}
+
+/** 只改变所选格的排版，文字、跨度和填空 ID 均保留。 */
+export function setCellAlignment(raw: unknown, row: number, col: number, patch: Pick<WorksheetTableCell, 'align' | 'verticalAlign'>): WorksheetTable {
+  const table=readTable(raw); const cell=table.rows[row]?.[col];
+  if (!cell || coveredTableCells(table).has(`${row}:${col}`)) return table;
+  const next={...cell};
+  if (patch.align==='left' || patch.align==='center' || patch.align==='right') next.align=patch.align;
+  if (patch.verticalAlign==='top' || patch.verticalAlign==='middle' || patch.verticalAlign==='bottom') next.verticalAlign=patch.verticalAlign;
+  return withCell(table,row,col,next);
 }

@@ -144,7 +144,7 @@ test('★ 复制成功那句话要弹得出来（onNotice 从编辑页一路传�
   // JSX 属性可以包含嵌套组件；按语法树读取当前组件的属性，避免在标题图标的 /> 处截断。
   assert.equal(jsxAttribute(CARD, 'PromptEditor', 'onNotice'), '{onNotice}', '题目卡没有把 notice 转给题干编辑器');
   assert.equal(
-    jsxAttribute(CARD.replace('onNotice={onNotice}', ''), 'PromptEditor', 'onNotice'),
+    jsxAttribute(CARD.replaceAll('onNotice={onNotice}', ''), 'PromptEditor', 'onNotice'),
     undefined,
     '删掉实际回调后不能从声明、解构或其他组件中误认出连接',
   );

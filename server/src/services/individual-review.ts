@@ -1,3 +1,5 @@
+import { aiScoringConfigOf } from './analysis-scoring.js';
+import { aiEvaluationEnabled } from './worksheet-evaluation.js';
 import type { PrismaClient } from '@prisma/client';
 import type { QuestionNode } from './worksheet-questions.js';
 
@@ -5,8 +7,7 @@ import type { QuestionNode } from './worksheet-questions.js';
 export function individualReviewSettings(node: QuestionNode) {
   const raw = node.data.aiReviewLimit;
   return {
-    enabled: (node.type === 'short-answer' || node.type === 'drawing')
-      && node.data.aiScoringEnabled === true && node.data.studentAiReviewEnabled === true,
+    enabled: (aiEvaluationEnabled(node) || (aiScoringConfigOf(node).enabled && node.autoGrade !== false)) && node.data.studentAiReviewEnabled === true,
     limit: typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= 20 ? raw : 1,
   };
 }

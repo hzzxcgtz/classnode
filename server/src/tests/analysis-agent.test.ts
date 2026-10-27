@@ -237,7 +237,7 @@ test('混合填空会明确限制 AI 只评分指定空，避免重复计算自�
     },
   });
   assert.match(message, /只评价第 3 空（满额 5 分）/);
-  assert.match(message, /其他空已由 ClassNode 本地自动评分/);
+  assert.match(message, /其他空仅作上下文，不能重复计分/);
 });
 
 test('🔴 开了 AI 评分但教师没写评分标准 ⇒ 兜底那句必须在（否则模型会自己编一套给分口径）', () => {
@@ -274,7 +274,7 @@ test('评分标准文字与图片附件顺序会明确告诉智能体', () => {
   });
   const message = buildAnalysisMessage(payload);
   assert.match(message, /评分标准：结论正确 2 分，理由完整 3 分/);
-  assert.match(message, /第 1 张图片是教师提供的评分标准/);
+  assert.match(message, /前 1 张图片是教师提供的 AI 评价要求/);
 });
 
 test('🔴 normalizeNarrative：空白 ⇒ 空串（⇒ 不写库）；超长 ⇒ 截断且标注；正常 ⇒ 去首尾空白', () => {

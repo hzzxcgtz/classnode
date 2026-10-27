@@ -1,6 +1,6 @@
 import {
   AlignmentType, BorderStyle, Document, Packer, Paragraph, ShadingType, Table,
-  TableCell, TableLayoutType, TableRow, TextRun, WidthType,
+  TableCell, VerticalAlign, TableLayoutType, TableRow, TextRun, WidthType,
 } from 'docx';
 import { WORD_PAGE, WORD_STYLES, wordFooter, readWordImage, wordImage } from './worksheet-docx-layout.js';
 import { PAPER_BLANK_TEXT } from './worksheet-questions.js';
@@ -110,12 +110,14 @@ function promptTable(rows: PaperPromptPart & { kind: 'table' }): Table {
     layout: TableLayoutType.AUTOFIT,
     rows: rows.rows.map((cells, rowIndex) => new TableRow({
       tableHeader: rowIndex === 0,
-      children: cells.map((cell) => new TableCell({
+      children: cells.filter(cell => !cell.covered).map((cell) => new TableCell({
+        columnSpan: cell.colSpan, rowSpan: cell.rowSpan,
+        verticalAlign: cell.verticalAlign === 'middle' ? VerticalAlign.CENTER : cell.verticalAlign === 'bottom' ? VerticalAlign.BOTTOM : cell.verticalAlign === 'top' ? VerticalAlign.TOP : undefined,
         margins: { top: 60, bottom: 60, left: 90, right: 90 },
         shading: rowIndex === 0 ? { fill: C.tableHead, type: ShadingType.CLEAR } : undefined,
         children: [new Paragraph({
           // 表头那一行居中（它就是列名），数据行照旧左对齐。
-          alignment: rowIndex === 0 ? AlignmentType.CENTER : undefined,
+          alignment: cell.align === 'left' ? AlignmentType.LEFT : cell.align === 'right' ? AlignmentType.RIGHT : cell.align === 'center' || rowIndex === 0 ? AlignmentType.CENTER : undefined,
           spacing: { before: 0, after: 0 },
           // 🔴 空格子印下划线（不是一个空方框）；有字的格子照印它的字。
           // ★ 2026-09-30：格子里也能写公式 ⇒ 走 `inlineChildren`。

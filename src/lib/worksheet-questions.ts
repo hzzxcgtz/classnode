@@ -1,3 +1,4 @@
+import { aiEvaluationEnabled, hasEvaluation, countsEvaluation } from './worksheet-evaluation.ts';
 import type { WorksheetQuestionNode } from './types';
 
 /**
@@ -220,8 +221,8 @@ export const TRUE_FALSE_OPTIONS: ChoiceOption[] = [
  *    里那个 `subjective`）—— 两个包（前端 / 服务端）互相引不了，所以各留一份，
  *    改这里就要去看那一份，别让两边分岔。
  */
-export function supportsAiScoring(node: { type: string }): boolean {
-  return node.type === 'short-answer' || node.type === 'drawing';
+export function supportsAiScoring(node: { type: string; data?: Record<string, unknown> }): boolean {
+  return aiEvaluationEnabled(node) || node.type === 'short-answer' || node.type === 'drawing' || (node.type === 'fill-blank' && Object.values((node.data?.fillBlankSettings as Record<string, { mode?: string }>) ?? {}).some(setting => setting?.mode === 'audio'));
 }
 
 /**
@@ -232,7 +233,10 @@ export function supportsAiScoring(node: { type: string }): boolean {
  * ⚠️ `=== true` 是刻意的：`data` 来自库里的 JSON，`1` / `"true"` 这类真值都不算开
  *   （与 `aiScoringConfigOf` 逐字同款）。
  */
-export function aiScoredFor(node: { type: string; data?: Record<string, unknown> }): boolean {
+export function aiScoredFor(node: { type: string; autoGrade?: boolean; data?: Record<string, unknown> }): boolean {
+  if (node.type !== 'fill-blank' && hasEvaluation(node.data)) return node.data?.evaluationMode === 'ai' && countsEvaluation(node.data!);
+  if ((node.type === 'fill-blank' || node.type === 'choice-blank') && Object.values((node.data?.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation)) return Object.values((node.data?.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(s=>hasEvaluation(s) && s.evaluationMode === 'ai' && countsEvaluation(s));
+  if (node.type === 'fill-blank') return node.autoGrade !== false && Object.values((node.data?.fillBlankSettings as Record<string, { mode?: string; gradingMode?: string }>) ?? {}).some(setting => setting?.mode === 'audio' && setting.gradingMode === 'ai');
   return supportsAiScoring(node) && node.data?.aiScoringEnabled === true;
 }
 

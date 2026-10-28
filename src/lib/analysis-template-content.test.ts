@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { analysisTemplateParts } from './analysis-template-content.ts';
-const text = fs.readFileSync(new URL('../../public/prompt-templates/analysis/primary-math.md', import.meta.url), 'utf8');
+const text = fs.readFileSync(new URL('../../myportal/prompt-templates/analysis/primary-math.md', import.meta.url), 'utf8');
 test('页面能区分可优化与固定内容，复制正文不包含教师编辑说明且不丢规则', () => {
   const parts = analysisTemplateParts(text);
   assert.match(parts.editable, /# 角色：小学数学/);

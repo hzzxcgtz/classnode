@@ -6,7 +6,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ANALYSIS_PROMPT_TEMPLATES } from '../src/lib/analysis-prompt-templates.ts';
 import { requireRuntime, run as runCommand } from './lib/project.mjs';
 import { bundleNode } from './lib/node-runtime.mjs';
 
@@ -84,7 +83,6 @@ for (const input of [
   'server/dist/index.js', 'server/prisma/schema.prisma', 'server/changelogs',
   'server/vendor', 'server/package.json', 'out/index.html',
   'out/teacher/agents/templates/index.html',
-  ...ANALYSIS_PROMPT_TEMPLATES.map(template => `out${template.file}`),
 ]) requirePath(input);
 console.log(`[package-server] 目标: ${target || `${runtime.platform}-${runtime.arch}`}`);
 
@@ -145,7 +143,6 @@ const requiredFiles = [
   'dist/services/desktop-port-recovery.js',
   'frontend/index.html',
   'frontend/teacher/agents/templates/index.html',
-  ...ANALYSIS_PROMPT_TEMPLATES.map(template => `frontend${template.file}`),
   'prisma/schema.prisma',
   'prisma/dev.db',
   'node_modules/@prisma/client/package.json',

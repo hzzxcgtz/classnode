@@ -2,7 +2,6 @@
 
 import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ANALYSIS_AGENT_PROMPT_TEMPLATE } from '@/lib/analysis-agent-prompt-template';
 import { AGENT_PLATFORMS } from '@/app/teacher/agents/agent-platforms';
 
 const helpImages: Record<string, string[]> = {
@@ -49,30 +48,6 @@ function Content() {
   const isAnalysisAgent = searchParams.get('purpose') === 'analysis';
   const images = helpImages[platform] || [];
   const [current, setCurrent] = useState(0);
-  const [copied, setCopied] = useState(false);
-
-  const copyPromptTemplate = useCallback(async () => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(ANALYSIS_AGENT_PROMPT_TEMPLATE);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = ANALYSIS_AGENT_PROMPT_TEMPLATE;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        textarea.remove();
-      }
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // 浏览器拒绝剪贴板权限时保持原文不变，按钮仍可再次尝试，不让帮助页崩溃。
-      setCopied(false);
-    }
-  }, []);
-
   const go = useCallback((n: number) => {
     setCurrent(Math.max(0, Math.min(n, images.length - 1)));
   }, [images.length]);
@@ -119,18 +94,18 @@ function Content() {
       {isAnalysisAgent && (
         <button
           type="button"
-          onClick={() => { void copyPromptTemplate(); }}
-          title="复制到外部智能体平台的系统提示词中"
+          onClick={() => { window.open('/teacher/agents/templates/', '_blank', 'noopener,noreferrer'); }}
+          title="从官网读取模板，在 ClassNode 中选择和复制"
           style={{
             marginTop: 12,
             minHeight: 38, padding: '0 14px', borderRadius: 9,
             border: '1px solid rgba(191,219,254,.5)',
-            background: copied ? 'rgba(22,101,52,.88)' : 'rgba(30,64,175,.82)',
+            background: 'rgba(30,64,175,.82)',
             color: '#fff', cursor: 'pointer', font: '600 13px system-ui',
             boxShadow: '0 5px 18px rgba(0,0,0,.22)', backdropFilter: 'blur(8px)',
           }}
         >
-          {copied ? '已复制提示词模板' : '复制分析提示词模板'}
+          查看分析提示词模板
         </button>
       )}
       </header>

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { ANALYSIS_TEMPLATE_IDS, readAnalysisTemplate } from '../services/analysis-template-source.js';
 import { Agent, Prisma, PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import path from 'path';
@@ -16,6 +17,16 @@ import { normalizeAgentPurpose } from '../services/agent-purpose.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
+
+// Fixed remote source and IDs; never accept an arbitrary URL from the browser.
+router.get('/analysis-templates/:templateId', async (req, res) => {
+  if (!ANALYSIS_TEMPLATE_IDS.has(req.params.templateId)) {
+    res.status(404).json({ error: '未知的分析提示词模板' }); return;
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(await readAnalysisTemplate(req.params.templateId)); }
+  catch (error) { res.status(502).json({ error: error instanceof Error ? error.message : '读取官网模板失败，请重试' }); }
+});
 
 function isPrivateIpv4(hostname: string): boolean {
   const parts = hostname.split('.').map(Number);

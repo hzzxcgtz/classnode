@@ -15,7 +15,7 @@ test('each school stage and subject has one complete standalone Markdown prompt'
     const matches = ANALYSIS_PROMPT_TEMPLATES.filter(row => row.stage === stage.id && row.subject === subject.id);
     assert.equal(matches.length, 1);
     const row = matches[0];
-    const text = fs.readFileSync(path.join(root, 'public', row.file), 'utf8');
+    const text = fs.readFileSync(path.join(root, 'myportal', row.file), 'utf8');
     assert.match(text, /姓名#学号/);
     assert.match(text, /### A. 信息收集/);
     assert.match(text, /### B. 作答与学习表现分析/);
@@ -85,7 +85,7 @@ test('学科与学段各自描述具体评价方法，公共规则保持一致',
     'middle-general': ['时序', '地图', '证据缺口', '人格'],
   };
   for (const row of ANALYSIS_PROMPT_TEMPLATES) {
-    const text = fs.readFileSync(path.join(root, 'public', row.file), 'utf8');
+    const text = fs.readFileSync(path.join(root, 'myportal', row.file), 'utf8');
     const method = text.slice(text.indexOf('### '), text.indexOf('# 固定区：'));
     assert.ok(!methods.has(method), `${row.id} 不应复用另一个学科或学段的评价方法`);
     methods.add(method);

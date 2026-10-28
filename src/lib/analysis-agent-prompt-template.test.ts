@@ -39,5 +39,5 @@ test('Coze 文档提供通用模板与 12 份完整学科模板入口', () => {
   assert.doesNotMatch(COZE_TEMPLATE, /写给同学们的话|配置时必须替换/);
   assert.ok(!COZE_TEMPLATE.includes('v2.2.0'), 'Coze 模板仍残留旧版本号');
   assert.ok(!COZE_TEMPLATE.includes('逐一评价每个已提交作答的学生'), 'Coze 模板仍要求给不可评分作答猜分');
-  assert.equal((COZE_TEMPLATE.match(/\.\.\/public\/prompt-templates\/analysis\//g) ?? []).length, 12, '全学科的 12 个完整模板入口不完整');
+  assert.equal((COZE_TEMPLATE.match(/\.\.\/myportal\/prompt-templates\/analysis\//g) ?? []).length, 12, '全学科的 12 个完整模板入口不完整');
 });

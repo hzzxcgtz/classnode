@@ -104,6 +104,8 @@ async function formRequest<T>(path: string, method: 'POST' | 'PUT', body: FormDa
 }
 
 export const api = {
+  getAnalysisTemplate: (id: string, signal?: AbortSignal) =>
+    request<{ text: string; version: string }>(`/api/agents/analysis-templates/${encodeURIComponent(id)}`, { signal }, 15_000),
   readAnnotations: (classroomId: string, target: string) => request<{document: AnnotationDocument | null; revision: number}>(`/api/classroom/${encodeURIComponent(classroomId)}/annotations/read`, {method:'POST', body:JSON.stringify({target})}, 15000),
   saveAnnotations: (classroomId: string, target: string, document: AnnotationDocument, revision: number) => request<{revision: number}>(`/api/classroom/${encodeURIComponent(classroomId)}/annotations`, {method:'PUT', body:JSON.stringify({target,document,revision})}, 15000),
   // Health

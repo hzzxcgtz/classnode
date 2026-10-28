@@ -6,7 +6,7 @@ import { ANALYSIS_PROMPT_TEMPLATES, ANALYSIS_TEMPLATE_STAGES, ANALYSIS_TEMPLATE_
 import { TeacherPageHeader, Toast } from '@/lib/components';
 import { Markdown } from '@/lib/markdown';
 import { copyTemplate } from './copy-template';
-import { ANALYSIS_PROMPT_VERSION } from '@/lib/analysis-agent-prompt-template';
+import { api } from '@/lib/api';
 import { analysisTemplateParts } from '@/lib/analysis-template-content';
 import styles from './templates.module.css';
 
@@ -15,7 +15,7 @@ export default function AnalysisTemplatesPage() {
   const [subject, setSubject] = useState<string>('math');
   const [raw, setRaw] = useState(false);
   const [retry, setRetry] = useState(0);
-  const [loaded, setLoaded] = useState<{ id: string; text: string } | null>(null);
+  const [loaded, setLoaded] = useState<{ id: string; text: string; version: string } | null>(null);
   const [error, setError] = useState('');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const closeToast = useCallback(() => setToast(null), []);
@@ -27,13 +27,8 @@ export default function AnalysisTemplatesPage() {
   useEffect(() => {
     const controller = new AbortController();
     setLoaded(null); setError(''); setToast(null);
-    void fetch(selected.file, { signal: controller.signal, cache: 'no-cache', credentials: 'omit' })
-      .then(async response => {
-        if (!response.ok) throw new Error('模板加载失败，请重试。');
-        const content = await response.text();
-        if (!content.trim() || /^\s*<!doctype|^\s*<html/i.test(content)) throw new Error('模板文件缺失，请检查分发包或重试。');
-        if (!controller.signal.aborted) setLoaded({ id: selected.id, text: content });
-      })
+    void api.getAnalysisTemplate(selected.id, controller.signal)
+      .then(result => { if (!controller.signal.aborted) setLoaded({ id: selected.id, ...result }); })
       .catch(error => { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : '模板加载失败'); });
     return () => controller.abort();
   }, [selected.id, selected.file, retry]);
@@ -47,7 +42,7 @@ export default function AnalysisTemplatesPage() {
 
   return <div>
     {toast && <Toast msg={toast.msg} type={toast.type} onClose={closeToast} />}
-    <TeacherPageHeader title="作答分析提示词模板库" description="按学段和学科选择，复制完整提示词到外部分析智能体的系统提示词中。" actions={
+    <TeacherPageHeader title="作答分析提示词模板库" description="从官网读取最新模板，在这里选择、查看并复制到外部分析智能体。" actions={
       <Link className="btn btn-secondary" href="/teacher/agents/">返回 AI 智能体</Link>
     } />
     <section className={styles.panel}>
@@ -59,9 +54,13 @@ export default function AnalysisTemplatesPage() {
           {ANALYSIS_TEMPLATE_SUBJECTS.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
         </select></label>
         <button type="button" className="btn btn-primary" disabled={!text || copying} onClick={() => { void copy(); }}>{copying ? '复制中…' : '一键复制完整提示词'}</button>
-        <a className="btn btn-secondary" href={selected.file} download={`${selected.id}.md`}>下载 MD</a>
+        <button type="button" className="btn btn-secondary" disabled={!text || copying} onClick={() => {
+          const url = URL.createObjectURL(new Blob([parts.prompt], { type: 'text/markdown;charset=utf-8' }));
+          const link = document.createElement('a'); link.href = url; link.download = `${selected.id}.md`;
+          document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }}>下载 MD</button>
       </div>
-      <p className={styles.hint}>模板 v{ANALYSIS_PROMPT_VERSION} 按学科和学段分别提供具体评价方法，选择一份配置即可。日常在学习单填写参考作答、评价标准与当前任务分析重点，无需逐项修改模板。新版需复制到外部分析智能体后生效；不会自动更新平台已有配置。复制时不会带入分区说明。</p>
+      <p className={styles.hint}>{text ? `远程模板 v${loaded?.version}` : '官网模板'} 按学科和学段分别提供具体评价方法，选择一份配置即可。日常在学习单填写 AI 评价要求（文字与图片），无需逐项修改模板。新版需复制到外部分析智能体后生效；不会自动更新平台已有配置。复制时不会带入分区说明。</p>
     </section>
     <section className={styles.panel} aria-busy={!text && !error}>
       <div className={styles.heading}><h2>{selected.title}</h2><div className={styles.tabs} aria-label="模板显示方式">

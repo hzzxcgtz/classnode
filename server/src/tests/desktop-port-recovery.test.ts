@@ -1,10 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { isOwnedListener, sameListener, windowsArgs, windowsListeners, nativeRecoveryAdapter, recoverDesktopPorts, type ListenerProcess, type RecoveryContext } from '../services/desktop-port-recovery.js';
+import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from 'node:child_process';
+import { isOwnedListener, sameListener, windowsPowerShellArgs, windowsArgs, windowsListeners, nativeRecoveryAdapter, recoverDesktopPorts, type ListenerProcess, type RecoveryContext } from '../services/desktop-port-recovery.js';
 
 const context: RecoveryContext = {platform:'win32', nodePath:'C:\\Program Files\\支点课堂\\server\\node.exe', serverDir:'C:\\Program Files\\支点课堂\\server', owner:'S-1-test', dedicatedRuntime:true};
 const own: ListenerProcess = {pid:1234, executable:context.nodePath, commandLine:`"${context.nodePath}" dist/index.js`, started:'123456789', owner:context.owner, ports:[3001,3002]};
+
+test('PowerShell transport preserves multiline Unicode scripts without shell quoting or stdin', () => {
+  const script = '\n$label="支点课堂"\nWrite-Output \'{"path":"C:\\Program Files\\node.exe"}\'\n';
+  const args = windowsPowerShellArgs(script);
+  assert.deepEqual(args.slice(0, -1), ['-NoLogo', '-NoProfile', '-NonInteractive', '-OutputFormat', 'Text', '-EncodedCommand']);
+  assert.equal(Buffer.from(args.at(-1)!, 'base64').toString('utf16le'), script);
+  let queried = false;
+  nativeRecoveryAdapter('win32', (file, actualArgs, options) => {
+    if (file.endsWith('netstat.exe')) return `TCP 0.0.0.0:3001 0.0.0.0:0 LISTENING ${process.pid}`;
+    queried = true;
+    assert.equal(actualArgs.at(-2), '-EncodedCommand');
+    assert.deepEqual(options.stdio, ['ignore', 'pipe', 'pipe']);
+    assert.equal(options.timeout, 60000);
+    return '{"owner":"","processes":[]}';
+  }).inspect();
+  assert.equal(queried, true);
+});
 
 test('Windows command parsing preserves quoted paths and rejects malformed input', () => {
   assert.deepEqual(windowsArgs('"C:\\Program Files\\node.exe" "dist/index.js"'), ['C:\\Program Files\\node.exe','dist/index.js']);
@@ -44,7 +61,9 @@ test('Windows inspection sends only target listeners for identity checks and pro
   const adapter = nativeRecoveryAdapter('win32', (file, args, options) => {
     if (file.endsWith('netstat.exe')) return 'TCP 0.0.0.0:3001 0.0.0.0:0 LISTENING 1234';
     assert.equal(file, 'powershell.exe');
-    assert.ok(!args.at(-1)!.includes('Get-NetTCPConnection'));
+    assert.equal(args.at(-2), '-EncodedCommand');
+    assert.ok(!Buffer.from(args.at(-1)!, 'base64').toString('utf16le').includes('Get-NetTCPConnection'));
+    assert.deepEqual(options.stdio, ['ignore', 'pipe', 'pipe']);
     assert.equal(options.timeout, 60000);
     assert.deepEqual(JSON.parse(options.env!.CLASSNODE_RECOVERY_LISTENERS!), [{ OwningProcess: 1234, LocalPort: 3001 }]);
     return JSON.stringify({ owner: context.owner, processes: [{ ...own, started: changed ? 'replacement' : own.started }] });
@@ -60,9 +79,11 @@ test('Windows PowerShell reads singleton and multi-port JSON arrays, including f
   if (process.platform !== 'win32') return t.skip('requires Windows PowerShell 5.1');
   // Capture the exact production query. Stub CIM only; execute its JSON/array/port handling in powershell.exe.
   let query = '';
-  nativeRecoveryAdapter('win32', (file, args) => {
+  let queryOptions: ExecFileSyncOptionsWithStringEncoding = { encoding: 'utf8' };
+  nativeRecoveryAdapter('win32', (file, args, options) => {
     if (file.endsWith('netstat.exe')) return `TCP 0.0.0.0:3001 0.0.0.0:0 LISTENING ${process.pid}`;
-    query = args.at(-1)!;
+    query = Buffer.from(args.at(-1)!, 'base64').toString('utf16le');
+    queryOptions = options;
     return JSON.stringify({ owner: '', processes: [] });
   }).inspect();
   const stub = `
@@ -73,8 +94,8 @@ function Get-CimInstance {
 function Invoke-CimMethod { return [pscustomobject]@{Sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value} }
 `;
   for (const [ports, fail] of [[[3001], false], [[3001, 3002], false], [[3001, 3002], true]] as const) {
-    const result = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', stub + query], {
-      encoding: 'utf8', timeout: 60000, windowsHide: true,
+    const result = execFileSync('powershell.exe', windowsPowerShellArgs(stub + query), {
+      ...queryOptions,
       env: { ...process.env, CLASSNODE_TEST_IDENTITY_FAIL: fail ? '1' : '0',
         CLASSNODE_RECOVERY_LISTENERS: JSON.stringify(ports.map(port => ({ LocalPort: port, OwningProcess: process.pid }))) },
     });

@@ -151,9 +151,15 @@ try {
 
 type WindowsCommand = (file: string, args: string[], options: ExecFileSyncOptionsWithStringEncoding) => string;
 
+/** UTF-16LE is required by Windows PowerShell 5.1's EncodedCommand parameter. */
+export function windowsPowerShellArgs(script: string): string[] {
+  return ['-NoLogo', '-NoProfile', '-NonInteractive', '-OutputFormat', 'Text', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')];
+}
+
 function powershell(run: WindowsCommand, script: string, expected?: ListenerProcess, listeners?: { pid: number; port: number }[]): string {
-  return run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-    encoding: 'utf8', timeout: 60000, maxBuffer: 1024 * 1024, windowsHide: true,
+  return run('powershell.exe', windowsPowerShellArgs(script), {
+    // No script reads stdin. Close it explicitly instead of creating a pipe in CI.
+    encoding: 'utf8', timeout: 60000, maxBuffer: 1024 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, ...(expected ? { CLASSNODE_RECOVERY_PROCESS: JSON.stringify(expected) } : {}),
       ...(listeners ? { CLASSNODE_RECOVERY_LISTENERS: JSON.stringify(listeners.map(row => ({ OwningProcess: row.pid, LocalPort: row.port }))) } : {}) },
   }).replace(/^\uFEFF/, '');

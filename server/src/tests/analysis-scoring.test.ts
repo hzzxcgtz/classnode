@@ -354,3 +354,17 @@ test('个人评价接受只有有效评分块的响应；全班分析仍要求�
     assert.ok(!parsed.perStudent?.scores.some(row => row.score !== null), '坏结果不能被当成成功评分');
   }
 });
+
+test('可辨认但完全偏题的零分及评价正常接收，不作为补评失败', () => {
+  const result = parseAiAnalysisResult(
+    '<classnode-scores>{"scores":[{"student":"胡雨欣#8","unavailable":false,"score":0,"reason":"你上传的内容与课间小事无关，尚未满足本题要求。","advice":"请换成你亲身经历的一件课间小事，写出动作和心情。"}]}</classnode-scores>',
+    { enabled: true, maxScore: 3, unit: '分', criteria: '写课间小事、动作、心情' },
+    [{ studentId: 's8', anonLabel: '胡雨欣#8' }],
+    { allowScoreOnly: true },
+  );
+  assert.ok(!('error' in result));
+  if ('error' in result) return;
+  assert.equal(result.perStudent?.scores[0]?.score, 0);
+  assert.equal(result.perStudent?.scores[0]?.studentId, 's8');
+  assert.match(result.perStudent?.scores[0]?.advice ?? '', /课间小事/);
+});

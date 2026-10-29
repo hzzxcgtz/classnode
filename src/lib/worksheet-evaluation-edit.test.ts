@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import type {WorksheetQuestionNode} from './types.ts';
-import {appendQuestionEvaluationImages, needsWholeFillConversion, convertWholeFillSettings} from './worksheet-evaluation-edit.ts';
+import {appendQuestionEvaluationImages, updateSharedFillEvaluation, needsWholeFillConversion, convertWholeFillSettings} from './worksheet-evaluation-edit.ts';
 import {createHistory,contentReducer} from '../app/teacher/worksheets/edit/worksheet-editor-core.ts';
 import {readPromptRuns,recognizeBlanks,BLANK_MARK_TEXT} from './worksheet-prompt-marks.ts';
 import {fillSettingsFor,writeFillSettings,fillGradingTotals} from './worksheet-fill-modes.ts';
@@ -33,4 +33,25 @@ test('上传期间空被删除，不恢复空或答案；题目级上传也只�
  const node=fixture();assert.equal(appendQuestionEvaluationImages(node,[image],'deleted'),node);
  const question={...node,type:'short-answer',data:{evaluationVersion:1,evaluationMode:'collect',evaluationScored:false,evaluationText:'新要求',aiScoringMaxScore:8}} as WorksheetQuestionNode;
  const next=appendQuestionEvaluationImages(question,[image]);assert.equal(next.data.aiScoringMaxScore,8);assert.equal(next.data.evaluationMode,'collect');assert.equal(next.data.evaluationText,'新要求');
+});
+
+test('表达空自动共用标准，新加入的表达空继承标准，分值与调查/练习空保持独立',()=>{
+ const ai={mode:'text' as const,choices:[],evaluationVersion:1 as const,evaluationMode:'ai' as const,evaluationScored:true,maxScore:2,evaluationText:'原标准'};
+ const rows=[ai,{...ai,maxScore:4,evaluationScored:false},{...ai,evaluationMode:'answer' as const},{...ai,evaluationMode:'collect' as const}];
+ const changed=updateSharedFillEvaluation(rows,0,{evaluationText:'共同标准',evaluationImages:[image],maxScore:3});
+ assert.equal(changed[1].evaluationText,'共同标准');assert.deepEqual(changed[1].evaluationImages,[image]);
+ assert.equal(changed[1].maxScore,4);assert.equal(changed[1].evaluationScored,false);
+ assert.equal(changed[2],rows[2]);assert.equal(changed[3],rows[3]);
+ const joined=updateSharedFillEvaluation(changed,3,{evaluationMode:'ai',evaluationText:'',evaluationImages:[]});
+ assert.equal(joined[3].evaluationText,'共同标准');assert.deepEqual(joined[3].evaluationImages,[image]);
+ const removed=updateSharedFillEvaluation(joined,1,{evaluationImages:[]});
+ assert.deepEqual(removed[0].evaluationImages,[]);assert.deepEqual(removed[3].evaluationImages,[]);
+});
+test('评价图片上传结束后同步给本题表达空，并保留不同分值',()=>{
+ const node=fixture();
+ const common={mode:'text',choices:[],evaluationVersion:1,evaluationMode:'ai',evaluationScored:true,evaluationText:'共同标准',gradingMode:'ai'};
+ const next=appendQuestionEvaluationImages({...node,data:{...node.data,fillBlankSettings:{a:{...common,maxScore:2},b:{...common,maxScore:5}}}},[image],'a');
+ const settings=next.data.fillBlankSettings as Record<string,{evaluationImages:string[];maxScore:number}>;
+ assert.deepEqual(settings.a.evaluationImages,[image]);assert.deepEqual(settings.b.evaluationImages,[image]);
+ assert.equal(settings.a.maxScore,2);assert.equal(settings.b.maxScore,5);
 });

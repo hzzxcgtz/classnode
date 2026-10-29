@@ -895,7 +895,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
           aria-multiline="true"
           aria-label="任务描述"
           data-empty={node.prompt.length === 0 ? '1' : undefined}
-          data-placeholder={descriptionOnly ? '说明学生需要在下面的表格中完成什么。' : supportsBlankSlots ? '输入任务描述；选中文字或放置光标后，点击“插入填空”。' : '例如：光合作用需要哪些条件？'}
+          data-placeholder={descriptionOnly ? '说明学生需要在下面的表格中完成什么。' : supportsBlankSlots ? '输入任务描述；选中文字或放置光标后，点击“插入填空”。' : '请填写任务描述，告诉学生要做什么。'}
           onKeyDown={handlePromptKeyDown}
           onKeyUp={event => { if (!composingRef.current && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key) && editableRef.current) normalizePromptCaret(editableRef.current); }}
           onMouseUp={event => { if (!(event.target as HTMLElement).closest('[data-blank-id], [data-table-mark]') && editableRef.current) normalizePromptCaret(editableRef.current); }}

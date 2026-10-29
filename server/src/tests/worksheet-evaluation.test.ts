@@ -134,3 +134,14 @@ test('旧整题填空仅修改输入方式仍只给整题3分',()=>{
  const node=q({fillScoring:'whole',answers:[['甲'],['乙']],fillBlankSettings:{a:{mode:'inline',choices:['甲','丙']},b:{mode:'text',choices:[]}}},'fill-blank');node.autoGrade=true;
  assert.deepEqual(grade(node,{format:'fill-multi/v1',texts:['甲','乙']},{full:3,half:0}),{state:'correct',score:3});
 });
+
+test('练习判分与调查收集不生成个人AI评价，新规则不受旧小题判分开关影响',()=>{
+ const exercise=q({evaluationVersion:1,evaluationMode:'answer',evaluationScored:true,options:[{key:'A',text:'甲'},{key:'B',text:'乙'}],correctKeys:['A']},'single-choice');
+ assert.equal(aiScoringConfigOf(exercise).enabled,false);
+ assert.equal(individualReviewSettings(exercise).enabled,false);
+ assert.equal(grade(exercise,{format:'choice/v1',selected:['A']},{full:2,half:1})?.score,2);
+ const survey={...exercise,data:{...exercise.data,evaluationMode:'collect',evaluationScored:false}};
+ assert.equal(aiScoringConfigOf(survey).enabled,false);
+ assert.equal(grade(survey,{format:'choice/v1',selected:['A']},{full:2,half:1}),null);
+ assert.equal(individualReviewSettings(survey).enabled,false);
+});

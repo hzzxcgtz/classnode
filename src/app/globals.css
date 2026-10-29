@@ -11372,3 +11372,10 @@ tr:hover td {
 .worksheet-evaluation-upload{display:inline-flex;align-items:center;gap:8px;background:white;border:1px dashed #a7b9ce;border-radius:8px;padding:12px 14px;color:#41678c;font-size:13px}.worksheet-evaluation-upload small{color:#7a8ea5}
 .worksheet-evaluation-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;border-top:1px solid #dce5ef;padding-top:16px}.worksheet-evaluation-options>div{display:flex;flex-direction:column;gap:9px;align-items:flex-start}.worksheet-evaluation-options label{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:#344e67}.worksheet-evaluation-options span{font-size:12px;color:#72869b;line-height:1.6}.worksheet-evaluation-options .worksheet-evaluation-number{font-weight:400;font-size:13px}.worksheet-evaluation-number input{width:76px;min-height:34px;padding:5px 8px}.worksheet-evaluation-validation{font-size:13px;color:#985424;margin:0}
 @media(max-width:700px){.worksheet-evaluation-options{grid-template-columns:1fr}}
+
+/* AI 评价的计分与触发规则使用同一组紧凑设置卡。 */
+.worksheet-evaluation-options{gap:12px;padding-top:14px}
+.worksheet-evaluation-options>.worksheet-evaluation-option{padding:14px 16px;border:1px solid #dce5ef;border-radius:10px;background:#fff;gap:8px}
+.worksheet-evaluation-options .worksheet-evaluation-number{margin-top:auto;padding-top:4px;min-height:38px;gap:10px}
+.worksheet-evaluation-options input[type="checkbox"]{width:16px;height:16px;accent-color:#3b628e;flex-shrink:0}
+.worksheet-evaluation-options .worksheet-evaluation-number input{width:68px;height:36px;min-height:36px;background:#f8fafc;border-radius:7px}

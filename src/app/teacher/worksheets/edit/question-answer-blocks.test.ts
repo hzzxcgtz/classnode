@@ -216,10 +216,10 @@ test('★ 选择填空仍留着「得分方式 + 分值」是**一块两行**（
   assert.match(card, /\bworksheet-editor-flat-label\b/, '行首那个小标签不见了');
 });
 
-test('★ 填空题的「自动评分」始终是逐空评分的总开关', () => {
+test('填空题按用途判分，不再提供整题自动判分开关', () => {
   const card = body(CARD);
   assert.doesNotMatch(card, /\{!explicitFillScoring && <HeadSwitch/, '逐空评分仍在隐藏总开关');
-  assert.match(card, /type="radio" checked=\{gradedOn\} onChange=\{\(\) => onAutoGradeChange\(true\)\}/, '自动评分总开关没有直接绑定题目级状态');
+  assert.doesNotMatch(card, /type="radio" checked=\{gradedOn\} onChange=\{\(\) => onAutoGradeChange\(true\)\}/, '不再显示整题判分开关');
   assert.match(
     card,
     /\{gradedOn && \(<>/,

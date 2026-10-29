@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, memo, Suspense, useL
 import { useRouter, useSearchParams } from 'next/navigation';
 import { WordCloud, type Word, type WordRendererData } from "@isoterik/react-word-cloud";
 import { api } from '@/lib/api';
+import { copyText } from '@/lib/copy-text';
 import { useSocket } from '@/lib/socket';
 import { stripImages, stripMarkdownToPlainText, Markdown } from '@/lib/markdown';
 import { getApiBaseUrl, getClassroomPort } from '@/lib/api-base';
@@ -2552,6 +2553,14 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
             }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>
               互动码 <strong style={{ fontSize: "1rem", letterSpacing: 3, fontFamily: 'monospace' }}>{teacherCode}</strong>
+              <button type="button" aria-label="复制互动码" title="复制互动码" disabled={!teacherCode}
+                onClick={async () => {
+                  try { await copyText(teacherCode); setToast({ msg: '互动码已复制', type: 'success' }); }
+                  catch { setToast({ msg: '复制失败，请手动复制互动码', type: 'error' }); }
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, padding: 4, border: 0, borderRadius: 5, background: 'transparent', color: 'inherit', cursor: 'pointer' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3" /></svg>
+              </button>
             </div>
             {classroom.classes?.length > 0 && (
               <span style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>

@@ -654,8 +654,6 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                   `gradingStatus`（「自动评分 · 最高 1 颗星星」）是给**折叠态那一行**用的，
                   那里没有标题，所以不能直接搬过来）。 */}
               {gradedOn && <span className="worksheet-editor-points-badge">当前任务满分 {explicitFillScoring ? fillTotals.total : maximumPoints} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>}
-              {isBlankType && <label><input type="radio" checked={gradedOn} onChange={() => onAutoGradeChange(true)} name={`worksheet-purpose-${node.id}`} /> {isBlankType ? '逐空评分' : '有答案，自动评分'}</label>}
-              {isBlankType && <label><input type="radio" checked={!gradedOn} onChange={() => onAutoGradeChange(false)} name={`worksheet-purpose-${node.id}`} /> {isBlankType ? '仅收集作答，不计分' : '无标准答案，收集信息'}</label>}
             </div>
           </div>
 
@@ -759,8 +757,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
       )}
 
         {!isBlankType && <div className="worksheet-editor-block worksheet-editor-analysis-settings">
-          <h3 className="drawing-zone-heading"><EditorIcon kind="grading" />评价方式</h3>
-          <EvaluationSettings onImagesUploaded={urls=>onAppendEvaluationImages?.(urls)} unit={pointsUnit} scoreLimit={100} template={node.type === 'drawing' && readDrawingTool(node) === 'flowchart' ? '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。' : undefined} data={node.data} allowAnswer={isGradedQuestionType(node.type)} legacyMode={aiScoredFor(node) ? 'ai' : gradedOn && isGradedQuestionType(node.type) ? 'answer' : 'collect'} legacyScored={aiScoredFor(node) || gradedOn} reference={node.type === 'short-answer' || node.type === 'drawing' ? node.data.answers : undefined} maxScore={aiScoringMaxScore} automatic={node.data.studentAiReviewEnabled === true} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onNotice={onNotice} onChange={patch => {
+          <h3 className="drawing-zone-heading"><EditorIcon kind="grading" />任务用途</h3>
+          <EvaluationSettings rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls)} unit={pointsUnit} scoreLimit={100} template={node.type === 'drawing' && readDrawingTool(node) === 'flowchart' ? '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。' : undefined} data={node.data} allowAnswer={isGradedQuestionType(node.type)} legacyMode={aiScoredFor(node) ? 'ai' : gradedOn && isGradedQuestionType(node.type) ? 'answer' : 'collect'} legacyScored={aiScoredFor(node) || gradedOn} reference={node.type === 'short-answer' || node.type === 'drawing' ? node.data.answers : undefined} maxScore={aiScoringMaxScore} automatic={node.data.studentAiReviewEnabled === true} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onNotice={onNotice} onChange={patch => {
             onDataChange({...patch, aiScoringEnabled:patch.evaluationMode === 'ai' && patch.evaluationScored === true});
             onAutoGradeChange(patch.evaluationMode === 'answer');
           }}/>

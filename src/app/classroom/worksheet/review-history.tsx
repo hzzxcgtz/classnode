@@ -1,5 +1,8 @@
 'use client';
 import { useId, useState, type ReactNode } from 'react';
+import { AiReviewFeedback } from './ai-review-feedback';
+import { ReviewTiming } from './review-timing';
+export { ReviewTiming } from './review-timing';
 import { answerView } from '@/lib/worksheet-answer-view';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { VoiceAnswerPlayer } from '@/components/voice-answer-player';
@@ -7,7 +10,7 @@ import type { WorksheetQuestionNode } from '@/lib/types';
 import styles from './worksheet.module.css';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { REWARD_STYLE_OPTIONS, pointsUnitLabel } from '@/lib/worksheet-reward';
-import { formatReviewText, formatReviewAdvice, reviewDurationLabel, reviewSourceLabel } from '@/lib/worksheet-review-display';
+import { reviewSourceLabel } from '@/lib/worksheet-review-display';
 
 export interface AnswerReview {
   id: string; questionId: string; value: unknown;
@@ -44,8 +47,7 @@ export function ReviewHistory({ node, reviews, onRetry, renderReviewActions }: {
       {(() => { const view = answerView(node, r.value); return view.kind === 'audio' ? <VoiceAnswerPlayer src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="这次提交的语音" /> : null; })()}
       {r.status === 'superseded' && <p role="status">{r.error || '历史结果，不计入当前成绩和评价次数'}</p>}
       <div className={styles.reviewEvaluation}><div className={styles.reviewEvaluationText}>
-      {r.reason && <p><strong>AI 评价：</strong><span className={styles.reviewPointText}>{formatReviewText(r.reason)}</span></p>}
-      {r.advice && <p><strong>修改建议：</strong><span className={styles.reviewPointText}>{formatReviewAdvice(r.advice)}</span></p>}
+      <AiReviewFeedback reason={r.reason} advice={r.advice}/>
       </div>{renderReviewActions?.(r)}</div>
       {r.status === 'failed' && <ReviewFailure review={r} onRetry={onRetry && r.canRetry !== false && r.id === reviews.find(item => item.source === 'student')?.id ? () => retry(r.id) : undefined} retrying={retrying !== null} />}
       </div>
@@ -61,17 +63,14 @@ export function ReviewFailure({ review, onRetry, retrying = false }: { review: A
     setRequesting(true);
     try { await onRetry(); } finally { setRequesting(false); }
   };
+  if (review.status !== 'failed') return null;
   return <div className={styles.reviewFailure} role="status">
     <p>{review.error || '本次评价未完成，作品已经保存。'}<span className={styles.reviewFailureHint}>{review.retryBlockedReason || '本次未扣评价次数，作品已保存。'}</span></p>
-    {onRetry && <button type="button" className={styles.submitButton} disabled={busy} onClick={() => void retry()}>{busy ? '正在重试…' : '重试评价'}</button>}
+    {onRetry && review.canRetry !== false && <button type="button" className={styles.submitButton} disabled={busy} onClick={() => void retry()}>{busy ? '正在重新评价…' : '重新获取评价'}</button>}
   </div>;
 }
 
-export function ReviewTiming({ review }: { review: AnswerReview }) {
-  if (!review.evaluatedAt) return null;
-  const duration = reviewDurationLabel(review.evaluationDurationMs);
-  return <span className={styles.reviewTiming}>{reviewSourceLabel(review.source)} · 最近评价：{new Date(review.evaluatedAt).toLocaleString('zh-CN')}{duration ? ` · 耗时 ${duration}` : ' · 耗时未记录'}</span>;
-}
+
 function ReviewReward({ score, maxScore, unit }: { score: number | null; maxScore: number; unit: string }) {
   if (maxScore === 0) return <span>评价完成</span>;
   const style = REWARD_STYLE_OPTIONS.find(option => option.value !== 'points' && pointsUnitLabel(option.value) === unit)?.value;

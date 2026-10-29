@@ -28,6 +28,7 @@ export function AudioBody({ worksheetId, questionId, draft, onChange, disabled, 
   const gesture = useRef<VoiceGesture | null>(null);
   const startedAt = useRef(0);
   const uploadController = useRef<AbortController | null>(null);
+  const previousAudio = useRef<AudioDraft | null>(null);
   const latest = useRef({ onChange, disabled, localOnly });
   latest.current = { onChange, disabled, localOnly };
   useEffect(() => { setSupported(window.isSecureContext === true && typeof navigator.mediaDevices?.getUserMedia === 'function'); }, []);
@@ -63,9 +64,14 @@ export function AudioBody({ worksheetId, questionId, draft, onChange, disabled, 
         if (!alive) return;
         if (next === 'recording') { startedAt.current = Date.now(); gesture.current?.recordingStarted(); }
         setState(next);
+        if (next === 'idle') void Promise.resolve().then(() => {
+          const previous = previousAudio.current;
+          if (previous) { previousAudio.current = null; latest.current.onChange(previous); }
+        });
       },
       onReady: blob => {
         if (!alive || !gesture.current?.acceptClip()) return;
+        previousAudio.current = null;
         const next = { blob, durationMs: Math.min(300_000, Math.max(500, Date.now() - startedAt.current)), preview: URL.createObjectURL(blob) };
         latest.current.onChange({ kind: 'audio', url: '', durationMs: 0 });
         setClip(next); setCancelIntent(false); void latestUpload.current(next);
@@ -109,7 +115,7 @@ export function AudioBody({ worksheetId, questionId, draft, onChange, disabled, 
     if (disabled || localOnly || uploading || state !== 'idle') return;
     document.dispatchEvent(new CustomEvent('worksheet-audio-start', { detail: instance }));
     setError(''); setCancelIntent(false); setClip(null);
-    if (!compact) latest.current.onChange({ kind: 'audio', url: '', durationMs: 0 });
+    if (!compact) { previousAudio.current = draft.url ? draft : null; latest.current.onChange({kind:'audio',url:'',durationMs:0}); }
     gesture.current?.begin(id, y);
   };
   const busy = state !== 'idle';
@@ -118,12 +124,13 @@ export function AudioBody({ worksheetId, questionId, draft, onChange, disabled, 
   useEffect(() => { busyCallback.current?.(unsettled); }, [unsettled]);
   useEffect(() => () => busyCallback.current?.(false), []);
   const label = state === 'requesting' ? '正在开启麦克风…' : state === 'stopping' ? '正在整理录音…'
-    : state === 'recording' ? cancelIntent ? '松开取消' : tapMode ? '说完了，点击完成' : '松开完成，上滑取消' : tapMode ? '点击开始录音' : compact ? '按住说话' : '按住说出你的想法';
-  return <div className={`${styles.voiceAnswer} ${compact ? styles.voiceAnswerCompact : ''}`}>
+    : state === 'recording' ? cancelIntent ? '松开取消' : tapMode ? '说完了，点击完成' : '松开完成，上滑取消' : tapMode ? '点击开始录音' : '按住开始录音';
+  return <div className={`${styles.voiceAnswer} ${compact ? styles.voiceAnswerCompact : ''}`} data-has-audio={hasAudio && !busy}>
     {hasAudio && !busy && <VoiceAnswerPlayer compact={compact} key={clip?.preview || draft.url} src={clip?.preview || worksheetAssetUrl(draft.url)} durationMs={clip?.durationMs || draft.durationMs} />}
     {!disabled && (!supported || localOnly) && <p className={styles.voiceNote} title={localOnly ? '学生将在这里录音、试听后提交。' : '请通过 HTTPS 打开课堂，并允许麦克风。'}>{compact ? localOnly ? '语音作答' : '需开启 HTTPS 录音' : localOnly ? '学生将在这里录音、试听后提交。' : '语音作答需要通过 HTTPS 打开课堂，并使用支持录音的浏览器。请联系老师。'}</p>}
-    {!disabled && supported && !localOnly && <>
-      {(!hasAudio || busy) && <button type="button" className={`${styles.voiceRecordButton} ${state === 'recording' ? styles.voiceRecording : ''} ${cancelIntent ? styles.voiceCancel : ''}`} disabled={uploading || state === 'stopping'}
+    {!disabled && !localOnly && (supported || hasAudio) && <>
+      <div className={styles.voiceRecordRow}>
+      {(!hasAudio || busy) && <button type="button" className={`${styles.voiceRecordButton} ${state === 'recording' ? styles.voiceRecording : ''} ${cancelIntent ? styles.voiceCancel : ''}`} disabled={!supported || uploading || state === 'stopping'}
         onPointerDown={event => { if (tapMode || !event.isPrimary || event.button !== 0) return; event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); begin(event.pointerId, event.clientY); }}
         onPointerMove={event => { if (!tapMode) setCancelIntent(gesture.current?.move(event.pointerId, event.clientY) ?? false); }}
         onPointerUp={event => { if (!tapMode) { gesture.current?.release(event.pointerId); setCancelIntent(false); } }}
@@ -135,9 +142,10 @@ export function AudioBody({ worksheetId, questionId, draft, onChange, disabled, 
         onClick={event => { if (tapMode) { if (state === 'recording') gesture.current?.release(null); else if (state === 'requesting') gesture.current?.cancel(); else begin(null); } else if (event.detail === 0 && state === 'idle') setTapMode(true); }}>
         <IconMicrophone size={24} stroke={1.7} aria-hidden="true" /><strong>{label}</strong>{state === 'recording' && <time>{audioTime(seconds)}</time>}
       </button>}
+        {!hasAudio && !busy && <button type="button" className={styles.voiceModeButton} aria-label={tapMode ? '改为按住录音' : '改为点按录音'} title={tapMode ? '改为按住录音' : '改为点按录音'} onClick={() => setTapMode(value => !value)} aria-pressed={tapMode}><IconHandClick size={18} aria-hidden="true" /></button>}
+      </div>
       <div className={styles.voiceActions}>
-        {hasAudio && !busy && <><button type="button" className={styles.voiceAction} aria-label="重新录音" title="重新录音" disabled={uploading} onClick={() => { setTapMode(true); begin(null); }}><IconRefresh size={17} aria-hidden="true" />重新录音</button><button type="button" className={styles.voiceAction} aria-label="删除录音" title="删除录音" disabled={uploading} onClick={() => { setClip(null); setError(''); onChange({ kind: 'audio', url: '', durationMs: 0 }); }}><IconTrash size={17} aria-hidden="true" />{!compact && '删除'}</button></>}
-        {!hasAudio && !busy && <button type="button" className={styles.voiceAction} aria-label={tapMode ? '改为按住录音' : '改为点按录音'} title={tapMode ? '改为按住录音' : '改为点按录音'} onClick={() => setTapMode(value => !value)} aria-pressed={tapMode}><IconHandClick size={17} aria-hidden="true" />{!compact && (tapMode ? '改为按住录音' : '改为点按录音')}</button>}
+        {hasAudio && !busy && <><button type="button" className={styles.voiceAction} aria-label="重新录音" title="重新录音" disabled={!supported || uploading} onClick={() => { setTapMode(true); begin(null); }}><IconRefresh size={18} aria-hidden="true" /></button><button type="button" className={`${styles.voiceAction} ${styles.voiceDelete}`} aria-label="删除录音" title="删除录音" disabled={uploading} onClick={() => { setClip(null); setError(''); onChange({ kind: 'audio', url: '', durationMs: 0 }); }}><IconTrash size={18} aria-hidden="true" /></button></>}
         {busy && <button type="button" className={styles.voiceAction} aria-label="取消录音" title="取消录音" onClick={() => { gesture.current?.cancel(); setCancelIntent(false); }}><IconX size={17} aria-hidden="true" />{!compact && '取消录音'}</button>}
         {uploading && <span role="status">正在保存录音…</span>}
         {clip && !draft.url && !uploading && !busy && <button type="button" className={styles.voiceAction} onClick={() => void uploadClip(clip)}>重试保存</button>}

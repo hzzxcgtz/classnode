@@ -859,9 +859,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
   /**
    * 点「保存设置」。`null` = 存上了（**关窗由调用方决定**）；字符串 = 失败原因。
    *
-   * ⚠️ 失败原因**留在窗里**、不外抛：走「整份创建」那条路时它可能是
-   * 「第 2 题：题干不能为空」—— 一句与设置无关、但教师必须看见的话。
-   * 把它丢给页面顶上那条横幅，教师在这个弹窗里就什么也看不到（他刚点的按钮只闪了一下）。
+   * 失败原因留在窗内；新建学习单先存本机草稿，已有学习单只更新设置。
    */
   onSave: () => Promise<string | null>;
 }) {
@@ -1087,17 +1085,8 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
                 开关紧跟在「开放方式」后面，因为「自动评分」与「提交后可以修改」
                 都是**提交之后**才起作用的两条规则。 */}
             <div className="worksheet-settings-switches">
-            <label className="worksheet-settings-switch">
-              <span className="worksheet-settings-switch-icon" aria-hidden="true">✓</span>
-              <span className="worksheet-settings-switch-copy">
-                <strong>客观题自动判分</strong>
-                <em>{settings.autoGrade ? '对设有答案的任务自动判分' : '不自动判分，仍可查看作答与分析'}</em>
-              </span>
-              <span className="worksheet-editor-autograde-control">
-                <input type="checkbox" checked={settings.autoGrade} onChange={event => onSettingsChange({ autoGrade: event.target.checked })} aria-label="自动评分" />
-                <span aria-hidden="true" />
-              </span>
-            </label>
+            <p className="worksheet-evaluation-help">判分与个人评价由小题用途决定：练习判分、调查收集或表达评价。三种用途均支持教师发起全班整体分析。</p>
+            {settings.autoGrade === false && <p role="status">这份旧学习单曾关闭整单判分。旧题暂沿用原规则；请逐题确认用途，切换后按小题的新设置执行。</p>}
 
             <label className="worksheet-settings-switch">
               <span className="worksheet-settings-switch-icon" aria-hidden="true">↻</span>
@@ -1293,7 +1282,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
         {saveError && (
           <p className="worksheet-settings-error" role="alert">设置保存失败：{saveError}</p>
         )}
-        <p className="worksheet-settings-help">修改任务内容后，请点顶栏「保存」保存整份学习单。</p>
+        <p className="worksheet-settings-help">新建学习单的设置先存本机草稿；完成任务后，请点顶栏「保存」保存整份学习单。</p>
         <div className="worksheet-settings-footer">
           <button type="button" className="btn btn-primary" onClick={() => void submit()} disabled={saving}>
             {saving ? '保存中…' : '保存设置'}

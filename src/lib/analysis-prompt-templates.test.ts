@@ -45,8 +45,17 @@ test('each school stage and subject has one complete standalone Markdown prompt'
     assert.ok(text.includes('### 核心结论'));
     assert.match(text, /重要的词、句使用 Markdown \*\*加粗\*\*/);
     assert.match(text, /不添加“一、班级分析”等总标题/);
-    assert.match(text, /### .+的评价方法/);
-    assert.match(text, /只选当前任务适用的评价方法/);
+    assert.match(text, /### .+的使用边界/);
+    assert.match(text, /不额外提供通用评价清单/);
+    assert.match(text, /以本题 AI 评价要求为主要评价依据/);
+    assert.match(text, /教师填写的文字与上传图片共同构成要求/);
+    assert.match(text, /不能用本模板的通用描述或学科习惯增设评分维度/);
+    assert.match(text, /要求为空时，只围绕任务明确提出的目标/);
+    assert.match(text, /图文要求冲突、模糊或无法读取时说明需核实/);
+    assert.match(text, /只评价本次明确指定的 AI 部分/);
+    assert.match(text, /不从语音推断错别字/);
+    assert.match(text, /不用 0 代替无法判断/);
+    assert.match(text, /不能给本地判分部分再次赋分/);
     assert.doesNotMatch(text, /## 学习任务观察指引/);
     assert.match(text, /信息收集/);
     assert.match(text, /不按交互作答形式猜测是否评分/);
@@ -67,28 +76,30 @@ test('通用、学科、运行期指引和平台升级文档来自同一维护�
 });
 
 
-test('学科与学段各自描述具体评价方法，公共规则保持一致', () => {
+test('学科与学段仅保留证据边界，公共评价优先级和协议保持一致', () => {
   const methods = new Set<string>();
   let common = '';
   const cases: Record<string, string[]> = {
-    'primary-chinese': ['语文习作', '儿童的真实用语', '回到原文', '自行补写'],
-    'middle-chinese': ['文言', '论据不支持观点', '表达效果', '补一条证据'],
-    'primary-math': ['位值', '摆一摆', '精确作图', '截图外观'],
-    'middle-math': ['定义域', '漏解增解', '推理', '尺规步骤'],
-    'primary-english': ['词块', '角色问答', '没有音频', '较简单但准确'],
-    'middle-english': ['交际任务', '语篇', '调整段落', '不自行套用'],
-    'primary-science': ['预测未被验证不直接视为错误', '对照', '再观察', '不以画得像'],
-    'middle-science': ['自变量', '异常值', '误差', '结论范围'],
-    'primary-information-technology': ['角色扮演', '终止', '不机械要求所有流程都有循环', '没有执行结果'],
-    'middle-information-technology': ['边界', '数据结构', '静态', '不声称程序运行正确'],
-    'primary-general': ['儿童表达', '静态照片', '一次回答', '偏好'],
-    'middle-general': ['时序', '地图', '证据缺口', '人格'],
+    'primary-chinese': ['儿童的真实用语', '不套成人作文要求'],
+    'middle-chinese': ['原文', '不同解读'],
+    'primary-math': ['不同解法', '截图外观'],
+    'middle-math': ['推理', '示意图'],
+    'primary-english': ['简单表达', '没有音频'],
+    'middle-english': ['语境', '不自行套用考试量表'],
+    'primary-science': ['观察', '未记录的实验过程'],
+    'middle-science': ['结论边界', '变量控制'],
+    'primary-information-technology': ['不机械要求所有流程都有循环', '没有执行结果'],
+    'middle-information-technology': ['静态代码', '运行证据'],
+    'primary-general': ['儿童表达', '静态照片'],
+    'middle-general': ['不同观点', '人格'],
   };
   for (const row of ANALYSIS_PROMPT_TEMPLATES) {
     const text = fs.readFileSync(path.join(root, 'myportal', row.file), 'utf8');
     const method = text.slice(text.indexOf('### '), text.indexOf('# 固定区：'));
     assert.ok(!methods.has(method), `${row.id} 不应复用另一个学科或学段的评价方法`);
     methods.add(method);
+    assert.ok(method.length < 400, `${row.id} 不应恢复为长篇评价清单`);
+    assert.match(method, /不替代本题 AI 评价要求，不构成额外评分项/);
     for (const term of cases[row.id]) assert.ok(method.includes(term), `${row.id} 缺少评价方法：${term}`);
     const fixed = text.slice(text.indexOf('## 工作流：'));
     if (!common) common = fixed;

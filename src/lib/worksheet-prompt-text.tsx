@@ -68,6 +68,7 @@ export interface PromptTextProps {
 }
 
 export interface PromptBlankBinding {
+  stableColumns?: boolean;
   /** 每个空的当前值（按从左到右）。长度不足时缺的那几格当空串。 */
   values: string[];
   renderOf?: (index: number) => ReactNode | undefined;

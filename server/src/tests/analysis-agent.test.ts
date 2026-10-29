@@ -218,8 +218,8 @@ test('开启 AI 评分时消息带满分、评分标准与机器块协议；关�
   assert.match(message, /<classnode-scores>/);
   assert.match(message, /"advice"/, '机器协议必须要求逐生返回详细建议');
   assert.match(message, /用“你”称呼/);
-  assert.match(message, /下一步与检查方法/);
-  assert.match(message, /已达标时提供相关的巩固方法或小拓展/);
+  assert.match(message, /评价与建议围绕本题 AI 评价要求和真实作答/);
+  assert.match(message, /已达标时如实认可，不强行挑错或安排额外训练/);
   // ★ 2026-10-07：示例里的 `student` 也跟着换成新标签 —— 留一个旧形状的示例，
   // 模型会照着它编 `User_00X` 出来（而名单里根本没有那些代号 ⇒ 整班收不到分）。
   assert.match(message, /"student":"张伟#7"/);
@@ -407,5 +407,17 @@ test('班级分析统一发送400～600字参考与证据深度要求，个人�
         assert.doesNotMatch(buildAnalysisMessage(payload, true, mode), /400～600字中文正文/);
       }
     }
+  }
+});
+
+test('班级、个人和补评均明确将可辨认的偏题作答正常评价', () => {
+  const payload = { ...payloadOf('text'), aiScoring: { enabled: true, maxScore: 3, unit: '分', criteria: '围绕课间小事写出动作与心情' } };
+  for (const mode of ['class', 'individual', 'supplement'] as const) {
+    const message = buildAnalysisMessage(payload, true, mode);
+    assert.match(message, /偏题不等于证据不可用/);
+    assert.match(message, /unavailable:false/);
+    assert.match(message, /所有得分条件均未满足时返回 score:0/);
+    assert.match(message, /仅反馈任务 score 仍为 null/);
+    assert.match(message, /图片无法辨认时，返回 unavailable:true/);
   }
 });

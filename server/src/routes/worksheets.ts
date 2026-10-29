@@ -1,3 +1,4 @@
+import { hasVersionedEvaluation } from '../services/worksheet-evaluation-grades.js';
 import { mayKeepPriorAiGrade, removedEvaluationScore } from '../services/worksheet-evaluation-grades.js';
 import { hasEvaluation, evaluationImages, evaluationRequirements, countsEvaluation } from '../services/worksheet-evaluation.js';
 import { findFillAudioValueError, fillAudioSlots } from '../services/worksheet-fill-audio.js';
@@ -404,6 +405,8 @@ function normalizeNode(
     if (!item || typeof item !== 'object') continue;
     if (item.evaluationVersion !== undefined && !hasEvaluation(item)) errors.push(`${label}：评价方式无效`);
     if (!hasEvaluation(item)) continue;
+    if (item.evaluationMode === 'answer' && item.evaluationScored !== true) errors.push(`${label}：练习判分必须计分并设置标准答案`);
+    if (item.evaluationMode === 'collect' && item.evaluationScored !== false) errors.push(`${label}：调查收集不能计分`);
     if (typeof item.evaluationScored !== 'boolean') errors.push(`${label}：是否计分设置无效`);
     if (item.evaluationText !== undefined && (typeof item.evaluationText !== 'string' || item.evaluationText.length > 12000)) errors.push(`${label}：AI 评价要求须为 12000 字以内的文字`);
     if (item.evaluationImages !== undefined && (!Array.isArray(item.evaluationImages) || item.evaluationImages.length > 6 || evaluationImages(item).length !== item.evaluationImages.length)) errors.push(`${label}：评价图片无效，请重新上传`);
@@ -2690,7 +2693,11 @@ async function evaluateIndividualReview(req: Request, reviewId: string) {
       const parsed = parseAiAnalysisResult(parsedFeedback.narrative, payload.aiScoring, payload.entries, { allowScoreOnly: true });
       if ('error' in parsed) throw new Error(parsed.error);
       const scored = parsed.perStudent?.scores.find(s => s.studentId === participantId);
-      if (!scored || (payload.aiScoring.maxScore > 0 && scored.score === null)) throw new Error(scored?.reason || 'AI 未返回有效评分，请重试');
+      if (!scored || (payload.aiScoring.maxScore > 0 && scored.score === null)) {
+        // 模型的意见不能当作系统错误显示，更不能在评分未完成时伪装成成功。
+        console.warn('[worksheets] 个人评价未完成', { reviewId, reason: scored?.reason ?? 'missing structured score', missing: parsed.missing });
+        throw new Error(scored ? 'AI 暂时没能完成评分。请检查录音是否清楚，或重新获取评价。' : 'AI 返回的评价不完整，请重新获取评价。');
+      }
       let gradedAnswer: AnswerRow | undefined;
       // Recheck revision after the external call, inside the same atomic commit as the score.
       await prisma.$transaction(async tx => {
@@ -3262,7 +3269,7 @@ router.post('/:id/answers/submit', worksheetMutation(async (req, res, database) 
     // 与看板上是完全不同的两种显示。`grade()` 对主观题同样返回 `null`（§5.6）。
     // ⇒ `verdict === null` 与 `verdict.state === 'incorrect'` 是**两件事**：
     // 前者界面上画不出奖励，后者画 0。
-    const verdict = autoGrade ? grade(node, answer.value, points) : null;
+    const verdict = (autoGrade || hasVersionedEvaluation(node)) ? grade(node, answer.value, points) : null;
     // ★ `isCorrect` 的语义**收窄为「全对」**（规格 §12「得分与正确率的口径」），
     // 由 `verdict.state` 派生 —— 它**不再是第二真相源**。⚠️ 但**字段名一个字符都不许改**：
     // 它是协议字段，而**只靠它读得出来的行还在**（A1 的回填只补了 `gradeState`，

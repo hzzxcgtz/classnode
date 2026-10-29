@@ -32,6 +32,7 @@ import {
   normalizeLoadedSettings,
   parseDraft,
   snapshotsOf,
+  settingsDraftOf,
   type SaveBaselines,
   type WorksheetDraft,
 } from './worksheet-editor-core';
@@ -78,11 +79,12 @@ function readLocalStorage(key: string): string | null {
   }
 }
 
-function writeLocalStorage(key: string, value: string): void {
+function writeLocalStorage(key: string, value: string): boolean {
   try {
     window.localStorage.setItem(key, value);
+    return true;
   } catch {
-    /* 同上 */
+    return false;
   }
 }
 
@@ -319,11 +321,7 @@ export function useWorksheetEditor({ id, onNotice }: {
   }, []);
 
   const save = useCallback(async (): Promise<SaveOutcome> => {
-    // ★ 2026-09-27：返回值从 `WorksheetDetail | null` 改成带原因的判别式。
-    // 🔴 为什么必须带原因：设置弹窗里那个「保存设置」在**新学习单**上没有行可以打补丁，
-    // 只能退回整份创建（`saveSettings`），而创建会被拦（逐题校验 / 网络）。
-    // 只回一个 `null` 的话，教师看着设置面板，收到的是一句「保存失败」而**没有原因** ——
-    // 原因恰恰是唯一能让他动手修的东西。两个调用方（顶栏按钮与 ⌘S）本来就不看返回值。
+    // 顶栏保存返回明确失败原因；设置弹窗有独立的保存路径。
     if (savingRef.current) return { ok: false, message: '正在保存中，请稍候再试' };
     const next = payloadRef.current;
     const curriculumError = worksheetCurriculumError(next.settings);
@@ -452,15 +450,18 @@ export function useWorksheetEditor({ id, onNotice }: {
    * 教师看着设置面板，收到的可能是「第 2 题：题干不能为空」，那句话必须让他看得见。
    */
   const saveSettings = useCallback(async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    if (savingRef.current) return { ok: false, message: '正在保存中，请稍候再试' };
     const next = payloadRef.current;
     const curriculumError = worksheetCurriculumError(next.settings);
     if (curriculumError) return { ok: false, message: curriculumError };
     const currentId = worksheetIdRef.current;
     if (!currentId) {
-      // 新学习单：还没有行可以打补丁 ⇒ 只能整份创建。失败原因**原样带回弹窗**
-      // （它可能是「学习单标题不能为空」，也可能是逐题校验里的一句）。
-      const outcome = await save();
-      return outcome.ok ? { ok: true } : { ok: false, message: outcome.message };
+      // 新建时先保存本机草稿，不能为了改外观而提交尚未完成的任务。
+      // 不推进服务端基线：顶栏仍须提示整张学习单未保存。
+      const stored = writeLocalStorage(draftKeyFor(null), JSON.stringify(settingsDraftOf(next)));
+      if (!stored) return { ok: false, message: '本机无法保存草稿，请检查浏览器存储设置后重试' };
+      callbacksRef.current.onNotice({ message: '设置已保存到本机草稿；完成任务后，请点顶栏“保存”保存整张学习单', type: 'success' });
+      return { ok: true };
     }
     // 防重入与 `save()` 共用同一面旗子：两条路写的都是同一份学习单，
     // 让它们并排飞出去，后落地的那一份会盖掉先落地的那一份。
@@ -494,7 +495,7 @@ export function useWorksheetEditor({ id, onNotice }: {
     } finally {
       savingRef.current = false;
     }
-  }, [save]);
+  }, []);
 
   // —— 草稿（只写 localStorage，规格 §3-Y）────────────────────────────
 

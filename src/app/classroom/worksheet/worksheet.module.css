@@ -3323,3 +3323,59 @@
 .voiceAnswerCompact .voiceError { position: absolute; z-index: 5; top: 100%; left: 0; width: 250px; padding: 8px 10px; white-space: normal; border: 1px solid #decac3; border-radius: 8px; background: #fff; box-shadow: 0 4px 12px #17203318; font-size: 12px; }
 .voiceAnswerCompact .voiceRecordButton.voiceRecording { background: #d4e7db; }
 .voiceAnswerCompact .voiceRecordButton.voiceCancel { background: #fae5e5; color: #923b3b; }
+
+/* Shared recorder controls for expression answers, inline blanks and table cells. */
+.voiceRecordRow { display:flex; align-items:center; justify-content:center; gap:12px; width:100%; max-width:640px; align-self:center; }
+.voiceRecordRow:empty { display:none; }
+.voiceRecordRow .voiceRecordButton { flex:1; width:auto; max-width:420px; min-height:64px; padding:12px 18px; }
+.voiceModeButton { display:inline-flex; align-items:center; justify-content:center; gap:6px; flex-shrink:0; min-height:44px; padding:8px 12px; border:1px solid #d1dfd7; border-radius:10px; background:#f7faf8; color:#526d62; font:inherit; font-size:.8rem; cursor:pointer; touch-action:manipulation; }
+.voiceModeButton:hover { background:#e7f0ea; border-color:#a9c6b6; }
+.voiceModeButton:focus-visible { outline:3px solid #729e8a; outline-offset:3px; }
+.voiceActions { align-self:center; justify-content:center; gap:8px; }
+.voiceActions:empty { display:none; }
+.voiceActions .voiceAction { justify-content:center; gap:6px; padding:7px 12px; border:1px solid #cbdcd2; border-radius:10px; background:#f5faf7; color:#365e4d; font-weight:500; }
+.voiceActions .voiceAction:hover:not(:disabled) { background:#e4f0e9; border-color:#a9c6b6; }
+.voiceActions .voiceDelete { background:#fff8f7; border-color:#ead9d5; color:#9b554b; }
+.voiceActions .voiceDelete:hover:not(:disabled) { background:#fbe9e6; border-color:#dcb9b1; }
+.voiceAnswer > .voiceNote { text-align:center; }
+.voiceAnswerCompact { flex-wrap:wrap; height:auto; }
+.fillAudioSlot { height:auto; min-height:1.65em; }
+.voiceAnswerCompact .voiceRecordRow { width:auto; gap:4px; }
+.voiceAnswerCompact .voiceRecordRow .voiceRecordButton { min-height:32px; padding:3px 6px; }
+.voiceAnswerCompact .voiceModeButton { min-height:32px; padding:3px 6px; border-radius:7px; font-size:11px; gap:3px; }
+.voiceAnswerCompact .voiceActions { flex-wrap:wrap; gap:4px; }
+.voiceAnswerCompact .voiceActions .voiceAction { min-height:32px; min-width:44px; padding:4px 7px; border-radius:7px; font-size:11px; }
+@media (max-width:480px) { .voiceRecordRow { gap:6px; } .voiceModeButton { padding:6px 8px; font-size:12px; } .voiceRecordRow .voiceRecordButton { padding:10px; } }
+
+/* Input surfaces and icon actions have separate bounds. */
+.fillAudioSlot { border:0; background:transparent; padding:0; border-radius:0; }
+.voiceAnswerCompact .voiceRecordRow .voiceRecordButton { border:1px solid #b9d2c4; background:#edf5f0; border-radius:7px; min-height:34px; padding:5px 8px; }
+.voiceModeButton { width:40px; min-width:40px; height:40px; min-height:40px; padding:0; border-radius:10px; background:#edf3fb; border-color:#d5e1ef; color:#4a7099; }
+.voiceModeButton:hover { background:#dfeaf7; border-color:#b7cee6; }
+.voiceAnswerCompact .voiceModeButton { width:34px; min-width:34px; height:34px; min-height:34px; padding:0; border-radius:8px; }
+.voiceAnswer[data-has-audio='true']:not(.voiceAnswerCompact) { display:grid; grid-template-columns:minmax(0,420px) auto; justify-content:center; align-items:center; gap:10px; }
+.voiceAnswer[data-has-audio='true']:not(.voiceAnswerCompact) > .voiceActions { grid-column:2; grid-row:1; margin:0; }
+.voiceAnswer[data-has-audio='true']:not(.voiceAnswerCompact) > .voiceNote,
+.voiceAnswer[data-has-audio='true']:not(.voiceAnswerCompact) > .voiceError { grid-column:1 / -1; }
+.voiceActions .voiceAction[aria-label='重新录音'], .voiceActions .voiceDelete { width:40px; height:40px; min-width:40px; min-height:40px; padding:0; border-radius:10px; }
+.voiceActions .voiceAction[aria-label='重新录音'] { background:#edf3fb; border-color:#d5e1ef; color:#4a7099; }
+.voiceActions .voiceAction[aria-label='重新录音']:hover:not(:disabled) { background:#dfeaf7; border-color:#b7cee6; }
+.voiceAnswerCompact .voiceActions .voiceAction[aria-label='重新录音'], .voiceAnswerCompact .voiceActions .voiceDelete { width:34px; height:34px; min-width:34px; min-height:34px; padding:0; border-radius:8px; }
+@media (max-width:480px) { .voiceModeButton { padding:0; } }
+
+/* Table audio states fit the established columns; narrow cells may grow vertically. */
+.fillAudioTable { display:flex; width:100%; max-width:100%; min-width:0; margin:0; box-sizing:border-box; }
+.fillAudioTable .voiceAnswerCompact { width:100%; min-width:0; max-width:100%; white-space:normal; }
+.fillAudioTable .voiceRecordRow { flex:1 1 100%; width:100%; min-width:0; max-width:100%; }
+.fillAudioTable .voiceRecordButton { min-width:0; overflow-wrap:anywhere; }
+.fillAudioTable .voiceRecordButton strong { white-space:normal; }
+.fillAudioTable [data-voice-player] { flex:1 1 130px; width:100%; min-width:0; max-width:100%; height:auto; flex-wrap:wrap; }
+.fillAudioTable input[type='range'] { flex:1 1 30px; min-width:20px; width:40px; max-width:70px; }
+.fillAudioTable .voiceActions { flex:0 0 auto; max-width:100%; }
+
+/* Breathing room between inline blanks, including the taller audio controls. */
+.fillPrompt { line-height:2.1; }
+.fillPrompt .fillAudioSlot:not(.fillAudioTable) { margin-top:7px; margin-bottom:7px; }
+.fillPrompt :global(.worksheet-blank-input) { margin-top:7px; margin-bottom:7px; }
+.fillPrompt table { line-height:1.7; }
+.fillPrompt table :global(.worksheet-blank-input) { margin-top:0; margin-bottom:0; }

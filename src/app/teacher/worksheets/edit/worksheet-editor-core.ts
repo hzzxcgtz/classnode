@@ -257,7 +257,7 @@ export function newZoneId(): string {
  * 两个数从此一致（原来不一致，而屏幕上只是「最高 0 颗星星」这种没人会读的显示）。
  */
 export function maximumPointsFor(node: WorksheetQuestionNode, fullPoints: number): number {
-  if (hasEvaluation(node.data) && node.type !== 'fill-blank') return countsEvaluation(node.data) ? node.data.evaluationMode === 'ai' ? Number(node.data.aiScoringMaxScore) || 1 : fullPoints : 0;
+  if (hasEvaluation(node.data) && node.type !== 'fill-blank' && node.type !== 'choice-blank') return countsEvaluation(node.data) ? node.data.evaluationMode === 'ai' ? Number(node.data.aiScoringMaxScore) || 1 : fullPoints : 0;
   if (node.type === 'fill-blank' || (node.type === 'choice-blank' && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation))) {
     const settings = fillSettingsFor(node, readPromptRuns(node.data.promptRuns, node.prompt));
     if (hasExplicitFillGrading(settings)) return fillGradingTotals(settings).total;
@@ -440,19 +440,13 @@ export function newQuestion(type: QuestionType, fillLayout: FillLayout = 'text')
     // 其余题型不动：规格 §3-V 那条「第一批的题恒为 keyboard」继续成立，
     // 改它的是教师逐题点的那一个开关（`updateInputMode`）。
     inputMode: type === 'drawing' ? 'handwriting' : 'keyboard',
-    // ★ 2026-09-26（教师）：「默认不勾选」—— 新题的「允许自动评分」开关**默认关**。
-    //
-    // 🔴 这一条**必须写进数据**，不能只是界面上不勾：服务端判分的判据是
-    // `autoGrade === false` 才不判（见 `services/worksheet-questions.ts` 的 `judge`），
-    // 而「没有这个键」= 照常判分。只改界面的话，教师看着开关是关的、分却照给。
-    // ⚠️ 只给**判分题型**写（问答题/绘图题本来就不判分，给它们写是噪音，
-    // 与 `normalizeNode` 那条「有值才写」同一条纪律）。
-    // ⚠️ **已有题目一个字不动**：这条只影响之后新建的题（老题的键本来就存在或缺席，
-    // 上面那个默认值不回溯）。
-    ...(isGradedQuestionType(type) ? { autoGrade: false as const } : {}),
-    data: type === 'drawing'
-      ? { drawingTool: 'free' }
-      : {},
+    // New objective exercises always require an answer; historical nodes are unchanged.
+    ...(isGradedQuestionType(type) ? { autoGrade: true as const } : {}),
+    data: isGradedQuestionType(type)
+      ? {evaluationVersion:1,evaluationMode:'answer',evaluationScored:true}
+      : type === 'drawing' || type === 'short-answer'
+        ? { ...(type === 'drawing' ? {drawingTool:'free'} : {}), evaluationVersion:1,evaluationMode:'ai',evaluationScored:false,studentAiReviewEnabled:true,aiReviewLimit:1 }
+        : {},
     children: [],
   };
   // ⚠️ `drawing` **不进下面这条链**（它不在这里出现，也**不许**在这里出现）：
@@ -531,6 +525,7 @@ export function newQuestion(type: QuestionType, fillLayout: FillLayout = 'text')
       placement: {},
     };
   }
+  if (isGradedQuestionType(type)) question.data = {...question.data,evaluationVersion:1,evaluationMode:'answer',evaluationScored:true};
   return question;
 }
 
@@ -2928,6 +2923,11 @@ export function buildPayload(
     settings,
     content: sanitizeContentForSave(content),
   };
+}
+
+/** 设置暂存复用草稿格式；API 的 description 可为 null，草稿必须是字符串。 */
+export function settingsDraftOf(payload: WorksheetPayload, savedAt = Date.now()): WorksheetDraft {
+  return { ...payload, description: payload.description ?? '', savedAt };
 }
 
 /**

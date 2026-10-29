@@ -1,6 +1,6 @@
 'use client';
 
-import { needsWholeFillConversion, convertWholeFillSettings } from '@/lib/worksheet-evaluation-edit';
+import { needsWholeFillConversion, convertWholeFillSettings, updateSharedFillEvaluation } from '@/lib/worksheet-evaluation-edit';
 import { EvaluationSettings } from '../evaluation-settings';
 import { hasEvaluation } from '@/lib/worksheet-evaluation';
 import { fillEditorKind } from '@/lib/worksheet-fill-layout';
@@ -324,7 +324,8 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                 </div>
               </div>}
               {section !== 'mode' && <>
-              {!needsConversion && <EvaluationSettings onImagesUploaded={urls=>onAppendEvaluationImages?.(urls,slot.id)} unit={pointsUnit} data={settings[index] as unknown as Record<string, unknown>} allowAnswer={settings[index].mode !== 'audio'} legacyMode={!gradingEnabled ? 'collect' : settings[index].mode === 'audio' ? settings[index].gradingMode === 'ai' ? 'ai' : 'collect' : 'answer'} legacyScored={gradingEnabled && (settings[index].mode !== 'audio' || settings[index].gradingMode === 'ai')} maxScore={settings[index].maxScore ?? inheritScore} automatic={node.data.studentAiReviewEnabled === true} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onChange={patch => updateSettings(explicitSettings().map((setting,i)=>i === index ? {...setting,...patch, gradingMode:patch.evaluationMode === 'answer' ? 'auto' : patch.evaluationMode === 'ai' ? 'ai' : 'none'} : setting))}/>}
+              {settings[index].evaluationMode === 'ai' && <p className="worksheet-evaluation-help">本题所有表达空共用以下评价标准，修改会自动同步；各空的分值仍分别设置。</p>}
+              {!needsConversion && <EvaluationSettings rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls,slot.id)} unit={pointsUnit} data={settings[index] as unknown as Record<string, unknown>} allowAnswer={settings[index].mode !== 'audio'} legacyMode={!gradingEnabled ? 'collect' : settings[index].mode === 'audio' ? settings[index].gradingMode === 'ai' ? 'ai' : 'collect' : 'answer'} legacyScored={gradingEnabled && (settings[index].mode !== 'audio' || settings[index].gradingMode === 'ai')} maxScore={settings[index].maxScore ?? inheritScore} automatic={node.data.studentAiReviewEnabled === true} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onChange={patch => updateSettings(updateSharedFillEvaluation(explicitSettings(),index,{...patch,gradingMode:patch.evaluationMode === 'answer' ? 'auto' : patch.evaluationMode === 'ai' ? 'ai' : 'none'}))}/>}
               {settings[index].mode === 'inline' && (
                 <label className="worksheet-editor-field worksheet-editor-inline-word-field">
                   <span>这一空的待选词</span>
@@ -397,11 +398,11 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
               //**还有几个空压根不算分**（老数据），以及教师该怎么办。
               <p className="worksheet-editor-legacy-grading-note">
                 有 {legacyBlankCount} 个空还是旧版的「AI 评分 / 不评分」，它们<strong>不计分</strong>、
-                也算不进「当前任务满分」—— 请给这些空填上答案（想让学生自由写，请改用<strong>表达题</strong>）。
+                也算不进「当前任务满分」—— 请给这些空填上答案（需要主观评价时，请将该空切换为<strong>表达评价</strong>）。
               </p>
             )}
             <p className="worksheet-editor-compact-note">
-              每个空可以填多个可接受答案；学生答出其中一个就算对。
+              练习空必须设置答案；调查空只收集作答；表达空由 AI 评价。同题所有表达空提交后合并评价，客观空得分与 AI 得分合计。
             </p>
             {/* ⚠️ 只在**旧口径**下说这句（`!explicitGrading`）：接管逐空之后每个空的分值
                 可能各不相同，而这句话还按题目级分值报「每个空 X × N 空 ⇒ 全对最多 Y」——

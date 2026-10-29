@@ -439,7 +439,7 @@ export function grade(node: QuestionNode, value: unknown, points: QuestionPoints
   // 题目级开关是所有本地 / 逐空评分的总闸。设置仍保留在 data 中，重新开启即可恢复。
   if (hasEvaluation(data) && (data.evaluationMode !== 'answer' || !countsEvaluation(data))) return null;
   if ((node.type === 'fill-blank' || node.type === 'choice-blank') && aiEvaluationEnabled(node) && Object.values((data.fillBlankSettings as Record<string, Record<string, unknown>>) ?? {}).some(s => hasEvaluation(s) && s.evaluationMode === 'ai' && countsEvaluation(s))) return null;
-  if (node.autoGrade === false && !((node.type === 'fill-blank' || node.type === 'choice-blank') && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation))) return null;
+  if (node.autoGrade === false && !hasEvaluation(node.data) && !((node.type === 'fill-blank' || node.type === 'choice-blank') && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation))) return null;
   if (fillAudioSlots(node).some(slot => slot.scored)) return null;
   const mixedFill = node.type === 'fill-blank' || (node.type === 'choice-blank' && Object.values((data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation)) ? explicitFillGrading(data) : [];
   if (mixedFill.length > 0) {
@@ -1255,7 +1255,7 @@ function judge(node: QuestionNode, value: unknown): GradeState | null {
   //    它们只管「按题面判」，而「判不判」是分派层的事。
   // ⚠️ 以**开关**为准，不以「有没有答案」推断：关掉开关时答案**保留在库里**（教师再打开时
   //    原来勾的还在），所以「有答案却不判分」是一个**正常状态**，不能当成坏数据。
-  if (node.autoGrade === false && !((node.type === 'fill-blank' || node.type === 'choice-blank') && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation))) return null;
+  if (node.autoGrade === false && !hasEvaluation(node.data) && !((node.type === 'fill-blank' || node.type === 'choice-blank') && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation))) return null;
   // ⚠️ `node.data` 也走「先判类型再取」：`Record<string, unknown>` 是**编译期的承诺**，
   // 而库里的 JSON 可能是 `null` / 数组 / 别的标量 —— `null.correctKeys` 会在提交路径上
   // 抛一次 500，学生看到的是「提交失败」。
@@ -1737,6 +1737,7 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
 export function validateQuestion(node: QuestionNode): string[] {
   const errors: string[] = [];
   if (node.type !== 'task' && !node.prompt.trim()) errors.push('任务要求不能为空');
-  VALIDATORS[node.type](node, errors);
+  const checked = hasEvaluation(node.data) ? {...node,autoGrade:node.data.evaluationMode === 'answer'} : node;
+  VALIDATORS[node.type](checked, errors);
   return errors;
 }

@@ -36,7 +36,7 @@ export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答
       if (element.readyState > 0) { try { element.currentTime = next; pendingSeek.current = null; } catch { /* Retry after metadata. */ } }
       else element.load();
     }}/>;
-  return <div className={`${styles.player} ${compact ? styles.compact : ''}`} aria-label={title}>
+  return <div data-voice-player="" className={`${styles.player} ${compact ? styles.compact : ''}`} aria-label={title}>
     <audio ref={audio} src={src} preload="none" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
       onTimeUpdate={() => setPosition(audio.current?.currentTime || 0)} onEnded={() => setPlaying(false)}
       onLoadedMetadata={() => { const element = audio.current; const value = element?.duration; if (value && Number.isFinite(value)) setLength(value); if (element && pendingSeek.current !== null) { try { const next = Math.min(pendingSeek.current, value && Number.isFinite(value) ? value : length); element.currentTime = next; setPosition(next); pendingSeek.current = null; } catch { /* Keep pending until media can seek. */ } } }}

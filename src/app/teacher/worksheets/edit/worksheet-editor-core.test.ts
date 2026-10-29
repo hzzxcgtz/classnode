@@ -139,6 +139,7 @@ import {
   showsPartialPoints,
   shuffleOrderItems,
   snapshotsOf,
+  settingsDraftOf,
   toleranceOf,
   type ChoiceOption,
   type ItemEntry,
@@ -272,15 +273,16 @@ test('异值 updatePrompt 造新对象，且新内容正确', () => {
 
 // ── 1a. 新题的「允许自动评分」默认关（★ 2026-09-26，教师）──────────────
 
-test('🔴 新题的「允许自动评分」默认**关**，而且这个默认值必须写进数据', () => {
+test('新题按用途默认评分，表达题默认仅评价', () => {
   // 教师原话：「默认不勾选」。
   //
   // 🔴 关键在于**不能只改界面**：服务端判分的判据是 `autoGrade === false` 才不判
   //（`services/worksheet-questions.ts` 的 `judge`），而「没有这个键」= **照常判分**。
   // 只把开关画成关的 ⇒ 教师看着是关的、分却照给，而且两边都不报错。
   const choice = newQuestion('single-choice');
-  assert.equal(choice.autoGrade, false, '新题必须把 `false` 写进数据');
-  assert.equal(gradesOnSubmit(choice), false, '于是它默认不判分');
+  assert.equal(choice.autoGrade, true, '新建客观题默认练习判分');
+  assert.equal(choice.data.evaluationMode,'answer');
+  assert.equal(gradesOnSubmit(choice), true, '默认按标准答案判分');
   // ⚠️ 不判分的题型不写这个键（问答题/绘图题本来就不判分 —— 写了是噪音，
   // 与 `normalizeNode` 那条「有值才写」同一条纪律）。
   assert.equal('autoGrade' in newQuestion('short-answer'), false);
@@ -1505,7 +1507,9 @@ test('🔴 newQuestion：这些输入框**一个字都不预填**（默认只给
 
 test('🔴 newQuestion 的填空题仍然是**单空形状**（`blanks` 键不出现），多选带上判分口径', () => {
   const fill = newQuestion('fill-blank');
-  assert.deepEqual(fill.data, { answers: [], fillScoring: 'per-blank' });
+  assert.deepEqual(fill.data.answers,[]);
+  assert.equal(fill.data.fillScoring,'per-blank');
+  assert.equal(fill.data.evaluationMode,'answer');
   assert.equal(fillShape(fill), 'single');
   // `correctKeys`/`answers` 那一类**答案键**留空，而 `partialCredit` 不是答案键、是判分口径：
   // 界面上那两个单选按钮要有一个选中态。只能是那两个字面量之一（服务端只认它们）。
@@ -2103,7 +2107,9 @@ test('🔴 readCorrectKeys：空串与坏元素丢掉（服务端 `readStrings` 
 test('★ newQuestion(drawing)：默认使用点阵画板与自由绘图底座', () => {
   const question = newQuestion('drawing');
   assert.equal(question.inputMode, 'handwriting');
-  assert.deepEqual(question.data, { drawingTool: 'free' });
+  assert.equal(question.data.drawingTool,'free');
+  assert.equal(question.data.evaluationMode,'ai');
+  assert.equal(question.data.evaluationScored,false);
   assert.equal('answers' in question.data, false, '画布配置不是答案键，不能让绘图题进入本地判分');
   assert.equal(question.prompt, '');
   assert.deepEqual(question.children, []);
@@ -3705,4 +3711,19 @@ test('AI-scored subjective questions default missing student review preference o
   assert.equal(choice.data.studentAiReviewEnabled,undefined);
   assert.equal(source.nodes[0].children[0].data.studentAiReviewEnabled,undefined,'loading must not mutate source data');
   assert.deepEqual(normalizeLoadedContent(loaded),loaded,'normalizing twice must keep the saved preference');
+});
+
+
+test('新建学习单的设置草稿可保留空任务，恢复后任务与外观设置均不丢失', () => {
+  const content = createEmptyContent();
+  content.nodes.push(newQuestion('short-answer'));
+  const settings = { ...DEFAULT_SETTINGS, rewardStyle: 'classnode' as const, backgroundTheme: 'forest-explorer' as const };
+  const payload = buildPayload('尚未完成', '', settings, content);
+  const restored = parseDraft(JSON.stringify(settingsDraftOf(payload)));
+  assert.ok(restored);
+  assert.equal(restored.content.nodes[0].id, content.nodes[0].id);
+  assert.equal(restored.content.nodes[0].prompt, '');
+  assert.equal(restored.settings.rewardStyle, 'classnode');
+  assert.equal(restored.settings.backgroundTheme, 'forest-explorer');
+  assert.equal(isDirtyAgainst(snapshotsOf(buildPayload('', '', DEFAULT_SETTINGS, createEmptyContent())), payload), true, '保存本机草稿不能将整单标记为已保存');
 });

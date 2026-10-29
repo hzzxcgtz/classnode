@@ -155,12 +155,17 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
   const emptyNode={...fillNode,id:'qempty'};
   await db.worksheet.update({where:{id:sheet.id},data:{content:{schemaVersion:1,nodes:[emptyNode]}}});
   assert.equal((await call('PUT',`/${sheet.id}/answers`,{questionId:'qempty',value:mixedValue},token)).status,200);
-  app.set('analysisProxy',async()=>({success:true,content:'<classnode-scores>'+JSON.stringify({scores:[{student:'User_001',score:null,reason:'无有效内容',advice:'请重新录音',parts:[{index:1,score:null,reason:'没有听到讲话',advice:'请重新录音'}]}]})+'</classnode-scores>'}));
+  app.set('analysisProxy',async(_agent:unknown,_message:unknown,_images:unknown,_signal:unknown,clips:Array<{label:string}>)=>({success:true,content:'<classnode-scores>'+JSON.stringify({scores:[{student:clips[0].label.split(' · ')[0],score:null,reason:'无有效内容',advice:'请重新录音',parts:[{index:1,score:null,reason:'没有听到讲话',advice:'请重新录音'}]}]})+'</classnode-scores>'}));
   const emptySubmission=await (await call('POST',`/${sheet.id}/answers/submit`,{questionId:'qempty',requestId:'fill_empty_audio_review'},token)).json();
   assert.ok(emptySubmission.reviewId);
   for(let i=0;i<100;i++){
     const review=await db.worksheetAnswerReview.findUnique({where:{id:emptySubmission.reviewId}});
-    if(review?.status!=='pending'){assert.equal(review?.status,'failed');break;}
+    if(review?.status!=='pending'){
+      assert.equal(review?.status,'failed');
+      assert.match(review?.error ?? '', /AI 暂时没能完成评分/);
+      assert.doesNotMatch(review?.error ?? '', /第 2 空|没有听到讲话/);
+      break;
+    }
     if(i===99) assert.fail('空白语音评价未结束');
     await new Promise(resolve=>setTimeout(resolve,20));
   }

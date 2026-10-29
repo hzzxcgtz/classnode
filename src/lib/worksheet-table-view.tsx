@@ -2,7 +2,7 @@ import { Fragment, type CSSProperties, type ReactNode } from 'react';
 
 import { blankAriaLabel, blankValueStyle } from './worksheet-prompt-marks.ts';
 import { BlankSlot } from './worksheet-blank-slot.tsx';
-import { cellLabel, coveredTableCells, readTableFor, type WorksheetTable } from './worksheet-table.ts';
+import { cellLabel, tableColumnCount, coveredTableCells, readTableFor, type WorksheetTable } from './worksheet-table.ts';
 // ★ 2026-09-30：单元格里的字也走题面那**同一个**渲染器 —— 所以单元格里能写公式。
 // 🔴 由此 `worksheet-table-view.tsx` 与 `worksheet-prompt-text.tsx` **互为依赖**
 //    （前者要被后者画进题干，后者要用前者画单元格的字）。这是**有意**的、且是安全的：
@@ -42,6 +42,7 @@ import { PromptText } from './worksheet-prompt-text.tsx';
 
 /** 表格里那些空的绑定。⚠️ `values` 用**全局**下标（题干里的空排在表格的空之前）。 */
 export interface TableBlankBinding {
+  stableColumns?: boolean;
   values: string[];
   renderOf?: (index: number) => ReactNode | undefined;
   /** 表格里第 0 个空在 `values` 里的下标（= `blankLayout(node).tableBase`）。 */
@@ -119,7 +120,8 @@ export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
     // ⚠️ 横向滚动：iPad 竖屏放不下一张 5 列的表。**不许**把表格压成挤在一起的字。
     //    `-webkit-overflow-scrolling` 是给老 iPad 的惯性滚动（Safari 15 仍认它）。
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginTop: 10 }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.95rem' }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.95rem', ...(blanks?.stableColumns ? {tableLayout:'fixed' as const,minWidth:tableColumnCount(table)*160} : {}) }}>
+        {blanks?.stableColumns && <colgroup>{Array.from({length:tableColumnCount(table)},(_,index)=><col key={index} style={{width:`${100/tableColumnCount(table)}%`}}/>)}</colgroup>}
         <tbody>
           {rows.map((cells, row) => (
             <tr key={row}>

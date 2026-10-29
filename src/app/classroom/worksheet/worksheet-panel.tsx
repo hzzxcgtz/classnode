@@ -1,9 +1,9 @@
 'use client';
 import { aiEvaluationEnabled } from '@/lib/worksheet-evaluation';
 
-import { ReviewFailure, ReviewHistory, ReviewTiming, type AnswerReview } from './review-history';
+import { ReviewFailure, ReviewHistory, type AnswerReview } from './review-history';
 
-import { formatReviewText, formatReviewAdvice } from '@/lib/worksheet-review-display';
+import { AiReviewFeedback } from './ai-review-feedback';
 
 import { normalizeGeneration, type WorksheetGeneration } from './worksheet-generation';
 import { subscribeWorksheetAnalysisUpdated } from './worksheet-socket-bus';
@@ -63,16 +63,6 @@ import { ResultGlyph } from './result-glyph';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 import styles from './worksheet.module.css';
 
-function AiFeedbackIcon({ advice = false }: { advice?: boolean }) {
-  if (!advice) return <img src="/logo.png" alt="" className={styles.aiFeedbackIcon} />;
-  return (
-    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" className={styles.aiFeedbackIcon}>
-      <path d="M11 21c0-3-4-4.5-4-10a9 9 0 0 1 18 0c0 5.5-4 7-4 10" fill="#fff0ae" stroke="#bb862b" strokeWidth="1.8" />
-      <path d="M12 23h8m-7 4h6m-6-12 3 3 3-3m-3 3v4" stroke="#bb862b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="13" cy="11" r="1" fill="#926520" /><circle cx="19" cy="11" r="1" fill="#926520" />
-    </svg>
-  );
-}
 
 /**
  * 学生端的学习单面板（规格 §8）。
@@ -482,6 +472,7 @@ export function WorksheetQuestionList({
         const studentHistoryReviews = questionReviews.filter(r => r.source === 'student');
         const showReviewHistory = studentHistoryReviews.length > 0 && (reviewLimit > 1 || studentHistoryReviews.some(r => r.status === 'superseded'));
         const latestFailedReview = questionReviews[0]?.status === 'failed' ? questionReviews[0] : null;
+        const canRetryLatest = Boolean(personalReview && latestFailedReview?.source === 'student' && latestFailedReview.canRetry !== false && reviewRemaining > 0 && !reviewPending && onRetryReview);
         const currentFeedbackAvailable = !questionReviews.length || questionReviews[0].status === 'succeeded';
         const locked = personalReview ? reviewPending || reviewRemaining === 0 : submitted && !allowResubmit;
         const untouched = raw === undefined || isDraftEmpty(raw);
@@ -723,29 +714,7 @@ export function WorksheetQuestionList({
             />
             </>)}
 
-            {interactive && aiReferenceScore?.comment && (
-              <aside className={styles.aiScoreComment} aria-label="AI 评分反馈">
-                <span className={styles.aiScoreCommentMark}><AiFeedbackIcon /></span>
-                <div className={styles.aiScoreCommentBody}>
-                  <strong className={styles.aiScoreCommentHeading}>AI 给你的评价</strong>
-                  {latestReview && <ReviewTiming review={latestReview} />}
-                  <p className={styles.aiScoreCommentText}>{formatReviewText(aiReferenceScore.comment)}</p>
-                  {studentAdvice && (
-                    <div className={styles.aiScoreAdvice}>
-                      <strong><AiFeedbackIcon advice />小建议</strong>
-                      <p>{formatReviewAdvice(studentAdvice)}</p>
-                    </div>
-                  )}
-                </div>
-              </aside>
-            )}
-
-            {interactive && studentAdvice && !aiReferenceScore?.comment && (
-              <aside className={styles.aiScoreComment} aria-label="小建议">
-                <span className={`${styles.aiScoreCommentMark} ${styles.aiAdviceMark}`}><AiFeedbackIcon advice /></span>
-                <div className={styles.aiScoreCommentBody}><strong className={styles.aiScoreCommentHeading}>小建议</strong><p className={styles.aiScoreCommentText}>{formatReviewAdvice(studentAdvice)}</p></div>
-              </aside>
-            )}
+            {interactive && <AiReviewFeedback reason={aiReferenceScore?.comment || (feedbackReady ? latestReview?.reason : null)} advice={studentAdvice || (feedbackReady ? latestReview?.advice : null)} review={latestReview} />}
 
             {/* 「提交本题」内联在每题下方，**不做固定底栏**（规格 §3-AC）。
                 ⚠️ 锁住时不渲染按钮，而是说清楚为什么 —— 一个按不动的「重新提交」比
@@ -754,7 +723,7 @@ export function WorksheetQuestionList({
                 （「这道题已经完成，老师设置为不能再修改」），删掉之后那一支空了。
                 ⇒ 直接改成「非锁定才渲染提交区」：锁定时这里什么都不画（按钮本来就不渲染）。 */}
             {interactive && showReviewHistory && <ReviewHistory node={node} reviews={studentHistoryReviews} onRetry={personalReview && reviewRemaining > 0 && !reviewPending ? onRetryReview : undefined} />}
-            {interactive && !showReviewHistory && latestFailedReview && !reviewPending && <ReviewFailure review={latestFailedReview} onRetry={reviewRemaining > 0 && latestFailedReview.canRetry !== false && onRetryReview ? () => onRetryReview(latestFailedReview.id) : undefined} />}
+            {interactive && !showReviewHistory && latestFailedReview && !reviewPending && <ReviewFailure review={latestFailedReview} onRetry={canRetryLatest && onRetryReview ? () => onRetryReview(latestFailedReview.id) : undefined} />}
             {interactive && !previewOnly && (!locked || personalReview) && (
                 <>
                   {/* ★ M5a：锁定期间**保留提交**（停笔但可交卷），这句话是它的说明。
@@ -764,10 +733,10 @@ export function WorksheetQuestionList({
                     <p className={styles.lockedNote}>老师已锁定作答 —— 只能提交已保存的内容</p>
                   )}
                   {personalReview && (reviewPending || reviewLimit > 1) && <div className={`${styles.reviewStatus}${reviewPending ? ` ${styles.reviewThinkingCard}` : ''}`} role="status">
-                    {reviewPending ? <><span className={styles.reviewThinkingBuddy} aria-hidden="true"><img src="/logo.png" alt="" /><i>✦</i><i>✦</i></span><span className={styles.reviewThinkingCopy}><strong>{reviewQueued ? '作品已提交，正在等待 AI 评价…' : 'AI 正在认真看你的作品，请稍等…'}</strong><span>{reviewQueued ? '轮到你的作品后，就会开始评价啦' : '一起发现作品的亮点，准备小建议'}</span><span className={styles.thinkingDots} aria-hidden="true"><i /><i /><i /></span></span></> : <span>还可评价 <strong>{reviewRemaining}</strong> 次</span>}
+                    {reviewPending ? <><span className={styles.reviewThinkingBuddy} aria-hidden="true"><img src="/logo.png" alt="" /><i>✦</i><i>✦</i></span><span className={styles.reviewThinkingCopy}><strong>{reviewQueued ? '作答已提交，正在等待 AI 评价…' : 'AI 正在认真分析你的作答，请稍等…'}</strong><span>{reviewQueued ? '轮到你的作答后，就会开始评价啦' : '发现你作答中的亮点，准备小建议'}</span><span className={styles.thinkingDots} aria-hidden="true"><i /><i /><i /></span></span></> : <span>还可评价 <strong>{reviewRemaining}</strong> 次</span>}
                   </div>}
 
-                  {(!personalReview || reviewRemaining > 0 || reviewPending) && <div className={styles.submitRow}>
+                  {(!personalReview || reviewRemaining > 0 || reviewPending) && !(submitted && canRetryLatest) && <div className={styles.submitRow}>
                     <button
                       type="button"
                       className={`${styles.submitButton}${submitted ? ` ${styles.submitButtonResubmit}` : ''}`}

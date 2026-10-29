@@ -193,13 +193,14 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
    * ⚠️ 两份各建一次的话，「同一个空在题干里能拖、在表格里拖不动」这种分叉不会有报错。
    */
   const sharedBlankBinding = {
+    stableColumns: settings.some(setting => setting.mode === 'audio'),
     values: draft.texts,
     renderOf: (index: number) => {
       if (settings[index]?.mode !== 'audio') return undefined;
       const slot = blankSlots(node, runs)[index];
       if (!slot) return undefined;
       const audio = draft.audios?.[slot.id];
-      return <span className={styles.fillAudioSlot} key={slot.id} aria-label={`${slot.label}，语音作答`}><AudioBody compact onBusyChange={busy => {
+      return <span className={`${styles.fillAudioSlot} ${slot.kind === 'table' ? styles.fillAudioTable : ''}`} key={slot.id} aria-label={`${slot.label}，语音作答`}><AudioBody compact onBusyChange={busy => {
         const pending = new Set(draft.pendingAudio ?? []);
         if (busy) pending.add(slot.id); else pending.delete(slot.id);
         if (pending.size !== (draft.pendingAudio?.length ?? 0)) onChange({ ...draft, pendingAudio: [...pending] });
@@ -257,7 +258,7 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
         {leadingIcon}
         {status}
       </div>
-      <div className={styles.prompt}>
+      <div className={`${styles.prompt} ${styles.fillPrompt}`}>
           <PromptText
           text={node.prompt}
           runs={runs}

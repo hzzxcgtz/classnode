@@ -15,8 +15,8 @@ test('图片上传与文字要求同时显示，可以多张上传与单张移�
  assert.ok(!editor.includes('latest.current'),'上传不能直接回写旧设置');
  assert.match(editor,/evaluationImages:images.filter/);assert.match(editor,/文字、图片可单独使用，也可共同作为依据/);
 });
-test('计分和提交自动评价是两个独立设置，无需分数也能得到建议',()=>{
- assert.match(editor,/计入成绩/);assert.match(editor,/提交整题后自动评价/);
+test('表达评价提交后自动进行，无需分数也能得到建议',()=>{
+ assert.match(editor,/计入成绩/);assert.match(editor,/提交后自动评价/);
  assert.match(editor,/只给评价与建议，不产生分数/);assert.match(editor,/onTriggerChange/);
 });
 test('流程图结构模板仍按正确分支标注追加到统一要求中',()=>{

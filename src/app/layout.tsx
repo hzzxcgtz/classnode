@@ -19,8 +19,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // 浏览器或远程调试环境可能在 hydration 前向 html 注入属性
+  //（如 __gcrremoteframetoken）。仅容忍根标签差异，子页面仍正常检查。
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" suppressHydrationWarning>
       <body>
         {children}
         {/* 浮层里的滚轮守卫（见 `@/lib/overscroll-guard`）。全局只装一个，什么都不渲染。 */}

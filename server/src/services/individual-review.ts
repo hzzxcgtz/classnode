@@ -7,7 +7,7 @@ import type { QuestionNode } from './worksheet-questions.js';
 export function individualReviewSettings(node: QuestionNode) {
   const raw = node.data.aiReviewLimit;
   return {
-    enabled: (aiEvaluationEnabled(node) || (aiScoringConfigOf(node).enabled && node.autoGrade !== false)) && node.data.studentAiReviewEnabled === true,
+    enabled: (aiEvaluationEnabled(node) || (aiScoringConfigOf(node).enabled && node.autoGrade !== false)),
     limit: typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= 20 ? raw : 1,
   };
 }
@@ -29,7 +29,8 @@ export function enqueueIndividualReview(job: () => Promise<void>) {
 
 /** Quota changes unlock editing without invalidating an already running evaluation. */
 export function reviewConfigurationKey(node: QuestionNode): string {
-  const { aiReviewLimit: _limit, ...data } = node.data;
+  const { aiReviewLimit: _limit, studentAiReviewEnabled: _automatic, ...data } = node.data;
+
   const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)])) : value;
   return JSON.stringify(canonical({ ...node, data }));

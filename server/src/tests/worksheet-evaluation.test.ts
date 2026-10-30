@@ -25,9 +25,9 @@ const evaluation = {evaluationVersion:1,evaluationMode:'ai',evaluationScored:fal
 const image='/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.png';
 const q=(data:Record<string,unknown>,type='short-answer'):QuestionNode=>({id:'q',type:type as QuestionNode['type'],prompt:'说说发现',inputMode:'keyboard',autoGrade:false,data,children:[]});
 const entries=[{studentId:'s',anonLabel:'学生#1'}];
-test('各题型AI反馈独立于计分，并保留个人评价开关',()=>{
+test('新版AI反馈独立于计分，忽略旧自动评价开关',()=>{
  for(const type of ['single-choice','multi-choice','true-false','order','match','categorize','short-answer','drawing']){
-  const node=q({...evaluation,studentAiReviewEnabled:true},type);
+  const node=q({...evaluation,studentAiReviewEnabled:false},type);
   const config=aiScoringConfigOf(node);
   assert.equal(config.enabled,true,type);assert.equal(config.maxScore,0,type);
   assert.equal(individualReviewSettings(node).enabled,true,type);
@@ -67,7 +67,7 @@ test('真实HTTP提交：文字与图片共同传给AI，反馈成功计次数�
  const file=resolveLocalPath(imageUrl);fs.mkdirSync(path.dirname(file),{recursive:true});const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8ioAAAAASUVORK5CYII=','base64');fs.writeFileSync(file,bytes);
  t.after(async()=>{await db.$disconnect();fs.unlinkSync(file);fs.rmSync(dir,{recursive:true,force:true});});
  const agent=await db.agent.create({data:{name:'测试分析',platform:'coze',apiKey:'test',botId:'123',purpose:'analysis'}});
- const node=q({...evaluation,evaluationImages:[imageUrl],studentAiReviewEnabled:true,aiReviewLimit:1});
+ const node=q({...evaluation,evaluationImages:[imageUrl],studentAiReviewEnabled:false,aiReviewLimit:1});
  const sheet=await db.worksheet.create({data:{title:'反馈测试',content:{schemaVersion:1,nodes:[node]} as unknown as Prisma.InputJsonValue,settings:{analysisAgentId:agent.id,rewardStyle:'points',allowResubmit:false}}});
  const room=await db.classroom.create({data:{code:'9876',title:'测试课堂',mode:'standard',status:'active'}});
  const person=await db.classroomStudent.create({data:{classroomId:room.id,type:'student'}});
@@ -96,6 +96,28 @@ test('真实HTTP提交：文字与图片共同传给AI，反馈成功计次数�
  assert.equal((await call('POST','/answers/submit',{questionId:'q',requestId:'feedback_again'})).status,409);assert.equal(calls,1);
  let cookie='';createTeacherSession({setHeader:(_name:string,value:string)=>{cookie=value.split(';')[0];}} as never);
  const teacherSave=(next:QuestionNode)=>fetch(base,{method:'PUT',headers:{'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify({content:{schemaVersion:1,nodes:[next]}})});
+ const supplement=()=>fetch(base+`/analysis/q/run?classroomId=${room.id}&only=${person.id}&supplement=true`,{method:'POST',headers:{Cookie:cookie}});
+ assert.equal((await supplement()).status,200);assert.equal(calls,1,'仅反馈任务已有有效评价，不因null分数重评');
+ await db.worksheetAnswerReview.update({where:{id:first.reviewId},data:{status:'failed',reason:null,advice:null}});
+ const supplemented=await supplement();assert.equal(supplemented.status,200,await supplemented.text());assert.equal(calls,2);
+ const teacherReview=await db.worksheetAnswerReview.findFirstOrThrow({where:{source:'teacher'}});assert.equal(teacherReview.status,'succeeded');assert.equal(teacherReview.score,null);
+ assert.equal((await supplement()).status,200);assert.equal(calls,2,'成功的仅反馈补评不再重复发送');
+ const personalProxy=app.get('analysisProxy');let summaryCalls=0;
+ const teacherPost=(suffix:string)=>fetch(base+suffix,{method:'POST',headers:{Cookie:cookie}});
+ await teacherPost(`/analysis/q?classroomId=${room.id}`);
+ app.set('analysisProxy',async(_agent:unknown,message:string,images:Buffer[],_signal:unknown,audio:unknown[])=>{
+  summaryCalls++;assert.match(message,/个人评价结果汇总/);assert.match(message,/你描述了颜色变化/);assert.equal(images.length,0);assert.deepEqual(audio,[]);
+  return {success:true,content:'### 主要表现\n已有评价显示能描述变化，建议补充前后过程。<classnode-feedback>{"groups":[],"students":[]}</classnode-feedback>'};
+ });
+ const summaryResult=await teacherPost(`/analysis/q/run?classroomId=${room.id}&analysisOnly=true`);
+ assert.equal(summaryResult.status,200,await summaryResult.clone().text());assert.equal(summaryCalls,1);
+ assert.match((await summaryResult.json()).narrative,/纳入有效评价 1 人/);
+ assert.equal((await db.worksheetAnswerReview.findUniqueOrThrow({where:{id:teacherReview.id}})).advice,'再说说变化前后的区别。');
+ const savedReport=(await db.worksheetQuestionAnalysis.findFirstOrThrow()).narrative;
+ app.set('analysisProxy',async()=>{await db.worksheetAnswerReview.update({where:{id:teacherReview.id},data:{advice:'分析期间评价发生变化'}});return {success:true,content:'不能覆盖的旧汇总'};});
+ assert.equal((await teacherPost(`/analysis/q/run?classroomId=${room.id}&analysisOnly=true`)).status,409);
+ assert.equal((await db.worksheetQuestionAnalysis.findFirstOrThrow()).narrative,savedReport);
+ app.set('analysisProxy',personalProxy);
  const firstHistory=await db.worksheetAnswerReview.findFirstOrThrow();
  await db.worksheetAnswerReview.create({data:{answerId:firstHistory.answerId,requestId:'historical_scored_review',generation:firstHistory.generation,value:firstHistory.value as Prisma.InputJsonValue,question:firstHistory.question as Prisma.InputJsonValue,status:'succeeded',source:'teacher',score:9,maxScore:10,unit:'分',reason:'原评分依据',advice:'原建议'}});
  const beforeHistory=await db.worksheetAnswerReview.findMany();
@@ -113,7 +135,7 @@ test('真实HTTP提交：文字与图片共同传给AI，反馈成功计次数�
  const nextFill={...oldFill,data:{...oldFill.data,fillBlankSettings:{a:{mode:'text',gradingMode:'auto',maxScore:2},b:{...evaluation,mode:'text',gradingMode:'ai',evaluationScored:false,maxScore:3}}}};
  const changed=await teacherSave(nextFill);assert.equal(changed.status,200,await changed.text());
  assert.equal((await db.worksheetAnswer.findFirstOrThrow()).score,2,'关闭其中一个空的AI计分后保留其余本地得分，移除AI旧分');
- assert.equal(calls,1,'规则变更不额外调用智能体');
+ assert.equal(calls,2,'规则变更不额外调用智能体');
 
 });
 test('历史选择填空明确使用新评价设置后，同样支持文字AI计分且旧题不会自动迁移',()=>{
@@ -144,4 +166,12 @@ test('练习判分与调查收集不生成个人AI评价，新规则不受旧小
  assert.equal(aiScoringConfigOf(survey).enabled,false);
  assert.equal(grade(survey,{format:'choice/v1',selected:['A']},{full:2,half:1}),null);
  assert.equal(individualReviewSettings(survey).enabled,false);
+});
+
+test('新版表达空自动评价，修改废弃开关不使在途评价失效', async () => {
+ const {reviewConfigurationKey}=await import('../services/individual-review.js');
+ const node=q({ fillBlankSettings:{a:{evaluationVersion:1,evaluationMode:'ai',evaluationScored:false,mode:'audio'}}, studentAiReviewEnabled:false }, 'fill-blank');
+ assert.equal(individualReviewSettings(node).enabled,true);
+ assert.equal(reviewConfigurationKey(node),reviewConfigurationKey({...node,data:{...node.data,studentAiReviewEnabled:true}}));
+ assert.equal(individualReviewSettings(q({...evaluation,evaluationMode:'collect',studentAiReviewEnabled:true})).enabled,false);
 });

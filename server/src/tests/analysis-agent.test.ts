@@ -421,3 +421,18 @@ test('班级、个人和补评均明确将可辨认的偏题作答正常评价',
     assert.match(message, /图片无法辨认时，返回 unavailable:true/);
   }
 });
+
+test('individual review dynamically requests teacher evidence while class mode retains existing flow', () => {
+  const payload = { ...payloadOf('text'), aiScoring: { enabled: true, maxScore: 3, unit: '分', criteria: '具体动作' } };
+  assert.match(buildAnalysisMessage(payload, true, 'individual'), /教师分析依据：不向学生展示/);
+  assert.match(buildAnalysisMessage(payload, true, 'individual'), /classnode-evidence/);
+  assert.doesNotMatch(buildAnalysisMessage(payload, true, 'class'), /classnode-evidence/);
+});
+
+test('minimal external roles do not need to carry teaching policy: runtime requests are self-contained',()=>{
+ const payload=buildAnalysisPayload({question:{questionId:'q1',typeLabel:'表达题',prompt:'写一件小事',heading:'任务1',rubricText:'写清动作',aiScoring:{enabled:true,maxScore:3,unit:'分',criteria:'写清动作'}},entries:textEntries,total:2,knobs:DEFAULT_ANALYSIS_KNOBS,participants:[]});
+ const individual=buildAnalysisMessage(payload,true,'individual');
+ for(const rule of ['不能用本模板的通用描述或学科习惯增设评分维度','教师提供的底稿不是学生成果','classnode-scores','classnode-evidence','写清动作']) assert.ok(individual.includes(rule),rule);
+ assert.ok(!individual.includes('### 核心结论'));
+ const summary=buildAnalysisMessage(payload,true,'class');assert.match(summary,/### 核心结论/);assert.match(summary,/信息收集/);
+});

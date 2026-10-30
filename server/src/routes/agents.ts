@@ -18,7 +18,7 @@ import { normalizeAgentPurpose } from '../services/agent-purpose.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
 
-// Fixed remote source and IDs; never accept an arbitrary URL from the browser.
+// Bundled universal template plus fixed legacy remote IDs; never accept arbitrary URLs.
 router.get('/analysis-templates/:templateId', async (req, res) => {
   if (!ANALYSIS_TEMPLATE_IDS.has(req.params.templateId)) {
     res.status(404).json({ error: '未知的分析提示词模板' }); return;

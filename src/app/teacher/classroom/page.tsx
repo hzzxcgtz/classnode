@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, memo, Suspense, useL
 import { useRouter, useSearchParams } from 'next/navigation';
 import { WordCloud, type Word, type WordRendererData } from "@isoterik/react-word-cloud";
 import { api } from '@/lib/api';
+import { audioMonitorPreview } from './worksheet-audio-monitor';
 import { copyText } from '@/lib/copy-text';
 import { useSocket } from '@/lib/socket';
 import { stripImages, stripMarkdownToPlainText, Markdown } from '@/lib/markdown';
@@ -2398,8 +2399,15 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         // 🔴 它同时喂给 `worksheetTileState` 与 `activeAnswer` —— **两者必须同源**，
         // 否则会出现「标题说正在做第 3 题、下面画的是第 5 题」（各挑各的，两边都不报错）。
         // ⚠️ 按 `worksheetId` 过滤：两份学习单若有同名题号（复制出来的），只靠题号判会串。
+        const tileNodes = worksheet ? wb.nodesByWorksheet[worksheet.id] ?? [] : [];
+        const tileRows = participant && worksheet
+          ? (wb.board?.worksheets.filter((item) => item.id === worksheet.id)[0]
+            ?.participants.filter((item) => item.participantId === participant.id)[0]?.answerRows) ?? []
+          : [];
         const liveDraft = participant ? wb.liveDrafts[participant.id] : undefined;
-        const draft = liveDraft && worksheet && liveDraft.worksheetId === worksheet.id ? liveDraft : null;
+        const draft = audioMonitorPreview(tileNodes, tileRows,
+          liveDraft && worksheet && liveDraft.worksheetId === worksheet.id ? liveDraft : null,
+          participant ? wb.progress[participant.id]?.lastQuestionId ?? null : null);
         const recording = participant && online && worksheet && wb.recordings[participant.id]?.worksheetId === worksheet.id ? wb.recordings[participant.id] : null;
         const state = worksheetTileState({
           worksheet,
@@ -2420,11 +2428,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         // 主观题算不算」全在那一层里（规格 §9.1 那张图）；这里再加一遍就是第二份真源。
         // ⚠️ `answerRows` 与 `nodes` **算一次、两处用**（格子正文与奖励）—— 各取一份的
         // 表现是「同一格上写了两个不同的数」，而屏幕上不报错。
-        const tileNodes = worksheet ? wb.nodesByWorksheet[worksheet.id] ?? [] : [];
-        const tileRows = participant && worksheet
-          ? (wb.board?.worksheets.filter((item) => item.id === worksheet.id)[0]
-            ?.participants.filter((item) => item.participantId === participant.id)[0]?.answerRows) ?? []
-          : [];
         return (
           <WorksheetTileContent
             recording={Boolean(recording)}

@@ -6,6 +6,8 @@ import { FieldError, Toast } from '@/lib/components';
 import type { WebappSummary, WebappUploadResult } from '@/lib/types';
 import { WebappExternalDepsNotice, WebappMissingRefsNotice } from './webapp-overlays';
 
+import styles from './webapp-form.module.css';
+
 type UploadMode = 'html' | 'archive';
 
 /**
@@ -118,12 +120,24 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
     }
   };
 
-  const archiveName = archive?.name ?? '';
+  const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const selectFile = (files: File[]) => {
+    if (savingRef.current) return;
+    if (files.length !== 1) { setFieldErrors(prev => ({ ...prev, file: '请一次选择一个 HTML 文件或网页压缩包' })); return; }
+    const file = files[0];
+    const nextMode = /\.html?$/i.test(file.name) ? 'html' : /\.(zip|rar|7z)$/i.test(file.name) ? 'archive' : null;
+    if (!nextMode) { setFieldErrors(prev => ({ ...prev, file: '支持 HTML、HTM、ZIP、RAR、7Z 文件' })); return; }
+    setMode(nextMode);
+    if (nextMode === 'html') { setPage(file); setArchive(null); } else { setArchive(file); setPage(null); }
+    clearError('file');
+  };
+  const selectedFile = mode === 'html' ? page : archive;
 
   return (
     <div className="modal-overlay">
       <div className="modal-content teacher-dialog teacher-form-dialog webapp-form-modal" role="dialog" aria-modal="true" aria-labelledby="webapp-form-title" onClick={e => e.stopPropagation()} style={{ maxWidth: 620, padding: 0, borderRadius: 14 }}>
-        <div style={{ padding: '16px 24px 0', background: 'linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%)', borderBottom: '1px solid var(--border)', position: 'relative' }}>
+        <div style={{ padding: '22px 24px 4px', background: '#f5f8fc', borderBottom: '1px solid var(--border)', position: 'relative' }}>
           <button type="button" onClick={onClose} disabled={saving} aria-label="关闭网页表单" style={{ position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--text-muted, #64748b)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>✕</button>
           <h2 id="webapp-form-title" style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 2px' }}>{created ? '上传成功' : editing ? '编辑探究网页' : '添加探究网页'}</h2>
           <p style={{ fontSize: "0.8125rem", color: 'var(--text-secondary)', margin: '0 0 12px' }}>
@@ -182,32 +196,19 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
                   ))}
                 </div>
 
-{mode === 'html' ? (
-  <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '12px 14px' }}>
-    <div style={{ fontSize: '0.75rem', color: '#0c4a6e', lineHeight: 1.7, marginBottom: 8 }}>
-      <strong>适合把 CSS / JS 都写在这一个文件里的网页。</strong>
-      网页里有子目录（<code>css/</code>、<code>js/</code>、<code>images/</code>）的，请改用压缩包 ——
-      单个 HTML 带不走那些文件。
-    </div>
-    <input type="file" accept=".html,.htm" aria-label="选择网页文件"
-      onChange={e => { setPage(e.target.files?.[0] ?? null); clearError('file'); }}
-      style={{ fontSize: "0.875rem" }} />
-    {page && <div style={{ fontSize: "0.75rem", color: '#0369a1', marginTop: 6 }}>已选择：{page.name}</div>}
-  </div>
-) : (
-  <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '12px 14px' }}>
-    <div style={{ fontSize: '0.75rem', color: '#0c4a6e', lineHeight: 1.7, marginBottom: 8 }}>
-      <strong>支持 ZIP / RAR / 7Z。</strong>压缩包解压后目录结构会原样保留，
-      网页里的 <code>css/</code>、<code>js/</code>、<code>images/</code> 子目录都能正常加载。
-      {/* ⚠️ 这一句从前写的是「请把网页文件夹压成 ZIP 再上传」—— 它会把教师往 zip 上引，
-          而这次恰恰是要放开三种。 */}
-    </div>
-    <input type="file" accept=".zip,.rar,.7z" aria-label="选择网页压缩包"
-      onChange={e => { setArchive(e.target.files?.[0] ?? null); clearError('file'); }}
-      style={{ fontSize: "0.875rem" }} />
-    {archiveName && <div style={{ fontSize: "0.75rem", color: '#0369a1', marginTop: 6 }}>已选择：{archiveName}</div>}
-  </div>
-)}
+<input ref={fileInput} type="file" accept=".html,.htm,.zip,.rar,.7z" aria-label="选择网页或压缩包" className={styles.fileInput} disabled={saving}
+  onChange={e => { selectFile(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
+<button type="button" className={`${styles.dropZone} ${dragging ? styles.dragging : ''}`} disabled={saving}
+  onClick={() => fileInput.current?.click()}
+  onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDragging(true); }}
+  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
+  onDrop={e => { e.preventDefault(); setDragging(false); selectFile(Array.from(e.dataTransfer.files)); }}>
+  <span className={styles.uploadIcon}><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5" /></svg></span>
+  <strong>{dragging ? '松开即可选择文件' : selectedFile ? selectedFile.name : '拖拽网页或压缩包到这里'}</strong>
+  <span>{selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB · 点击或拖入文件以更换` : '也可以点击选择文件'}</span>
+  <small>HTML / HTM · ZIP / RAR / 7Z</small>
+</button>
+<p className={styles.help}>{mode === 'html' ? '单个 HTML 适合样式与脚本内嵌的网页。含图片、CSS、JS 等独立资源时，请将整个网页文件夹打包上传。' : '压缩包保留网页目录结构，支持包含图片、CSS、JS 等资源。默认自动查找 index.html。'}</p>
                 {fieldErrors.file && <FieldError message={fieldErrors.file} />}
               </div>
 

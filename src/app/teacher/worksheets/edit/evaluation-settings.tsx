@@ -10,10 +10,10 @@ import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { evaluationImages, evaluationMode, evaluationRequirements, hasEvaluation, type EvaluationMode } from '@/lib/worksheet-evaluation';
 
 /** One editor for question-level and per-blank evaluation; input mode is independent. */
-export function EvaluationSettings({ data, legacyMode, legacyScored, allowAnswer = true, reference, maxScore = 1, scoreLimit = 99, unit = '分', rewardStyle, template, onChange, automatic, limit, onTriggerChange, onNotice, onImagesUploaded }: {
+export function EvaluationSettings({ data, legacyMode, legacyScored, allowAnswer = true, reference, maxScore = 1, scoreLimit = 99, unit = '分', rewardStyle, template, onChange, limit, onTriggerChange, onNotice, onImagesUploaded }: {
   data: Record<string, unknown>; legacyMode: EvaluationMode; legacyScored: boolean; allowAnswer?: boolean;
   reference?: unknown; maxScore?: number; scoreLimit?: number; unit?: string; rewardStyle?: RewardStyle; template?: string; onChange: (patch: Record<string, unknown>) => void;
-  automatic: boolean; limit: number; onTriggerChange: (patch: Record<string, unknown>) => void;
+  limit: number; onTriggerChange: (patch: Record<string, unknown>) => void;
   onImagesUploaded: (urls:string[]) => void;
   onNotice?: (message: string, type: 'success' | 'error') => void;
 }) {
@@ -53,7 +53,7 @@ export function EvaluationSettings({ data, legacyMode, legacyScored, allowAnswer
       {error && <p role="alert">{error}</p>}
       <div className="worksheet-evaluation-options">
         <div className="worksheet-evaluation-option"><label><input type="checkbox" checked={scored} onChange={event=>change({evaluationScored:event.target.checked})}/>计入成绩</label><span>{scored?'AI 按给分条件评分，同时给出建议。':'只给评价与建议，不产生分数。'}</span>{scored && <label className="worksheet-evaluation-number">满分<input className="input" type="number" min={1} max={scoreLimit} value={maxScore} onChange={event=>{const n=Number(event.target.value);if(Number.isInteger(n)&&n>=1&&n<=scoreLimit)change({maxScore:n,aiScoringMaxScore:n});}}/><EditorRewardUnit style={rewardStyle} unit={unit}/></label>}</div>
-        <div className="worksheet-evaluation-option"><label><input type="checkbox" checked={automatic} onChange={event=>onTriggerChange({studentAiReviewEnabled:event.target.checked})}/>提交整题后自动评价</label><span>关闭后由教师发起；同题多个 AI 空合并评价。</span>{automatic && <label className="worksheet-evaluation-number">每人评价次数<input className="input" type="number" min={1} max={20} value={limit} onChange={event=>{const n=Number(event.target.value);if(Number.isInteger(n)&&n>=1&&n<=20)onTriggerChange({aiReviewLimit:n});}}/></label>}</div>
+        <div className="worksheet-evaluation-option"><label>提交后自动评价</label><span>同题多个表达空合并评价，失败后可重试。</span><label className="worksheet-evaluation-number">每人评价次数<input className="input" type="number" min={1} max={20} value={limit} onChange={event=>{const n=Number(event.target.value);if(Number.isInteger(n)&&n>=1&&n<=20)onTriggerChange({aiReviewLimit:n});}}/></label></div>
       </div>
       {scored && !requirements.trim() && !images.length && <p className="worksheet-evaluation-validation" role="status">请补充给分条件或上传评分量表，再保存。</p>}
     </>}

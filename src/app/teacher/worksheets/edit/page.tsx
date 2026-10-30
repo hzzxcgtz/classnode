@@ -5,7 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 // ★ 2026-09-27：「悬停看大图」那张浮层要 portal 到 body（理由见 SettingsModal 里那段注释）。
 import { createPortal } from 'react-dom';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { WORKSHEET_GRADES, WORKSHEET_SUBJECTS, worksheetCurriculumError, worksheetTemplateRecommendation } from '@/lib/worksheet-curriculum';
+import { WORKSHEET_GRADES, WORKSHEET_SUBJECTS, worksheetCurriculumError } from '@/lib/worksheet-curriculum';
 import { useSearchParams } from 'next/navigation';
 import { TeacherEmptyState, TeacherLoadingState, Toast, useTeacherConfirm } from '@/lib/components';
 import type { AgentSummary, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
@@ -1123,7 +1123,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
                   绘图题也需要通过 Coze 分析」那半句 —— 它在**配错平台**的时候才会用到，
                   而那时教师看到的是下拉里没有候选，去智能体管理那一页自然会看见。 */}
               {analysisAgents.length === 0 && <em className="worksheet-settings-help">暂无分析智能体，请先到「AI智能体」添加分析用途的智能体。</em>}
-              {worksheetTemplateRecommendation(settings) && <em className="worksheet-settings-help">建议使用“{worksheetTemplateRecommendation(settings)}”模板，请复制到所选智能体的提示词中，系统不会自动替换。<a href="/teacher/agents/templates/" target="_blank" rel="noreferrer">查看模板库</a></em>}
+              <em className="worksheet-settings-help">本题评价规则和返回格式由系统动态提供。可使用自己的专业学科智能体，也可参考<a href="/teacher/agents/templates/" target="_blank" rel="noreferrer">通用提示词</a>；建议先试用少量作答，确认效果。</em>
             </label>
           </section>
         {/* 奖励形式（规格 §9.2）。🔴 它是**这一张单**的配置，不是全局设置 ——

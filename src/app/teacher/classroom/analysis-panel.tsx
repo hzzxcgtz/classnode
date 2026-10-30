@@ -18,6 +18,7 @@ import { scoreParticipantMeta, sortAnalysisScores } from '@/lib/worksheet-analys
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { pointsUnitLabel, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
 import styles from './analysis-panel.module.css';
+import { completedReviewIds } from '@/lib/worksheet-review-completion';
 import { worksheetAnalysisActions } from '@/lib/worksheet-analysis-actions';
 
 export type AnalysisOperation = 'analyzing' | null;
@@ -311,9 +312,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
   const generatingReport = state.busy && state.activeAction !== 'incremental';
   const pendingMessage = state.runMessage || (state.activeAction === 'incremental'
     ? '正在补评未评学生，请稍等…'
-    : state.activeAction === 'regrade'
-      ? `正在${worksheetAnalysisActions(payload).regradeLabel}，请稍等…`
-      : `正在${worksheetAnalysisActions(payload).primaryLabel}，请稍等…`);
+    : `正在${worksheetAnalysisActions(payload).primaryLabel}，请稍等…`);
   const [showDetails, setShowDetails] = useState(false);
 
   /**
@@ -348,17 +347,17 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
         <div className={styles.emptyResult}><strong>等待学生提交作品</strong><span>学生提交后，作答统计和 AI 评价会自动显示在这里。</span></div>
       )}
 
-      {!loading && !state.busy && payload && payload.covered > 0 && payload.aiScoring.enabled && !payload.studentAiReviewEnabled && (() => {
-        const scored = new Set((payload.perStudent?.scores ?? []).filter(row => row.score !== null).map(row => row.studentId));
+      {!loading && !state.busy && payload && payload.covered > 0 && payload.aiScoring.enabled && (() => {
+        const scored = completedReviewIds(payload);
         const unscorable = new Set(payload.unscorableIds ?? []);
-        const missing = payload.entries.filter(row => !scored.has(row.studentId));
+        const missing = payload.entries.filter(row => !scored.has(row.studentId) && !payload.pendingReviewIds?.includes(row.studentId));
         const names = (unreadable: boolean) => missing.filter(row => unscorable.has(row.studentId) === unreadable)
           .map(row => payload.participantNames?.[row.studentId] ?? nameOf?.(row.studentId) ?? '未命名学生');
         const ungraded = names(false);
         const unreadable = names(true);
         if (!missing.length) return null;
         return <div className={styles.scoreMissing}>
-          {ungraded.length > 0 && <span>尚未评分：<strong>{ungraded.join('、')}</strong></span>}
+          {ungraded.length > 0 && <span>尚未评价：{missing.filter(row => !unscorable.has(row.studentId)).map(row => <button key={row.studentId} type="button" disabled={!payload.canSend.ok} onClick={() => void state.run([row.studentId])} title="仅补评这位学生" style={{ border: '1px solid #ddc98e', borderRadius: 5, padding: '3px 7px', margin: '2px 4px', background: '#fffdf6', color: 'inherit', cursor: 'pointer', font: 'inherit' }}>{payload.participantNames?.[row.studentId] ?? nameOf?.(row.studentId) ?? '未命名学生'} · 补评</button>)}</span>}
           {unreadable.length > 0 && <span>作品暂无法识别：<strong>{unreadable.join('、')}</strong>，请重新提交清晰作品。</span>}
         </div>;
       })()}
@@ -460,13 +459,14 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
         <>
           <button type="button" className={styles.detailsToggle}
             aria-expanded={showDetails} onClick={() => setShowDetails((value) => !value)}>
-            {showDetails ? '收起发送数据' : '查看发送数据'}
+            {payload.aiScoring.enabled ? (showDetails ? '收起汇总方式' : '查看汇总方式') : (showDetails ? '收起发送数据' : '查看发送数据')}
             <span aria-hidden="true">{showDetails ? '⌃' : '⌄'}</span>
           </button>
 
           {showDetails && (
             <section className={styles.detailsPanel} aria-label="发送给 AI 的数据">
-              <div className={styles.detailsHeading}>发送给 AI 的数据</div>
+              <div className={styles.detailsHeading}>{payload.aiScoring.enabled ? '班级分析数据来源' : '发送给 AI 的数据'}</div>
+              {payload.aiScoring.enabled ? <div className={styles.notice}>使用本题评价要求、当前有效的逐生评价与建议、作答依据进行文字汇总，不重复发送原始图片或录音。发送时会核对作答和评价规则；历史记录缺少详细依据时会说明局限，未取得有效评价的学生不纳入结论。查看原始作答请进入学生详情。</div> : <>
               {payload.payloadKind === 'mixed' && (
                 <div className={styles.notice}>当前任务同时包含文字与笔迹作答，以下文档和联系表分别呈现两部分数据。</div>
               )}
@@ -508,6 +508,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                   </ol>
                 </>
               )}
+              </>}
             </section>
           )}
         </>
@@ -643,7 +644,7 @@ export function AnalysisActions({ state, compact = false }: { state: WorksheetAn
         <AnalysisActionIcon action="analysis" supplement={actions.ungradedCount > 0} pending={busy && (activeAction ?? 'analysis') === 'analysis'} />
         {labelFor('analysis', actions.primaryLabel)}
       </button>}
-      {actions.showRegrade && <button type="button" className={styles.actionButton} disabled={busy || !payload?.canSend.ok} onClick={() => { if (window.confirm('重新评分会替换本班已有 AI 评分，并按差额调整奖励。是否继续？')) void state.run(undefined, true); }}><AnalysisActionIcon action="regrade" pending={busy && activeAction === 'regrade'} />{labelFor('regrade', actions.regradeLabel)}</button>}
+
       {busy && state.stop && <button type="button" className={`${styles.actionButton} ${styles.dangerButton}`} disabled={state.stopping} onClick={() => void state.stop?.()}>{state.stopping ? '正在停止…' : '停止'}</button>}
       {!busy && state.clear && <details className={styles.clearMenu} ref={clearMenuRef}>
         <summary className={styles.actionButton}>{state.clearing ? '正在清除…' : '清除数据'}<svg className={styles.clearChevron} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></summary>

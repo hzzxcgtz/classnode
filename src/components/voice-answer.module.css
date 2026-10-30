@@ -20,3 +20,14 @@
 .compactProgress { width: clamp(60px, 8vw, 110px); min-width: 60px; min-height: 26px; margin: 0; accent-color: #3d7560; cursor: pointer; }
 .compactProgress:focus-visible { outline: 2px solid #729e8a; outline-offset: 2px; }
 .compactTime { font-size: 11px; }
+/* Teacher drawers: fit the answer column, including narrow table cells. */
+.player.review { width: 100%; max-width: 360px; min-width: 0; padding: 7px 9px; gap: 8px; border-radius: 8px; background: #f1f7f4; border-color: #d7e5dd; }
+.review .play { width: 30px; height: 30px; min-width: 30px; min-height: 30px; }
+.review .play svg { width: 15px; height: 15px; }
+.review .track { min-width: 0; flex: 1 1 50px; }
+.review .trackHeader { gap: 2px 6px; font-size: .72rem; }
+.review .trackHeader strong { gap: 3px; }
+.review .trackHeader strong svg { width: 12px; height: 12px; }
+.review .trackHeader span { font-size: .7rem; }
+.review .track input { min-width: 0; min-height: 18px; height: 18px; margin: 0; }
+.review .error { overflow-wrap: anywhere; font-size: .72rem; }

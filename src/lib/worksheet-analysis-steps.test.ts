@@ -10,26 +10,17 @@ const completedPayload = () => {
   return value;
 };
 
-test('补评并分析按补评、刷新作答、只分析的顺序执行，零分也视为已评分', async () => {
-  const calls: unknown[] = [];
-  const progress: string[] = [];
-  await runWorksheetAnalysisSteps(payload(), {}, async options => { calls.push(options); return 'ok'; }, async () => { calls.push('refresh'); return completedPayload(); }, message => progress.push(message));
-  assert.deepEqual(calls, [{ only: ['missing'] }, 'refresh', { analysisOnly: true }]);
-  assert.deepEqual(progress, ['正在补评未评学生（第 1/1 批），请稍等…', '正在核对补评结果，请稍等…', '补评已完成，正在生成班级分析，请稍等…']);
+test('生成班级分析不隐式补评；全班重评被拦截', async () => {
+ const calls:unknown[]=[];
+ await runWorksheetAnalysisSteps(payload(),{},async options=>{calls.push(options);return 'ok';},async()=>{throw Error('不应刷新');});
+ assert.deepEqual(calls,[{analysisOnly:true}]);
+ await assert.rejects(runWorksheetAnalysisSteps(payload(),{regrade:true},async()=>{throw Error('不应发送');},async()=>payload()),/取消全班重评/);
 });
-test('仅补评不更新全班分析；重评发送全班且不保护已有成绩', async () => {
-  for (const [input, expected] of [[{ incremental: true }, { only: ['missing'] }], [{ regrade: true }, { regrade: true }]] as const) {
-    const calls: unknown[] = [];
-    await runWorksheetAnalysisSteps(payload(), input, async options => { calls.push(options); return 'ok'; }, async () => completedPayload());
-    assert.deepEqual(calls, [expected]);
-  }
-});
-test('AI 请求完成但评分未落库时，不报补评成功或继续生成班级总结', async () => {
-  for (const input of [{ incremental: true }, {}]) {
-    const calls: unknown[] = [];
-    await assert.rejects(runWorksheetAnalysisSteps(payload(), input, async options => { calls.push(options); return 'ok'; }, async () => payload()), /仍有 1 位学生/);
-    assert.deepEqual(calls, [{ only: ['missing'] }]);
-  }
+test('仅补评核对有效结果，不修改全班分析',async()=>{
+ const calls:unknown[]=[];
+ await runWorksheetAnalysisSteps(payload(),{incremental:true},async o=>{calls.push(o);return 'ok'},async()=>completedPayload());
+ assert.deepEqual(calls,[{only:['missing']}]);
+ await assert.rejects(runWorksheetAnalysisSteps(payload(),{incremental:true},async()=> 'ok',async()=>payload()),/仍有 1 位学生/);
 });
 test('整班补评分批发送，每批最多8人，最后核对全部评分', async () => {
   const value = payload();
@@ -57,7 +48,7 @@ test('自主评价模式或全班已有评分时只生成总结', async () => {
 });
 test('补评失败后不更新全班总结', async () => {
   let calls = 0;
-  await assert.rejects(runWorksheetAnalysisSteps(payload(), {}, async () => { calls++; throw new Error('补评失败'); }, async () => { throw new Error('不应刷新'); }), /补评失败/);
+  await assert.rejects(runWorksheetAnalysisSteps(payload(), {incremental:true}, async () => { calls++; throw new Error('补评失败'); }, async () => { throw new Error('不应刷新'); }), /补评失败/);
   assert.equal(calls, 1);
 });
 test('补评中停止时不再发送下一批或更新班级分析', async () => {

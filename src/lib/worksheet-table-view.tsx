@@ -75,6 +75,8 @@ export interface WorksheetTableViewProps {
    * 这是同一份渲染器的两种用途，不是两套实现 —— 与 `PromptText` 的 `blanks` 同一条规矩。
    */
   blanks?: TableBlankBinding;
+  /** Read-only teacher answers wrap to the drawer width. */
+  fitContainer?: boolean;
 }
 
 /** 一格的内边距与边框。边距小是刻意的：表格要在一屏里放下。 */
@@ -106,7 +108,7 @@ function rowsOf(table: unknown): WorksheetTable['rows'] {
   return readTableFor({data:{table}})?.rows ?? [];
 }
 
-export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
+export function WorksheetTableView({ table, blanks, fitContainer = false }: WorksheetTableViewProps) {
   if (!table || typeof table !== 'object' || Array.isArray(table)) return null;
   const rows = rowsOf(table);
   const covered = coveredTableCells(table);
@@ -119,8 +121,8 @@ export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
   return (
     // ⚠️ 横向滚动：iPad 竖屏放不下一张 5 列的表。**不许**把表格压成挤在一起的字。
     //    `-webkit-overflow-scrolling` 是给老 iPad 的惯性滚动（Safari 15 仍认它）。
-    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginTop: 10 }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.95rem', ...(blanks?.stableColumns ? {tableLayout:'fixed' as const,minWidth:tableColumnCount(table)*160} : {}) }}>
+    <div style={{ overflowX: fitContainer ? 'visible' : 'auto', minWidth: 0, WebkitOverflowScrolling: 'touch', marginTop: 10 }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.95rem', ...(fitContainer ? { tableLayout: 'fixed' as const } : {}), ...(blanks?.stableColumns ? {tableLayout:'fixed' as const,minWidth:tableColumnCount(table)*160} : {}) }}>
         {blanks?.stableColumns && <colgroup>{Array.from({length:tableColumnCount(table)},(_,index)=><col key={index} style={{width:`${100/tableColumnCount(table)}%`}}/>)}</colgroup>}
         <tbody>
           {rows.map((cells, row) => (
@@ -133,7 +135,7 @@ export function WorksheetTableView({ table, blanks }: WorksheetTableViewProps) {
                 const globalIndex = blanks ? blanks.base + slot : -1;
                 const wrong = isBlank && blanks?.wrongOf ? blanks.wrongOf(globalIndex) : false;
                 return (
-                  <td key={col} rowSpan={cell.rowSpan} colSpan={cell.colSpan} style={{...(headerRow && row === 0 ? HEADER_STYLE : CELL_STYLE), textAlign:cell.align, verticalAlign:cell.verticalAlign ?? 'middle'}}>
+                  <td key={col} rowSpan={cell.rowSpan} colSpan={cell.colSpan} style={{...(headerRow && row === 0 ? HEADER_STYLE : CELL_STYLE), ...(fitContainer ? { minWidth: 0, overflowWrap: 'anywhere' as const, padding: '5px' } : {}), textAlign:cell.align, verticalAlign:cell.verticalAlign ?? 'middle'}}>
                     {isBlank ? (
                       <Fragment>
                         {blanks?.renderOf?.(globalIndex) !== undefined ? blanks.renderOf(globalIndex) : blanks && blanks.drop && blanks.modeOf?.(globalIndex) !== 'input' ? (

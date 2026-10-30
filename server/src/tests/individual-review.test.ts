@@ -17,15 +17,15 @@ import { individualReviewSettings, reviewConfigurationKey, recoverInterruptedRev
 import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 
 const node = { id: 'q', type: 'short-answer' as const, prompt: '写一件小事', inputMode: 'keyboard' as const, data: { aiScoringEnabled: true, aiScoringMaxScore: 10, studentAiReviewEnabled: true, aiReviewLimit: 1, rubricText: '真实具体' }, children: [] };
-test('个人评价默认一次，只在教师明确开启时可用', () => {
+test('个人评价默认一次，旧关闭标记也不阻止提交自动评价', () => {
   assert.equal(individualReviewSettings({ ...node, data: { aiScoringEnabled: true, studentAiReviewEnabled: true } }).limit, 1);
-  assert.equal(individualReviewSettings({ ...node, data: { aiScoringEnabled: true } }).enabled, false);
+  assert.equal(individualReviewSettings({ ...node, data: { aiScoringEnabled: true } }).enabled, true);
   assert.equal(individualReviewSettings({ ...node, data: { ...node.data, aiReviewLimit: 1000 } }).limit, 1);
 });
 test('评分配置比较忽略次数调整，但识别评分标准、满分与模式变化', () => {
   const key = reviewConfigurationKey(node);
   assert.equal(reviewConfigurationKey({ ...node, data: { ...node.data, aiReviewLimit: 3 } }), key);
-  for (const changed of [{ rubricText: '新的标准' }, { aiScoringMaxScore: 5 }, { studentAiReviewEnabled: false }]) {
+  for (const changed of [{ rubricText: '新的标准' }, { aiScoringMaxScore: 5 }]) {
     assert.notEqual(reviewConfigurationKey({ ...node, data: { ...node.data, ...changed } }), key);
   }
 });
@@ -174,68 +174,37 @@ test('真实提交：幂等、失败重试、次数、稿件隔离、奖励替�
   assert.equal((await db.worksheetAnswer.findUnique({ where: { id: r1.answerId } }))?.score, 6, '普通全班分析保留个人评分');
   const callsBeforeBlocked = calls;
   assert.equal((await call('POST', `/analysis/q/run?classroomId=${room.id}&regrade=true`, {}, '')).status, 409);
-  assert.equal((await call('POST', `/analysis/q/run?classroomId=${room.id}&only=${person.id}`, {}, '')).status, 409);
-  assert.equal(calls, callsBeforeBlocked, '自主评价模式禁止教师补评、重评，不调用智能体');
+  assert.equal(calls, callsBeforeBlocked, '取消全班重评，不调用智能体');
+  const supplementPath = `/analysis/q/run?classroomId=${room.id}&supplement=true`;
+  assert.equal((await call('POST', supplementPath + `&only=${person.id}`, {}, '')).status, 200);
+  assert.equal(calls, callsBeforeBlocked + 1, '当前稿仅有失效历史时允许补评');
+  const afterCurrentSupplement = calls;
+  assert.equal((await call('POST', supplementPath + `&only=${person.id}`, {}, '')).status,200);
+  assert.equal(calls, afterCurrentSupplement, '已有当前有效评价不得重复补评');
+  // Even old disabled settings now evaluate on the next submission, not on upgrade.
   await db.worksheet.update({ where: { id: sheet.id }, data: { content: { nodes: [{ ...node, data: { ...node.data, aiReviewLimit: 3, studentAiReviewEnabled: false } }] }, settings: { allowResubmit: true, autoGrade: true, analysisAgentId: agent.id, rewardStyle: 'points' } } });
-  const rerun = await call('POST', `/analysis/q/run?classroomId=${room.id}&regrade=true`, {}, ''); const rerunData = await rerun.json(); assert.equal(rerun.status, 200); assert.ok(rerunData.perStudent);
-  assert.equal((await db.worksheetAnswer.findUnique({ where: { id: r1.answerId } }))?.score, 2, messages.at(-1));
-  const updatedStudent = await (await call('GET', '/answers')).json();
-  assert.equal(updatedStudent.rows[0].score, 2);
-  assert.equal(updatedStudent.rows[0].aiReferenceScore.score, 2);
-  const updatedHistory = await (await call('GET', '/answers/reviews')).json();
-  const afterRegrade = await (await call('GET', analysisPath, undefined, '')).json();
-  assert.equal(afterRegrade.stale, false, '教师评分不应被当作新的学生作答');
-  assert.equal(updatedHistory.reviews[0].source, 'teacher');
-  assert.equal(updatedHistory.reviews[0].score, 2);
-  assert.ok(updatedHistory.reviews.some((review: { source: string }) => review.source === 'student'));
-  assert.ok(events.some(event => event.room === `classroom:${room.id}` && event.name === 'worksheet-analysis-updated' && event.payload !== null && typeof event.payload === 'object' && 'worksheetId' in event.payload && event.payload.worksheetId === sheet.id));
-  assert.equal(await db.worksheetAnswerReview.count({ where: { source: 'student', status: 'succeeded' } }), 2, '教师重新评分不占学生评价次数');
-
-  // Teacher regrading follows the same configuration guard as student evaluation.
-  const beforeRuleChange = await db.worksheetQuestionAnalysis.findFirstOrThrow();
-  release = undefined; score = 7;
-  const obsoleteTeacher = call('POST', `/analysis/q/run?classroomId=${room.id}&regrade=true`, {}, '');
-  for (let i = 0; i < 100 && !release; i++) await new Promise(r => setTimeout(r, 10));
-  await db.worksheet.update({ where: { id: sheet.id }, data: { content: { nodes: [{ ...node, data: { ...node.data, aiReviewLimit: 3, studentAiReviewEnabled: false, aiScoringMaxScore: 5 } }] } } });
-  (release as unknown as () => void)();
-  assert.equal((await obsoleteTeacher).status, 409);
-  assert.equal((await db.worksheetAnswer.findUnique({ where: { id: r1.answerId } }))?.score, 2);
-  assert.equal((await db.worksheetQuestionAnalysis.findFirstOrThrow()).narrative, beforeRuleChange.narrative);
-  const teacherArchive = await db.worksheetAnswerReview.findFirstOrThrow({ where: { source: 'teacher', status: 'superseded' } });
-  assert.equal(teacherArchive.score, 7);
-  await db.worksheet.update({ where: { id: sheet.id }, data: { content: { nodes: [{ ...node, data: { ...node.data, aiReviewLimit: 3, studentAiReviewEnabled: false } }] } } });
-  // A late submission is evaluated alone; the class narrative and earlier grades stay intact.
-  await call('PUT', '/answers', { questionId: 'q', value: { format: 'text/v1', text: '迟交作品' } }, createStudentToken(room.id, other.id));
-  await call('POST', '/answers/submit', { questionId: 'q', requestId: 'request_late', evaluate: false }, createStudentToken(room.id, other.id));
-  await call('POST', analysisPath, {}, '');
+  const otherToken = createStudentToken(room.id, other.id);
+  await call('PUT', '/answers', { questionId:'q', value:{format:'text/v1',text:'迟交作品'} }, otherToken);
+  fail = true;
+  const lateSubmission = await (await call('POST', '/answers/submit', {questionId:'q',requestId:'request_late',evaluate:false}, otherToken)).json();
+  assert.equal(lateSubmission.reviewStatus, 'pending');
+  await wait('failed', lateSubmission.reviewId);
   const classBefore = await db.worksheetQuestionAnalysis.findFirstOrThrow();
-  score = 4;
-  omitScores = true;
-  const missingScore = await call('POST', `/analysis/q/run?classroomId=${room.id}&only=${other.id}`, {}, '');
-  assert.equal(missingScore.status, 502, '仅返回文字建议不能当作补评成功');
-  assert.match((await missingScore.json()).error, /未返回可用评分/);
+  fail = false; omitScores = true;
+  assert.equal((await call('POST', supplementPath + `&only=${other.id}`, {}, '')).status, 502);
   assert.deepEqual((await db.worksheetQuestionAnalysis.findFirstOrThrow()).perStudent, classBefore.perStudent);
-  omitScores = false;
-  assert.equal((await call('POST', `/analysis/q/run?classroomId=${room.id}&only=${other.id}`, {}, '')).status, 200);
-  assert.match(messages.at(-1)!, /【调用模式：补评未评学生】/);
-  const late = await db.worksheetAnswer.findFirstOrThrow({ where: { response: { participantId: other.id } } });
+  omitScores = false; score = 4;
+  assert.equal((await call('POST', supplementPath + `&only=${other.id}`, {}, '')).status, 200);
+  const late = await db.worksheetAnswer.findFirstOrThrow({where:{response:{participantId:other.id}}});
   assert.equal(late.score, 4);
-  assert.equal((await db.worksheetAnswer.findUnique({ where: { id: r1.answerId } }))?.score, 2);
-  assert.equal((await db.worksheetQuestionAnalysis.findFirstOrThrow()).narrative, classBefore.narrative);
-
-  // An in-flight teacher result cannot grade a newer submission.
-  release = undefined; score = 9;
-  const staleRun = call('POST', `/analysis/q/run?classroomId=${room.id}&regrade=true`, {}, '');
-  for (let i = 0; i < 100 && !release; i++) await new Promise(r => setTimeout(r, 10));
-  assert.ok(release);
-  await save('全班分析期间的新稿');
-  await call('POST', '/answers/submit', { questionId: 'q', requestId: 'request_changed', evaluate: false });
-  (release as unknown as () => void)();
-  assert.equal((await staleRun).status, 200);
-  assert.equal((await db.worksheetAnswer.findUnique({ where: { id: r1.answerId } }))?.score, 2);
-  assert.ok(messages[0].includes('【调用模式：个人评价】'));
-  assert.ok(!messages[0].includes('### 典型表现'));
-  assert.ok(messages.at(-1)?.includes('【调用模式：全班分析】'));
+  assert.equal((await db.worksheetAnswer.findUnique({where:{id:r1.answerId}}))?.score,2);
+  assert.equal((await db.worksheetQuestionAnalysis.findFirstOrThrow()).narrative,classBefore.narrative);
+  const callsAfterSupplement = calls;
+  assert.equal((await call('POST', supplementPath + `&only=${other.id}`, {}, '')).status,200);
+  assert.equal(calls,callsAfterSupplement,'成功补评不重复外发');
+  assert.equal(await db.worksheetAnswerReview.count({where:{answerId:late.id,source:'student',status:'succeeded'}}),0,'教师补评不占学生成功次数');
+  const oldFailedHistory=await (await call('GET','/answers/reviews',undefined,otherToken)).json();
+  assert.equal(oldFailedHistory.reviews.find((r:{id:string})=>r.id===lateSubmission.reviewId).canRetry,false,'教师已成功补评后不再重试旧失败稿');
   const otherScoreBeforeClear = (await db.worksheetAnswer.findUnique({ where: { id: late.id } }))?.score;
   const cleared = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/worksheets/classroom/${room.id}/answers`, {
     method: 'DELETE', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ worksheetId: sheet.id, participantId: person.id, questionId: 'q' }),

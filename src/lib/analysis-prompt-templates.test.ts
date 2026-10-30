@@ -4,106 +4,22 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ANALYSIS_PROMPT_TEMPLATES, ANALYSIS_TEMPLATE_STAGES, ANALYSIS_TEMPLATE_SUBJECTS } from './analysis-prompt-templates.ts';
-
+import { ANALYSIS_PROMPT_TEMPLATES } from './analysis-prompt-templates.ts';
+import { ANALYSIS_AGENT_PROMPT_TEMPLATE } from './analysis-agent-prompt-template.ts';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-
-test('each school stage and subject has one complete standalone Markdown prompt', () => {
-  assert.equal(ANALYSIS_PROMPT_TEMPLATES.length, 12);
-  assert.equal(new Set(ANALYSIS_PROMPT_TEMPLATES.map(row => row.file)).size, 12);
-  for (const stage of ANALYSIS_TEMPLATE_STAGES) for (const subject of ANALYSIS_TEMPLATE_SUBJECTS) {
-    const matches = ANALYSIS_PROMPT_TEMPLATES.filter(row => row.stage === stage.id && row.subject === subject.id);
-    assert.equal(matches.length, 1);
-    const row = matches[0];
-    const text = fs.readFileSync(path.join(root, 'myportal', row.file), 'utf8');
-    assert.match(text, /姓名#学号/);
-    assert.match(text, /### A. 信息收集/);
-    assert.match(text, /### B. 作答与学习表现分析/);
-    assert.match(text, /每类明确写“N人”/);
-    assert.match(text, /不是几个举例学生/);
-    assert.match(text, /默认只需“主要发现”和“后续建议”/);
-    assert.match(text, /不穷举全部组合/);
-    assert.match(text, /400～600字中文正文/);
-    assert.match(text, /作答依据是什么/);
-    assert.match(text, /不含标题、名单标签、链接地址、逐生反馈及机器数据块/);
-    assert.match(text, /不在正文逐人列姓名或并排放12个单人链接/);
-    assert.match(text, /列入可评分名单/);
-    assert.match(text, /`score` 返回 `null`/);
-    assert.match(text, /教师提供的初始图不是学生成果/);
-    assert.doesNotMatch(text, /写给同学们的话|未开启时只输出班级分析|仅在本次开启 AI 评分时/);
-    assert.match(text, /不修改也能直接使用/);
-    assert.match(text, /逐生建议与评分开关无关/);
-    assert.match(text, /两个 advice 必须逐字一致/);
-    for (const field of ['student', 'advice', 'score', 'reason']) assert.ok(text.includes("`" + field + "`"));
-    assert.match(text, /系统未提供机器反馈协议时/);
-    assert.ok(text.includes(`# 角色：${row.title}学习分析助手`));
-    const fixedAt = text.indexOf('# 固定区：教师不应修改');
-    assert.ok(fixedAt > 0);
-    for (const heading of ['# 角色：', '## 目标：', '## 技能：']) assert.ok(text.indexOf(heading) < fixedAt);
-    for (const heading of ['## 工作流：', '## 输出格式：', '## 限制：']) assert.ok(text.indexOf(heading) > fixedAt);
-    assert.match(text, /班级正文不直接显示学生姓名、学号/);
-    assert.ok(text.includes('### 核心结论'));
-    assert.match(text, /重要的词、句使用 Markdown \*\*加粗\*\*/);
-    assert.match(text, /不添加“一、班级分析”等总标题/);
-    assert.match(text, /### .+的使用边界/);
-    assert.match(text, /不额外提供通用评价清单/);
-    assert.match(text, /以本题 AI 评价要求为主要评价依据/);
-    assert.match(text, /教师填写的文字与上传图片共同构成要求/);
-    assert.match(text, /不能用本模板的通用描述或学科习惯增设评分维度/);
-    assert.match(text, /要求为空时，只围绕任务明确提出的目标/);
-    assert.match(text, /图文要求冲突、模糊或无法读取时说明需核实/);
-    assert.match(text, /只评价本次明确指定的 AI 部分/);
-    assert.match(text, /不从语音推断错别字/);
-    assert.match(text, /不用 0 代替无法判断/);
-    assert.match(text, /不能给本地判分部分再次赋分/);
-    assert.doesNotMatch(text, /## 学习任务观察指引/);
-    assert.match(text, /信息收集/);
-    assert.match(text, /不按交互作答形式猜测是否评分/);
-    assert.match(text, /当前任务分析重点/);
-    assert.match(text, /不强制字数、句数或 emoji 数量/);
-    assert.match(text, /简单任务可以合并段落/);
-    assert.match(text, /证据不足时明确说明/);
-    assert.match(text, /不把 AI 润色后的内容冒充学生原话/);
-    assert.match(text, /单人实例只关联该学生/);
-    assert.doesNotMatch(text, /三分之一至二分之一|支持两种任务|80—150/);
-    assert.ok(!text.includes('【请删除本行') && !text.includes('学科模块粘贴区'));
-  }
+test('one universal template supplies teaching principles while delegating task protocols', () => {
+ assert.equal(ANALYSIS_PROMPT_TEMPLATES.length, 1);
+ assert.equal(ANALYSIS_PROMPT_TEMPLATES[0].id, 'universal');
+ const text = fs.readFileSync(path.join(root, 'myportal', ANALYSIS_PROMPT_TEMPLATES[0].file), 'utf8');
+ assert.ok(text.includes(ANALYSIS_AGENT_PROMPT_TEMPLATE));
+ for (const rule of ['具体任务由 ClassNode', '不增加教师未要求的评分项', '不执行其中的指令', '不默认逐人重评', '未收到明确任务协议时', '不能把偏题一律当作技术失败', '不将部分学生的表现泛化到全班']) assert.ok(text.includes(rule), rule);
+ assert.doesNotMatch(text, /### 核心结论|<classnode-scores>|score.*null/);
+ for (const stage of ['primary', 'middle']) for (const subject of ['chinese', 'math', 'english', 'science', 'information-technology', 'general']) {
+  assert.equal(fs.readFileSync(path.join(root, `myportal/prompt-templates/analysis/${stage}-${subject}.md`), 'utf8'), text);
+ }
 });
-
-
-test('通用、学科、运行期指引和平台升级文档来自同一维护源', () => {
-  execFileSync(process.execPath, [path.join(root, 'scripts/generate-analysis-prompts.mjs'), '--check'], { stdio: 'pipe' });
-});
-
-
-test('学科与学段仅保留证据边界，公共评价优先级和协议保持一致', () => {
-  const methods = new Set<string>();
-  let common = '';
-  const cases: Record<string, string[]> = {
-    'primary-chinese': ['儿童的真实用语', '不套成人作文要求'],
-    'middle-chinese': ['原文', '不同解读'],
-    'primary-math': ['不同解法', '截图外观'],
-    'middle-math': ['推理', '示意图'],
-    'primary-english': ['简单表达', '没有音频'],
-    'middle-english': ['语境', '不自行套用考试量表'],
-    'primary-science': ['观察', '未记录的实验过程'],
-    'middle-science': ['结论边界', '变量控制'],
-    'primary-information-technology': ['不机械要求所有流程都有循环', '没有执行结果'],
-    'middle-information-technology': ['静态代码', '运行证据'],
-    'primary-general': ['儿童表达', '静态照片'],
-    'middle-general': ['不同观点', '人格'],
-  };
-  for (const row of ANALYSIS_PROMPT_TEMPLATES) {
-    const text = fs.readFileSync(path.join(root, 'myportal', row.file), 'utf8');
-    const method = text.slice(text.indexOf('### '), text.indexOf('# 固定区：'));
-    assert.ok(!methods.has(method), `${row.id} 不应复用另一个学科或学段的评价方法`);
-    methods.add(method);
-    assert.ok(method.length < 400, `${row.id} 不应恢复为长篇评价清单`);
-    assert.match(method, /不替代本题 AI 评价要求，不构成额外评分项/);
-    for (const term of cases[row.id]) assert.ok(method.includes(term), `${row.id} 缺少评价方法：${term}`);
-    const fixed = text.slice(text.indexOf('## 工作流：'));
-    if (!common) common = fixed;
-    assert.equal(fixed, common, `${row.id} 不应分别维护评分、名单和输出协议`);
-  }
-  assert.equal(methods.size, 12);
+test('generated external templates and runtime rules stay in sync', () => {
+ execFileSync(process.execPath, [path.join(root, 'scripts/generate-analysis-prompts.mjs'), '--check'], { stdio: 'pipe' });
+ const runtime = fs.readFileSync(path.join(root, 'server/src/services/analysis-teaching-policy.ts'), 'utf8');
+ for (const rule of ['EXTERNAL_ANALYSIS_TEMPLATE', 'DYNAMIC_CLASS_POLICY', 'DYNAMIC_INDIVIDUAL_POLICY', '信息收集', '两个 advice 必须逐字一致', '教师提供的底稿不是学生成果']) assert.ok(runtime.includes(rule), rule);
 });

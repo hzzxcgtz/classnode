@@ -21,7 +21,7 @@ export interface AnswerReview {
   reason: string | null; advice: string | null; error: string | null;
   createdAt: string; evaluatedAt: string | null; evaluationDurationMs?: number | null;
 }
-export function ReviewHistory({ node, reviews, onRetry, renderReviewActions }: { node: WorksheetQuestionNode; reviews: AnswerReview[]; onRetry?: (id: string) => void | Promise<void>; renderReviewActions?: (review: AnswerReview) => ReactNode }) {
+export function ReviewHistory({ node, reviews, onRetry, renderReviewActions, renderReviewDetails, teacherView = false }: { node: WorksheetQuestionNode; reviews: AnswerReview[]; onRetry?: (id: string) => void | Promise<void>; renderReviewActions?: (review: AnswerReview) => ReactNode; renderReviewDetails?: (review: AnswerReview) => ReactNode; teacherView?: boolean }) {
   const accordionName = useId();
   const [retrying, setRetrying] = useState<string | null>(null);
   const retry = async (id: string) => {
@@ -44,11 +44,12 @@ export function ReviewHistory({ node, reviews, onRetry, renderReviewActions }: {
       <div className={styles.reviewRevisionBody}>
       {r.evaluatedAt && <ReviewTiming review={r} />}
 
-      {(() => { const view = answerView(node, r.value); return view.kind === 'audio' ? <VoiceAnswerPlayer src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="这次提交的语音" /> : null; })()}
+      {(() => { const view = answerView(node, r.value); return view.kind === 'audio' ? <VoiceAnswerPlayer review={teacherView} src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="这次提交的语音" /> : null; })()}
       {r.status === 'superseded' && <p role="status">{r.error || '历史结果，不计入当前成绩和评价次数'}</p>}
       <div className={styles.reviewEvaluation}><div className={styles.reviewEvaluationText}>
       <AiReviewFeedback reason={r.reason} advice={r.advice}/>
       </div>{renderReviewActions?.(r)}</div>
+      {renderReviewDetails?.(r)}
       {r.status === 'failed' && <ReviewFailure review={r} onRetry={onRetry && r.canRetry !== false && r.id === reviews.find(item => item.source === 'student')?.id ? () => retry(r.id) : undefined} retrying={retrying !== null} />}
       </div>
     </details>)}

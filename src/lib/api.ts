@@ -602,7 +602,7 @@ export const api = {
       model: string;
     }>(
       `/api/worksheets/${worksheetId}/analysis/${questionId}/run?classroomId=${encodeURIComponent(classroomId)}`
-      + (only && only.length > 0 ? `&only=${encodeURIComponent(only.join(','))}` : '') + (regrade ? '&regrade=true' : '') + (analysisOnly ? '&analysisOnly=true' : ''),
+      + (only && only.length > 0 ? `&only=${encodeURIComponent(only.join(','))}&supplement=true` : '') + (regrade ? '&regrade=true' : '') + (analysisOnly ? '&analysisOnly=true' : ''),
       { method: 'POST', body: JSON.stringify({ operationId }), signal },
       ANALYSIS_REQUEST_TIMEOUT_MS),
   stopWorksheetAnalysis: (classroomId: string, worksheetId: string, questionId: string) =>

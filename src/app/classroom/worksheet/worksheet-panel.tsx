@@ -460,7 +460,7 @@ export function WorksheetQuestionList({
         const state = questionDisplayState(statuses[node.id], raw);
         const submitted = statuses[node.id] === 'submitted';
         // 已提交 + 不许重交 ⇒ 这一题对学生是「定稿」。控件收起，按钮不出现。
-        const personalReview = aiEvaluationEnabled(node) && node.data.studentAiReviewEnabled === true;
+        const personalReview = aiEvaluationEnabled(node);
         const questionReviews = reviews.filter(r => r.questionId === node.id);
         const latestReview = questionReviews.filter(r => r.status === 'succeeded' && r.evaluatedAt).sort((a, b) => Date.parse(b.evaluatedAt!) - Date.parse(a.evaluatedAt!))[0];
         const pendingReview = questionReviews.find(r => r.status === 'pending');

@@ -731,7 +731,7 @@ test('★ 写回只动**这个课堂**的行（同一份学习单被两个班同
   );
 });
 
-test('★ 补跑（?only=）不许把没参与这一轮的学生改掉', async (t) => {
+test('已取消重评：即使指定 only 也不覆盖已有学生评分', async (t) => {
   const db = await openTempDb();
   const fake = await startFakeCoze('');
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
@@ -759,9 +759,9 @@ test('★ 补跑（?only=）不许把没参与这一轮的学生改掉', async (
   // 补跑：只发张伟一个人，给他一个新分
   fake.setAnswer(`只看了这一个。<classnode-scores>{"scores":[{"student":"${ZHANG}","score":10,"reason":"补上了","advice":"很好。"}]}</classnode-scores>`);
   const scoped = await fetch(`${runUrl(srv.base, worksheet.id, 'q3', classroom.id)}&only=${zhang}&regrade=true`, { method: 'POST' });
-  assert.equal(scoped.status, 200, await scoped.text());
+  assert.equal(scoped.status, 409, await scoped.text());
 
-  assert.equal((await gradeOf(p, await responseOf(zhang))).score, 10, '补跑的那一个人以**新分**为准（教师决定 3）');
+  assert.equal((await gradeOf(p, await responseOf(zhang))).score, 2, '已取消重评，不覆盖已有有效评分');
   assert.equal((await gradeOf(p, await responseOf(li))).score, 10, '没参与这一轮的人**保留原值**，不许被清掉');
 });
 
@@ -1039,7 +1039,8 @@ test('只更新全班分析：自动评价开关回传，模型返回的评分�
   const response = await p.worksheetResponse.findFirstOrThrow({ where: { classroomId: classroom.id } });
   const before = await gradeOf(p, response.id);
   const run = await fetch(`${runUrl(srv.base, worksheet.id, 'q3', classroom.id)}&analysisOnly=true`, { method: 'POST' });
-  assert.equal(run.status, 200, await run.clone().text());
-  assert.equal((await run.json()).narrative, '整体分析已更新。');
+  assert.equal(run.status, 409, await run.clone().text());
+  assert.match((await run.json()).error, /没有.*有效个人评价/);
+  assert.equal(fake.hits.length,0,'没有有效评价时不外发原始作品或编造报告');
   assert.deepEqual(await gradeOf(p, response.id), before);
 });

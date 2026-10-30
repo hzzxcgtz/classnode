@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { useRotatedImageSource } from '@/components/use-image-rotation';
+import { isAudioNode } from '@/lib/worksheet-answer-value';
 import { answerView, type AnswerView } from '@/lib/worksheet-answer-view';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 // ★ 2026-09-30：题面文本里的数学公式（选项 / 左右项 / 框名 / 条目）。
@@ -105,7 +106,7 @@ function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.Rea
   switch (view.kind) {
     // 未作答：一句短的。**不画空框** —— 空框与「他写了但读不出来」长得一样。
     case 'none':
-      return <Line color={FAINT}>还没开始写</Line>;
+      return <Line color={FAINT}>{isAudioNode(node) ? '尚未收到录音' : '还没开始写'}</Line>;
 
     case 'text':
       return (
@@ -125,6 +126,12 @@ function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.Rea
           // ⇒ 长就让它长，滚由外面那一层负责（`worksheet-tiles.tsx` 的 `preview-scroll`）。
         }}>{view.text}</div>
       );
+
+    case 'audio':
+      return <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: '#edf6f2', border: '1px solid #cee3d9', borderRadius: 8, color: '#36725b' }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8" /></svg>
+        <span style={{ fontSize: '.813rem', fontWeight: 600 }}>已录音 · {Math.ceil(view.durationMs / 1000)} 秒</span>
+      </div>;
 
     case 'ink':
       /*

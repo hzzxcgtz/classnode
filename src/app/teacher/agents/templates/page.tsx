@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ANALYSIS_PROMPT_TEMPLATES, ANALYSIS_TEMPLATE_STAGES, ANALYSIS_TEMPLATE_SUBJECTS } from '@/lib/analysis-prompt-templates';
+import { ANALYSIS_PROMPT_TEMPLATES } from '@/lib/analysis-prompt-templates';
 import { TeacherPageHeader, Toast } from '@/lib/components';
 import { Markdown } from '@/lib/markdown';
 import { copyTemplate } from './copy-template';
@@ -11,8 +11,6 @@ import { analysisTemplateParts } from '@/lib/analysis-template-content';
 import styles from './templates.module.css';
 
 export default function AnalysisTemplatesPage() {
-  const [stage, setStage] = useState<string>('primary');
-  const [subject, setSubject] = useState<string>('math');
   const [raw, setRaw] = useState(false);
   const [retry, setRetry] = useState(0);
   const [loaded, setLoaded] = useState<{ id: string; text: string; version: string } | null>(null);
@@ -20,7 +18,7 @@ export default function AnalysisTemplatesPage() {
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const closeToast = useCallback(() => setToast(null), []);
   const [copying, setCopying] = useState(false);
-  const selected = ANALYSIS_PROMPT_TEMPLATES.find(row => row.stage === stage && row.subject === subject)!;
+  const selected = ANALYSIS_PROMPT_TEMPLATES[0];
   const text = loaded?.id === selected.id ? loaded.text : '';
   const parts = analysisTemplateParts(text);
 
@@ -42,25 +40,25 @@ export default function AnalysisTemplatesPage() {
 
   return <div>
     {toast && <Toast msg={toast.msg} type={toast.type} onClose={closeToast} />}
-    <TeacherPageHeader title="作答分析提示词模板库" description="从官网读取最新模板，在这里选择、查看并复制到外部分析智能体。" actions={
+    <TeacherPageHeader title="作答分析通用提示词" description="一份适用于不同学段与学科的参考模板，也可以使用你自己的专业教学智能体。" actions={
       <Link className="btn btn-secondary" href="/teacher/agents/">返回 AI 智能体</Link>
     } />
     <section className={styles.panel}>
       <div className={styles.filters}>
-        <label>学段<select value={stage} onChange={event => { setStage(event.target.value); setToast(null); }} disabled={copying}>
-          {ANALYSIS_TEMPLATE_STAGES.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
-        </select></label>
-        <label>学科<select value={subject} onChange={event => { setSubject(event.target.value); setToast(null); }} disabled={copying}>
-          {ANALYSIS_TEMPLATE_SUBJECTS.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
-        </select></label>
-        <button type="button" className="btn btn-primary" disabled={!text || copying} onClick={() => { void copy(); }}>{copying ? '复制中…' : '一键复制完整提示词'}</button>
+        <button type="button" className="btn btn-primary" disabled={!text || copying} onClick={() => { void copy(); }}>{copying ? '复制中…' : '复制通用提示词'}</button>
         <button type="button" className="btn btn-secondary" disabled={!text || copying} onClick={() => {
           const url = URL.createObjectURL(new Blob([parts.prompt], { type: 'text/markdown;charset=utf-8' }));
           const link = document.createElement('a'); link.href = url; link.download = `${selected.id}.md`;
           document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
         }}>下载 MD</button>
       </div>
-      <p className={styles.hint}>{text ? `远程模板 v${loaded?.version}` : '官网模板'} 按学科和学段分别提供具体评价方法，选择一份配置即可。日常在学习单填写 AI 评价要求（文字与图片），无需逐项修改模板。新版需复制到外部分析智能体后生效；不会自动更新平台已有配置。复制时不会带入分区说明。</p>
+      <p className={styles.hint}>{text ? `内置通用模板 v${loaded?.version}` : '通用模板随应用提供'}，无需按学段、学科选择。ClassNode 会在每次调用时提供本题要求、教师评价标准、学生材料和返回格式；具体的评价要求仍在学习单中填写。</p>
+      <div className={styles.guidance}>
+        <h2>也可以使用你自己的专业教学智能体</h2>
+        <p>这份模板是可选参考。你完全可以接入自己设计的智能体，或已试用过的学科辅助教学智能体。它们积累的学科知识、教学方法和知识库，可能更贴合你的课堂，取得更好的效果。</p>
+        <p>建议先用少量真实作答测试，确认能正确对应学生、理解文字或附件，并按本题要求返回评价、分数与班级分析，再用于全班。实际效果以试用为准。</p>
+        <p>替换旧提示词前请先备份。可以保留有效的学科特色，但应调整与本题要求冲突的固定评分条件或返回格式；系统不会自动修改外部智能体配置。</p>
+      </div>
     </section>
     <section className={styles.panel} aria-busy={!text && !error}>
       <div className={styles.heading}><h2>{selected.title}</h2><div className={styles.tabs} aria-label="模板显示方式">
@@ -70,10 +68,7 @@ export default function AnalysisTemplatesPage() {
       {error ? <div role="alert"><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => setRetry(value => value + 1)}>重试加载</button></div>
         : !text ? <p>正在加载模板…</p>
           : raw ? <textarea className={styles.raw} aria-label={`${selected.title}提示词原文`} value={parts.prompt} readOnly />
-            : <div className={styles.content}>{parts.editable ? <>
-              <section className={styles.editableRegion}><div className={styles.regionHeading}><strong>可优化区</strong><span>包含本学科、学段的具体评价方法，可直接使用或按长期教学需要调整</span></div><Markdown allowImages={false}>{parts.editable}</Markdown></section>
-              <section className={styles.fixedRegion}><div className={styles.regionHeading}><strong>固定区 · 请保留</strong><span>保证学生对应、评分与系统返回格式准确</span></div><Markdown allowImages={false}>{parts.fixed}</Markdown></section>
-            </> : <Markdown allowImages={false}>{text}</Markdown>}</div>}
+            : <div className={styles.content}><Markdown allowImages={false}>{parts.prompt.replace(/^\s*<!--[\s\S]*?-->\s*/, '')}</Markdown></div>}
     </section>
   </div>;
 }

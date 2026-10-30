@@ -4,8 +4,8 @@ import { ANALYSIS_TEMPLATE_IDS, readAnalysisTemplate } from '../services/analysi
 const template = '<!-- ClassNode Worksheet Analysis Prompts v4.3.0 -->\n# 角色：测试\n## 工作流：\n实际规则\n## 限制：\n安全限制';
 
 test('remote templates use exactly twelve fixed HTTPS paths without user credentials and pick version from remote text', async () => {
-  assert.equal(ANALYSIS_TEMPLATE_IDS.size, 12);
-  for (const id of ANALYSIS_TEMPLATE_IDS) {
+  assert.equal(ANALYSIS_TEMPLATE_IDS.size, 13);
+  for (const id of [...ANALYSIS_TEMPLATE_IDS].filter(id => id !== 'universal')) {
     const fetcher: typeof fetch = async (url, options) => {
       assert.equal(url, `https://www.aicls.xyz/prompt-templates/analysis/${id}.md`);
       assert.equal(options?.redirect, 'error'); assert.equal(options?.credentials, 'omit');
@@ -27,4 +27,19 @@ test('reject error pages, HTML and incomplete or oversized files with understand
   }
   await assert.rejects(readAnalysisTemplate('primary-math', async () => new Response('x'.repeat(256*1024+1))), /文件过大/);
   await assert.rejects(readAnalysisTemplate('primary-math', async () => {throw new Error('private transport details');}), /暂时无法连接官网/);
+});
+
+test('read compact v5 templates as well as old complete templates',async()=>{
+ const fs=await import('node:fs');
+ const text=fs.readFileSync(new URL('../../../myportal/prompt-templates/analysis/primary-chinese.md',import.meta.url),'utf8');
+ const result=await readAnalysisTemplate('primary-chinese',async()=>new Response(text));assert.equal(result.version,'5.1.0');assert.equal(result.text,text);
+});
+
+test('universal template is bundled and available without external network', async () => {
+ const result = await readAnalysisTemplate('universal', async () => { throw new Error('must not fetch'); });
+ const fs = await import('node:fs');
+ const file = fs.readFileSync(new URL('../../../myportal/prompt-templates/analysis/universal.md', import.meta.url), 'utf8');
+ assert.equal(result.text, file);
+ assert.equal(result.version, '5.1.0');
+ assert.match(result.text, /不增加教师未要求的评分项/);
 });

@@ -107,7 +107,7 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
   await db.worksheet.update({ where: { id: sheet.id }, data: { content: { schemaVersion: 1, nodes: [{ id: 'q', type: 'short-answer', inputMode: 'audio', prompt: '说说发现', data: { aiScoringEnabled: true, studentAiReviewEnabled: true, aiScoringMaxScore: 10, rubricText: '说清楚观察到的变化' }, children: [] }] } } });
   app.set('analysisProxy', async (_agent: unknown, _message: string, _images: unknown, _signal: unknown, audio: Array<{url:string;label:string}>) => {
     assert.equal(audio[0].url, upload.url);
-    return { success: true, content: `<classnode-scores>${JSON.stringify({scores:[{student:audio[0].label,score:2,reason:'你说出了观察到的变化。',advice:'你可以补充发生变化的过程。'}]})}</classnode-scores>` };
+    return { success: true, content: `<classnode-scores>${JSON.stringify({scores:[{student:audio[0].label,score:2,reason:'你说出了观察到的变化。',advice:'你可以补充发生变化的过程。'}]})}</classnode-scores><classnode-evidence>${JSON.stringify({students:[{student:audio[0].label,summary:"教师专用观察依据",criteria:[{requirement:"说清变化",status:"partial",evidence:"说明了变化，未说明过程"}],limitations:[]}]})}</classnode-evidence>` };
   });
   const personal = await (await call('POST', `/${sheet.id}/answers/submit`, {questionId:'q',evaluate:true,requestId:'audio_personal_review'}, token)).json();
   assert.ok(personal.reviewId);
@@ -117,6 +117,27 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
     if(i===99) assert.fail('个人语音评价没有完成');
     await new Promise(resolve=>setTimeout(resolve,20));
   }
+
+  const storedEvidence = await db.worksheetAnswerReview.findUnique({where:{id:personal.reviewId}});
+  assert.equal((storedEvidence!.question as Record<string, any>).evaluationEvidence.summary, '教师专用观察依据');
+  const publicReviews = await (await call('GET', `/${sheet.id}/answers/reviews`, undefined, token)).json();
+  assert.ok(!JSON.stringify(publicReviews).includes('教师专用观察依据'));
+  assert.ok(!JSON.stringify(publicReviews).includes('evaluationEvidence'));
+  const teacherReviews=await (await call('GET',`/${sheet.id}/reviews?classroomId=${room.id}&participantId=${student.id}`)).json();
+  assert.equal(teacherReviews.reviews.find((r:{id:string})=>r.id===personal.reviewId).evidence.summary,'教师专用观察依据');
+
+  const personalAudioProxy = app.get('analysisProxy');
+  let summaryAudioCalls = 0;
+  app.set('analysisProxy', async (_agent: unknown, message: string, images: Buffer[], _signal: unknown, clips: unknown[]) => {
+    summaryAudioCalls++;
+    assert.match(message, /个人评价结果汇总/); assert.match(message, /教师专用观察依据/);
+    assert.equal(images.length, 0); assert.deepEqual(clips, []); assert.ok(!message.includes(upload.url));
+    return { success: true, content: '### 主要表现\n依据个人评价，学生说明了变化，建议补充过程。' };
+  });
+  const summary = await call('POST', `/${sheet.id}/analysis/q/run?classroomId=${room.id}&analysisOnly=true`);
+  assert.equal(summary.status, 200, await summary.clone().text()); assert.equal(summaryAudioCalls, 1);
+  assert.match((await summary.json()).narrative, /纳入有效评价 1 人/);
+  app.set('analysisProxy', personalAudioProxy);
 
   // Ordinary fills and tables share this same per-slot submission contract.
   const fillNode = { id: 'qfill', type: 'fill-blank', inputMode: 'keyboard', prompt: '{填空域}{填空域}', data: {

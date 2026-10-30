@@ -1,3 +1,4 @@
+import { completedReviewIds, missingReviewIds } from './worksheet-review-completion.ts';
 import type { WorksheetAnalysisPayload } from './types';
 
 type RunOptions = { only?: string[]; regrade?: boolean; analysisOnly?: boolean };
@@ -10,16 +11,15 @@ export async function runWorksheetAnalysisSteps<T>(
   refresh: () => Promise<WorksheetAnalysisPayload>,
   onProgress: (message: string) => void = () => {},
 ): Promise<T> {
-  if (input.regrade || input.only?.length) return run(input);
-  const scored = new Set((payload.perStudent?.scores ?? []).filter(row => row.score !== null).map(row => row.studentId));
-  const unscorable = new Set(payload.unscorableIds ?? []);
-  const missing = payload.entries.filter(row => !scored.has(row.studentId) && !unscorable.has(row.studentId)).map(row => row.studentId);
+  if (input.regrade) throw new Error('已取消全班重评，请补评未成功的学生。');
+  if (input.only?.length) return run(input);
+  const missing = missingReviewIds(payload);
   const verifySupplement = async () => {
     onProgress('正在核对补评结果，请稍等…');
     const updated = await refresh();
-    const completed = new Set((updated.perStudent?.scores ?? []).filter(row => row.score !== null).map(row => row.studentId));
+    const completed = completedReviewIds(updated);
     const remaining = missing.filter(id => updated.entries.some(row => row.studentId === id) && !completed.has(id));
-    if (remaining.length) throw new Error(`补评尚未完成：仍有 ${remaining.length} 位学生未取得有效评分，已取得的评分已保留。`);
+    if (remaining.length) throw new Error(`补评尚未完成：仍有 ${remaining.length} 位学生未取得有效评价，已取得的评价已保留。`);
     return updated;
   };
   // 每人都要返回评价和建议，整班一次输出容易超出模型回复长度。
@@ -37,17 +37,7 @@ export async function runWorksheetAnalysisSteps<T>(
     await verifySupplement();
     return result;
   }
-  let supplementationCompleted = false;
-  if (payload.aiScoring.enabled && !payload.studentAiReviewEnabled && !input.analysisOnly && missing.length) {
-    await supplement();
-    // Include submissions arriving during supplementation in the subsequent summary.
-    const updated = await verifySupplement();
-    if (!updated.canSend.ok) throw new Error(updated.canSend.reason);
-    supplementationCompleted = true;
-  }
   const reportVerb = payload.narrative?.trim() ? '更新' : '生成';
-  onProgress(supplementationCompleted
-    ? `补评已完成，正在${reportVerb}班级分析，请稍等…`
-    : `正在${reportVerb}班级分析，请稍等…`);
+  onProgress(`正在${reportVerb}班级分析，请稍等…`);
   return run({ analysisOnly: true });
 }

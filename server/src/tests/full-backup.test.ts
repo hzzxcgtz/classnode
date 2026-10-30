@@ -54,7 +54,8 @@ async function seed(prisma: PrismaClient) {
   const worksheet = await prisma.worksheet.create({ data: { title: '练习', content: [], settings: {} } });
   await prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
   const response = await prisma.worksheetResponse.create({ data: { classroomId: classroom.id, participantId: participant.id, worksheetId: worksheet.id } });
-  await prisma.worksheetAnswer.create({ data: { responseId: response.id, questionId: 'q1', value: { text: '历史答案' } } });
+  const answer = await prisma.worksheetAnswer.create({ data: { responseId: response.id, questionId: 'q1', value: { text: '历史答案' } } });
+  await prisma.worksheetAnswerReview.create({data:{answerId:answer.id,requestId:'backup-evidence-review',generation:'0',question:{node:{id:'q1'},evaluationEvidence:{version:1,summary:'备份中的详细作答依据',criteria:[{requirement:'说明变化',status:'met',evidence:'观察到由绿变黄'}],limitations:['局部图片模糊']}},status:'succeeded',score:null,maxScore:0,unit:'分',reason:'简明反馈',advice:'继续观察'}});
   await prisma.worksheetQuestionAnalysis.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id, questionId: 'q1', aggregate: {}, totalCount: 1 } });
   const webapp = await prisma.webapp.create({ data: { name: '教学网页', entryPath: 'index.html' } });
   await prisma.classroomWebapp.create({ data: { classroomId: classroom.id, webappId: webapp.id } });
@@ -117,6 +118,7 @@ test('restore to fresh environment restores messages, answers, credentials and r
     assert.equal((await f.prisma.classroomAnnotation.findFirst())?.revision,4);
     assert.deepEqual((await f.prisma.classroomAnnotation.findFirst())?.document,{version:1,kind:'image',strokes:[]});
     assert.deepEqual((await f.prisma.worksheetAnswer.findFirst())?.value, { text: '历史答案' });
+    assert.deepEqual(((await f.prisma.worksheetAnswerReview.findFirst())?.question as Record<string,unknown>).evaluationEvidence,{version:1,summary:'备份中的详细作答依据',criteria:[{requirement:'说明变化',status:'met',evidence:'观察到由绿变黄'}],limitations:['局部图片模糊']});
     assert.equal(decrypt((await f.prisma.platformToken.findFirst())!.token), 'shared-token');
     assert.equal(decrypt((await f.prisma.agent.findFirst())!.apiKey), 'private-token');
     assert.equal(fs.readFileSync(path.join(f.dir, `webapps/${webapp.id}/index.html`), 'utf8'), '<h1>teaching</h1>');

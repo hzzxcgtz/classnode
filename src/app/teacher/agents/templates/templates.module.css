@@ -1,7 +1,5 @@
 .panel { background: #fff; border: 1px solid var(--card-border, #CDD5E0); border-radius: 14px; padding: 20px; margin-bottom: 16px; box-shadow: var(--card-shadow); }
 .filters { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
-.filters label { display: flex; flex-direction: column; gap: 8px; color: #475569; font-size: .875rem; font-weight: 600; }
-.filters select { min-width: 160px; height: 42px; min-height: 42px; padding: 0 12px; background: #fff; border: 1px solid #AEBCCD; border-radius: 8px; color: #1E293B; font: inherit; font-weight: 400; }
 .filters :global(.btn) { height: 42px; min-height: 42px; }
 .hint { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid #CDD5E0; color: #475569; font-size: .875rem; line-height: 1.7; }
 .heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
@@ -15,11 +13,9 @@
 .content h2 { font-size: 1rem !important; border-bottom-color: #CDD5E0 !important; }
 .content h3 { font-size: .9375rem !important; }
 .raw { display: block; width: 100%; min-height: 65vh; padding: 18px; box-sizing: border-box; border: 1px solid #AEBCCD; border-radius: 9px; background: #F3F6FA; color: #334155; font: .875rem/1.8 ui-monospace, monospace; resize: vertical; }
-.editableRegion, .fixedRegion { border: 1px solid #CDD5E0; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; }
-.editableRegion { background: #EDF2F8; border-color: #C0CDDD; }
-.fixedRegion { background: #F3F4F6; }
-.regionHeading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; padding-bottom: 12px; border-bottom: 1px solid #C5CFDC; margin-bottom: 14px; }
-.regionHeading strong { color: #1E293B; font-size: .9375rem; }
-.regionHeading span { color: #475569; font-size: .875rem; }
-@media (max-width: 1023px) { .filters select, .filters :global(.btn) { height: 46px; min-height: 46px; } }
-@media (max-width: 600px) { .panel { padding: 14px; } .filters label { flex: 1; } .filters select { min-width: 0; width: 100%; } .editableRegion, .fixedRegion { padding: 14px; } }
+@media (max-width: 1023px) { .filters :global(.btn) { height: 46px; min-height: 46px; } }
+@media (max-width: 600px) { .panel { padding: 14px; }  }
+
+.guidance { margin-top: 18px; padding: 16px 18px; border: 1px solid #d5e2ef; border-radius: 10px; background: #f5f8fc; color: #475569; line-height: 1.75; font-size: .875rem; }
+.guidance h2 { margin: 0 0 8px; color: #294b70; font-size: .9375rem; }
+.guidance p { margin: 8px 0 0; }

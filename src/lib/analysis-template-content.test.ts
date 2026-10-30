@@ -2,16 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { analysisTemplateParts } from './analysis-template-content.ts';
-const text = fs.readFileSync(new URL('../../myportal/prompt-templates/analysis/primary-math.md', import.meta.url), 'utf8');
-test('页面能区分可优化与固定内容，复制正文不包含教师编辑说明且不丢规则', () => {
-  const parts = analysisTemplateParts(text);
-  assert.match(parts.editable, /# 角色：小学数学/);
-  assert.match(parts.fixed, /## 工作流：/);
-  assert.match(parts.fixed, /## 限制：/);
-  assert.match(parts.fixed, /显示真实名单人数与姓氏称呼，点击标签浮窗查看完整名单/);
-  assert.doesNotMatch(parts.prompt, /可优化区|固定区|以下规则用于/);
-  assert.match(parts.prompt, /学生标签采用“姓名#学号”/);
+const text = fs.readFileSync(new URL('../../myportal/prompt-templates/analysis/universal.md', import.meta.url), 'utf8');
+test('精简模板完整复制，不依赖旧的固定区和工作流栏目', () => {
+ const parts=analysisTemplateParts(text);assert.equal(parts.prompt,text);assert.match(parts.prompt,/# 角色：通用教育评价/);assert.match(parts.prompt,/具体任务由 ClassNode/);assert.doesNotMatch(parts.prompt,/## 工作流|固定区/);
 });
 test('无分区的旧模板保持原文，不会错误截断', () => {
   assert.equal(analysisTemplateParts('# 角色：旧模板\n## 限制：原有规则').prompt, '# 角色：旧模板\n## 限制：原有规则');
+});
+
+test('旧分区模板仍可提取角色和固定规则，不丢兼容内容',()=>{
+ const old='# 角色：旧模板\n说明\n---\n# 固定区：教师不应修改\n说明\n## 工作流：\n旧规则\n## 限制：\n不猜测';
+ const parts=analysisTemplateParts(old);assert.match(parts.editable,/# 角色：旧模板/);assert.match(parts.fixed,/旧规则/);assert.doesNotMatch(parts.prompt,/固定区：/);
 });

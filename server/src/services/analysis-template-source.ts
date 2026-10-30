@@ -1,11 +1,14 @@
-/** Remote template reads never include classroom data, cookies or API credentials. */
+import { EXTERNAL_ANALYSIS_TEMPLATE, ANALYSIS_PROMPT_VERSION } from './analysis-teaching-policy.js';
+
+/** Universal template is bundled. Legacy remote reads contain no classroom data or credentials. */
 const TEMPLATE_ROOT = 'https://www.aicls.xyz/prompt-templates/analysis/';
 const STAGES = ['primary', 'middle'];
 const SUBJECTS = ['chinese', 'math', 'english', 'science', 'information-technology', 'general'];
-export const ANALYSIS_TEMPLATE_IDS = new Set(STAGES.flatMap(stage => SUBJECTS.map(subject => `${stage}-${subject}`)));
+export const ANALYSIS_TEMPLATE_IDS = new Set(['universal', ...STAGES.flatMap(stage => SUBJECTS.map(subject => `${stage}-${subject}`))]);
 const MAX_BYTES = 256 * 1024;
 
 export async function readAnalysisTemplate(id: string, fetcher: typeof fetch = fetch): Promise<{text: string; version: string}> {
+  if (id === 'universal') return { text: EXTERNAL_ANALYSIS_TEMPLATE, version: ANALYSIS_PROMPT_VERSION };
   if (!ANALYSIS_TEMPLATE_IDS.has(id)) throw new Error('未知的分析提示词模板');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
@@ -35,7 +38,8 @@ export async function readAnalysisTemplate(id: string, fetcher: typeof fetch = f
       }
     } finally { await reader.cancel().catch(() => {}); }
     const text = Buffer.concat(chunks).toString('utf8');
-    if (/^\s*</.test(text.replace(/^\s*<!--[\s\S]*?-->\s*/, '')) || !text.includes('# 角色：') || !text.includes('## 工作流：') || !text.includes('## 限制：')) {
+    const modern = /Worksheet Analysis Prompts v[5-9]\./.test(text) && text.includes('具体任务由 ClassNode 在每次请求中提供') && text.includes('未收到明确任务协议时');
+    if (/^\s*</.test(text.replace(/^\s*<!--[\s\S]*?-->\s*/, '')) || !text.includes('# 角色：') || (!modern && (!text.includes('## 工作流：') || !text.includes('## 限制：')))) {
       throw new Error('官网返回的模板内容不完整，请联系维护者');
     }
     const version = /Worksheet Analysis Prompts v(\d+\.\d+\.\d+)/.exec(text)?.[1] || '未标注';

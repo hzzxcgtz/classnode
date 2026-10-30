@@ -110,7 +110,9 @@
 .body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
   padding: 16px;
   /* 浮窗里滚到底，不要把外面的页面一起滚（说明见 globals.css 的 `.modal-overlay`）。 */
   overscroll-behavior: contain;
@@ -232,8 +234,10 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  min-height: 58px;
-  overflow-x: auto;
+  min-height: 48px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  min-width: 0;
 }
 
 .filterButton {
@@ -243,8 +247,8 @@
   background: #fff;
   color: #60738a;
   cursor: pointer;
-  font-size: 0.875rem;
-  padding: 7px 10px;
+  font-size: 0.75rem;
+  padding: 6px 8px;
 }
 
 .filterButton[data-active='true'] {
@@ -257,7 +261,10 @@
   margin-left: auto;
   color: #8291a3;
   font-size: 0.75rem;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  flex: 1 1 160px;
+  text-align: right;
 }
 
 .taskSection + .taskSection {
@@ -639,3 +646,7 @@
     padding-left: 14px;
   }
 }
+
+/* Keep long answer content within the drawer rather than creating an outer scrollbar. */
+.participantRoot, .analysisRoot, .taskSection, .questionDetail, .answerPanel { min-width: 0; max-width: 100%; }
+.answerPanel { overflow-wrap: anywhere; }

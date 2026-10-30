@@ -81,7 +81,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
         : <span style={{ fontSize: '0.813rem', color: FAINT }}>读不出这幅画</span>;
 
     case 'audio':
-      return <VoiceAnswerPlayer src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="语音作答" />;
+      return <VoiceAnswerPlayer review src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="语音作答" />;
 
     case 'photo':
       return <AnswerPhoto url={view.url} />;
@@ -122,7 +122,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
     case 'fill':
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {view.blanks.map((blank, index) => (
+          {view.blanks.slice(0, view.hasTable ? view.tableBase : undefined).map((blank, index) => (
             <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: "0.75rem", color: MUTED }}>
                 <span>{blank.label}</span>
@@ -136,7 +136,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
                   </span>
                 )}
               </div>
-              {blank.audio ? <VoiceAnswerPlayer src={worksheetAssetUrl(blank.audio.url)} durationMs={blank.audio.durationMs} title={blank.label}/> : blank.text.trim()
+              {blank.audio ? <VoiceAnswerPlayer review src={worksheetAssetUrl(blank.audio.url)} durationMs={blank.audio.durationMs} title={blank.label}/> : blank.text.trim()
                 ? <div style={answerBox}>{blank.text}</div>
                 : <span style={{ fontSize: '0.813rem', color: FAINT }}>（这一空留空了）</span>}
             </div>
@@ -147,11 +147,11 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
               拿它当判据会画出一张**一个都没错**的表（比不画更坏）。 */}
           {view.hasTable && (
             <div style={{ fontSize: '0.813rem' }}>
-              <WorksheetTableView
+              <WorksheetTableView fitContainer
                 table={(node.data as Record<string, unknown> | undefined)?.table}
                 blanks={{
                   values: view.texts,
-                  renderOf: index => view.blanks[index]?.audio ? <VoiceAnswerPlayer src={worksheetAssetUrl(view.blanks[index].audio!.url)} durationMs={view.blanks[index].audio!.durationMs} title={view.blanks[index].label}/> : undefined,
+                  renderOf: index => view.blanks[index]?.audio ? <VoiceAnswerPlayer review src={worksheetAssetUrl(view.blanks[index].audio!.url)} durationMs={view.blanks[index].audio!.durationMs} title={view.blanks[index].label}/> : undefined,
                   base: view.tableBase,
                   onChange: () => {},
                   disabled: true,

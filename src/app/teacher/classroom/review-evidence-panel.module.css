@@ -1,0 +1,13 @@
+.panel { min-width: 0; margin-top: 12px; border-top: 1px solid #e0e7ef; padding-top: 10px; color: #546b83; font-size: .75rem; line-height: 1.7; overflow-wrap: anywhere; }
+.panel summary { cursor: pointer; font-weight: 600; padding: 3px 0; }
+.panel summary span { font-weight: 400; color: #8896a6; }
+.content { margin: 8px 0 0; }
+.content p { margin: 5px 0; white-space: pre-wrap; }
+.content>p>strong { display: block; }
+.criterion { padding: 8px 0; border-bottom: 1px solid #edf1f5; }
+.criterion>div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.criterion span { color: #52765f; white-space: nowrap; }
+.criterion span[data-status='partial'], .criterion span[data-status='unmet'] { color: #967342; }
+.criterion span[data-status='uncertain'] { color: #7e8895; }
+.limitations { padding-top: 8px; color: #876b4b; }
+.content small { display: block; margin-top: 10px; color: #8593a3; }

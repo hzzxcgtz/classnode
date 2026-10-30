@@ -3,6 +3,7 @@
 import type { TileAnswer, WorksheetCellStatus, WorksheetTileState } from './worksheet-tile-state';
 import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 import { IconMicrophone } from '@tabler/icons-react';
+import { answerView } from '@/lib/worksheet-answer-view';
 import { TileAnswerBody } from './tile-answer';
 
 /**
@@ -155,7 +156,11 @@ export function WorksheetTileContent({ state, answer, compact, recording = false
           <div style={{ fontSize: compact ? "0.75rem" : '0.813rem', fontWeight: 600, color: tone.color, lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: 5 }}>
             {state.kind === 'all-submitted' && <WorksheetStatusIcon name="completed" size={compact ? 14 : 16} />}
             {state.kind === 'working' && <WorksheetStatusIcon name="drafting" size={compact ? 14 : 16} />}
-            {stateLine(state)}
+            {answer && answerView(answer.node, answer.value).kind === 'audio'
+              && state.kind !== 'all-submitted'
+              && state.cells[state.headings.indexOf(answer.heading)] !== 'submitted'
+              ? `第 ${state.number ?? ''} 项任务 · 已录音，待提交`
+              : stateLine(state)}
           </div>
           {/* 逐题状态方格阵。窄格子会自己换行 —— 题多的学习单只是方块多几行，不会溢出。
               ★ 2026-10-07（教师）：「这一排小色块太大了，再设得小一点……想尽可能地给下面的

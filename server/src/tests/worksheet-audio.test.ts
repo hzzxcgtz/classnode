@@ -119,7 +119,11 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
   }
 
   const storedEvidence = await db.worksheetAnswerReview.findUnique({where:{id:personal.reviewId}});
-  assert.equal((storedEvidence!.question as Record<string, any>).evaluationEvidence.summary, '教师专用观察依据');
+  const storedQuestion = storedEvidence?.question;
+  assert.ok(storedQuestion && typeof storedQuestion === 'object' && !Array.isArray(storedQuestion));
+  const evidence = storedQuestion.evaluationEvidence;
+  assert.ok(evidence && typeof evidence === 'object' && !Array.isArray(evidence));
+  assert.equal(evidence.summary, '教师专用观察依据');
   const publicReviews = await (await call('GET', `/${sheet.id}/answers/reviews`, undefined, token)).json();
   assert.ok(!JSON.stringify(publicReviews).includes('教师专用观察依据'));
   assert.ok(!JSON.stringify(publicReviews).includes('evaluationEvidence'));

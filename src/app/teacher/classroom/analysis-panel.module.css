@@ -401,3 +401,11 @@
 .answerShortcut:focus-visible { outline: 2px solid #648fba; outline-offset: 2px; }
 
 .scoreReasonHeading > span { white-space: pre-wrap; }
+
+/* 悬停定位与最近讲评学生：颜色之外保留左侧标记。 */
+@media (hover: hover) { .scoreRow:hover { background: #f5f9fd; } }
+.scoreRow:focus-within { background: #f5f9fd; }
+.scoreRow.scoreRowSelected { background: #f8eee0; box-shadow: inset 3px 0 #b99a72; }
+.scoreRow.scoreRowSelected .scoreAdvice { background: #fff8ee; }
+.scoreRow { cursor: pointer; }
+.scoreRow:focus, .scoreRow:focus-visible { outline: none; }

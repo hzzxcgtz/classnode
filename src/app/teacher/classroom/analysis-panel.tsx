@@ -1,6 +1,7 @@
 'use client';
 
 import { formatReviewText } from '@/lib/worksheet-review-display';
+import { StudentTaskPreview } from './student-task-preview';
 import { ReviewPreviewButton } from './review-preview';
 import { TeacherPendingText } from '@/components/teacher-pending-text';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
@@ -314,6 +315,9 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
     ? '正在补评未评学生，请稍等…'
     : `正在${worksheetAnalysisActions(payload).primaryLabel}，请稍等…`);
   const [showDetails, setShowDetails] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
+  const [taskStudent, setTaskStudent] = useState<string | null>(null);
+  useEffect(() => { setSelectedStudent(null); setTaskStudent(null); }, [classroomId, worksheetId, questionId]);
 
   /**
    * ★ 2026-09-29（教师）：「经过第三方 AI 分析后返回的数据，在看的时候还是要有真名」。
@@ -341,6 +345,14 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 
   return (
     <div className={`${styles.body} ${compact ? styles.compactBody : ''}`}>
+      {taskStudent && payload && <StudentTaskPreview key={`${classroomId}:${worksheetId}:${questionId}:${taskStudent}`}
+        classroomId={classroomId} worksheetId={worksheetId} questionId={questionId} participantId={taskStudent}
+        studentName={payload.participantNames?.[taskStudent] ?? nameOf?.(taskStudent) ?? '学生'}
+        reason={payload.perStudent?.scores.find(row => row.studentId === taskStudent)?.reason}
+        advice={payload.perStudent?.scores.find(row => row.studentId === taskStudent)?.advice || payload.feedback?.students.find(row => row.studentId === taskStudent)?.advice}
+        score={payload.perStudent?.scores.find(row => row.studentId === taskStudent)?.score}
+        maxScore={payload.perStudent?.maxScore} unit={payload.perStudent?.unit}
+        onClose={() => setTaskStudent(null)} />}
       {loading && <div className={styles.loading}>正在读取已保存的分析结果…</div>}
 
       {!loading && payload && payload.covered === 0 && (
@@ -386,7 +398,10 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
           )}
           <div className={styles.scoreList}>
             {sortAnalysisScores([...payload.perStudent.scores, ...(payload.pendingReviewIds ?? []).filter(id => !payload.perStudent!.scores.some(row => row.studentId === id)).map(studentId => ({ studentId, score: null, reason: '', advice: '' }))], payload.entries).map((item) => (
-              <div className={styles.scoreRow} key={item.studentId}>
+              <div className={`${styles.scoreRow} ${selectedStudent === item.studentId ? styles.scoreRowSelected : ''}`} key={item.studentId}
+                tabIndex={0} role="group" aria-label={`${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '学生'}的评分`}
+                onClick={() => setSelectedStudent(item.studentId)}
+                onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setSelectedStudent(item.studentId); } }}>
                 <span className={styles.scoreName}>
                   {payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '未命名学生'}
                   {(() => {
@@ -413,11 +428,11 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                   <div className={styles.scoreReasonHeading}>
                     <span>{formatReviewText(item.reason || '智能体未补充简短评价')}</span>
                     <div className={styles.scoreReviewActions}>
-                    {onOpenStudent && <button type="button" className={styles.answerShortcut}
-                      onClick={() => onOpenStudent(item.studentId)} title="查看这位学生的本题作答" aria-label={`查看${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位学生'}的本题作答`}>
+                    <button type="button" className={styles.answerShortcut}
+                      onClick={() => { setSelectedStudent(item.studentId); setTaskStudent(item.studentId); }} title="查看这位学生的本题作答" aria-label={`查看${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位学生'}的本题作答`}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9M15 3h6v6m0-6L10 14M7 8h3M7 17h7" /></svg>
-                    </button>}
-                    <ReviewPreviewButton annotationId={`${classroomId}:${worksheetId}:${questionId}:${item.studentId}`} title={`${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '学生'} · AI 评价与建议`}
+                    </button>
+                    <ReviewPreviewButton onOpen={() => setSelectedStudent(item.studentId)} annotationId={`${classroomId}:${worksheetId}:${questionId}:${item.studentId}`} title={`${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '学生'} · AI 评价与建议`}
                       reason={item.reason} advice={item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice}
                       score={item.score} maxScore={payload.perStudent!.maxScore} unit={payload.perStudent!.unit} />
                     </div>

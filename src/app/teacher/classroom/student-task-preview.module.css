@@ -1,0 +1,40 @@
+.viewport { width: 100%; min-width: 0; flex: 1; background: #eef2f6; height: 100%; overflow: auto; padding: 28px 32px 40px; box-sizing: border-box; }
+.card { max-width: 1440px; margin: 0 auto; color: #263c54; overflow-wrap: anywhere; }
+.card h2 { display: flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 650; margin: 0; color: #385776; }
+.card h2 svg { flex-shrink: 0; color: #6986a1; }
+.prompt { padding: 20px 24px; margin-bottom: 22px; border: 1px solid #dce4ed; border-radius: 12px; background: #f9fbfd; }
+.prompt h2 { font-size: 14px; color: #64778b; margin-bottom: 10px; }
+.promptText { font-size: 18px; line-height: 1.8; color: #344c66; }
+.layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, .85fr); align-items: start; gap: 24px; }
+.answerOnly { grid-template-columns: minmax(0, 1fr); }
+.answer, .review { min-width: 0; background: #fff; border: 1px solid #dce4ed; border-radius: 14px; overflow: hidden; box-shadow: 0 3px 14px #293f5810; }
+.sectionHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 24px; border-bottom: 1px solid #e8edf3; }
+.status { flex-shrink: 0; border: 1px solid #d5e7dd; background: #f1f8f4; color: #527361; font-size: 12px; padding: 4px 9px; border-radius: 6px; }
+.answerContent { padding: 24px; min-width: 0; }
+.answerContent > div { font-size: 20px !important; line-height: 1.85; }
+.answerContent img { max-height: min(65vh, 820px) !important; }
+.rewardSummary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 18px 24px 0; }
+.rewardSummary > span:first-child { font-size: 13px; color: #778598; }
+.rewardSummary strong { color: #8d6a39; font-size: 24px; font-weight: 600; }
+.rewardSummary small { font-size: 13px; font-weight: 400; color: #778598; }
+.rewards { display: inline-flex; flex-wrap: wrap; gap: 5px; }
+.reason { padding: 22px 24px; }
+.feedback { margin: 0; white-space: pre-wrap; line-height: 1.95; font-size: 20px; color: #344c66; }
+.advice { margin: 0 16px 16px; border: 1px solid #eee4d4; background: #fcf8f1; border-radius: 10px; padding: 20px; }
+.advice h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 15px; color: #8a6b42; }
+.advice svg { flex-shrink: 0; color: #af8b4e; }
+.advice .feedback { color: #635746; }
+@media (min-width: 1600px) { .feedback { font-size: 23px; } .promptText { font-size: 20px; } }
+@media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); gap: 18px; } }
+@media (max-width: 600px) {
+  .viewport { padding: 14px 12px 24px; }
+  .prompt { padding: 16px; margin-bottom: 14px; }
+  .promptText { font-size: 16px; }
+  .sectionHeading { padding: 16px; }
+  .card h2 { font-size: 16px; }
+  .answerContent { padding: 14px; }
+  .answerContent > div, .feedback { font-size: 17px !important; }
+  .rewardSummary { padding: 16px 18px 0; }
+  .reason { padding: 18px; }
+  .advice { margin: 0 10px 10px; padding: 16px; }
+}

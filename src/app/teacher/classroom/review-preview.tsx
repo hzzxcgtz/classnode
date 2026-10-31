@@ -8,8 +8,8 @@ import { formatReviewText, formatReviewAdvice } from '@/lib/worksheet-review-dis
 import { FullscreenPreview } from './fullscreen-preview';
 import styles from './fullscreen-preview.module.css';
 
-export function ReviewPreviewButton({ title = 'AI 评价与建议', reason, advice, score, maxScore, unit, note, annotationId }: {
-  title?: string; reason?: string | null; advice?: string | null; score?: number | null; maxScore?: number; unit?: string; note?: string; annotationId?: string;
+export function ReviewPreviewButton({ title = 'AI 评价与建议', reason, advice, score, maxScore, unit, note, annotationId, onOpen }: {
+  onOpen?: () => void; title?: string; reason?: string | null; advice?: string | null; score?: number | null; maxScore?: number; unit?: string; note?: string; annotationId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [fontSize, setFontSize] = useState(24);
@@ -17,7 +17,7 @@ export function ReviewPreviewButton({ title = 'AI 评价与建议', reason, advi
   const reward = REWARD_STYLE_OPTIONS.find(option => option.value !== 'points' && pointsUnitLabel(option.value) === unit);
   const showRewardIcons = !!reward && score !== null && score !== undefined && Number.isInteger(score) && maxScore !== undefined && Number.isInteger(maxScore) && maxScore > 0 && maxScore <= 20;
   return <>
-    <button type="button" className={styles.expand} aria-label="全屏查看评价" title="全屏查看评价" onClick={() => { setFontSize(24); setOpen(true); }}>
+    <button type="button" className={styles.expand} aria-label="全屏查看评价" title="全屏查看评价" onClick={() => { onOpen?.(); setFontSize(24); setOpen(true); }}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" /></svg>
     </button>
     {open && <FullscreenPreview allowAnnotations textSize={fontSize} annotationKey={JSON.stringify(['review', annotationId, title, reason, advice, score, maxScore, unit, note])} title={title} onClose={() => setOpen(false)} controls={<>

@@ -436,3 +436,19 @@ test('minimal external roles do not need to carry teaching policy: runtime reque
  assert.ok(!individual.includes('### 核心结论'));
  const summary=buildAnalysisMessage(payload,true,'class');assert.match(summary,/### 核心结论/);assert.match(summary,/信息收集/);
 });
+
+
+test('个人口语反馈明确字段范围、独立播放和可靠称呼，不改变学生标签或评分协议',()=>{
+  for(const mode of ['class','individual','supplement'] as const){
+    const payload={...payloadOf('text'), text:'学生作答材料。\n评分标准：只评价内容',rubricText:'只评价内容',aiScoring:{enabled:true,maxScore:5,unit:'分',criteria:'只评价内容'},feedbackNames:[{student:'张伟#7',name:'张伟'}]};
+    const message=buildAnalysisMessage(payload,true,mode);
+    assert.match(message,/像老师当面与学生交流/);
+    assert.match(message,/未提供可靠用名时直接用“你”/);
+    assert.match(message,/单独播放都应意思完整/);
+    assert.match(message,/不用于班级分析正文/);
+    assert.match(message,/不修改 student、index、score、unavailable/);
+    assert.match(message, /"student":"张伟#7","name":"张伟"/);
+    assert.match(message,/评分标准：只评价内容/);
+  }
+  assert.match(buildAnalysisMessage(payloadOf('text')),/本次未提供可靠个人称呼用名，直接用“你”/);
+});

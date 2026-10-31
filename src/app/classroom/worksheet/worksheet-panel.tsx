@@ -4,6 +4,7 @@ import { aiEvaluationEnabled } from '@/lib/worksheet-evaluation';
 import { ReviewFailure, ReviewHistory, type AnswerReview } from './review-history';
 
 import { AiReviewFeedback } from './ai-review-feedback';
+import { ReviewThinking } from './review-thinking';
 
 import { normalizeGeneration, type WorksheetGeneration } from './worksheet-generation';
 import { subscribeWorksheetAnalysisUpdated } from './worksheet-socket-bus';
@@ -733,7 +734,7 @@ export function WorksheetQuestionList({
                     <p className={styles.lockedNote}>老师已锁定作答 —— 只能提交已保存的内容</p>
                   )}
                   {personalReview && (reviewPending || reviewLimit > 1) && <div className={`${styles.reviewStatus}${reviewPending ? ` ${styles.reviewThinkingCard}` : ''}`} role="status">
-                    {reviewPending ? <><span className={styles.reviewThinkingBuddy} aria-hidden="true"><img src="/logo.png" alt="" /><i>✦</i><i>✦</i></span><span className={styles.reviewThinkingCopy}><strong>{reviewQueued ? '作答已提交，正在等待 AI 评价…' : 'AI 正在认真分析你的作答，请稍等…'}</strong><span>{reviewQueued ? '轮到你的作答后，就会开始评价啦' : '发现你作答中的亮点，准备小建议'}</span><span className={styles.thinkingDots} aria-hidden="true"><i /><i /><i /></span></span></> : <span>还可评价 <strong>{reviewRemaining}</strong> 次</span>}
+                    {reviewPending ? <ReviewThinking key={`${pendingReview!.id}-${pendingReview!.phase}`} queued={reviewQueued} /> : <span>还可评价 <strong>{reviewRemaining}</strong> 次</span>}
                   </div>}
 
                   {(!personalReview || reviewRemaining > 0 || reviewPending) && !(submitted && canRetryLatest) && <div className={styles.submitRow}>

@@ -1,3 +1,4 @@
+import speechRoutes from './routes/speech.js';
 import { recoverInterruptedReviews } from './services/individual-review.js';
 import express from 'express';
 import { createServer, type ServerResponse } from 'http';
@@ -189,6 +190,7 @@ async function main() {
   app.use('/api/agents', requireTeacher, agentRoutes);
   // ★ 2026-09-25：共享 API Token（Coze 低代码）。与智能体同一道教师门。
   app.use('/api/platform-tokens', requireTeacher, platformTokenRoutes);
+  app.use('/api/speech', requireTeacher, speechRoutes);
   app.use('/api/classes', requireTeacher, classRoutes);
   app.use('/api/classroom', classroomAccessGate, classroomRoutes);
   app.use('/api/export', requireTeacher, exportRoutes);

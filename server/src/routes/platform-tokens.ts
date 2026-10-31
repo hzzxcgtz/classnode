@@ -1,3 +1,4 @@
+import { speechConfig } from '../services/coze-speech.js';
 import { Router } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { decrypt, encrypt, isEncrypted } from '../services/crypto.js';
@@ -187,6 +188,8 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
+    const speech = await speechConfig(prisma);
+    if (speech.enabled && speech.credentialId === req.params.id) return res.status(400).json({error:'评价语音朗读正在使用这份令牌，请先在语音朗读设置中更换令牌或关闭朗读。'});
     await prisma.platformToken.delete({ where: { id: req.params.id } });
     res.json({ success: true });
   } catch (error) {

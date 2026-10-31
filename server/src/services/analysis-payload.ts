@@ -673,6 +673,8 @@ export interface AnalysisPayload {
   covered: number;
   total: number;
   entries: Array<{ studentId: string; anonLabel: string }>;
+  /** 名册明确标为个人的姓名，供口语称呼使用；身份标签仍独立保留。 */
+  feedbackNames?: Array<{student:string;name:string}>;
   /** ★ 2026-10-07：真的可以评分的那些代号（评分那一段只点这些人的名）。 */
   scorableLabels: string[];
   /** ★ 2026-10-07：这一版读不出作答、因而评不了的人（图没抓到 / 形状认不出）。 */
@@ -783,6 +785,10 @@ export function buildAnalysisPayload(input: {
     covered: entries.length,
     total,
     entries: entries.map((entry) => ({ studentId: entry.studentId, anonLabel: labels.get(entry.studentId)! })),
+    feedbackNames: entries.flatMap(entry => {
+      const person = participants.find(item => item.participantId === entry.studentId);
+      return person && person.labelNo != null && person.name.trim() ? [{student:labels.get(entry.studentId)!,name:person.name.trim()}] : [];
+    }),
     /*
      * ★ 2026-10-07（教师：40 人一起交给智能体）—— **这一版读不出来的作答**（快照没抓到、
      *   形状也认不出 ⇒ `kind: 'unknown'`）。

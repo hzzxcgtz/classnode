@@ -104,6 +104,12 @@ async function formRequest<T>(path: string, method: 'POST' | 'PUT', body: FormDa
 }
 
 export const api = {
+  readSpeech:(text:string,signal?:AbortSignal)=>request<{clips:string[]}>('/api/speech/read',{method:'POST',body:JSON.stringify({text}),signal},300000),
+  getSpeechConfig:()=>request<{enabled:boolean;credentialId:string;voiceId:string}>('/api/speech'),
+  getSpeechVoices:(credentialId:string)=>request<Array<{id:string;name:string;language:string;custom:boolean;preview:string}>>('/api/speech/voices?credentialId='+encodeURIComponent(credentialId),{},60000),
+  saveSpeechConfig:(config:{enabled:boolean;credentialId:string;voiceId:string})=>request('/api/speech',{method:'PUT',body:JSON.stringify(config)},60000),
+  previewSpeech:(credentialId:string,voiceId:string)=>request<{clips:string[]}>('/api/speech/preview',{method:'POST',body:JSON.stringify({credentialId,voiceId})},60000),
+
   getAnalysisTemplate: (id: string, signal?: AbortSignal) =>
     request<{ text: string; version: string }>(`/api/agents/analysis-templates/${encodeURIComponent(id)}`, { signal }, 15_000),
   readAnnotations: (classroomId: string, target: string) => request<{document: AnnotationDocument | null; revision: number}>(`/api/classroom/${encodeURIComponent(classroomId)}/annotations/read`, {method:'POST', body:JSON.stringify({target})}, 15000),

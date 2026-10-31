@@ -578,3 +578,11 @@ test('★ 名册装载那一侧的两种回落：没学号的学生拿 id 末四
   assert.equal(analysisLabelNo({ ...student, studentNo: '7' }), '7');
   assert.equal(analysisLabelNo({ ...student, studentNo: '  ' }), '1234', '空白学号等于没填');
 });
+
+
+test('朗读称呼只来自名册中的个人姓名，不从标签推断组名或退出者姓名',()=>{
+  const entries=[{studentId:'p',kind:'text' as const,text:'作答'},{studentId:'g',kind:'text' as const,text:'小组作答'},{studentId:'gone',kind:'text' as const,text:'旧作答'}];
+  const result=buildAnalysisPayload({question:{questionId:'q',heading:'任务',typeLabel:'表达题',prompt:'说发现'},entries,participants:[{participantId:'p',name:'张伟',labelNo:'7'},{participantId:'g',name:'第一组',labelNo:null}],total:3,knobs:DEFAULT_ANALYSIS_KNOBS});
+  assert.deepEqual(result.feedbackNames,[{student:'张伟#7',name:'张伟'}]);
+  assert.equal(result.entries.length,3);
+});

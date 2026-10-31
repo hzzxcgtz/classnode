@@ -143,6 +143,8 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
   assert.match((await summary.json()).narrative, /纳入有效评价 1 人/);
   app.set('analysisProxy', personalAudioProxy);
 
+  assert.equal((await call('POST',`/${sheet.id}/answers/speech`,{reviewId:personal.reviewId},token)).status,403,'学生不能调用朗读接口');
+
   // Ordinary fills and tables share this same per-slot submission contract.
   const fillNode = { id: 'qfill', type: 'fill-blank', inputMode: 'keyboard', prompt: '{填空域}{填空域}', data: {
     promptRuns: [{start:0,end:5,blank:'text-slot'},{start:5,end:10,blank:'voice-slot'}], answers:[['甲'],[]],

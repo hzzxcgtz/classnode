@@ -13,11 +13,12 @@ import { TaskAnnotationSurface, type TaskDrawingTools } from './task-annotation-
 import { answerView } from '@/lib/worksheet-answer-view';
 import styles from './student-task-preview.module.css';
 
-export function StudentTaskPreview({ classroomId, worksheetId, questionId, participantId, studentName, onClose, onSwitchToReview, viewTabs, visible = true }: {
+export function StudentTaskPreview({ classroomId, worksheetId, questionId, participantId, studentName, onClose, onSwitchToReview, viewTabs, visible = true, answerSnapshot }: {
   classroomId: string; worksheetId: string; questionId: string; participantId: string; studentName: string;
+  answerSnapshot?: { node: WorksheetQuestionNode; value: unknown };
   viewTabs?:ReactNode; visible?: boolean; onSwitchToReview?:()=>void; score?: number | null; maxScore?: number; unit?: string; reason?: string | null; advice?: string | null; onClose: () => void;
 }) {
-  const [data, setData] = useState<{ node: WorksheetQuestionNode; answer?: WorksheetBoardAnswerRow } | null>(null);
+  const [data, setData] = useState<{ node: WorksheetQuestionNode; answer?: Pick<WorksheetBoardAnswerRow, 'value'> } | null>(null);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const [active,setActive]=useState(false);
@@ -26,6 +27,10 @@ export function StudentTaskPreview({ classroomId, worksheetId, questionId, parti
   useEffect(() => {
     let cancelled = false;
     setData(null); setError('');
+    if (answerSnapshot) {
+      setData({ node: answerSnapshot.node, answer: { value: answerSnapshot.value } });
+      return;
+    }
     void Promise.all([api.getWorksheet(worksheetId), api.getWorksheetBoard(classroomId)]).then(([sheet, board]) => {
       if (cancelled) return;
       const node = flattenQuestions(sheet.content.nodes).find(row => row.id === questionId);
@@ -34,7 +39,7 @@ export function StudentTaskPreview({ classroomId, worksheetId, questionId, parti
       setData({ node, answer: participant?.answerRows.find(row => row.questionId === questionId) });
     }).catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : '暂时无法读取作答，请重试。'); });
     return () => { cancelled = true; };
-  }, [classroomId, worksheetId, questionId, participantId, retry]);
+  }, [classroomId, worksheetId, questionId, participantId, retry, answerSnapshot]);
   const view = data ? answerView(data.node,data.answer?.value) : null;
   const kind = view?.kind;
   if (view?.kind === 'photo') return <ClassroomImagePreview viewTabs={viewTabs} visible={visible} allowAnnotations src={worksheetAssetUrl(view.url)} quickAction={!viewTabs&&onSwitchToReview&&<button onClick={onSwitchToReview}>查看评价</button>} onClose={onClose}/>;

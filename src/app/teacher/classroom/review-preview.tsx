@@ -1,4 +1,5 @@
 'use client';
+import { useReviewSpeech } from './use-review-speech';
 import { IconMessageSearch } from '@tabler/icons-react';
 import { ReviewBuddyHeading } from '@/components/review-buddy-heading';
 import { ReviewRewardText } from '@/components/review-reward-text';
@@ -20,6 +21,7 @@ export function ReviewPreviewButton(props: ReviewPreviewProps & {onOpen?:()=>voi
 }
 export function ReviewFullscreen({title='AI 评价与建议',reason,advice,score,maxScore,unit,note,annotationId,onClose,onSwitch,viewTabs,visible = true}:ReviewPreviewProps & {viewTabs?:ReactNode;visible?:boolean;onClose:()=>void;onSwitch?:()=>void}) {
  const [fontSize,setFontSize]=useState(24);
+ const speech=useReviewSpeech(reason??'',advice??'',visible,annotationId??title);
   const reward = REWARD_STYLE_OPTIONS.find(option => option.value !== 'points' && pointsUnitLabel(option.value) === unit);
   const showRewardIcons = !!reward && score !== null && score !== undefined && Number.isInteger(score) && maxScore !== undefined && Number.isInteger(maxScore) && maxScore > 0 && maxScore <= 20;
   return <FullscreenPreview viewTabs={viewTabs} visible={visible} switchAnimation floatingControls compactControls allowAnnotations textSize={fontSize} annotationKey={JSON.stringify(['review', annotationId, title, reason, advice, score, maxScore, unit, note])} title={title} onClose={onClose} quickAction={!viewTabs&&onSwitch&&<button onClick={onSwitch}>查看作答</button>} controls={<>
@@ -31,7 +33,7 @@ export function ReviewFullscreen({title='AI 评价与建议',reason,advice,score
     </>}>
       <div className={styles.textViewport} role="region" tabIndex={0} aria-label="AI 评价与建议全文">
         <article className={styles.review} style={{ fontSize:'var(--preview-text-size, 24px)' }}>
-          {(score !== undefined && score !== null || note) && <div className={styles.reviewMeta}>
+          <div className={styles.reviewSpeechTop}><div>{(score !== undefined && score !== null || note) && <div className={styles.reviewMeta}>
             {score !== undefined && score !== null && <div className={styles.rewardSummary}>
               <span className={styles.rewardLabel}>本次获得</span>
               {showRewardIcons ? <span className={styles.rewardIcons} role="img" aria-label={`获得 ${score} / ${maxScore} ${unit ?? ''}`}>
@@ -40,9 +42,10 @@ export function ReviewFullscreen({title='AI 评价与建议',reason,advice,score
               <span className={styles.rewardCount}>{score}<span> / {maxScore ?? '—'} {unit ?? '分'}</span></span>
             </div>}
             {note && <p className={styles.reviewNote}>{note}</p>}
-          </div>}
-          {reason && <section><h3><ReviewBuddyHeading size={40}/></h3><p><ReviewRewardText text={formatReviewText(reason)} /></p></section>}
-          {advice && <section><h3><ReviewBuddyHeading advice size={40}/></h3><p>{formatReviewAdvice(advice)}</p></section>}
+          </div>}</div>{speech.controls('all')}</div>
+          {speech.error&&<p className={styles.reviewSpeechError} role="status">{speech.error}</p>}
+          {reason && <section className={speech.activePart==='reason'?styles.reviewSpeechActive:undefined}><h3><ReviewBuddyHeading size={40}/>{speech.controls('reason')}</h3><p><ReviewRewardText text={formatReviewText(reason)} /></p></section>}
+          {advice && <section className={speech.activePart==='advice'?styles.reviewSpeechActive:undefined}><h3><ReviewBuddyHeading advice size={40}/>{speech.controls('advice')}</h3><p>{formatReviewAdvice(advice)}</p></section>}
         </article>
       </div>
     </FullscreenPreview>;

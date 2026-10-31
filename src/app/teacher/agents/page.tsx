@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import {IconVolume} from '@tabler/icons-react';
 import { FieldError, Toast, Pagination, TeacherPageHeader, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
 import type { AgentSummary, PlatformTokenSummary, RelatedClassroom } from '@/lib/types';
 import { api } from '@/lib/api';
@@ -142,6 +143,7 @@ export default function AgentsPage() {
           </Link>
           {/* ★ 2026-09-25：与「接入智能体」并排。⚠️ 在**没有 token 时也显示** ——
               它就是教师第一次该去的地方（Coze 低代码的智能体要选一份 Token）。 */}
+          <Link href="/teacher/agents/speech/" className="btn btn-secondary"><IconVolume size={18}/> 语音朗读设置</Link>
           <button className="btn btn-secondary agent-token-management-button" onClick={() => setShowTokens(true)} title={tokenAlertText || undefined} aria-label={tokenAlerts.length ? `扣子访问令牌，${tokenAlerts.length} 份令牌即将到期或已过期。${tokenAlertText}` : '扣子访问令牌'}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3" /></svg>
             扣子访问令牌

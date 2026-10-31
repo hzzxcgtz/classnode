@@ -122,10 +122,10 @@ function FullscreenPreviewBody({ visible = true, switchAnimation = false, slideF
     <header className={styles.header}>
       <h2 id={titleId}>{title}</h2>
       <div className={styles.headerActions}>
+      {viewTabs && <div className={styles.lectureTabHost}>{viewTabs}</div>}
       <button type="button" className={styles.close} onClick={onClose} aria-label="关闭全屏预览" title="关闭（Esc）"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
       </div>
     </header>
-    {viewTabs && <div className={styles.lectureTabHost}>{viewTabs}</div>}
     <div ref={content} className={styles.content}>
       <div ref={body} className={styles.previewBody} data-preview-locked={annotating} style={{'--preview-text-size':`${annotating && frame ? frame.textSize : textSize}px`, ...(annotating && frame ? {position:'absolute', width:frame.width, height:frame.height, transformOrigin:'top left', transform:`scale(${size.width / frame.width}, ${size.height / frame.height})`} : {})} as React.CSSProperties}>{annotating && !renderAnnotations ? frozenContent : children}</div>
       {annotating && (renderAnnotations ? renderAnnotations(toolbarHost, {annotationKey,onChange:saveStrokes}) : <TemporaryAnnotations annotationKey={annotationKey} frame={frame ?? undefined} onChange={saveStrokes} toolbarHost={toolbarHost} />)}

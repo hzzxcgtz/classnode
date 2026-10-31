@@ -54,14 +54,14 @@ function StudentGroupHint({ students, onOpenStudent }: { students: { id: string;
       button.current?.focus();
     }
   }}>
-    <button ref={button} type="button" className={styles.trigger} onClick={() => setExpanded(value => !value)}
+    <button ref={button} data-student-group={JSON.stringify(students.map(student => student.id))} type="button" className={styles.trigger} onClick={() => setExpanded(value => !value)}
       aria-haspopup="dialog" aria-controls={expanded ? id : undefined} aria-label={`${reportStudentLabel(students.map(student => student.name))}，${expanded ? '收起' : '展开'}${students.length}位同学名单`} aria-expanded={expanded}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="9" cy="7" r="3" /><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 4v2" /></svg>
       {reportStudentLabel(students.map(student => student.name))}
       <svg className={styles.chevron} width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true" style={{transform: expanded ? 'rotate(180deg)' : undefined}}><path d="m3 4.5 3 3 3-3" /></svg>
     </button>
     {expanded && position && createPortal(<span ref={list} id={id} tabIndex={-1} role="dialog" aria-label={`学生名单，共${students.length}人`} className={styles.studentList} style={position}>{students.map(student => onOpenStudent
-      ? <button key={student.id} type="button" className={styles.studentLink} title={`查看${student.name}的当前任务作答`} onClick={() => { setExpanded(false); onOpenStudent(student.id); }}>{student.name}</button>
+      ? <button key={student.id} type="button" className={styles.studentLink} title={`查看${student.name}的本题作答`} onClick={() => { button.current?.focus({ preventScroll: true }); setExpanded(false); onOpenStudent(student.id); }}>{student.name}</button>
       : <span key={student.id} className={styles.studentName}>{student.name}</span>)}</span>, document.body)}
   </span>;
 }

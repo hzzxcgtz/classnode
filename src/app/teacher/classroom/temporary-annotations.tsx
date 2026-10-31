@@ -7,23 +7,31 @@ import styles from './temporary-annotations.module.css';
 import { readImageAnnotations, writeImageAnnotations } from '@/lib/image-annotation-session';
 
 const COLORS = [{name:'红色',value:'#ef4444'},{name:'蓝色',value:'#2563eb'},{name:'绿色',value:'#16a34a'},{name:'黄色',value:'#eab308'}];
-type Tool = 'pen' | 'highlight' | 'eraser';
+export type Tool = 'pen' | 'highlight' | 'eraser';
 
 export interface AnnotationImageView {
   zoom: number; coordinateScale?: number; offset: AnnotationPoint; angle: number;
   onZoom: (change: number) => void; onPan: (offset: AnnotationPoint) => void; onFit: () => void;
 }
 /** Text strokes are disposable; image strokes can be restored by their image key. */
-export function TemporaryAnnotations({ toolbarHost, imageView, annotationKey, frame, onChange }: { toolbarHost: HTMLElement | null; imageView?: AnnotationImageView; annotationKey?: string; frame?: {width: number; height: number}; onChange?: (strokes: AnnotationStroke[]) => void }) {
+export function TemporaryAnnotations({ toolbarHost, imageView, annotationKey, frame, onChange, shared, hideToolbar = false }: { shared?: {tool: Tool; color: string; thick?: boolean; width?: number; visible: boolean; moving: boolean; clear: number}; hideToolbar?: boolean; toolbarHost: HTMLElement | null; imageView?: AnnotationImageView; annotationKey?: string; frame?: {width: number; height: number}; onChange?: (strokes: AnnotationStroke[]) => void }) {
   const [panel, setPanel] = useState<'settings' | null>(null);
   const floating = useRef<HTMLElement>(null);
-  const [moving, setMoving] = useState(false);
+  const [localMoving, setMoving] = useState(false);
   const [size, setSize] = useState({width: 0, height: 0});
   const pan = useRef<{pointer: number; x: number; y: number; offset: AnnotationPoint} | null>(null);
-  const [tool, setTool] = useState<Tool>('pen');
-  const [color, setColor] = useState(COLORS[0].value);
-  const [thick, setThick] = useState(false);
-  const [visible, setVisible] = useState(true);
+  const [localTool, setTool] = useState<Tool>('pen');
+  const [localColor, setColor] = useState(COLORS[0].value);
+  const [localThick, setThick] = useState(false);
+  const [localVisible, setVisible] = useState(true);
+  const moving = shared?.moving ?? localMoving;
+  const tool = shared?.tool ?? localTool;
+  const color = shared?.color ?? localColor;
+  const thick = shared?.thick ?? localThick;
+  const visible = shared?.visible ?? localVisible;
+  const clearCommand = shared?.clear ?? 0;
+  const lastClear = useRef(clearCommand);
+  useEffect(() => { if (lastClear.current !== clearCommand) { lastClear.current = clearCommand; setStrokes([]); setPast([]); } }, [clearCommand]);
   const [strokes, setStrokes] = useState<AnnotationStroke[]>(() => annotationKey ? readImageAnnotations(annotationKey) : []);
   const [active, setActive] = useState<AnnotationStroke | null>(null);
   const [past, setPast] = useState<AnnotationStroke[][]>([]);
@@ -103,6 +111,7 @@ export function TemporaryAnnotations({ toolbarHost, imageView, annotationKey, fr
       onPointerDown={event => {
         if (!event.isPrimary || event.button !== 0 || gesture.current) return;
         event.preventDefault(); event.stopPropagation();
+        if (moving && !imageView) return;
         if (moving && imageView) {
           pan.current = {pointer: event.pointerId, x: event.clientX, y: event.clientY, offset: imageView.offset};
           event.currentTarget.setPointerCapture(event.pointerId); return;
@@ -110,7 +119,7 @@ export function TemporaryAnnotations({ toolbarHost, imageView, annotationKey, fr
         setVisible(true);
         const point = pointOf(event);
         const stroke: AnnotationStroke | null = tool === 'eraser' ? null : {
-          id: ++nextId.current, tool, color, width: (tool === 'highlight' ? (thick ? 28 : 16) : (thick ? 6 : 3)) / coordinateZoom, points: [point],
+          id: ++nextId.current, tool, color, width: (shared?.width !== undefined ? shared.width * (tool === 'highlight' ? 4 : 1) : (tool === 'highlight' ? (thick ? 28 : 16) : (thick ? 6 : 3))) / coordinateZoom, points: [point],
         };
         gesture.current = { pointer: event.pointerId, before: current.current, stroke };
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -136,7 +145,7 @@ export function TemporaryAnnotations({ toolbarHost, imageView, annotationKey, fr
         {[...strokes, ...(active ? [active] : [])].map(stroke => <path key={stroke.id} data-annotation-stroke="" d={annotationPath(stroke.points)} fill="none" stroke={stroke.color} strokeWidth={stroke.width} strokeOpacity={stroke.tool==='highlight' ? 0.3 : 1} strokeLinecap="round" strokeLinejoin="round" />)}
       </g>
     </svg>
-    <aside ref={floating} className={styles.floating} aria-label="批注绘图工具" onKeyDownCapture={event => {
+    {!hideToolbar && <aside ref={floating} className={styles.floating} aria-label="批注绘图工具" onKeyDownCapture={event => {
       if (event.key === 'Escape' && panel) {event.preventDefault();event.stopPropagation();setPanel(null);floating.current?.querySelector<HTMLButtonElement>(`button[data-panel="${panel}"]`)?.focus();}
     }}>
       <div className={styles.rail} style={{maxHeight: Math.max(44, size.height - 24)}} role="toolbar" aria-label={imageView ? "图片批注常用工具" : "文字批注常用工具"} aria-orientation="vertical">
@@ -165,7 +174,7 @@ export function TemporaryAnnotations({ toolbarHost, imageView, annotationKey, fr
           <div className={styles.panelLabel}>粗细</div>
           <div className={styles.palette}><button type="button" aria-label="细笔" aria-pressed={!thick} onClick={()=>setThick(false)}>细</button><button type="button" aria-label="粗笔" aria-pressed={thick} onClick={()=>setThick(true)}>粗</button></div>
       </div>}
-    </aside>
+    </aside>}
     {imageView && toolbarHost && createPortal(<div className={styles.imageNavigation} role="toolbar" aria-label="图片查看工具">
       <button type="button" aria-label="缩小图片" disabled={imageView.zoom<=.3} onClick={()=>imageView.onZoom(-.2)}>−</button>
       <input aria-label="图片缩放" type="range" min="30" max="1500" step="10" value={Math.round(imageView.zoom*100)} onChange={event=>imageView.onZoom(Number(event.target.value)/100-imageView.zoom)} />

@@ -1,4 +1,5 @@
 'use client';
+import { ReviewBuddyHeading } from '@/components/review-buddy-heading';
 import { ReviewRewardText } from '@/components/review-reward-text';
 
 import { useState } from 'react';
@@ -40,8 +41,8 @@ export function ReviewPreviewButton({ title = 'AI 评价与建议', reason, advi
             </div>}
             {note && <p className={styles.reviewNote}>{note}</p>}
           </div>}
-          {reason && <section><h3><RewardIcon kind="classnode" size={40} /><span>支点博士对你的评价</span></h3><p><ReviewRewardText text={formatReviewText(reason)} /></p></section>}
-          {advice && <section><h3><RewardIcon kind="classnode" size={40} /><span>支点博士给你的建议</span></h3><p>{formatReviewAdvice(advice)}</p></section>}
+          {reason && <section><h3><ReviewBuddyHeading size={40}/></h3><p><ReviewRewardText text={formatReviewText(reason)} /></p></section>}
+          {advice && <section><h3><ReviewBuddyHeading advice size={40}/></h3><p>{formatReviewAdvice(advice)}</p></section>}
         </article>
       </div>
     </FullscreenPreview>}

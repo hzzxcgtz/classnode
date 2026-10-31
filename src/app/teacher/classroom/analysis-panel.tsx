@@ -2,7 +2,6 @@
 
 import { formatReviewText } from '@/lib/worksheet-review-display';
 import { StudentTaskPreview } from './student-task-preview';
-import { ReviewPreviewButton } from './review-preview';
 import { TeacherPendingText } from '@/components/teacher-pending-text';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -283,7 +282,7 @@ export function AnalysisBanners({ state }: { state: WorksheetAnalysisState }) {
  * 正文（文档 / 联系表 / 解读 / 确认块）。
  * ⚠️ **从 `analysis-overlay.tsx` 原样搬过来**，行为一个字没改。
  */
-export function AnalysisBody({ state, classroomId, worksheetId, questionId, nameOf, onOpenStudent, compact = false }: {
+export function AnalysisBody({ state, classroomId, worksheetId, questionId, nameOf, compact = false }: {
   compact?: boolean;
   state: WorksheetAnalysisState;
   classroomId: string;
@@ -317,6 +316,22 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
   const [showDetails, setShowDetails] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
   const [taskStudent, setTaskStudent] = useState<string | null>(null);
+  const taskOpener = useRef<HTMLElement | null>(null);
+  const taskOpenerGroup = useRef<string | null>(null);
+  const openTask = (participantId: string) => {
+    taskOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    taskOpenerGroup.current = taskOpener.current?.getAttribute('data-student-group') ?? null;
+    setSelectedStudent(participantId); setTaskStudent(participantId);
+  };
+  const closeTask = () => {
+    setTaskStudent(null);
+    const opener = taskOpener.current;
+    const group = taskOpenerGroup.current;
+    requestAnimationFrame(() => {
+      const target = opener?.isConnected ? opener : group ? [...document.querySelectorAll<HTMLElement>('[data-student-group]')].find(element => element.getAttribute('data-student-group') === group) : null;
+      target?.focus({ preventScroll: true });
+    });
+  };
   useEffect(() => { setSelectedStudent(null); setTaskStudent(null); }, [classroomId, worksheetId, questionId]);
 
   /**
@@ -352,7 +367,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
         advice={payload.perStudent?.scores.find(row => row.studentId === taskStudent)?.advice || payload.feedback?.students.find(row => row.studentId === taskStudent)?.advice}
         score={payload.perStudent?.scores.find(row => row.studentId === taskStudent)?.score}
         maxScore={payload.perStudent?.maxScore} unit={payload.perStudent?.unit}
-        onClose={() => setTaskStudent(null)} />}
+        onClose={closeTask} />}
       {loading && <div className={styles.loading}>正在读取已保存的分析结果…</div>}
 
       {!loading && payload && payload.covered === 0 && (
@@ -429,12 +444,9 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                     <span>{formatReviewText(item.reason || '智能体未补充简短评价')}</span>
                     <div className={styles.scoreReviewActions}>
                     <button type="button" className={styles.answerShortcut}
-                      onClick={() => { setSelectedStudent(item.studentId); setTaskStudent(item.studentId); }} title="查看这位学生的本题作答" aria-label={`查看${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位学生'}的本题作答`}>
+                      onClick={() => openTask(item.studentId)} title="查看这位学生的本题作答" aria-label={`查看${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位学生'}的本题作答`}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9M15 3h6v6m0-6L10 14M7 8h3M7 17h7" /></svg>
                     </button>
-                    <ReviewPreviewButton onOpen={() => setSelectedStudent(item.studentId)} annotationId={`${classroomId}:${worksheetId}:${questionId}:${item.studentId}`} title={`${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '学生'} · AI 评价与建议`}
-                      reason={item.reason} advice={item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice}
-                      score={item.score} maxScore={payload.perStudent!.maxScore} unit={payload.perStudent!.unit} />
                     </div>
                   </div>
                   {(item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice) && (
@@ -457,7 +469,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 
       {!loading && payload && payload.covered > 0 && payload.narrative && !generatingReport && (
         <section className={styles.resultCard} aria-label="AI 分析结果">
-          <AnalysisReport onOpenStudent={onOpenStudent} className={styles.resultText} payload={payload} text={localize(payload.narrative) ?? ''} />
+          <AnalysisReport onOpenStudent={openTask} className={styles.resultText} payload={payload} text={localize(payload.narrative) ?? ''} />
         </section>
       )}
 

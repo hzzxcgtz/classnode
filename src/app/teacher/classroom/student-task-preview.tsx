@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { IconClipboardText, IconMessageCircle, IconBulb, IconPencil } from '@tabler/icons-react';
+import { IconClipboardText, IconPencil, IconHandMove, IconHighlight, IconEraser, IconTrash, IconEye, IconEyeOff, IconCheck } from '@tabler/icons-react';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { REWARD_STYLE_OPTIONS, pointsUnitLabel } from '@/lib/worksheet-reward';
+import { ReviewBuddyHeading } from '@/components/review-buddy-heading';
 import { api } from '@/lib/api';
 import type { WorksheetBoardAnswerRow, WorksheetQuestionNode } from '@/lib/types';
 import { flattenQuestions } from '@/lib/worksheet-questions';
@@ -11,8 +12,9 @@ import { PromptText } from '@/lib/worksheet-prompt-text';
 import { formatReviewText } from '@/lib/worksheet-review-display';
 import { FullscreenPreview } from './fullscreen-preview';
 import { AnswerViewBody } from './answer-view';
-import { ClassroomImagePreviewContext } from './answer-photo';
-import { ClassroomImagePreview } from './image-preview';
+import { TaskImage } from './task-image';
+import { TaskAnnotationSurface, type TaskDrawingTools } from './task-annotation-surface';
+import { answerView } from '@/lib/worksheet-answer-view';
 import styles from './student-task-preview.module.css';
 
 export function StudentTaskPreview({ classroomId, worksheetId, questionId, participantId, studentName, reason, advice, score, maxScore, unit, onClose }: {
@@ -22,7 +24,9 @@ export function StudentTaskPreview({ classroomId, worksheetId, questionId, parti
   const [data, setData] = useState<{ node: WorksheetQuestionNode; answer?: WorksheetBoardAnswerRow } | null>(null);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  const [image, setImage] = useState<string | null>(null);
+  const [active,setActive]=useState(false);
+  const [fontSize,setFontSize]=useState(18);
+  const [tools,setTools]=useState<TaskDrawingTools>({tool:'pen',color:'#ef4444',width:2,visible:true,moving:false,clear:0});
   useEffect(() => {
     let cancelled = false;
     setData(null); setError('');
@@ -37,8 +41,11 @@ export function StudentTaskPreview({ classroomId, worksheetId, questionId, parti
   }, [classroomId, worksheetId, questionId, participantId, retry]);
   const reward = REWARD_STYLE_OPTIONS.find(option => option.value !== 'points' && pointsUnitLabel(option.value) === unit);
   const showRewards = reward && score != null && Number.isInteger(score) && maxScore != null && Number.isInteger(maxScore) && maxScore > 0 && maxScore <= 20;
-  return <><FullscreenPreview title={`${studentName} · 本题作答`} onClose={onClose}>
-    <div className={styles.viewport}>
+  return <><FullscreenPreview title={`${studentName} · 本题作答`} onClose={onClose} controls={<>
+      <div className={styles.fontControls}><button disabled={active||fontSize<=14} onClick={()=>setFontSize(value=>value-2)} aria-label="缩小评价文字">A−</button><output>{fontSize}px</output><button disabled={active||fontSize>=40} onClick={()=>setFontSize(value=>value+2)} aria-label="放大评价文字">A＋</button></div>
+      <button className={styles.annotationAction} disabled={!data} onClick={()=>setActive(value=>!value)}>{active?<IconCheck size={19} aria-hidden="true"/>:<IconPencil size={19} aria-hidden="true"/>}<span>{active?'结束批注':'开始批注'}</span></button>
+    </>}>
+    <div className={`${styles.viewport} ${active?styles.annotating:''}`} style={{'--task-text-size':`${fontSize}px`} as React.CSSProperties}>
       <article className={styles.card}>
         {error ? <div role="alert"><p>{error}</p><button className="btn btn-secondary" onClick={() => setRetry(value => value + 1)}>重新加载</button></div>
           : !data ? <p role="status">正在读取本题作答…</p> : <>
@@ -51,25 +58,37 @@ export function StudentTaskPreview({ classroomId, worksheetId, questionId, parti
                 <div className={styles.sectionHeading}><h2><IconPencil size={20} aria-hidden="true" />学生作答</h2>
                   <span className={styles.status}>{data.answer?.status === 'submitted' ? '已提交' : data.answer ? '作答中' : '未作答'}</span>
                 </div>
-                <div className={styles.answerContent}>
-                  <ClassroomImagePreviewContext.Provider value={setImage}><AnswerViewBody node={data.node} value={data.answer?.value} /></ClassroomImagePreviewContext.Provider>
+                <div className={styles.answerContent} data-photo={answerView(data.node,data.answer?.value).kind === 'photo'}>
+                  {(()=>{const view=answerView(data.node,data.answer?.value);return view.kind==='photo'?<TaskImage url={view.url} active={active} tools={tools} onFoundMarks={()=>setActive(true)}/>:<TaskAnnotationSurface target={JSON.stringify(['task-answer',worksheetId,questionId,participantId,data.answer?.value])} active={active} tools={tools} textSize={fontSize} onFoundMarks={()=>setActive(true)} onRestore={setFontSize}><AnswerViewBody node={data.node} value={data.answer?.value}/></TaskAnnotationSurface>;})()}
                 </div>
               </section>
-              {(reason || advice) && <section className={styles.review}>
-                <div className={styles.sectionHeading}><h2><IconMessageCircle size={20} aria-hidden="true" />AI 评价与建议</h2></div>
+              {(reason || advice) && <section className={styles.review} style={{overflow:active?'hidden':undefined}}>
+                <TaskAnnotationSurface target={JSON.stringify(['task-feedback',worksheetId,questionId,participantId,reason,advice])} active={active} tools={tools} textSize={fontSize} onFoundMarks={()=>setActive(true)} onRestore={setFontSize}>
+                <div style={{height:'100%',overflow:active?'hidden':'auto'}}>
+                <div className={styles.sectionHeading}><h2><ReviewBuddyHeading size={34}/></h2></div>
                 {score != null && <div className={styles.rewardSummary}><span>本次获得</span>
                   {showRewards ? <span className={styles.rewards} role="img" aria-label={`${score} / ${maxScore} ${unit}`}>
                     {Array.from({length:maxScore}, (_, index) => <RewardIcon key={index} kind={reward.value} state={index < score ? 'earned' : 'empty'} size={28} />)}
                   </span> : <strong>{score}<small> / {maxScore} {unit}</small></strong>}
                 </div>}
                 {reason && <div className={styles.reason}><p className={styles.feedback}>{formatReviewText(reason)}</p></div>}
-                {advice && <div className={styles.advice}><h3><IconBulb size={21} aria-hidden="true" />改进建议</h3><p className={styles.feedback}>{formatReviewText(advice)}</p></div>}
+                {advice && <div className={styles.advice}><h3><ReviewBuddyHeading advice size={32}/></h3><p className={styles.feedback}>{formatReviewText(advice)}</p></div>}
+                </div></TaskAnnotationSurface>
               </section>}
             </div>
           </>}
       </article>
     </div>
+    {active&&<aside className={styles.toolbar} aria-label="统一批注工具栏"><div className={styles.toolRail} role="toolbar" aria-label="讲评批注工具" aria-orientation="vertical">
+      <button title="拖动图片，笔迹随图片移动" onClick={()=>setTools(t=>({...t,moving:!t.moving}))} aria-pressed={tools.moving}><IconHandMove size={20} aria-hidden="true"/><span>移动图片</span></button>
+      {([{tool:'pen',label:'画笔',icon:IconPencil},{tool:'highlight',label:'荧光笔',icon:IconHighlight},{tool:'eraser',label:'整笔擦除',icon:IconEraser}] as const).map(({tool,label,icon:Icon})=><button key={tool} aria-pressed={!tools.moving&&tools.tool===tool} onClick={()=>setTools(t=>({...t,tool,moving:false}))}><Icon size={20} aria-hidden="true"/><span>{label}</span></button>)}
+      <div className={styles.toolColors} role="group" aria-label="画笔颜色">{['#ef4444','#2563eb','#16a34a','#eab308'].map((color,index)=><button key={color} aria-label={['红色','蓝色','绿色','黄色'][index]} aria-pressed={tools.color===color} onClick={()=>setTools(t=>({...t,color}))}><i style={{background:color}}/></button>)}</div>
+      <div className={styles.toolWidths} role="group" aria-label="画笔粗细">{[2,4,7].map((width,index)=><button key={width} title={['细线','中线','粗线'][index]} aria-label={['细线','中线','粗线'][index]} aria-pressed={tools.width===width} onClick={()=>setTools(t=>({...t,width}))}><span aria-hidden="true" style={{height:width}}/></button>)}</div>
+      <div className={styles.toolDivider}/>
+      <button onClick={()=>setTools(t=>({...t,clear:t.clear+1}))}><IconTrash size={20} aria-hidden="true"/><span>清空批注</span></button>
+      <button aria-pressed={!tools.visible} onClick={()=>setTools(t=>({...t,visible:!t.visible}))}>{tools.visible?<IconEyeOff size={20} aria-hidden="true"/>:<IconEye size={20} aria-hidden="true"/>}<span>{tools.visible?'隐藏批注':'显示批注'}</span></button>
+    </div></aside>}
   </FullscreenPreview>
-    {image && <ClassroomImagePreview allowAnnotations src={image} onClose={() => setImage(null)} />}
+
   </>;
 }

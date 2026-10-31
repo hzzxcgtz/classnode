@@ -5,8 +5,8 @@
 
 
 
-.imageNavigation { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; background: #1c293a; }
-.imageNavigation input[type="range"] { flex: 0 1 140px; min-width: 52px; width: 140px; }
+.imageNavigation { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; background: #1c293a; }
+.imageNavigation input[type="range"] { min-width: 52px; width: 140px; }
 .imageNavigation output { text-align: center; min-width: 48px; }
 .floating { position: absolute; z-index: 3; right: 16px; top: 50%; transform: translateY(-50%); max-height: calc(100% - 24px); color: #e5edf7; }
 .rail { display: flex; flex-direction: column; gap: 4px; padding: 6px; max-height: inherit; overflow-y: auto; border: 1px solid #ffffff26; border-radius: 16px; background: #1c293af5; box-shadow: 0 8px 28px #0004; }
@@ -21,3 +21,7 @@
 .panelLabel { margin: 0 0 8px; font-size: 12px; color: #c2cddd; }
 .palette + .panelLabel { margin-top: 14px; }
 @media (max-width: 600px) { .floating { right: 8px; } .flyout { width: 208px; right: calc(100% + 8px); } }
+
+:global(dialog[data-preview-dock='left']) .floating { left: 16px; right: auto; }
+:global(dialog[data-preview-dock='left']) .flyout { left: calc(100% + 10px); right: auto; }
+@media (max-width: 600px) { :global(dialog[data-preview-dock='left']) .floating { left: 8px; } :global(dialog[data-preview-dock='left']) .flyout { left: calc(100% + 8px); } }

@@ -1,7 +1,9 @@
 'use client';
 
 import { formatReviewText } from '@/lib/worksheet-review-display';
-import { StudentTaskPreview } from './student-task-preview';
+import { IconFileSearch } from '@tabler/icons-react';
+import { ReviewPreviewButton } from './review-preview';
+import { StudentLecturePreview } from './student-lecture-preview';
 import { TeacherPendingText } from '@/components/teacher-pending-text';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -315,10 +317,12 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
     : `正在${worksheetAnalysisActions(payload).primaryLabel}，请稍等…`);
   const [showDetails, setShowDetails] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
+  const [initialMode,setInitialMode]=useState<'answer'|'review'>('answer');
   const [taskStudent, setTaskStudent] = useState<string | null>(null);
   const taskOpener = useRef<HTMLElement | null>(null);
   const taskOpenerGroup = useRef<string | null>(null);
-  const openTask = (participantId: string) => {
+  const openTask = (participantId: string, mode: 'answer'|'review' = 'answer') => {
+    setInitialMode(mode);
     taskOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     taskOpenerGroup.current = taskOpener.current?.getAttribute('data-student-group') ?? null;
     setSelectedStudent(participantId); setTaskStudent(participantId);
@@ -360,7 +364,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 
   return (
     <div className={`${styles.body} ${compact ? styles.compactBody : ''}`}>
-      {taskStudent && payload && <StudentTaskPreview key={`${classroomId}:${worksheetId}:${questionId}:${taskStudent}`}
+      {taskStudent && payload && <StudentLecturePreview initialMode={initialMode} key={`${classroomId}:${worksheetId}:${questionId}:${taskStudent}`}
         classroomId={classroomId} worksheetId={worksheetId} questionId={questionId} participantId={taskStudent}
         studentName={payload.participantNames?.[taskStudent] ?? nameOf?.(taskStudent) ?? '学生'}
         reason={payload.perStudent?.scores.find(row => row.studentId === taskStudent)?.reason}
@@ -405,12 +409,6 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
               <svg className={styles.scoreChevron} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
             </div>
           </summary>
-          {payload.perStudent.criteria && (
-            /* ★ 2026-10-05：「评分要求」与「评分标准」在编辑器里已合并成同一份东西
-               （唯一读取点 `rubricTextOf`）⇒ 这里跟着改名，同一个东西不叫两个名字。
-               存下来的这一份是**那次分析时**用的文字，旧分析里的仍是当年的「评分要求」原文。 */
-            <div className={styles.scoreCriteria}>评分标准：{payload.perStudent.criteria}</div>
-          )}
           <div className={styles.scoreList}>
             {sortAnalysisScores([...payload.perStudent.scores, ...(payload.pendingReviewIds ?? []).filter(id => !payload.perStudent!.scores.some(row => row.studentId === id)).map(studentId => ({ studentId, score: null, reason: '', advice: '' }))], payload.entries).map((item) => (
               <div className={`${styles.scoreRow} ${selectedStudent === item.studentId ? styles.scoreRowSelected : ''}`} key={item.studentId}
@@ -444,9 +442,10 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                     <span>{formatReviewText(item.reason || '智能体未补充简短评价')}</span>
                     <div className={styles.scoreReviewActions}>
                     <button type="button" className={styles.answerShortcut}
-                      onClick={() => openTask(item.studentId)} title="查看这位学生的本题作答" aria-label={`查看${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位学生'}的本题作答`}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9M15 3h6v6m0-6L10 14M7 8h3M7 17h7" /></svg>
+                      onClick={() => openTask(item.studentId)} title="放大讲评学生作答" aria-label={`查看${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位学生'}的本题作答`}>
+                      <IconFileSearch size={18} stroke={1.7} aria-hidden="true"/>
                     </button>
+                    <ReviewPreviewButton openExternally={()=>openTask(item.studentId,'review')} annotationId={`${classroomId}:${worksheetId}:${questionId}:${item.studentId}`} title={`${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '学生'} · AI 评价与建议`} reason={item.reason} advice={item.advice || payload.feedback?.students.find(row=>row.studentId===item.studentId)?.advice} score={item.score} maxScore={payload.perStudent!.maxScore} unit={payload.perStudent!.unit}/>
                     </div>
                   </div>
                   {(item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice) && (

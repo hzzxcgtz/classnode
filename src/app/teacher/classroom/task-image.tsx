@@ -1,4 +1,5 @@
 'use client';
+import { imageWheelZoomChange } from '@/lib/image-wheel-zoom';
 import { useEffect, useRef, useState } from 'react';
 import { useImageRotation } from '@/components/use-image-rotation';
 import { ImageRotationControls } from '@/components/image-rotation-controls';
@@ -10,7 +11,7 @@ export function TaskImage({url,active,tools,onFoundMarks}:{url:string;active:boo
  const img=useRef<HTMLImageElement>(null);const stage=useRef<HTMLDivElement>(null);const pan=useRef<{x:number;y:number;ox:number;oy:number}|null>(null);
  const scale=(change:number)=>setZoom(value=>Math.max(.3,Math.min(15,value+change)));
  useEffect(()=>{if(!img.current)return;const element=img.current;const measure=()=>setWidth(element.clientWidth||1000);const observer=new ResizeObserver(measure);observer.observe(element);measure();return()=>observer.disconnect();},[]);
- useEffect(()=>{const element=stage.current;if(!element)return;const wheel=(event:WheelEvent)=>{event.preventDefault();scale(event.deltaY>0?-.12:.12);};element.addEventListener('wheel',wheel,{passive:false});return()=>element.removeEventListener('wheel',wheel);},[]);
+ useEffect(()=>{const element=stage.current;if(!element)return;const wheel=(event:WheelEvent)=>{event.preventDefault();scale(imageWheelZoomChange(event.deltaY,event.deltaMode));};element.addEventListener('wheel',wheel,{passive:false});return()=>element.removeEventListener('wheel',wheel);},[]);
  return <div style={{height:'100%',display:'flex',flexDirection:'column',minHeight:0}}>
  <div data-task-image ref={stage} style={{flex:1,minHeight:120,position:'relative',overflow:'hidden',background:'#f5f8fb',borderRadius:8}}>
  <TaskAnnotationSurface target={url.split('?')[0]} active={active} tools={tools} textSize={24} onFoundMarks={onFoundMarks} onRestore={()=>{}} imageView={{zoom,offset,angle:rotation.angle,coordinateScale:width/1000,onZoom:scale,onPan:setOffset,onFit:()=>{setZoom(1);setOffset({x:0,y:0});}}}>

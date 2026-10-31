@@ -1,6 +1,8 @@
 'use client';
+import { imageWheelZoomChange } from '@/lib/image-wheel-zoom';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { ImageZoomSlider } from '@/components/image-zoom-slider';
 import { FullscreenPreview } from './fullscreen-preview';
 import { TemporaryAnnotations } from './temporary-annotations';
 import styles from './fullscreen-preview.module.css';
@@ -11,7 +13,7 @@ function imageTarget(src: string) {
   try { const url = new URL(src, window.location.href); url.searchParams.delete('orientation'); return url.pathname + url.search; } catch { return src; }
 }
 const clampZoom = (value: number) => Math.max(.3, Math.min(15, value));
-export function ClassroomImagePreview({ src, onClose, allowAnnotations = false }: { src: string; onClose: () => void; allowAnnotations?: boolean }) {
+export function ClassroomImagePreview({ src, onClose, allowAnnotations = false, quickAction, viewTabs, visible = true }: { viewTabs?: ReactNode; visible?: boolean; quickAction?: ReactNode; src: string; onClose: () => void; allowAnnotations?: boolean }) {
   const rotation = useImageRotation(src);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -31,21 +33,19 @@ export function ClassroomImagePreview({ src, onClose, allowAnnotations = false }
     const element = stage;
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
-      setZoom(value => clampZoom(value + (event.deltaY > 0 ? -.12 : .12)));
+      setZoom(value => clampZoom(value + imageWheelZoomChange(event.deltaY, event.deltaMode)));
     };
     element?.addEventListener('wheel', wheel, { passive: false });
     return () => element?.removeEventListener('wheel', wheel);
   }, [stage]);
-  return <FullscreenPreview allowAnnotations={allowAnnotations} annotationKey={imageTarget(src)} title="学生图片" onClose={onClose} controlsLayout={allowAnnotations ? 'image' : undefined}
+  return <FullscreenPreview viewTabs={viewTabs} visible={visible} switchAnimation slideFrom="left" quickAction={quickAction} floatingControls allowAnnotations={allowAnnotations} annotationKey={imageTarget(src)} title="学生图片" onClose={onClose} controlsLayout={allowAnnotations ? 'image' : undefined}
     renderAnnotations={(toolbarHost, tools) => <TemporaryAnnotations key={src} annotationKey={tools?.annotationKey ?? imageTarget(src)} onChange={tools?.onChange} toolbarHost={toolbarHost} imageView={{zoom, coordinateScale: imageWidth / 1000, offset, angle: rotation.angle, onZoom: change => setZoom(value => clampZoom(value + change)), onPan: setOffset, onFit: () => {setZoom(1);setOffset({x:0,y:0});}}} />}
     controls={<>
     <button type="button" onClick={() => setZoom(value => clampZoom(value - .2))} disabled={zoom <= .3} aria-label="缩小图片">−</button>
-    <input aria-label="图片缩放" type="range" min="30" max="1500" step="10" value={Math.round(zoom * 100)} onChange={event => setZoom(Number(event.target.value) / 100)} />
+    <ImageZoomSlider zoom={zoom} onChange={setZoom}/>
     <button type="button" onClick={() => setZoom(value => clampZoom(value + .2))} disabled={zoom >= 15} aria-label="放大图片">＋</button>
-    <output>{Math.round(zoom * 100)}%</output>
-    <button type="button" onClick={() => { setZoom(1); setOffset({ x: 0, y: 0 }); }}>适应窗口</button>
-    <ImageRotationControls rotation={rotation} />
-    <span className={styles.hint}>拖动图片移动 · 滚轮缩放 · Esc 关闭</span>
+    <button type="button" onClick={() => { setZoom(1); setOffset({ x: 0, y: 0 }); }} aria-label="适应窗口" title="适应窗口"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 8h8v8H8z"/></svg></button>
+    <ImageRotationControls rotation={rotation} iconOnly />
   </>}>
     <div ref={setStage} className={styles.stage} data-dragging={dragging}
       onPointerDown={event => {

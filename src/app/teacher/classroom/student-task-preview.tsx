@@ -1,25 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { IconClipboardText, IconPencil, IconHandMove, IconHighlight, IconEraser, IconTrash, IconEye, IconEyeOff, IconCheck } from '@tabler/icons-react';
-import { RewardIcon } from '@/components/worksheet-reward-icon';
-import { REWARD_STYLE_OPTIONS, pointsUnitLabel } from '@/lib/worksheet-reward';
-import { ReviewBuddyHeading } from '@/components/review-buddy-heading';
+import { useEffect, useState, type ReactNode } from 'react';
+import { IconPencil, IconHandMove, IconHighlight, IconEraser, IconTrash, IconEye, IconEyeOff, IconCheck } from '@tabler/icons-react';
 import { api } from '@/lib/api';
 import type { WorksheetBoardAnswerRow, WorksheetQuestionNode } from '@/lib/types';
 import { flattenQuestions } from '@/lib/worksheet-questions';
-import { PromptText } from '@/lib/worksheet-prompt-text';
-import { formatReviewText } from '@/lib/worksheet-review-display';
 import { FullscreenPreview } from './fullscreen-preview';
 import { AnswerViewBody } from './answer-view';
-import { TaskImage } from './task-image';
+import { ClassroomImagePreview } from './image-preview';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { TaskAnnotationSurface, type TaskDrawingTools } from './task-annotation-surface';
 import { answerView } from '@/lib/worksheet-answer-view';
 import styles from './student-task-preview.module.css';
 
-export function StudentTaskPreview({ classroomId, worksheetId, questionId, participantId, studentName, reason, advice, score, maxScore, unit, onClose }: {
+export function StudentTaskPreview({ classroomId, worksheetId, questionId, participantId, studentName, onClose, onSwitchToReview, viewTabs, visible = true }: {
   classroomId: string; worksheetId: string; questionId: string; participantId: string; studentName: string;
-  score?: number | null; maxScore?: number; unit?: string; reason?: string | null; advice?: string | null; onClose: () => void;
+  viewTabs?:ReactNode; visible?: boolean; onSwitchToReview?:()=>void; score?: number | null; maxScore?: number; unit?: string; reason?: string | null; advice?: string | null; onClose: () => void;
 }) {
   const [data, setData] = useState<{ node: WorksheetQuestionNode; answer?: WorksheetBoardAnswerRow } | null>(null);
   const [error, setError] = useState('');
@@ -39,42 +35,24 @@ export function StudentTaskPreview({ classroomId, worksheetId, questionId, parti
     }).catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : '暂时无法读取作答，请重试。'); });
     return () => { cancelled = true; };
   }, [classroomId, worksheetId, questionId, participantId, retry]);
-  const reward = REWARD_STYLE_OPTIONS.find(option => option.value !== 'points' && pointsUnitLabel(option.value) === unit);
-  const showRewards = reward && score != null && Number.isInteger(score) && maxScore != null && Number.isInteger(maxScore) && maxScore > 0 && maxScore <= 20;
-  return <><FullscreenPreview title={`${studentName} · 本题作答`} onClose={onClose} controls={<>
-      <div className={styles.fontControls}><button disabled={active||fontSize<=14} onClick={()=>setFontSize(value=>value-2)} aria-label="缩小评价文字">A−</button><output>{fontSize}px</output><button disabled={active||fontSize>=40} onClick={()=>setFontSize(value=>value+2)} aria-label="放大评价文字">A＋</button></div>
+  const view = data ? answerView(data.node,data.answer?.value) : null;
+  const kind = view?.kind;
+  if (view?.kind === 'photo') return <ClassroomImagePreview viewTabs={viewTabs} visible={visible} allowAnnotations src={worksheetAssetUrl(view.url)} quickAction={!viewTabs&&onSwitchToReview&&<button onClick={onSwitchToReview}>查看评价</button>} onClose={onClose}/>;
+  return <><FullscreenPreview viewTabs={viewTabs} visible={visible} switchAnimation slideFrom="left" quickAction={!viewTabs&&onSwitchToReview&&<button onClick={onSwitchToReview}>查看评价</button>} compactControls title={`${studentName} · 本题作答`} onClose={onClose} controls={<>
+      {kind !== 'photo' && kind !== 'ink' && <div className={styles.fontControls}><button disabled={active||fontSize<=14} onClick={()=>setFontSize(value=>value-2)} aria-label="缩小作答文字">A−</button><output>{fontSize}px</output><button disabled={active||fontSize>=40} onClick={()=>setFontSize(value=>value+2)} aria-label="放大作答文字">A＋</button></div>}
       <button className={styles.annotationAction} disabled={!data} onClick={()=>setActive(value=>!value)}>{active?<IconCheck size={19} aria-hidden="true"/>:<IconPencil size={19} aria-hidden="true"/>}<span>{active?'结束批注':'开始批注'}</span></button>
     </>}>
     <div className={`${styles.viewport} ${active?styles.annotating:''}`} style={{'--task-text-size':`${fontSize}px`} as React.CSSProperties}>
       <article className={styles.card}>
         {error ? <div role="alert"><p>{error}</p><button className="btn btn-secondary" onClick={() => setRetry(value => value + 1)}>重新加载</button></div>
           : !data ? <p role="status">正在读取本题作答…</p> : <>
-            <section className={styles.prompt}>
-              <h2><IconClipboardText size={19} aria-hidden="true" />题目要求</h2>
-              <div className={styles.promptText}><PromptText text={data.node.prompt || '本题作答'} placeholder="题目" /></div>
-            </section>
-            <div className={`${styles.layout} ${!reason && !advice ? styles.answerOnly : ''}`}>
+            <div className={`${styles.layout} ${styles.answerOnly}`}>
               <section className={styles.answer}>
-                <div className={styles.sectionHeading}><h2><IconPencil size={20} aria-hidden="true" />学生作答</h2>
-                  <span className={styles.status}>{data.answer?.status === 'submitted' ? '已提交' : data.answer ? '作答中' : '未作答'}</span>
-                </div>
                 <div className={styles.answerContent} data-photo={answerView(data.node,data.answer?.value).kind === 'photo'}>
-                  {(()=>{const view=answerView(data.node,data.answer?.value);return view.kind==='photo'?<TaskImage url={view.url} active={active} tools={tools} onFoundMarks={()=>setActive(true)}/>:<TaskAnnotationSurface target={JSON.stringify(['task-answer',worksheetId,questionId,participantId,data.answer?.value])} active={active} tools={tools} textSize={fontSize} onFoundMarks={()=>setActive(true)} onRestore={setFontSize}><AnswerViewBody node={data.node} value={data.answer?.value}/></TaskAnnotationSurface>;})()}
+                  <TaskAnnotationSurface target={JSON.stringify(['task-answer',worksheetId,questionId,participantId,data.answer?.value])} active={active} tools={tools} textSize={fontSize} onFoundMarks={()=>setActive(true)} onRestore={setFontSize}><AnswerViewBody node={data.node} value={data.answer?.value}/></TaskAnnotationSurface>
                 </div>
               </section>
-              {(reason || advice) && <section className={styles.review} style={{overflow:active?'hidden':undefined}}>
-                <TaskAnnotationSurface target={JSON.stringify(['task-feedback',worksheetId,questionId,participantId,reason,advice])} active={active} tools={tools} textSize={fontSize} onFoundMarks={()=>setActive(true)} onRestore={setFontSize}>
-                <div style={{height:'100%',overflow:active?'hidden':'auto'}}>
-                <div className={styles.sectionHeading}><h2><ReviewBuddyHeading size={34}/></h2></div>
-                {score != null && <div className={styles.rewardSummary}><span>本次获得</span>
-                  {showRewards ? <span className={styles.rewards} role="img" aria-label={`${score} / ${maxScore} ${unit}`}>
-                    {Array.from({length:maxScore}, (_, index) => <RewardIcon key={index} kind={reward.value} state={index < score ? 'earned' : 'empty'} size={28} />)}
-                  </span> : <strong>{score}<small> / {maxScore} {unit}</small></strong>}
-                </div>}
-                {reason && <div className={styles.reason}><p className={styles.feedback}>{formatReviewText(reason)}</p></div>}
-                {advice && <div className={styles.advice}><h3><ReviewBuddyHeading advice size={32}/></h3><p className={styles.feedback}>{formatReviewText(advice)}</p></div>}
-                </div></TaskAnnotationSurface>
-              </section>}
+
             </div>
           </>}
       </article>

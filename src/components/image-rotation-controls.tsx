@@ -1,12 +1,12 @@
 'use client';
 import styles from './image-rotation-controls.module.css';
 import type { useImageRotation } from './use-image-rotation';
-export function ImageRotationControls({rotation}: {rotation: ReturnType<typeof useImageRotation>}) {
+export function ImageRotationControls({rotation, iconOnly = false}: {iconOnly?: boolean; rotation: ReturnType<typeof useImageRotation>}) {
   if (!rotation.supported) return null;
   return <>
-    <button type="button" className={styles.button} disabled={!rotation.canRotate} onClick={() => void rotation.rotate(-90)} aria-label="向左旋转90度并保存"><RotationIcon />向左 90°</button>
-    <button type="button" className={styles.button} disabled={!rotation.canRotate} onClick={() => void rotation.rotate(90)} aria-label="向右旋转90度并保存"><RotationIcon right />向右 90°</button>
-    {(rotation.loading || rotation.message || rotation.error) && <span role={rotation.error ? 'alert' : 'status'} style={{fontSize:12,color:rotation.error?'#d77878':'inherit'}}>
+    <button type="button" className={styles.button} disabled={!rotation.canRotate} onClick={() => void rotation.rotate(-90)} aria-label="向左旋转90度并保存" title="向左旋转90度并保存"><RotationIcon />{!iconOnly && '向左 90°'}</button>
+    <button type="button" className={styles.button} disabled={!rotation.canRotate} onClick={() => void rotation.rotate(90)} aria-label="向右旋转90度并保存" title="向右旋转90度并保存"><RotationIcon right />{!iconOnly && '向右 90°'}</button>
+    {(rotation.error || (!iconOnly && (rotation.loading || rotation.message))) && <span role={rotation.error ? 'alert' : 'status'} style={{fontSize:12,color:rotation.error?'#d77878':'inherit'}}>
       {rotation.error || (rotation.loading ? '正在读取图片…' : rotation.message)}
     </span>}
   </>;

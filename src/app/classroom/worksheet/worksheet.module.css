@@ -3379,3 +3379,7 @@
 .fillPrompt :global(.worksheet-blank-input) { margin-top:7px; margin-bottom:7px; }
 .fillPrompt table { line-height:1.7; }
 .fillPrompt table :global(.worksheet-blank-input) { margin-top:0; margin-bottom:0; }
+
+.aiScoreWithActions { position: relative; }
+.aiScoreWithActions .aiScoreCommentHeading { padding-right: 44px; }
+.aiScoreActions { position: absolute; right: 10px; top: 10px; }

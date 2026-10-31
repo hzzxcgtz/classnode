@@ -1,6 +1,8 @@
 'use client';
+import { imageWheelZoomChange } from '@/lib/image-wheel-zoom';
 
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
+import { ImageZoomSlider } from '@/components/image-zoom-slider';
 import { createPortal } from 'react-dom';
 import { annotationHit, annotationPath, imageAnnotationPoint, type AnnotationPoint, type AnnotationStroke } from '@/lib/temporary-annotations';
 import styles from './temporary-annotations.module.css';
@@ -58,7 +60,7 @@ export function TemporaryAnnotations({ toolbarHost, imageView, annotationKey, fr
   useEffect(() => {
     if (!isImage || !svg.current) return;
     const element = svg.current;
-    const wheel = (event: WheelEvent) => { event.preventDefault(); event.stopPropagation(); viewRef.current?.onZoom(event.deltaY > 0 ? -.12 : .12); };
+    const wheel = (event: WheelEvent) => { event.preventDefault(); event.stopPropagation(); viewRef.current?.onZoom(imageWheelZoomChange(event.deltaY, event.deltaMode)); };
     element.addEventListener('wheel', wheel, {passive: false});
     return () => element.removeEventListener('wheel', wheel);
   }, [isImage]);
@@ -177,10 +179,9 @@ export function TemporaryAnnotations({ toolbarHost, imageView, annotationKey, fr
     </aside>}
     {imageView && toolbarHost && createPortal(<div className={styles.imageNavigation} role="toolbar" aria-label="图片查看工具">
       <button type="button" aria-label="缩小图片" disabled={imageView.zoom<=.3} onClick={()=>imageView.onZoom(-.2)}>−</button>
-      <input aria-label="图片缩放" type="range" min="30" max="1500" step="10" value={Math.round(imageView.zoom*100)} onChange={event=>imageView.onZoom(Number(event.target.value)/100-imageView.zoom)} />
-      <output aria-label="图片缩放比例">{Math.round(imageView.zoom*100)}%</output>
+      <ImageZoomSlider zoom={imageView.zoom} onChange={zoom=>imageView.onZoom(zoom-imageView.zoom)}/>
       <button type="button" aria-label="放大图片" disabled={imageView.zoom>=15} onClick={()=>imageView.onZoom(.2)}>＋</button>
-      <button type="button" onClick={imageView.onFit}>适应窗口</button>
+      <button type="button" onClick={imageView.onFit} aria-label="适应窗口" title="适应窗口"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 8h8v8H8z"/></svg></button>
     </div>,toolbarHost)}
   </>;
 }

@@ -47,8 +47,8 @@ export function ReviewHistory({ node, reviews, onRetry, renderReviewActions, ren
       {(() => { const view = answerView(node, r.value); return view.kind === 'audio' ? <VoiceAnswerPlayer review={teacherView} src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="这次提交的语音" /> : null; })()}
       {r.status === 'superseded' && <p role="status">{r.error || '历史结果，不计入当前成绩和评价次数'}</p>}
       <div className={styles.reviewEvaluation}><div className={styles.reviewEvaluationText}>
-      <AiReviewFeedback reason={r.reason} advice={r.advice}/>
-      </div>{renderReviewActions?.(r)}</div>
+      <AiReviewFeedback reason={r.reason} advice={r.advice} actions={renderReviewActions?.(r)}/>
+      </div></div>
       {renderReviewDetails?.(r)}
       {r.status === 'failed' && <ReviewFailure review={r} onRetry={onRetry && r.canRetry !== false && r.id === reviews.find(item => item.source === 'student')?.id ? () => retry(r.id) : undefined} retrying={retrying !== null} />}
       </div>

@@ -13,7 +13,7 @@
 .controls input { width: 140px; }
 .controls output { min-width: 42px; font-variant-numeric: tabular-nums; }
 .hint { color: #c2cddd; font-size: .75rem; }
-.stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; user-select: none; cursor: grab; }
+.stage { background: #edf2f7; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; user-select: none; cursor: grab; }
 .stage[data-dragging='true'] { cursor: grabbing; }
 .stage img { max-width: 92%; max-height: 92%; object-fit: contain; flex-shrink: 0; pointer-events: none; user-select: none; transform-origin: center; }
 .textViewport { flex: 1; min-height: 0; overflow: auto; background: #edf2f7; color: #21364e; padding: 32px 24px; }
@@ -69,3 +69,40 @@
 
 .saveStatus { color: #c2cddd; font-size: 12px; max-width: 320px; overflow-wrap: anywhere; }
 .saveStatus button { margin-left: 8px; }
+
+.controlsRight { justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
+.controlsRight .bottomTools { flex: 0 1 auto; margin-left: auto; justify-content: flex-end; min-height: 44px; }
+.controlsRight .fontTools { padding: 0; gap: 6px; background: transparent; border: 0; }
+@media (max-width: 600px) { .controlsRight { gap: 8px; padding-left: 10px; padding-right: 10px; } }
+/* 浮动操作栏让作品延伸到底部；仅按钮保持足够对比。 */
+.controls.floatingControls { position: absolute; z-index: 5; right: 14px; left: auto; bottom: max(12px, env(safe-area-inset-bottom)); width: max-content; max-width: calc(100% - 28px); min-height: 0; padding: 6px; gap: 6px; border: 1px solid #ffffff25; border-radius: 14px; background: #1c293a26; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 0 2px 12px #10203014; }
+.controls.floatingControls[data-dock='left'] { left: 14px; right: auto; }
+.controls.floatingControls .bottomTools { flex: 0 1 auto; flex-basis: auto; margin-left: 0; min-height: 40px; gap: 6px; }
+.floatingControls button { display: inline-flex; align-items: center; justify-content: center; width: 40px; min-width: 40px; height: 40px; min-height: 40px; padding: 5px !important; border-radius: 9px; background: #20364fcc; }
+.floatingControls button:hover:not(:disabled) { background: #385e82e6; }
+.floatingControls output { color: #fff; padding: 4px; min-width: 38px; font-size: 12px; text-shadow: 0 1px 3px #000; }
+.floatingControls .annotationText { display: inline; font-size: 12px; }
+.controls.floatingControls .annotationToggle { margin-left: 0; width: auto; min-width: 68px; gap: 6px; }
+.floatingControls .fontTools { background: transparent; border: 0; gap: 4px; padding: 0; }
+.floatingControls input[type='range'] { width: clamp(60px, 10vw, 130px); min-width: 60px; }
+.floatingControls [aria-label='图片查看工具'] { background: transparent; gap: 6px; }
+.floatingControls .saveStatus { padding: 5px; border-radius: 6px; background: #20364fe6; }
+@media (max-width: 600px) { .controls.floatingControls { flex-wrap: wrap; right: 8px; max-width: calc(100% - 16px); } .controls.floatingControls[data-dock='left'] { left: 8px; } .controls.floatingControls .bottomTools { flex-basis: auto; flex-wrap: wrap; } }
+/* 左停靠镜像排列控件，文字、图标和滑块本身不翻转。 */
+.controls.floatingControls[data-dock='left'],
+.floatingControls[data-dock='left'] .bottomTools,
+.floatingControls[data-dock='left'] .fontTools,
+.floatingControls[data-dock='left'] [aria-label='图片查看工具'] { flex-direction: row-reverse; }
+.floatingControls .quickAction button { width: auto; min-width: 76px; white-space: nowrap; gap: 5px; }
+
+.switchAnimation[open] { animation: lectureSwitchIn 160ms ease-out; }
+@keyframes lectureSwitchIn { from { opacity: .4; transform: translateX(var(--lecture-slide-from, 10px)); } to { opacity: 1; transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .switchAnimation[open] { animation: none; } }
+.lectureTabHost { position: absolute; top: 78px; right: 18px; z-index: 6; }
+.lectureTabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 12px; border: 1px solid #cbd8e6; background: #f5f8fce8; box-shadow: 0 3px 12px #263c5412; }
+.lectureTabs button { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 8px 13px; border-radius: 9px; border: 1px solid transparent; background: transparent; color: #61778f; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.lectureTabs button:hover { background: #e8eff7; color: #315b80; }
+.lectureTabs button[aria-selected='true'] { color: #294f75; background: #fff; border-color: #c7d9ec; box-shadow: 0 1px 4px #28466414; font-weight: 600; }
+@media (max-width: 600px) { .lectureTabHost { top: 70px; right: 10px; } .lectureTabs button { padding: 7px 10px; font-size: 12px; } }
+
+.switchAnimation[data-slide-from='left'] { --lecture-slide-from: -10px; }

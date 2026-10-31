@@ -4,12 +4,19 @@ import { IconMessageSearch } from '@tabler/icons-react';
 import { ReviewBuddyHeading } from '@/components/review-buddy-heading';
 import { ReviewRewardText } from '@/components/review-reward-text';
 
-import { useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { REWARD_STYLE_OPTIONS, pointsUnitLabel } from '@/lib/worksheet-reward';
 import { formatReviewText, formatReviewAdvice } from '@/lib/worksheet-review-display';
 import { FullscreenPreview } from './fullscreen-preview';
+import { AnchoredSpeechControls } from './anchored-speech-controls';
 import styles from './fullscreen-preview.module.css';
+
+const ReviewSpeechContext = createContext<ReturnType<typeof useReviewSpeech> | null>(null);
+function ReviewSpeechControl({mode}: {mode:'reason'|'advice'}) {
+ const speech=useContext(ReviewSpeechContext);
+ return <AnchoredSpeechControls>{speech?.controls(mode,undefined,true)}</AnchoredSpeechControls>;
+}
 
 export interface ReviewPreviewProps {
   title?: string; reason?: string | null; advice?: string | null; score?: number | null; maxScore?: number; unit?: string; note?: string; annotationId?: string;
@@ -24,7 +31,7 @@ export function ReviewFullscreen({title='AI 评价与建议',reason,advice,score
  const speech=useReviewSpeech(reason??'',advice??'',visible,annotationId??title);
   const reward = REWARD_STYLE_OPTIONS.find(option => option.value !== 'points' && pointsUnitLabel(option.value) === unit);
   const showRewardIcons = !!reward && score !== null && score !== undefined && Number.isInteger(score) && maxScore !== undefined && Number.isInteger(maxScore) && maxScore > 0 && maxScore <= 20;
-  return <FullscreenPreview viewTabs={viewTabs} visible={visible} switchAnimation floatingControls compactControls allowAnnotations textSize={fontSize} annotationKey={JSON.stringify(['review', annotationId, title, reason, advice, score, maxScore, unit, note])} title={title} onClose={onClose} quickAction={!viewTabs&&onSwitch&&<button onClick={onSwitch}>查看作答</button>} controls={<>
+  return <ReviewSpeechContext.Provider value={speech}><FullscreenPreview viewTabs={viewTabs} visible={visible} switchAnimation floatingControls compactControls allowAnnotations textSize={fontSize} annotationKey={JSON.stringify(['review', annotationId, title, reason, advice, score, maxScore, unit, note])} title={title} onClose={onClose} quickAction={!viewTabs&&onSwitch&&<button onClick={onSwitch}>查看作答</button>} controls={<>
       <div className={styles.fontTools}>
       <button type="button" onClick={() => setFontSize(size => Math.max(18, size - 2))} disabled={fontSize <= 18} aria-label="缩小评价文字">A−</button>
       <output aria-label="当前文字大小">{fontSize}<small>px</small></output>
@@ -42,11 +49,11 @@ export function ReviewFullscreen({title='AI 评价与建议',reason,advice,score
               <span className={styles.rewardCount}>{score}<span> / {maxScore ?? '—'} {unit ?? '分'}</span></span>
             </div>}
             {note && <p className={styles.reviewNote}>{note}</p>}
-          </div>}</div>{speech.controls('all')}</div>
+          </div>}{score == null && !note && <span className={styles.reviewOverviewLabel}>评价与建议</span>}</div></div>
           {speech.error&&<p className={styles.reviewSpeechError} role="status">{speech.error}</p>}
-          {reason && <section className={speech.activePart==='reason'?styles.reviewSpeechActive:undefined}><h3><ReviewBuddyHeading size={40}/>{speech.controls('reason')}</h3><p><ReviewRewardText text={formatReviewText(reason)} /></p></section>}
-          {advice && <section className={speech.activePart==='advice'?styles.reviewSpeechActive:undefined}><h3><ReviewBuddyHeading advice size={40}/>{speech.controls('advice')}</h3><p>{formatReviewAdvice(advice)}</p></section>}
+          {reason && <section className={speech.activePart==='reason'?styles.reviewSpeechActive:undefined}><h3><ReviewBuddyHeading size={40}/><ReviewSpeechControl mode="reason"/></h3><p><ReviewRewardText text={formatReviewText(reason)} /></p></section>}
+          {advice && <section className={speech.activePart==='advice'?styles.reviewSpeechActive:undefined}><h3><ReviewBuddyHeading advice size={40}/><ReviewSpeechControl mode="advice"/></h3><p>{formatReviewAdvice(advice)}</p></section>}
         </article>
       </div>
-    </FullscreenPreview>;
+    </FullscreenPreview></ReviewSpeechContext.Provider>;
 }

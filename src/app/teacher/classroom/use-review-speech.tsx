@@ -35,12 +35,17 @@ export function useReviewSpeech(reason:string,advice:string,visible:boolean,iden
    try{await audio.current?.play();}catch{if(ticket===generation.current){setState('paused');setError('语音已准备好，请点继续朗读');}}
   }catch(e){if(ticket===generation.current){setState('idle');setMode(null);setPart(null);setError(e instanceof Error?e.message:'朗读失败，请重试');}}
  };
- const controls=(type:Mode)=><span className={styles.reviewSpeechControls}>
-  <button type="button" className={styles.reviewSpeechButton} aria-pressed={mode===type} disabled={mode===type&&state==='loading'||(type==='reason'?!reason.trim():type==='advice'?!advice.trim():!reason.trim()&&!advice.trim())} onClick={()=>void start(type)}>
-   {mode===type&&state==='playing'?<IconPlayerPause size={18}/>:<IconVolume size={18}/>}
-   {mode===type?(state==='loading'?'正在准备…':state==='playing'?'暂停朗读':state==='paused'?'继续朗读':type==='all'?'朗读全部':type==='reason'?'朗读评价':'朗读建议'):type==='all'?'朗读全部':type==='reason'?'朗读评价':'朗读建议'}
-  </button>
-  {mode===type&&state!=='idle'&&<button type="button" className={styles.reviewSpeechStop} onClick={stop} aria-label="停止朗读" title="停止朗读"><IconPlayerStop size={16} fill="currentColor" aria-hidden="true"/><span>停止</span></button>}
- </span>;
- return {controls,activePart:part,error};
+ const controls=(type:Mode,label?:string,iconOnly=false)=>{
+  const active=mode===type;
+  const title=active?(state==='loading'?'正在准备语音':state==='playing'?'暂停朗读':state==='paused'?'继续朗读':undefined):undefined;
+  const name=title??label??(type==='all'?'朗读全部':type==='reason'?'朗读评价':'朗读建议');
+  return <span className={styles.reviewSpeechControls}>
+   <button type="button" className={iconOnly?styles.conversationSpeechIcon:styles.reviewSpeechButton} aria-label={name} title={name} aria-pressed={active} disabled={active&&state==='loading'||(type==='reason'?!reason.trim():type==='advice'?!advice.trim():!reason.trim()&&!advice.trim())} onClick={()=>void start(type)}>
+    {active&&state==='playing'?<IconPlayerPause size={iconOnly?22:18}/>:<IconVolume size={iconOnly?26:18}/>}
+    {iconOnly?(active&&state==='playing'&&<span className={styles.speechWave} data-playing="true" aria-hidden="true"><i/><i/><i/></span>):name}
+   </button>
+   {active&&state!=='idle'&&<button type="button" className={iconOnly?`${styles.conversationSpeechIcon} ${styles.conversationSpeechStop}`:styles.reviewSpeechStop} onClick={stop} aria-label="停止朗读" title="停止朗读"><IconPlayerStop size={17} fill="currentColor" aria-hidden="true"/>{!iconOnly&&<span>停止</span>}</button>}
+  </span>;
+ };
+ return {controls,activePart:part,error,state,start,stop};
 }

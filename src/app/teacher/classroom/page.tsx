@@ -4,11 +4,16 @@ import { useState, useEffect, useCallback, useRef, useMemo, memo, Suspense, useL
 import { useRouter, useSearchParams } from 'next/navigation';
 import { WordCloud, type Word, type WordRendererData } from "@isoterik/react-word-cloud";
 import { api } from '@/lib/api';
+import { VoiceAnswerPlayer } from '@/components/voice-answer-player';
+import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { audioMonitorPreview } from './worksheet-audio-monitor';
 import { copyText } from '@/lib/copy-text';
 import { useSocket } from '@/lib/socket';
 import { stripImages, stripMarkdownToPlainText, Markdown } from '@/lib/markdown';
 import { getApiBaseUrl, getClassroomPort } from '@/lib/api-base';
+function projectionVoiceOnly(message: {content: string; fileUrls?: unknown}) {
+  return ['(语音)', '（语音）', ''].includes(message.content.trim()) && /\.(ogg|mp3|wav|m4a|webm)(?:[?#"\]]|$)/i.test(typeof message.fileUrls === 'string' ? message.fileUrls : JSON.stringify(message.fileUrls) || '');
+}
 const API_BASE = getApiBaseUrl();
 function fixSvgUrl(svg: string) { return svg ? svg.replace(/href="\/uploads\//g, `href="${API_BASE}/uploads/`) : svg; }
 import { QRCodeSVG } from 'qrcode.react';
@@ -24,7 +29,7 @@ import { RotatedImage } from '@/components/rotated-image';
 import { ClassroomImagePreviewContext } from './answer-photo';
 import { AnnotationClassroomContext } from './annotation-storage';
 import { ClassroomImagePreview } from './image-preview';
-import { FullscreenPreview } from './fullscreen-preview';
+import { ConversationSpeechPreview, ConversationReadButton } from './conversation-speech';
 import previewStyles from './fullscreen-preview.module.css';
 import { MatrixOverlay, type WorksheetWorkspaceEntry } from './matrix-overlay';
 import { WorksheetDrawer, type WorksheetDrawerEntry } from './worksheet-drawer';
@@ -3322,8 +3327,17 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                         style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid', borderColor: msgChecked[i] ? 'var(--primary)' : '#d1d5db', background: msgChecked[i] ? 'var(--primary)' : 'transparent', cursor: msgRounds[i] != null ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .12s', flexShrink: 0, opacity: msgRounds[i] != null ? 1 : 0 }}>
                         {msgChecked[i] && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                       </div>
+                      {m.role === 'user' ? (
+                        <span style={{ width: 28, height: 28, borderRadius: '50%', overflow: 'hidden', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--primary-light)', color: 'var(--primary)', flexShrink: 0, fontSize: 12 }}>
+                          {selectedStudent.avatarId && studentAvatars[selectedStudent.avatarId] ? <SvgAvatar svg={studentAvatars[selectedStudent.avatarId]} size={28}/> : selectedStudent.name[0]}
+                        </span>
+                      ) : (
+                        <span style={{ width: 28, height: 28, borderRadius: 8, overflow: 'hidden', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--primary)', color: '#fff', flexShrink: 0, fontSize: 12 }}>
+                          {drawerAgent?.logo ? <img src={drawerAgent.logo.startsWith('/') ? `${getApiBaseUrl()}${drawerAgent.logo}` : drawerAgent.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : (drawerAgent?.name?.[0] || 'AI')}
+                        </span>
+                      )}
                       <div style={{ fontSize: "0.75rem", fontWeight: 600, color: m.role === 'user' ? 'var(--primary)' : 'var(--text-secondary)' }}>
-                        {m.role === 'user' ? selectedStudent.name : 'AI'}
+                        {m.role === 'user' ? selectedStudent.name : (drawerAgent?.name || 'AI 助手')}
                       </div>
                     </div>
                     {/* 附件图片 */}
@@ -3336,8 +3350,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                             <RotatedImage src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
                               onClick={() => openFullscreenImage(`${getApiBaseUrl()}${fu}`)}
                               style={{ maxWidth: 200, maxHeight: 150, borderRadius: 8, objectFit: 'cover', display: 'block', cursor: 'pointer' }} />
-                          ) : /\.ogg$/i.test(fu) ? (
-                            <audio src={`${getApiBaseUrl()}${fu}`} controls preload="none" aria-label="学生语音" style={{ maxWidth: '100%', width: 260 }} />
+                          ) : /\.(ogg|mp3|wav|m4a|webm)(?:[?#]|$)/i.test(fu) ? (
+                            <VoiceAnswerPlayer compact review tone="blue" preload="metadata" src={worksheetAssetUrl(fu)} durationMs={0} title="学生语音" />
                           ) : (
                             <div style={{ padding: '6px 10px', background: '#f3f4f6', borderRadius: 6, fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
@@ -3348,7 +3362,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       ));
                     })()}
                     <div style={{ fontSize: "0.875rem", lineHeight: 1.6, wordBreak: 'break-word', color: '#1a1a2e' }}>
-                      <Markdown>{m.fileUrls?.length ? stripImages(m.content) : m.content}</Markdown>
+                      {!(['(语音)', '（语音）'].includes(m.content.trim()) && /\.(ogg|mp3|wav|m4a|webm)(?:[?#"\]]|$)/i.test(typeof m.fileUrls === 'string' ? m.fileUrls : JSON.stringify(m.fileUrls))) && <Markdown>{m.fileUrls?.length ? stripImages(m.content) : m.content}</Markdown>}
                     </div>
                     <div style={{ fontSize: "0.75rem", color: 'var(--text-muted)', marginTop: 6, display: 'flex', gap: 8 }}>
                       <span>{new Date(m.createdAt).toLocaleTimeString()}</span>
@@ -3486,24 +3500,23 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
 
       {/* 投屏讲评 */}
       {showFullscreen && (
-        <FullscreenPreview
+        <ConversationSpeechPreview
           title={`${classroom?.title || '课堂'} · 学习展示${selectedStudent ? ` · ${selectedStudent.name}` : ''} · ${projMsgs.filter(m => m.role === 'user').length} 轮对话`}
           onClose={() => setShowFullscreen(false)}
           allowAnnotations
+          floatingControls compactControls textSize={conversationFontSize}
           controls={<>
             <div className={previewStyles.fontTools}>
-              <span className={previewStyles.toolLabel}>文字大小</span>
               <button type="button" onClick={() => setConversationFontSize(size => Math.max(18, size - 2))} disabled={conversationFontSize <= 18} aria-label="缩小对话文字">A−</button>
               <output aria-label="当前对话文字大小">{conversationFontSize}<small>px</small></output>
               <button type="button" onClick={() => setConversationFontSize(size => Math.min(48, size + 2))} disabled={conversationFontSize >= 48} aria-label="放大对话文字">A＋</button>
             </div>
-            <span className={previewStyles.hint}>上下滚动查看对话 <kbd>Esc</kbd> 退出</span>
           </>}
         >
-          <div style={{ display: 'flex', flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#fff' }}>
+          <div style={{ display: 'flex', flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', background: '#edf2f7' }}>
           {/* 对话内容 */}
           <div ref={fullscreenContentRef} tabIndex={0} role="region" aria-label="学生与智能学伴的投屏对话" style={{
-            flex: 1, minHeight: 0, overflow: 'auto', overscrollBehavior: 'contain', padding: '40px 60px',
+            flex: 1, minHeight: 0, overflow: 'auto', overscrollBehavior: 'contain', padding: '40px 60px 100px',
             maxWidth: 1100, width: '100%', margin: '0 auto',
           }}>
             {projMsgs.length === 0 ? (
@@ -3541,7 +3554,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                           fontSize: "0.938rem", fontWeight: 700, overflow: 'hidden',
                         }}>
                           {drawerAgent.logo
-                            ? <img src={`${getApiBaseUrl()}${drawerAgent.logo}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ? <img src={drawerAgent.logo.startsWith('/') ? `${getApiBaseUrl()}${drawerAgent.logo}` : drawerAgent.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             : drawerAgent.name[0]
                           }
                         </div>
@@ -3552,16 +3565,18 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       }}>
                         {m.role === 'user' ? selectedStudent?.name || '学生' : (drawerAgent?.name || 'AI 助手')}
                       </span>
+                      {m.role !== 'user' && <ConversationReadButton id={`fs-${m.role}-${m.createdAt || i}`} text={m.content} />}
                     </div>
 
                     {/* 消息气泡 */}
                     <div style={{
                       maxWidth: '78%',
-                      padding: '20px 28px',
+                      padding: projectionVoiceOnly(m) ? '10px 18px' : '20px 28px',
                       borderRadius: m.role === 'user' ? '20px 20px 6px 20px' : '6px 20px 20px 20px',
-                      background: m.role === 'user' ? 'var(--primary-tint)' : '#f8fafc',
+                      background: projectionVoiceOnly(m) ? '#ffffff' : m.role === 'user' ? 'var(--primary-tint)' : '#f8fafc',
                       border: '1px solid',
-                      borderColor: m.role === 'user' ? 'var(--primary-light)' : '#eef2f6',
+                      borderColor: projectionVoiceOnly(m) ? '#d3deea' : m.role === 'user' ? 'var(--primary-light)' : '#eef2f6',
+                      boxShadow: projectionVoiceOnly(m) ? '0 3px 12px #314c6810' : undefined,
                       lineHeight: 1.8,
                       fontSize: conversationFontSize,
                       color: '#0f172a',
@@ -3572,13 +3587,13 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                         const urls = m.fileUrls ? (typeof m.fileUrls === 'string' ? JSON.parse(m.fileUrls) : m.fileUrls) : [];
                         const names = m.fileNames ? (typeof m.fileNames === 'string' ? JSON.parse(m.fileNames) : m.fileNames) : [];
                         return urls.map((fu: string, fi: number) => (
-                          <div key={fi} style={{ marginBottom: 12 }}>
+                          <div key={fi} style={{ marginBottom: projectionVoiceOnly(m) ? 0 : 12, lineHeight: /\.(ogg|mp3|wav|m4a|webm)(?:[?#]|$)/i.test(fu) ? 1 : undefined }}>
                             {/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(fu) ? (
                               <RotatedImage src={`${getApiBaseUrl()}${fu}`} alt={names[fi] || ''}
                                 onClick={() => openFullscreenImage(`${getApiBaseUrl()}${fu}`)}
                                 style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 12, objectFit: 'contain', display: 'block', cursor: 'pointer' }} />
-                            ) : /\.ogg$/i.test(fu) ? (
-                              <audio src={`${getApiBaseUrl()}${fu}`} controls preload="none" aria-label="学生语音" style={{ maxWidth: '100%', width: 300 }} />
+                            ) : /\.(ogg|mp3|wav|m4a|webm)(?:[?#]|$)/i.test(fu) ? (
+                              <VoiceAnswerPlayer compact review tone="blue" preload="metadata" src={worksheetAssetUrl(fu)} durationMs={0} title="学生语音" />
                             ) : (
                               <div style={{ padding: '10px 16px', background: m.role === 'user' ? 'rgba(102,126,234,0.08)' : '#f1f5f9', borderRadius: 10, fontSize: "1rem", display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
@@ -3588,7 +3603,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                           </div>
                         ));
                       })()}
-                      <Markdown>{m.fileUrls?.length ? stripImages(m.content) : m.content}</Markdown>
+                      {!(['(语音)', '（语音）'].includes(m.content.trim()) && /\.(ogg|mp3|wav|m4a|webm)(?:[?#"\]]|$)/i.test(typeof m.fileUrls === 'string' ? m.fileUrls : JSON.stringify(m.fileUrls))) && <Markdown>{m.fileUrls?.length ? stripImages(m.content) : m.content}</Markdown>}
                     </div>
                   </div>
                 ))}
@@ -3597,7 +3612,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           </div>
 
           </div>
-        </FullscreenPreview>
+        </ConversationSpeechPreview>
       )}
 
       {/* 全屏学生网格覆盖层 — 盖过左侧导航栏 */}

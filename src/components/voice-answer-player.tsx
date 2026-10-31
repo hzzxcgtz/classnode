@@ -8,7 +8,7 @@ export function audioTime(seconds: number) {
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 }
 /** Same player for student drafts, submitted answers and teacher review. */
-export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答', compact = false, review = false }: { src: string; durationMs: number; title?: string; compact?: boolean; review?: boolean }) {
+export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答', compact = false, review = false, preload = 'none', tone = 'green' }: { src: string; durationMs: number; preload?: 'none'|'metadata'; tone?: 'green'|'blue'; title?: string; compact?: boolean; review?: boolean }) {
   const audio = useRef<HTMLAudioElement>(null);
   const pendingSeek = useRef<number | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -36,8 +36,8 @@ export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答
       if (element.readyState > 0) { try { element.currentTime = next; pendingSeek.current = null; } catch { /* Retry after metadata. */ } }
       else element.load();
     }}/>;
-  return <div data-voice-player="" className={`${styles.player} ${compact ? styles.compact : ''} ${review ? styles.review : ''}`} aria-label={title}>
-    <audio ref={audio} src={src} preload="none" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+  return <div data-voice-player="" className={`${styles.player} ${compact ? styles.compact : ''} ${review ? styles.review : ''} ${tone === 'blue' ? styles.blue : ''}`} aria-label={title}>
+    <audio ref={audio} src={src} preload={preload} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
       onTimeUpdate={() => setPosition(audio.current?.currentTime || 0)} onEnded={() => setPlaying(false)}
       onLoadedMetadata={() => { const element = audio.current; const value = element?.duration; if (value && Number.isFinite(value)) setLength(value); if (element && pendingSeek.current !== null) { try { const next = Math.min(pendingSeek.current, value && Number.isFinite(value) ? value : length); element.currentTime = next; setPosition(next); pendingSeek.current = null; } catch { /* Keep pending until media can seek. */ } } }}
       onError={() => { setPlaying(false); setError('录音暂时无法读取，请检查网络后重试。'); }} />

@@ -107,3 +107,6 @@ classnode-v*.tar.gz
 
 # Local HTTPS signing identity and private keys (never distribute or commit).
 **/lan-https/
+
+# Teacher-generated voice preview cache
+/server/voice-previews/

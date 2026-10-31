@@ -17,21 +17,21 @@ export default function SpeechSettings(){
  const selectedVoice = voices.find(voice=>voice.id===config.voiceId);
  const save = async () => {
   setSaving(true); setError(''); setNotice('');
-  try { await api.saveSpeechConfig(config); setNotice('朗读设置已保存，重新打开评价建议页面后生效。'); }
+  try { await api.saveSpeechConfig(config); setNotice('朗读设置已保存，重新打开讲评或对话投屏页面后生效。'); }
   catch(problem) { setError(problem instanceof Error ? problem.message : '保存失败，请重试'); }
   finally { setSaving(false); }
  };
  return <div className={styles.page}>
-  <TeacherPageHeader title="评价语音朗读" description="为课堂讲评选择声音，让评价与建议可以听见。" actions={
+  <TeacherPageHeader title="AI 语音朗读" description="为课堂讲评和对话投屏选择朗读声音。" actions={
    <Link className="btn btn-secondary" href="/teacher/agents/"><IconArrowLeft size={18} aria-hidden="true"/>返回智能体管理</Link>
   }/>
   <section className={styles.panel} aria-busy={!ready}>
    <div className={styles.enableRow}>
     <span className={styles.sectionIcon}><IconVolume size={24} stroke={1.7} aria-hidden="true"/></span>
-    <div className={styles.enableCopy}><h2>教师评价朗读</h2><p>在放大讲评的“评价建议”页面使用。</p></div>
+    <div className={styles.enableCopy}><h2>AI 语音朗读</h2><p>在课堂讲评和对话投屏中，朗读 AI 的评价、建议与回复内容。</p></div>
     <span className={`${styles.status} ${config.enabled?styles.enabled:''}`}>{config.enabled?'已开启':'未开启'}</span>
     <label className={styles.switch}>
-     <input type="checkbox" aria-label="开启教师评价朗读" disabled={!ready||saving} checked={config.enabled} onChange={event=>{setConfig({...config,enabled:event.target.checked});setNotice('');}}/>
+     <input type="checkbox" aria-label="开启AI 语音朗读" disabled={!ready||saving} checked={config.enabled} onChange={event=>{setConfig({...config,enabled:event.target.checked});setNotice('');}}/>
      <span aria-hidden="true"/>
     </label>
    </div>
@@ -62,10 +62,10 @@ export default function SpeechSettings(){
      {selectedVoice ? <SpeechListener key={config.credentialId+config.voiceId} label="试听音色" load={()=>api.previewSpeech(config.credentialId,config.voiceId)}/> : <button type="button" className="btn btn-secondary" disabled><IconVolume size={18} aria-hidden="true"/>试听音色</button>}
     </aside>
    </div>
-   <div className={styles.usage}><IconInfoCircle size={17} aria-hidden="true"/><p>试听与朗读按扣子语音服务计费。已生成音频会在本次服务运行期间复用，重启后可能重新合成。</p></div>
+   <div className={styles.usage}><IconInfoCircle size={17} aria-hidden="true"/><p>内置音色试听直接播放本地音频。新增音色首次试听和正文朗读将使用所选账号的扣子语音合成额度。</p></div>
    {error&&<div className={styles.error} role="alert"><IconInfoCircle size={18} aria-hidden="true"/><span>{error}</span></div>}
    {notice&&<div className={styles.success} role="status"><IconCheck size={18} aria-hidden="true"/><span>{notice}</span></div>}
-   <footer className={styles.footer}><span>可在讲评时选择朗读全部、仅评价或仅建议。</span><button type="button" className="btn btn-primary" disabled={!ready||busy||saving||(config.enabled&&!selectedVoice)} onClick={()=>void save()}><IconCheck size={18} aria-hidden="true"/>{saving?'正在保存…':'保存设置'}</button></footer>
+   <footer className={styles.footer}><span>可在讲评与对话投屏中朗读智能体内容。</span><button type="button" className="btn btn-primary" disabled={!ready||busy||saving||(config.enabled&&!selectedVoice)} onClick={()=>void save()}><IconCheck size={18} aria-hidden="true"/>{saving?'正在保存…':'保存设置'}</button></footer>
   </section>
  </div>;
 }

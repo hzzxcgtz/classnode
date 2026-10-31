@@ -81,7 +81,7 @@ requireRuntime();
 // 在删除上次打包结果前验证所有输入，避免缺少构建产物时丢掉已有资源。
 for (const input of [
   'server/dist/index.js', 'server/prisma/schema.prisma', 'server/changelogs',
-  'server/vendor', 'server/package.json', 'out/index.html',
+  'server/vendor', 'server/assets/voice-previews/manifest.json', 'server/package.json', 'out/index.html',
   'out/teacher/agents/templates/index.html',
 ]) requirePath(input);
 console.log(`[package-server] 目标: ${target || `${runtime.platform}-${runtime.arch}`}`);
@@ -99,6 +99,7 @@ copy('server/changelogs', 'changelogs');
 // ⚠️ 漏了这行的表现是**打包版的学生端静默没有缩略图**：`readShotSource()` 读不到文件
 // 会返回 null ⇒ 路由 503 ⇒ SDK 拿不到 window.snapdom。dev 下一切正常，只有安装包坏。
 copy('server/vendor', 'vendor');
+copy('server/assets/voice-previews', 'assets/voice-previews');
 copy('server/package.json', 'package.json');
 copy('out', 'frontend');
 fs.writeFileSync(path.join(resourceDir, '.env'), 'DATABASE_URL="file:./dev.db"\n');

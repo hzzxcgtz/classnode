@@ -107,7 +107,7 @@
 
 .switchAnimation[data-slide-from='left'] { --lecture-slide-from: -10px; }
 
-.reviewSpeechTop { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:24px; padding-bottom:24px; border-bottom:1px solid #e6edf4; }
+.reviewSpeechTop { display:flex; align-items:center; justify-content:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:24px; padding-bottom:24px; border-bottom:1px solid #e6edf4; }
 .reviewSpeechTop .reviewMeta { border:0; padding:0; margin:0; }
 .reviewSpeechControls { display:inline-flex; align-items:center; gap:6px; flex-shrink:0; }
 .reviewSpeechButton,.reviewSpeechStop { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:42px; padding:8px 12px; border:1px solid #d1deeb; border-radius:9px; background:#f5f8fc; color:#42668b; font-size:14px; font-weight:500; cursor:pointer; touch-action:manipulation; }
@@ -121,3 +121,26 @@
 .review section { padding:12px 16px; margin-left:-16px; margin-right:-16px; }
 .reviewSpeechError { font-size:14px; color:#97502e; margin-bottom:16px!important; }
 @media(max-width:600px) { .review h3 { flex-wrap:wrap; } .review h3 > .reviewSpeechControls { margin-left:0; } }
+
+.conversationSpeechAnchor { display:inline-flex; align-self:center; vertical-align:middle; width:110px; height:44px; line-height:0; flex-shrink:0; }
+.conversationSpeech { display:flex; align-items:center; gap:5px; position:fixed; z-index:30; }
+.conversationSpeechIcon { display:inline-flex; align-items:center; justify-content:center; gap:3px; width:44px; height:44px; padding:0; border:0; border-radius:50%; background:transparent; color:#71869b; cursor:pointer; touch-action:manipulation; }
+.conversationSpeechIcon:hover { background:#eaf2fa; color:#315f8a; }
+.conversationSpeechIcon[aria-pressed=true] { width:60px; border-radius:22px; background:#e4effa; color:#315f8a; }
+.conversationSpeechIcon:focus-visible { outline:3px solid #8eafce; outline-offset:2px; }
+.conversationSpeechIcon:disabled { opacity:.6; cursor:wait; }
+.conversationSpeechStop { color:#8f6a60; }
+.conversationSpeechStop:hover { color:#914b3e; background:#fff0eb; }
+.conversationSpeech .speechWave { width:12px; gap:2px; height:20px; color:currentColor; }
+.conversationSpeech .speechWave i { width:2px; }
+.conversationSpeechError { position:absolute; top:calc(100% + 12px); right:0; width:min(360px, 75vw); padding:12px 16px; border:1px solid #ead2c4; border-radius:9px; background:#fff8f2; color:#8a4b30; font-size:14px; box-shadow:0 3px 12px #263c5418; z-index:10; }
+.speechWave { display:inline-flex; align-items:center; justify-content:center; gap:3px; width:26px; height:26px; color:#a9c9e8; }
+.speechWave i { width:3px; height:7px; border-radius:3px; background:currentColor; }
+.speechWave[data-playing='true'] i { animation:speechWavePulse .8s ease-in-out infinite alternate; }
+.speechWave i:nth-child(2) { height:17px; animation-delay:-.3s; }
+.speechWave i:nth-child(3) { height:12px; animation-delay:-.5s; }
+.speechWave i:nth-child(4) { animation-delay:-.1s; }
+@keyframes speechWavePulse { to { transform:scaleY(.35); opacity:.5; } }
+@media(prefers-reduced-motion:reduce) { .speechWave[data-playing='true'] i { animation:none; } }
+
+.reviewOverviewLabel { font-size:16px; color:#62758b; }

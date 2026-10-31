@@ -66,6 +66,8 @@ cd /Users/zxc/myprojects/classnode
 | `pnpm start` | 启动 Express，提供 API 与静态前端；先执行 build:all |
 | `pnpm db:generate` / `pnpm db:push` / `pnpm db:studio` | 从仓库根执行 Prisma 命令 |
 
+Windows 发布 CI 将服务端测试按文件分为 4 个独立任务，每组限制 2 个测试进程，避免大量 Prisma 临时库初始化争用资源。脚本和前端测试在第 1 组运行一次；所有组通过后才开始各架构打包。每组日志独立上传，不因另一组失败而提前取消。需要本地复现某组时，先执行 `pnpm build:server`，再运行 `node scripts/run-tests.mjs server --test-shard=1/4 --test-concurrency=2`（本地 Node 需满足项目要求）。日常 `pnpm test` 仍执行完整回归。
+
 `pnpm start` 已修正为 Express 入口；项目使用 Next.js 静态导出，不能用 next start。测试日志集中在 `.dev/logs/test-client.log`、`.dev/logs/test-server.log`、`.dev/logs/test-scripts.log`。测试筛选参数可直接传入，例如 `pnpm test:client --test-name-pattern=绘图`。
 
 ## 桌面与发布

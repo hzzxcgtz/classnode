@@ -1,4 +1,5 @@
 'use client';
+import {AudioTranscription} from './audio-transcription';
 import { useEffect, useRef, useState } from 'react';
 import { IconPlayerPlayFilled, IconPlayerPauseFilled, IconMicrophone, IconRefresh } from '@tabler/icons-react';
 import styles from './voice-answer.module.css';
@@ -8,7 +9,7 @@ export function audioTime(seconds: number) {
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 }
 /** Same player for student drafts, submitted answers and teacher review. */
-export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答', compact = false, review = false, preload = 'none', tone = 'green' }: { src: string; durationMs: number; preload?: 'none'|'metadata'; tone?: 'green'|'blue'; title?: string; compact?: boolean; review?: boolean }) {
+export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答', compact = false, review = false, preload = 'none', tone = 'green', transcriptionActions = true, transcriptFontSize, transcription = true }: { src: string; durationMs: number; transcription?: boolean; transcriptionActions?: boolean; transcriptFontSize?: number; preload?: 'none'|'metadata'; tone?: 'green'|'blue'; title?: string; compact?: boolean; review?: boolean }) {
   const audio = useRef<HTMLAudioElement>(null);
   const pendingSeek = useRef<number | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -36,7 +37,7 @@ export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答
       if (element.readyState > 0) { try { element.currentTime = next; pendingSeek.current = null; } catch { /* Retry after metadata. */ } }
       else element.load();
     }}/>;
-  return <div data-voice-player="" className={`${styles.player} ${compact ? styles.compact : ''} ${review ? styles.review : ''} ${tone === 'blue' ? styles.blue : ''}`} aria-label={title}>
+  return <div data-voice-player="" className={`${styles.player} ${compact ? styles.compact : ''} ${review ? styles.review : ''} ${tone === 'blue' ? styles.blue : ''} ${transcriptFontSize ? styles.projection : ''}`} aria-label={title}>
     <audio ref={audio} src={src} preload={preload} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
       onTimeUpdate={() => setPosition(audio.current?.currentTime || 0)} onEnded={() => setPlaying(false)}
       onLoadedMetadata={() => { const element = audio.current; const value = element?.duration; if (value && Number.isFinite(value)) setLength(value); if (element && pendingSeek.current !== null) { try { const next = Math.min(pendingSeek.current, value && Number.isFinite(value) ? value : length); element.currentTime = next; setPosition(next); pendingSeek.current = null; } catch { /* Keep pending until media can seek. */ } } }}
@@ -48,6 +49,7 @@ export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答
       <div className={styles.trackHeader}><strong><IconMicrophone size={16} aria-hidden="true" />{title}</strong><span>{audioTime(position)} / {audioTime(length)}</span></div>
       {progress}
     </div>}
+    {review && transcription && <AudioTranscription inline={compact} key={src} src={src} title={title} showActions={transcriptionActions} fontSize={transcriptFontSize}/> }
     {error && <div className={styles.error} role="status">{error}<button type="button" onClick={() => { audio.current?.load(); void toggle(); }}><IconRefresh size={15} aria-hidden="true" />重试</button></div>}
   </div>;
 }

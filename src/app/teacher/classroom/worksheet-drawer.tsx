@@ -720,8 +720,7 @@ export function ParticipantAnswers({
                           </div>
                         )}
                         <div className={styles.answerPanel}>
-                          <span className={styles.answerLabel}>学生作答与答案对照</span>
-                          {(aiEvaluationEnabled(node) || node.type === 'short-answer' || node.type === 'drawing') ? <TeacherReviewHistory key={`${participantId}:${node.id}`} classroomId={board.classroomId} worksheetId={worksheet.id} participantId={participantId} studentName={participant.name} node={node} value={row?.value}><AnswerViewBody node={node} value={row?.value} /></TeacherReviewHistory> : <AnswerViewBody node={node} value={row?.value} />}
+                          {(aiEvaluationEnabled(node) || node.type === 'short-answer' || node.type === 'drawing' || answerView(node, row?.value).kind === 'fill') ? <TeacherReviewHistory key={`${participantId}:${node.id}`} classroomId={board.classroomId} worksheetId={worksheet.id} participantId={participantId} studentName={participant.name} node={node} value={row?.value}><AnswerViewBody node={node} value={row?.value} transcription={false} /></TeacherReviewHistory> : <><span className={styles.answerLabel}>学生作答与答案对照</span><AnswerViewBody node={node} value={row?.value} transcription={false} /></>}
                         </div>
                         {outcome.canReview && (
                           <div className={styles.actionRow}>

@@ -25,3 +25,5 @@
 :global(dialog[data-preview-dock='left']) .floating { left: 16px; right: auto; }
 :global(dialog[data-preview-dock='left']) .flyout { left: calc(100% + 10px); right: auto; }
 @media (max-width: 600px) { :global(dialog[data-preview-dock='left']) .floating { left: 8px; } :global(dialog[data-preview-dock='left']) .flyout { left: calc(100% + 8px); } }
+
+.pageToolbar { position:fixed; max-height:calc(100% - 160px); }

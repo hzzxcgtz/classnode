@@ -168,3 +168,7 @@ macOS 打包前会检查 `xcrun actool --version --output-format=human-readable-
 当前本机只有 Command Line Tools，尚未完成 `.icon` 的原生编译和安装效果验收。
 在完整 Xcode 环境打包后，检查 `.app/Contents/Resources/Assets.car`、图标名及传统 `.icns` 均存在，
 并分别在新旧系统中确认图标显示；最终是否消除兼容外框应以实际安装结果为准。
+
+### 刷新本地 2.1.6 验收数据
+
+`pnpm --filter classnode-server exec tsx ../scripts/refresh-acceptance-data.mjs` 默认只检查；加 `--apply` 在备份后生成独立的新版课堂，保留旧记录，不伪造 AI 评价。依赖本机旧版验收样例；已创建则拒绝重复覆盖。详见 [测试数据刷新说明](../docs/project-notes/TEST-DATA-REFRESH-2026-11-01.md)。

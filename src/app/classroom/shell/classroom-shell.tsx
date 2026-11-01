@@ -1,5 +1,6 @@
 'use client';
 
+import { IconPlayerPause, IconShieldCheck } from '@tabler/icons-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ChatPanelProps, ModuleId } from '../classroom-types';
@@ -654,7 +655,7 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked, worksh
           凡是浮在面板之上的东西都得自己 fixed + 给定 z-index（`.pauseCover` 里 10000）。
           🔴 覆盖层**不改变学生所在的模块** —— 他刚才在哪就还在哪，只是被盖住了；
           解除时原地继续。第一版是「暂停 ⇒ 送回首页」，教师真机一试就否掉了。
-          ⚠️ 语气是安抚不是报错（琥珀色、不是红色），且明说「你写过的东西都还在」——
+          ⚠️ 语气是安抚不是报错，且明说「你写过的东西都还在」——
           那句话是**真的**（§4.5：`mountedIds` 只增不减，模块仍挂在 DOM 里，草稿一个字节没动）。
           ⚠️ z-index 10000 夹在中间：高于 `.bar`(60) 与面板内模态(100)，低于 Toast(99999)
           —— 老师发来的消息与「课堂已恢复」这类提示不该被盖住。 */}
@@ -663,13 +664,13 @@ export function ClassroomShell({ chat, home, onStepChange, answersLocked, worksh
           {/* 遮罩本身只负责「压住底下那一层」，话都在卡片里说（教师：中间一个小弹窗，
               四周是半透明的原网页）。 */}
           <div className={styles.pauseCard}>
-            <div className={styles.pauseEmoji} aria-hidden="true">☕</div>
-            <div className={styles.pauseTitle}>课堂暂时休息一下</div>
+            <div className={styles.pauseEmoji} aria-hidden="true"><IconPlayerPause size={32} stroke={1.8}/></div>
+            <div className={styles.pauseTitle}>课堂已暂停</div>
             <div className={styles.pauseText}>
-              等老师继续就可以接着做
+              休息一下，老师继续课堂后就能接着做。
             </div>
-            <div className={styles.pauseNote}>你写过的东西都还在，不会丢</div>
-            <div className={styles.pauseDot} aria-hidden="true" />
+            <div className={styles.pauseNote}><IconShieldCheck size={17} aria-hidden="true"/>你的作答会保留，请放心</div>
+            <div className={styles.pauseWaiting}><span className={styles.pauseDot} aria-hidden="true"/>等待老师继续</div>
           </div>
         </div>
       )}

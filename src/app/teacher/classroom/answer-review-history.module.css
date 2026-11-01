@@ -1,0 +1,5 @@
+.answer { position:relative; cursor:zoom-in; }
+.heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; color:#7a8ca3; font-size:12px; font-weight:600; }
+.open { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:30px; height:30px; border:1px solid #d5e2ef; border-radius:7px; background:#f8fbff; color:#557da4; cursor:pointer; }
+.open:hover { background:#eaf2fa; }
+.open:focus-visible { outline:2px solid #6b95bc; outline-offset:2px; }

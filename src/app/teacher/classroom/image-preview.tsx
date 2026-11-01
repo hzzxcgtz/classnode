@@ -3,6 +3,7 @@ import { imageWheelZoomChange } from '@/lib/image-wheel-zoom';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ImageZoomSlider } from '@/components/image-zoom-slider';
+import { LectureHeading } from './lecture-heading';
 import { FullscreenPreview } from './fullscreen-preview';
 import { TemporaryAnnotations } from './temporary-annotations';
 import styles from './fullscreen-preview.module.css';
@@ -13,7 +14,7 @@ function imageTarget(src: string) {
   try { const url = new URL(src, window.location.href); url.searchParams.delete('orientation'); return url.pathname + url.search; } catch { return src; }
 }
 const clampZoom = (value: number) => Math.max(.3, Math.min(15, value));
-export function ClassroomImagePreview({ src, onClose, allowAnnotations = false, quickAction, viewTabs, visible = true }: { viewTabs?: ReactNode; visible?: boolean; quickAction?: ReactNode; src: string; onClose: () => void; allowAnnotations?: boolean }) {
+export function ClassroomImagePreview({ src, onClose, allowAnnotations = false, quickAction, viewTabs, visible = true, studentName }: { studentName?: string; viewTabs?: ReactNode; visible?: boolean; quickAction?: ReactNode; src: string; onClose: () => void; allowAnnotations?: boolean }) {
   const rotation = useImageRotation(src);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -38,7 +39,7 @@ export function ClassroomImagePreview({ src, onClose, allowAnnotations = false, 
     element?.addEventListener('wheel', wheel, { passive: false });
     return () => element?.removeEventListener('wheel', wheel);
   }, [stage]);
-  return <FullscreenPreview viewTabs={viewTabs} visible={visible} switchAnimation slideFrom="left" quickAction={quickAction} floatingControls allowAnnotations={allowAnnotations} annotationKey={imageTarget(src)} title="学生图片" onClose={onClose} controlsLayout={allowAnnotations ? 'image' : undefined}
+  return <FullscreenPreview viewTabs={viewTabs} visible={visible} switchAnimation slideFrom="left" quickAction={quickAction} floatingControls allowAnnotations={allowAnnotations} annotationKey={imageTarget(src)} title="学生图片" heading={studentName ? <LectureHeading studentName={studentName} mode="answer"/> : undefined} onClose={onClose} controlsLayout={allowAnnotations ? 'image' : undefined}
     renderAnnotations={(toolbarHost, tools) => <TemporaryAnnotations key={src} annotationKey={tools?.annotationKey ?? imageTarget(src)} onChange={tools?.onChange} toolbarHost={toolbarHost} imageView={{zoom, coordinateScale: imageWidth / 1000, offset, angle: rotation.angle, onZoom: change => setZoom(value => clampZoom(value + change)), onPan: setOffset, onFit: () => {setZoom(1);setOffset({x:0,y:0});}}} />}
     controls={<>
     <button type="button" onClick={() => setZoom(value => clampZoom(value - .2))} disabled={zoom <= .3} aria-label="缩小图片">−</button>

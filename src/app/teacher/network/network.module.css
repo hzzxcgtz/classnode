@@ -64,3 +64,6 @@
 .guidePhotos figcaption { margin-top: 8px; color: #5e6d80; font-size: .77rem; line-height: 1.6; }
 .sourceNote { margin: 12px 0 0; font-size: .77rem; color: #687b8e; line-height: 1.8; }
 @media(max-width: 640px) { .walkthrough { margin: 0 20px 22px; padding-top: 20px; } .guideSteps > li { gap: 10px; } .stepNumber { width: 26px; height: 26px; } }
+
+:global([data-settings-section='voice']) .page { max-width:none; }
+:global([data-settings-section='voice']) .connection { margin-top:0; }

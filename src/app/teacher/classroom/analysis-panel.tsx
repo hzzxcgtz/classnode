@@ -454,7 +454,7 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                           <path d="M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.9.6-1.5 1.5-1.5 2.5h-4c0-1-.6-1.9-1.5-2.5Z" />
                         </svg>
-                        AI 给{payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位'}同学的小建议
+                        支点博士的建议
                       </strong>
                       <p>{formatReviewText(item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice || '')}</p>
                     </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { AnnotationTranscriptContext } from '@/components/annotation-content-state';
 import { createPortal } from 'react-dom';
 import styles from './fullscreen-preview.module.css';
 import { TemporaryAnnotations } from './temporary-annotations';
@@ -8,13 +9,13 @@ import { readImageAnnotations, type AnnotationDocument, type AnnotationStroke } 
 import { useAnnotationStorage } from './annotation-storage';
 import type { AnnotationPersistence } from '@/lib/annotation-persistence';
 
-type TextFrame = { content: ReactNode; textSize: number; width: number; height: number; scroll: {top: number; left: number}[] };
+type TextFrame = { expandedTranscripts?: string[]; content: ReactNode; textSize: number; width: number; height: number; scroll: {top: number; left: number}[] };
 const textFrames = new Map<string, TextFrame>();
 
 /** Native modal focus containment; portal keeps the viewer outside clipped worksheet panels. */
 type AnnotationTools = {annotationKey?: string; onChange?: (strokes: AnnotationStroke[]) => void};
 interface PreviewProps {
-  slideFrom?: 'left'|'right'; visible?: boolean; switchAnimation?: boolean; viewTabs?: ReactNode; quickAction?: ReactNode; title: string; onClose: () => void; children: ReactNode; controls?: ReactNode; allowAnnotations?: boolean;
+  slideFrom?: 'left'|'right'; visible?: boolean; switchAnimation?: boolean; viewTabs?: ReactNode; quickAction?: ReactNode; title: string; heading?: ReactNode; onClose: () => void; children: ReactNode; controls?: ReactNode; allowAnnotations?: boolean;
   renderAnnotations?: (toolbarHost: HTMLElement | null, tools?: AnnotationTools) => ReactNode;
   floatingControls?: boolean; compactControls?: boolean; controlsLayout?: 'image'; annotationKey?: string; textSize?: number;
 }
@@ -29,7 +30,7 @@ export function FullscreenPreview(props: PreviewProps) {
     storage={session} initialDocument={state.document} storageStatus={status}
     annotationKey={session?.cacheKey ?? props.annotationKey} />;
 }
-function FullscreenPreviewBody({ visible = true, switchAnimation = false, slideFrom = 'right', title, onClose, children, controls, quickAction, viewTabs, allowAnnotations = false, renderAnnotations, controlsLayout, compactControls, floatingControls, annotationKey, textSize = 24, storage, initialDocument, storageStatus }: PreviewProps & {storage: AnnotationPersistence | null; initialDocument: AnnotationDocument | null; storageStatus: ReactNode}) {
+function FullscreenPreviewBody({ visible = true, switchAnimation = false, slideFrom = 'right', title, heading, onClose, children, controls, quickAction, viewTabs, allowAnnotations = false, renderAnnotations, controlsLayout, compactControls, floatingControls, annotationKey, textSize = 24, storage, initialDocument, storageStatus }: PreviewProps & {storage: AnnotationPersistence | null; initialDocument: AnnotationDocument | null; storageStatus: ReactNode}) {
   const [dock,setDock]=useState<'left'|'right'>('right');
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -51,16 +52,18 @@ function FullscreenPreviewBody({ visible = true, switchAnimation = false, slideF
   useLayoutEffect(() => {
     if (!annotating || !frame) return;
     if (annotationKey) textFrames.set(annotationKey,frame);
-    body.current?.querySelectorAll<HTMLElement>('*').forEach((element, index) => {
+    const restore=()=>body.current?.querySelectorAll<HTMLElement>('*').forEach((element, index) => {
       const position = frame.scroll[index];
       if (position) { element.scrollTop = position.top; element.scrollLeft = position.left; }
     });
+    restore();const observer=new MutationObserver(restore);if(body.current)observer.observe(body.current,{childList:true,subtree:true});return()=>observer.disconnect();
   }, [annotating, frame, size.width, size.height, annotationKey]);
   const startAnnotations = () => {
     if (!renderAnnotations) {
       const saved = annotationKey && readImageAnnotations(annotationKey).length ? textFrames.get(annotationKey) : undefined;
       const next = saved ?? {
         content: children, textSize, width: content.current?.clientWidth || 1, height: content.current?.clientHeight || 1,
+        expandedTranscripts:[...(body.current?.querySelectorAll<HTMLElement>('[data-transcription][data-expanded="true"]')??[])].map(element=>element.dataset.audioUrl!).filter(Boolean),
         scroll: [...(body.current?.querySelectorAll<HTMLElement>('*') ?? [])].map(element => ({top: element.scrollTop, left: element.scrollLeft})),
       };
       setFrame(next); setFrozenContent(next.content);
@@ -70,7 +73,7 @@ function FullscreenPreviewBody({ visible = true, switchAnimation = false, slideF
   };
   const saveStrokes = (strokes: AnnotationStroke[]) => {
     storage?.update({version:1,kind:renderAnnotations ? 'image' : 'text',strokes,
-      ...(!renderAnnotations && frame ? {frame:{width:frame.width,height:frame.height,scroll:frame.scroll,textSize:frame.textSize}} : {})});
+      ...(!renderAnnotations && frame ? {frame:{width:frame.width,height:frame.height,scroll:frame.scroll,textSize:frame.textSize,...(frame.expandedTranscripts?{expandedTranscripts:frame.expandedTranscripts}:{})}} : {})});
   };
   const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
   useEffect(() => {
@@ -120,14 +123,14 @@ function FullscreenPreviewBody({ visible = true, switchAnimation = false, slideF
       if (annotating && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','PageUp','PageDown','Home','End',' '].includes(event.key) && !(renderAnnotations && event.target instanceof HTMLInputElement && event.target.type === 'range') && !(event.key === ' ' && event.target instanceof Element && event.target.closest('button'))) event.preventDefault();
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (annotating) {setAnnotating(false);setFrozenContent(null);} else closeRef.current(); } }}>
     <header className={styles.header}>
-      <h2 id={titleId}>{title}</h2>
+      <h2 id={titleId}>{heading ?? title}</h2>
       <div className={styles.headerActions}>
       {viewTabs && <div className={styles.lectureTabHost}>{viewTabs}</div>}
       <button type="button" className={styles.close} onClick={onClose} aria-label="关闭全屏预览" title="关闭（Esc）"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
       </div>
     </header>
     <div ref={content} className={styles.content}>
-      <div ref={body} className={styles.previewBody} data-preview-locked={annotating} style={{'--preview-text-size':`${annotating && frame ? frame.textSize : textSize}px`, ...(annotating && frame ? {position:'absolute', width:frame.width, height:frame.height, transformOrigin:'top left', transform:`scale(${size.width / frame.width}, ${size.height / frame.height})`} : {})} as React.CSSProperties}>{annotating && !renderAnnotations ? frozenContent : children}</div>
+      <div ref={body} className={styles.previewBody} data-preview-locked={annotating} style={{'--preview-text-size':`${annotating && frame ? frame.textSize : textSize}px`, ...(annotating && frame ? {position:'absolute', width:frame.width, height:frame.height, transformOrigin:'top left', transform:`scale(${size.width / frame.width}, ${size.height / frame.height})`} : {})} as React.CSSProperties}><AnnotationTranscriptContext.Provider value={annotating ? frame?.expandedTranscripts : undefined}>{annotating && !renderAnnotations ? frozenContent : children}</AnnotationTranscriptContext.Provider></div>
       {annotating && (renderAnnotations ? renderAnnotations(toolbarHost, {annotationKey,onChange:saveStrokes}) : <TemporaryAnnotations annotationKey={annotationKey} frame={frame ?? undefined} onChange={saveStrokes} toolbarHost={toolbarHost} />)}
     </div>
     {(controls || allowAnnotations) && <footer className={`${styles.controls} ${controlsLayout === 'image' ? styles.imageControls : ''} ${compactControls ? styles.controlsRight : ''} ${floatingControls ? styles.floatingControls : ''}`} data-dock={dock}>

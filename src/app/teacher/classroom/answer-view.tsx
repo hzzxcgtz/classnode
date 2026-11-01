@@ -49,7 +49,7 @@ const MATCH_ROW = { rowHeight: 38, gap: 6, gutter: 46 } as const;
 
 /** 学生写的字那一层「底」。填空 / 问答共用，让「他写了什么」一眼能框出来。 */
 const answerBox: React.CSSProperties = {
-  fontSize: '0.813rem', color: '#0f172a', background: '#f8fafc',
+  fontSize: 'var(--task-text-size, 0.813rem)', color: '#0f172a', background: '#f8fafc',
   border: '1px solid #eef2f6', borderRadius: 6, padding: '5px 8px',
   wordBreak: 'break-word', whiteSpace: 'pre-wrap',
 };
@@ -58,14 +58,14 @@ function Empty() {
   return <span style={{ fontSize: '0.813rem', color: FAINT }}>未作答</span>;
 }
 
-export function AnswerViewBody({ node, value }: { node: WorksheetQuestionNode; value: unknown }) {
+export function AnswerViewBody({ node, value, transcription = true, transcriptionActions = true }: { node: WorksheetQuestionNode; value: unknown; transcription?: boolean; transcriptionActions?: boolean }) {
   // ⚠️ **必须 memo**：`answerView` 每次调用都返回一个新对象，而下面有些渲染分支
   // 用它做 `useMemo`/依赖。不 memo 的话每次父组件重渲染都会产生一份新的呈现模型。
   const view = useMemo(() => answerView(node, value), [node, value]);
-  return <>{renderView(node, view)}</>;
+  return <>{renderView(node, view, transcription, transcriptionActions)}</>;
 }
 
-function renderView(node: WorksheetQuestionNode, view: AnswerView) {
+function renderView(node: WorksheetQuestionNode, view: AnswerView, transcription: boolean, transcriptionActions: boolean) {
   switch (view.kind) {
     case 'none':
       return <Empty />;
@@ -81,7 +81,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
         : <span style={{ fontSize: '0.813rem', color: FAINT }}>读不出这幅画</span>;
 
     case 'audio':
-      return <VoiceAnswerPlayer review src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="语音作答" />;
+      return <VoiceAnswerPlayer review transcription={transcription} transcriptionActions={transcriptionActions} src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="语音作答" />;
 
     case 'photo':
       return <AnswerPhoto url={view.url} />;
@@ -136,7 +136,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
                   </span>
                 )}
               </div>
-              {blank.audio ? <VoiceAnswerPlayer review src={worksheetAssetUrl(blank.audio.url)} durationMs={blank.audio.durationMs} title={blank.label}/> : blank.text.trim()
+              {blank.audio ? <VoiceAnswerPlayer review transcription={transcription} transcriptionActions={transcriptionActions} src={worksheetAssetUrl(blank.audio.url)} durationMs={blank.audio.durationMs} title={blank.label}/> : blank.text.trim()
                 ? <div style={answerBox}>{blank.text}</div>
                 : <span style={{ fontSize: '0.813rem', color: FAINT }}>（这一空留空了）</span>}
             </div>
@@ -151,7 +151,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView) {
                 table={(node.data as Record<string, unknown> | undefined)?.table}
                 blanks={{
                   values: view.texts,
-                  renderOf: index => view.blanks[index]?.audio ? <VoiceAnswerPlayer review src={worksheetAssetUrl(view.blanks[index].audio!.url)} durationMs={view.blanks[index].audio!.durationMs} title={view.blanks[index].label}/> : undefined,
+                  renderOf: index => view.blanks[index]?.audio ? <VoiceAnswerPlayer review transcription={transcription} transcriptionActions={transcriptionActions} src={worksheetAssetUrl(view.blanks[index].audio!.url)} durationMs={view.blanks[index].audio!.durationMs} title={view.blanks[index].label}/> : undefined,
                   base: view.tableBase,
                   onChange: () => {},
                   disabled: true,

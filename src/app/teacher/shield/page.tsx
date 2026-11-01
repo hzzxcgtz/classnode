@@ -249,7 +249,7 @@ export default function ShieldPage() {
       <TeacherPageHeader title="智能学伴安全" description="管理学生与智能学伴对话时的敏感词、发送限制和安全提醒。" />
 
       <div className={styles.workspace}>
-      <TeacherPageTabs variant="connected" value={tab} onChange={setTab} items={[
+      <TeacherPageTabs value={tab} onChange={setTab} items={[
         { value: 'words', label: '对话敏感词', badge: words.length },
         { value: 'records', label: '安全提醒记录', badge: summary.reduce((total, item) => total + item.warningCount, 0) },
         { value: 'settings', label: '对话管控' },

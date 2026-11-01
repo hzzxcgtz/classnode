@@ -11,7 +11,7 @@
 .sectionHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 24px; border-bottom: 1px solid #e8edf3; }
 .status { flex-shrink: 0; border: 1px solid #d5e7dd; background: #f1f8f4; color: #527361; font-size: 12px; padding: 4px 9px; border-radius: 6px; }
 .answerContent { padding: 24px; min-width: 0; }
-.answerContent > div { font-size: 20px !important; line-height: 1.85; }
+.answerContent > div { font-size: var(--task-text-size, 32px); line-height: 1.85; }
 .answerContent img { max-height: min(65vh, 820px) !important; }
 .rewardSummary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 18px 24px 0; }
 .rewardSummary > span:first-child { font-size: 13px; color: #778598; }
@@ -33,7 +33,7 @@
   .sectionHeading { padding: 16px; }
   .card h2 { font-size: 16px; }
   .answerContent { padding: 14px; }
-  .answerContent > div, .feedback { font-size: 17px !important; }
+  .feedback { font-size: 17px !important; }
   .rewardSummary { padding: 16px 18px 0; }
   .reason { padding: 18px; }
   .advice { margin: 0 10px 10px; padding: 16px; }
@@ -103,3 +103,19 @@
 
 .annotationAction { position: static; }
 .fontControls { margin-right: 0; }
+
+/* 全屏讲评按内容居中；长作答自然向下延伸，保持可滚动。 */
+.lectureBody { min-height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; box-sizing:border-box; padding:24px; }
+.lectureAnswer { width:100%; max-width:1100px; min-width:0; }
+.lectureAnswer[data-kind="audio"] { max-width:760px; }
+.lectureAnswer [data-voice-player] { max-width:100%; margin-inline:auto; padding:18px 22px; border-radius:14px; gap:14px; }
+.lectureAnswer [data-voice-player] > button { width:44px; height:44px; min-width:44px; min-height:44px; }
+.lectureAnswer [data-voice-player] strong, .lectureAnswer [data-voice-player] strong + span { font-size:18px; }
+.lectureAnswer [data-transcription] p { font-size:var(--task-text-size,32px); }
+.lectureAnswer [data-transcription] button { font-size:16px; }
+@media (max-width:600px) { .lectureBody { padding:8px; } .lectureAnswer [data-voice-player] { padding:12px; } }
+
+/* 表格的共享渲染器保留抽屉字号；全屏讲评跟随当前文字大小。 */
+.lectureAnswer table { font-size:var(--task-text-size,32px) !important; line-height:1.65; }
+.lectureAnswer table input, .lectureAnswer table textarea { font-size:inherit !important; line-height:inherit; }
+.lectureAnswer table td, .lectureAnswer table th { font-size:inherit !important; line-height:inherit; }

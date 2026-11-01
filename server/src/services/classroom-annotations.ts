@@ -30,7 +30,8 @@ export function annotationDocument(value: unknown): Prisma.InputJsonObject {
   if (value.kind === 'text' && strokes.length) {
     const f = value.frame;
     if (!record(f) || !number(f.width, 1, 20000) || !number(f.height, 1, 20000) || !number(f.textSize, 18, 48) || !Array.isArray(f.scroll) || f.scroll.length > 10000) throw new AnnotationError('文字批注画面无效');
-    frame = { width: f.width, height: f.height, textSize: f.textSize, scroll: f.scroll.map(position => {
+    if(f.expandedTranscripts!==undefined&&(!Array.isArray(f.expandedTranscripts)||f.expandedTranscripts.length>500||f.expandedTranscripts.some(url=>typeof url!=='string'||!/^\/uploads\/[A-Za-z0-9_./-]+\.ogg$/.test(url)||url.length>512||url.includes('..'))))throw new AnnotationError('转写展开状态无效');
+    frame = { ...(Array.isArray(f.expandedTranscripts)?{expandedTranscripts:f.expandedTranscripts as string[]}:{}), width: f.width, height: f.height, textSize: f.textSize, scroll: f.scroll.map(position => {
       if (!record(position) || !number(position.top, 0, 10000000) || !number(position.left, 0, 10000000)) throw new AnnotationError('批注滚动位置无效');
       return { top: position.top, left: position.left };
     }) };

@@ -46,3 +46,14 @@
 .blue input[type='range']::-moz-range-track { height:5px; background:#d5e0ec; border-radius:5px; }
 .blue input[type='range']::-moz-range-progress { height:5px; background:#50769c; border-radius:5px; }
 .blue input[type='range']::-moz-range-thumb { width:10px; height:10px; border:2px solid #fff; border-radius:50%; background:#50769c; box-shadow:0 0 0 1px #50769c40; }
+
+.player.review.compact { flex-wrap:wrap; height:auto; }
+.player.review.compact { gap:6px; }
+.review.compact .play { width:24px; height:24px; min-width:24px; min-height:24px; }
+.review.compact .play svg { width:13px; height:13px; }
+.review.compact .compactProgress { flex:1 1 24px; width:0; min-width:24px; }
+.review.compact .compactTime { flex-shrink:0; font-size:11px; }
+
+/* 投屏使用短进度条，展开转写时仍保持相同长度。 */
+.player.review.compact.projection { width: 100%; max-width: none; }
+.review.compact.projection .compactProgress { flex: 0 1 90px; width: 90px; min-width: 50px; }

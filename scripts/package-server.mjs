@@ -135,6 +135,7 @@ run('npx', ['prisma', 'generate'], installEnv);
 
 console.log('[package-server] 初始化内置数据库');
 run('npx', ['prisma', 'db', 'push', '--skip-generate'], installEnv);
+run(process.execPath, ['dist/seed-builtin-avatars.js'], installEnv);
 
 if (!withoutNode) await bundleNode(runtime, resourceDir);
 

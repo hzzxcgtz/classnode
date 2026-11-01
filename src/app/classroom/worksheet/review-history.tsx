@@ -44,7 +44,7 @@ export function ReviewHistory({ node, reviews, onRetry, renderReviewActions, ren
       <div className={styles.reviewRevisionBody}>
       {r.evaluatedAt && <ReviewTiming review={r} />}
 
-      {(() => { const view = answerView(node, r.value); return view.kind === 'audio' ? <VoiceAnswerPlayer review={teacherView} src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="这次提交的语音" /> : null; })()}
+      {teacherView && (() => { const view = answerView(node, r.value); return view.kind === 'audio' ? <VoiceAnswerPlayer transcription={false} review={teacherView} src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="这次提交的语音" /> : null; })()}
       {r.status === 'superseded' && <p role="status">{r.error || '历史结果，不计入当前成绩和评价次数'}</p>}
       <div className={styles.reviewEvaluation}><div className={styles.reviewEvaluationText}>
       <AiReviewFeedback reason={r.reason} advice={r.advice} actions={renderReviewActions?.(r)}/>

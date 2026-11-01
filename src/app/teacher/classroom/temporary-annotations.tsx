@@ -16,7 +16,7 @@ export interface AnnotationImageView {
   onZoom: (change: number) => void; onPan: (offset: AnnotationPoint) => void; onFit: () => void;
 }
 /** Text strokes are disposable; image strokes can be restored by their image key. */
-export function TemporaryAnnotations({ toolbarHost, imageView, annotationKey, frame, onChange, shared, hideToolbar = false }: { shared?: {tool: Tool; color: string; thick?: boolean; width?: number; visible: boolean; moving: boolean; clear: number}; hideToolbar?: boolean; toolbarHost: HTMLElement | null; imageView?: AnnotationImageView; annotationKey?: string; frame?: {width: number; height: number}; onChange?: (strokes: AnnotationStroke[]) => void }) {
+export function TemporaryAnnotations({ toolbarHost, imageView, annotationKey, frame, onChange, shared, hideToolbar = false, pageToolbar = false }: { shared?: {tool: Tool; color: string; thick?: boolean; width?: number; visible: boolean; moving: boolean; clear: number}; hideToolbar?: boolean; pageToolbar?: boolean; toolbarHost: HTMLElement | null; imageView?: AnnotationImageView; annotationKey?: string; frame?: {width: number; height: number}; onChange?: (strokes: AnnotationStroke[]) => void }) {
   const [panel, setPanel] = useState<'settings' | null>(null);
   const floating = useRef<HTMLElement>(null);
   const [localMoving, setMoving] = useState(false);
@@ -147,7 +147,7 @@ export function TemporaryAnnotations({ toolbarHost, imageView, annotationKey, fr
         {[...strokes, ...(active ? [active] : [])].map(stroke => <path key={stroke.id} data-annotation-stroke="" d={annotationPath(stroke.points)} fill="none" stroke={stroke.color} strokeWidth={stroke.width} strokeOpacity={stroke.tool==='highlight' ? 0.3 : 1} strokeLinecap="round" strokeLinejoin="round" />)}
       </g>
     </svg>
-    {!hideToolbar && <aside ref={floating} className={styles.floating} aria-label="批注绘图工具" onKeyDownCapture={event => {
+    {!hideToolbar && <aside ref={floating} className={`${styles.floating} ${pageToolbar ? styles.pageToolbar : ''}`} aria-label="批注绘图工具" onKeyDownCapture={event => {
       if (event.key === 'Escape' && panel) {event.preventDefault();event.stopPropagation();setPanel(null);floating.current?.querySelector<HTMLButtonElement>(`button[data-panel="${panel}"]`)?.focus();}
     }}>
       <div className={styles.rail} style={{maxHeight: Math.max(44, size.height - 24)}} role="toolbar" aria-label={imageView ? "图片批注常用工具" : "文字批注常用工具"} aria-orientation="vertical">

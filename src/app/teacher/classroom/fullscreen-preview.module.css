@@ -144,3 +144,10 @@
 @media(prefers-reduced-motion:reduce) { .speechWave[data-playing='true'] i { animation:none; } }
 
 .reviewOverviewLabel { font-size:16px; color:#62758b; }
+
+.lectureHeading { display:inline-flex; align-items:center; gap:12px; color:#eaf1f8; font-size:clamp(16px, 1.45vw, 22px); font-weight:500; line-height:1.5; }
+.lectureHeadingIcon { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:38px; height:38px; border-radius:12px; color:#bad8ee; background:#91c9ed18; border:1px solid #afd8f125; }
+.lectureHeadingWords { overflow-wrap:anywhere; }
+.lectureHeadingWords strong { margin:0 3px; color:#f1d5a8; font-weight:650; }
+.lectureHeading[data-mode='review'] .lectureHeadingIcon { color:#c2dfd5; background:#9ad4ba18; border-color:#b3ddc825; }
+@media(max-width:600px) { .lectureHeading { gap:8px; font-size:15px; } .lectureHeadingIcon { width:30px; height:30px; border-radius:9px; } }

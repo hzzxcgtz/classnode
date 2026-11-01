@@ -1,0 +1,14 @@
+.workspace { margin-top:0; background:transparent; min-width:0; }
+.tabs { min-width:0; padding-top:0; background:transparent; }
+.tabs :global(.teacher-page-tabs.is-connected) { width:100%; box-sizing:border-box; gap:6px; padding:0 20px; }
+.tabs :global(.teacher-page-tabs.is-connected > button),.tabs>a { display:inline-flex; align-items:center; justify-content:center; gap:10px; min-height:48px; min-width:140px; padding:11px 20px; font-size:16px; text-decoration:none; }
+.tabs :global(.teacher-page-tabs.is-connected > button:not(.is-active)) { background:#dce2ea; color:#475569; }
+.tabs :global(.teacher-page-tabs.is-connected > button.is-active) { position:relative; background:#fff; color:#0f172a; border-bottom-color:#fff; font-weight:700; }
+.tabs :global(.teacher-page-tabs.is-connected > button.is-active)::before { content:''; position:absolute; height:3px; top:-1px; left:8px; right:8px; border-radius:3px; background:#475569; }
+.tabs>a { border:1px solid #cdd5e0; border-radius:8px 8px 0 0; background:#dce2ea; color:#475569; margin-right:6px; }
+.tabs>a[aria-current='page'] { background:#fff; color:#0f172a; font-weight:700; border-top:3px solid #475569; }
+.tabs>a:focus-visible { outline:3px solid #8fb3d7; outline-offset:3px; }
+.content { min-width:0; padding:24px; background:#fff; border:1px solid #cdd5e0; border-top:0; border-radius:0 0 14px 14px; }
+.content :global(.teacher-page-header) { margin-top:0; padding-top:0; }
+.content :global(.teacher-page-header-copy h1) { display:none; }
+@media(max-width:700px) { .workspace { margin-top:0; } .tabs { padding-top:0; } .tabs :global(.teacher-page-tabs.is-connected) { padding:0 12px; } .tabs :global(.teacher-page-tabs.is-connected > button),.tabs>a { min-width:0; flex-shrink:0; padding:10px 12px; min-height:44px; font-size:14px; gap:7px; } .content { padding:18px 12px; } }

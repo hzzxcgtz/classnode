@@ -277,3 +277,8 @@
 .workspace .wordStatusEnabled { background: #EAF0F7; border-color: #C0CDDD; color: #365F91; }
 .workspace .wordStatus { font-size: .8125rem; }
 @media (max-width: 600px) { .workspace :global(.teacher-page-tabs.is-connected) { padding-left: 12px; padding-right: 12px; } .workspace .recordsWorkspace { padding: 14px; } }
+
+:global([data-settings-section='shield']) .workspace { border:0; border-radius:0; box-shadow:none; overflow:visible; background:transparent; }
+:global([data-settings-section='shield']) .workspace .wordWorkspace,
+:global([data-settings-section='shield']) .workspace .settingsCard { border:1px solid #cdd5e0; border-radius:14px; }
+:global([data-settings-section='shield']) .workspace .recordsWorkspace { padding:0; }

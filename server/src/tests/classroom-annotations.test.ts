@@ -18,6 +18,9 @@ test('批注校验拒绝脚本颜色、非有限坐标、重复笔迹编号和�
  for(const invalid of [null, {...document,strokes:[{...document.strokes[0],color:'url(javascript:x)'}]}, {...document,strokes:[{...document.strokes[0],points:[{x:NaN,y:0}]}]}, {...document,strokes:[document.strokes[0],document.strokes[0]]}, {...document,kind:'text'}, {...document,strokes:Array(2001).fill(document.strokes[0])}]) assert.throws(()=>annotationDocument(invalid));
  const text={...document,kind:'text',frame:{width:1000,height:600,textSize:26,scroll:[{top:300,left:0}]}};
  assert.deepEqual(annotationDocument(text),text);
+ const expanded={...text,frame:{...text.frame,expandedTranscripts:['/uploads/chat/chat-1234.ogg']}};
+ assert.deepEqual(annotationDocument(expanded),expanded);
+ for(const urls of [['https://example.com/recording.ogg'],['/uploads/../secret.ogg'],[123]])assert.throws(()=>annotationDocument({...expanded,frame:{...expanded.frame,expandedTranscripts:urls}}));
 });
 test('教师批注持久保存、跨连接读取、课堂隔离、版本冲突和清空；学生无权读写',async()=>{
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'cn-annotations-'));

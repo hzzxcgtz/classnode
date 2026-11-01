@@ -104,6 +104,9 @@ async function formRequest<T>(path: string, method: 'POST' | 'PUT', body: FormDa
 }
 
 export const api = {
+  transcribeRecording:(url:string,create=false)=>request<{result:{text:string;createdAt:string}|null}>('/api/speech/transcription',{method:'POST',body:JSON.stringify({url,create})},100000),
+  getTranscriptionConfig:()=>request<{credentialId:string;enabled:boolean}>('/api/speech/transcription-config'),
+  saveTranscriptionConfig:(credentialId:string,enabled:boolean)=>request('/api/speech/transcription-config',{method:'PUT',body:JSON.stringify({credentialId,enabled})}),
   readSpeech:(text:string,signal?:AbortSignal)=>request<{clips:string[]}>('/api/speech/read',{method:'POST',body:JSON.stringify({text}),signal},300000),
   getSpeechConfig:()=>request<{enabled:boolean;credentialId:string;voiceId:string}>('/api/speech'),
   getSpeechVoices:(credentialId:string)=>request<Array<{id:string;name:string;language:string;custom:boolean;preview:string}>>('/api/speech/voices?credentialId='+encodeURIComponent(credentialId),{},60000),

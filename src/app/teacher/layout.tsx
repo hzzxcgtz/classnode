@@ -1,5 +1,7 @@
 'use client';
 
+import { SettingsNavigation, isSettingsPath } from './settings/settings-navigation';
+import { IconSettings } from '@tabler/icons-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import { api } from '@/lib/api';
@@ -34,11 +36,7 @@ const navItems = [
   { path: '/teacher/agents', label: 'AI智能体', icon: 'bot' },
   { path: '/teacher/classes', label: '班级管理', icon: 'users' },
   { path: '/teacher', label: '课堂管理', icon: 'dashboard' },
-  { path: '/teacher/avatars', label: '头像管理', icon: 'avatar' },
-  { path: '/teacher/shield', label: '安全管理', icon: 'shield' },
   { path: '/teacher/history', label: '数据管理', icon: 'clock' },
-  { path: '/teacher/guide', label: '使用指南', icon: 'book' },
-  { path: '/teacher/about', label: '关于', icon: 'info' },
 ];
 
 function teacherPageTone(pathname: string | null): 'worksheet' | 'explore' | 'agent' | 'classroom' | 'neutral' {
@@ -505,7 +503,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           const p = pathname || '';
           const isActive = item.path === '/teacher'
             ? p.replace(/\/$/, '') === '/teacher' || p.startsWith('/teacher/classroom')
-            : p.replace(/\/$/, '') === item.path || p.startsWith(item.path + '/');
+            : !isSettingsPath(p) && (p.replace(/\/$/, '') === item.path || p.startsWith(item.path + '/'));
           return (
             <button
               className={`teacher-nav-button${isActive ? ' is-active' : ''}`}
@@ -602,11 +600,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                     )}
                   </>
                 )}
-                {item.icon === 'book' && (
-                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-                  </svg>
+                {item.icon === 'voice' && (
+                  <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3ZM5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8" /></svg>
                 )}
                 {item.icon === 'shield' && (
                   <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -628,6 +623,10 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
         {/* 底部区域 */}
         <div className="teacher-sidebar-footer" style={{ marginTop: 'auto' }}>
+          <button type="button" className={`teacher-nav-button${isSettingsPath(pathname || '') ? ' is-active' : ''}`} onClick={()=>router.push('/teacher/settings/')} title={sidebarCollapsed?'设置':undefined} aria-label="设置" aria-current={isSettingsPath(pathname || '')?'page':undefined} style={{display:'flex',alignItems:'center',justifyContent:sidebarCollapsed?'center':undefined,gap:10,padding:sidebarCollapsed?'10px 0':'9px 12px',border:0,borderRadius:8,width:'100%',marginBottom:12,textAlign:'left',fontSize:'0.875rem',color:'var(--sidebar-text)',cursor:'pointer'}}>
+            <span style={{position:'relative',display:'flex'}}><IconSettings size={iconSize} stroke={1.5} aria-hidden="true"/>{hasUpdate&&<span title="有新版本可用" style={{position:'absolute',top:-1,right:-1,width:7,height:7,borderRadius:'50%',background:'#b77b37',border:'1.5px solid white'}}/>}</span>
+            {!sidebarCollapsed&&<span>设置</span>}
+          </button>
           {/* 新版本通知 — 只在不折叠时显示 */}
           <div style={{
             borderTop: '1px solid #eef2f6',
@@ -735,6 +734,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         data-color-sample={pathname?.replace(/\/$/, '') === '/teacher/classes' ? 'classes' : undefined} style={{
         transition: 'margin-left 0.2s ease',
       }}>
+        <SettingsNavigation/>
         {children}
       </main>
 

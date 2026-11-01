@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, memo, Suspense, useL
 import { useRouter, useSearchParams } from 'next/navigation';
 import { WordCloud, type Word, type WordRendererData } from "@isoterik/react-word-cloud";
 import { api } from '@/lib/api';
+import { CompanionAudioPreview, companionAudioUrls } from './companion-audio-preview';
 import { VoiceAnswerPlayer } from '@/components/voice-answer-player';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { audioMonitorPreview } from './worksheet-audio-monitor';
@@ -1248,7 +1249,7 @@ function ClassroomBoardContent() {
           const lastUser = msgs.filter((m) => m.role === 'user').slice(-1)?.[0];
           const lastAssistant = msgs.filter((m) => m.role === 'assistant').slice(-1)?.[0];
           const preview: ClassroomCardStudent['messages'] = [];
-          if (lastUser) preview.push({ content: lastUser.content, role: 'user', createdAt: lastUser.createdAt });
+          if (lastUser) preview.push({ content: lastUser.content, role: 'user', createdAt: lastUser.createdAt, fileUrls:lastUser.fileUrls, fileNames:lastUser.fileNames });
           if (lastAssistant && (!lastUser || new Date(lastAssistant.createdAt) > new Date(lastUser.createdAt))) {
             preview.push({ content: lastAssistant.content, role: 'assistant', createdAt: lastAssistant.createdAt });
           }
@@ -1323,7 +1324,7 @@ function ClassroomBoardContent() {
           ? {
               ...s,
               messages: data.role === 'user'
-                ? [{ content: data.content, role: 'user', createdAt: data.timestamp }]
+                ? [{ content: data.content, role: 'user', createdAt: data.timestamp, fileUrls:data.fileUrls, fileNames:data.fileNames }]
                 : (() => {
                     const userMsgs = s.messages.filter((m) => m.role === 'user').slice(-1);
                     return [...userMsgs, { content: data.content, role: 'assistant', createdAt: data.timestamp }];
@@ -2332,6 +2333,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       : `${primary?.student.name ?? ''}:`;
 
     /** 「最近一轮 Q&A」—— 合并前那个格子的内容，逐字保留（它就是 companion 的内容）。 */
+    const audioUrls=companionAudioUrls(userMsg?.fileUrls);
     const companion = userMsg ? (
       <>
         <div style={{
@@ -2341,7 +2343,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           wordBreak: 'break-word',
         }}>
           <span style={{ fontWeight: 600, color: 'var(--primary)', marginRight: compact ? 3 : 4 }}>{speaker}</span>
-          <span>{stripMarkdownToPlainText(userMsg.content)}</span>
+          {!(audioUrls.length&&['(语音)','（语音）',''].includes(userMsg.content.trim()))&&<span>{stripMarkdownToPlainText(userMsg.content)}</span>}
+          {!!audioUrls.length&&<CompanionAudioPreview urls={audioUrls}/>}
         </div>
         {assistantMsg && (
           <div style={{
@@ -3351,7 +3354,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                               onClick={() => openFullscreenImage(`${getApiBaseUrl()}${fu}`)}
                               style={{ maxWidth: 200, maxHeight: 150, borderRadius: 8, objectFit: 'cover', display: 'block', cursor: 'pointer' }} />
                           ) : /\.(ogg|mp3|wav|m4a|webm)(?:[?#]|$)/i.test(fu) ? (
-                            <VoiceAnswerPlayer compact review tone="blue" preload="metadata" src={worksheetAssetUrl(fu)} durationMs={0} title="学生语音" />
+                            <VoiceAnswerPlayer transcriptionActions={false} compact review tone="blue" preload="metadata" src={worksheetAssetUrl(fu)} durationMs={0} title="学生语音" />
                           ) : (
                             <div style={{ padding: '6px 10px', background: '#f3f4f6', borderRadius: 6, fontSize: "0.75rem", display: 'flex', alignItems: 'center', gap: 4 }}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
@@ -3504,6 +3507,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           title={`${classroom?.title || '课堂'} · 学习展示${selectedStudent ? ` · ${selectedStudent.name}` : ''} · ${projMsgs.filter(m => m.role === 'user').length} 轮对话`}
           onClose={() => setShowFullscreen(false)}
           allowAnnotations
+          annotationKey={JSON.stringify(['conversation-projection',id,selectedStudent?.id,projMsgs.map(m=>[m.role,m.createdAt,m.content,m.fileUrls])])}
           floatingControls compactControls textSize={conversationFontSize}
           controls={<>
             <div className={previewStyles.fontTools}>
@@ -3570,7 +3574,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
 
                     {/* 消息气泡 */}
                     <div style={{
-                      maxWidth: '78%',
+                      maxWidth: projectionVoiceOnly(m) ? 'min(78%, 520px)' : '78%',
                       padding: projectionVoiceOnly(m) ? '10px 18px' : '20px 28px',
                       borderRadius: m.role === 'user' ? '20px 20px 6px 20px' : '6px 20px 20px 20px',
                       background: projectionVoiceOnly(m) ? '#ffffff' : m.role === 'user' ? 'var(--primary-tint)' : '#f8fafc',
@@ -3578,7 +3582,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       borderColor: projectionVoiceOnly(m) ? '#d3deea' : m.role === 'user' ? 'var(--primary-light)' : '#eef2f6',
                       boxShadow: projectionVoiceOnly(m) ? '0 3px 12px #314c6810' : undefined,
                       lineHeight: 1.8,
-                      fontSize: conversationFontSize,
+                      fontSize: 'var(--preview-text-size, 24px)',
                       color: '#0f172a',
                       wordBreak: 'break-word',
                     }}>
@@ -3593,7 +3597,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                 onClick={() => openFullscreenImage(`${getApiBaseUrl()}${fu}`)}
                                 style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 12, objectFit: 'contain', display: 'block', cursor: 'pointer' }} />
                             ) : /\.(ogg|mp3|wav|m4a|webm)(?:[?#]|$)/i.test(fu) ? (
-                              <VoiceAnswerPlayer compact review tone="blue" preload="metadata" src={worksheetAssetUrl(fu)} durationMs={0} title="学生语音" />
+                              <VoiceAnswerPlayer transcriptFontSize={conversationFontSize} transcriptionActions={false} compact review tone="blue" preload="metadata" src={worksheetAssetUrl(fu)} durationMs={0} title="学生语音" />
                             ) : (
                               <div style={{ padding: '10px 16px', background: m.role === 'user' ? 'rgba(102,126,234,0.08)' : '#f1f5f9', borderRadius: 10, fontSize: "1rem", display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>

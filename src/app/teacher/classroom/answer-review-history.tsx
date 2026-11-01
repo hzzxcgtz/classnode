@@ -1,5 +1,7 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
+import { IconFileSearch } from '@tabler/icons-react';
+import styles from './answer-review-history.module.css';
 import { getApiBaseUrl } from '@/lib/api-base';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { ReviewEvidencePanel, type TeacherReviewEvidence } from './review-evidence-panel';
@@ -27,7 +29,10 @@ export function TeacherReviewHistory({ classroomId, worksheetId, participantId, 
   }, [classroomId, worksheetId, participantId, node.id]);
   const openAnswer = () => setLecture({ mode: 'answer', review: reviews.find(row => row.status === 'succeeded' && JSON.stringify(row.value) === JSON.stringify(value)), snapshot: {node, value} });
   return <ClassroomImagePreviewContext.Provider value={openAnswer}>
-    {children}
+    <div className={styles.answer} onClick={event=>{if(!(event.target instanceof Element) || event.target.closest('button,input,a,audio,select,textarea'))return;openAnswer();}}>
+      <div className={styles.heading}><span>学生作答与答案对照</span><button type="button" className={styles.open} onClick={openAnswer} aria-label="放大学生作答讲评" title="放大学生作答讲评"><IconFileSearch size={18}/></button></div>
+      {children}
+    </div>
     {lecture && <StudentLecturePreview initialMode={lecture.mode} classroomId={classroomId} worksheetId={worksheetId} questionId={node.id} participantId={participantId} studentName={studentName || '学生'} answerSnapshot={lecture.snapshot}
       reason={lecture.review?.reason} advice={lecture.review?.advice} score={lecture.review?.score} maxScore={lecture.review?.maxScore} unit={lecture.review?.unit}
       reviewAnnotationId={lecture.review ? `${classroomId}:${worksheetId}:${participantId}:${node.id}:${lecture.review.id}` : undefined}

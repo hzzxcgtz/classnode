@@ -1,3 +1,4 @@
+import { ensureBuiltinAvatarPool } from './services/builtin-avatar-pool.js';
 import speechRoutes from './routes/speech.js';
 import { recoverInterruptedReviews } from './services/individual-review.js';
 import express from 'express';
@@ -48,6 +49,7 @@ const prisma = createDatabaseClient();
 async function main() {
   recoverInterruptedMaintenance();
   await upgradeDatabase(prisma);
+  await ensureBuiltinAvatarPool(prisma);
   // Recover interrupted jobs before accepting requests, even when students remain offline.
   await recoverInterruptedReviews(prisma);
   const port = parseInt(process.env.PORT || '3001', 10);

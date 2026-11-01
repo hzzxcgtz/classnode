@@ -476,3 +476,5 @@
   border-color: var(--card-border);
   box-shadow: var(--card-shadow);
 }
+
+:global([data-settings-section='about']) .page { max-width:none; padding:0; }

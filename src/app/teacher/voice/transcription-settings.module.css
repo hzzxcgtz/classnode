@@ -1,0 +1,2 @@
+.form { padding:28px; max-width:780px; box-sizing:border-box; }
+@media(max-width:760px) { .form { padding:20px; max-width:none; } }

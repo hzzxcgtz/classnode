@@ -1,3 +1,4 @@
+import { waitForCozeUploadSlot } from '../ai-file-queue.js';
 // ============================================================
 // Coze Bot API — HTTP 客户端
 // 封装：fetch + 超时 + 限流 + 通用错误处理 + logid 追踪
@@ -160,6 +161,7 @@ export class CozeHttpClient {
 
   /** multipart/form-data 上传 */
   async upload<T = unknown>(path: string, formData: FormData): Promise<T> {
+    await waitForCozeUploadSlot(this.apiKey);
     const response = await fetchWithTimeout(this.url(path), {
       method: 'POST',
       headers: {

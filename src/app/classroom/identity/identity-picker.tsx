@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 import { SvgAvatar } from '@/components/svg-avatar';
@@ -13,7 +14,7 @@ export interface IdentityPickerProps {
   avatarSvgs: Record<number, string>;
   joiningClassroom: boolean;
   loadError: string | null;
-  onSelectStudent: (student: ClassroomStudentSummary) => void;
+  onSelectStudent: (student: ClassroomStudentSummary | null) => void;
   onConfirm: () => void;
   onExit: () => void;
 }
@@ -34,9 +35,18 @@ export function IdentityPicker({
 }: IdentityPickerProps) {
     const router = useRouter();
     const isMobile = useIsMobile();
-    const isGroupMode = classroom?.mode === 'group' || classroom?.mode === 'advanced';
+    const [group, setGroup] = useState<ClassroomStudentSummary | null>(null);
+    const memberLogin = classroom?.groupLoginMode === 'member';
+    const isGroupMode = !group && (classroom?.mode === 'group' || classroom?.mode === 'advanced');
+    const choices = group ? (group.groupMembers ?? []).map(member => ({
+      ...group, participantType: 'student' as const, id: member.participantId, studentId: member.studentId, avatarId: member.avatarId,
+      groupMemberId: member.id, name: member.name,
+    })) : students;
+    const canConfirm = selectedStudent && (!memberLogin || group?.groupMembers?.some(member =>
+      member.id === selectedStudent.groupMemberId && member.participantId === selectedStudent.id
+    ));
     const normalizedIdentitySearch = identitySearch.trim().toLocaleLowerCase('zh-CN');
-    const visibleStudents = students
+    const visibleStudents = choices
       .filter((student) => !normalizedIdentitySearch || student.name.toLocaleLowerCase('zh-CN').includes(normalizedIdentitySearch));
     if (isGroupMode) visibleStudents.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
     return (
@@ -57,14 +67,26 @@ export function IdentityPicker({
         </button>
         <div style={{ background: 'white', borderRadius: 20, padding: isMobile ? 24 : 32, maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
           <div style={{ textAlign: 'center', marginBottom: 20 }}>
+            {group && <button type="button" className="btn" disabled={joiningClassroom} onClick={() => {
+              setGroup(null);
+              onSelectStudent(null);
+              onIdentitySearchChange('');
+            }}>返回选择小组 · {group.name}</button>}
             {classroom?.title && (
               <div style={{ fontSize: "1.375rem", fontWeight: 700, color: '#0f172a', marginBottom: 6, lineHeight: 1.3 }}>{classroom.title}</div>
+            )}
+            {memberLogin && (
+              <ol aria-label="登录步骤" className="my-3 flex items-center justify-center gap-2 text-xs font-semibold">
+                <li aria-current={!group ? 'step' : undefined} className={`rounded-full px-3 py-1.5 ${!group ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'}`}>1. 选择小组</li>
+                <li aria-hidden="true" className="text-slate-400">→</li>
+                <li aria-current={group ? 'step' : undefined} className={`rounded-full px-3 py-1.5 ${group ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600'}`}>2. 选择姓名</li>
+              </ol>
             )}
             <div style={{ fontSize: "0.938rem", fontWeight: 500, color: isGroupMode ? '#7c3aed' : 'var(--primary)' }}>
               {isGroupMode ? '请选择你的小组' : '请选择你的姓名'}
             </div>
           </div>
-          {students.length > 8 && (
+          {choices.length > 8 && (
             <div style={{ position: 'relative', marginBottom: 12 }}>
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
                 <circle cx="11" cy="11" r="7" />
@@ -94,9 +116,14 @@ export function IdentityPicker({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 'min(400px, calc(100vh - 320px))', overflow: 'auto' }}>
             {visibleStudents.map((s) => {
               const isOnline = onlineStudentIds.has(s.id);
-              const isSelected = selectedStudent?.id === s.id;
+              const isSelected = selectedStudent?.id === s.id && selectedStudent.groupMemberId === s.groupMemberId;
               return (
-                <button key={s.id} onClick={() => !isOnline && onSelectStudent(s)} disabled={isOnline}
+                <button key={s.groupMemberId ?? s.id} onClick={() => {
+                  if (memberLogin && !group) {
+                    setGroup(s);
+                    onIdentitySearchChange('');
+                  } else onSelectStudent(s);
+                }} disabled={isOnline || joiningClassroom}
                   style={{ padding: '14px 18px', borderRadius: 12, border: '2px solid', borderColor: isSelected ? 'var(--primary)' : '#eef2f6', background: isOnline ? '#f9fafb' : isSelected ? '#eef3f8' : 'white', cursor: isOnline ? 'not-allowed' : 'pointer', fontSize: "0.938rem", textAlign: 'left', display: 'flex', alignItems: 'center', gap: 14, transition: 'all .15s', opacity: isOnline ? 0.5 : 1, width: '100%' }}>
                   {isGroupMode ? (
                     <>
@@ -138,11 +165,12 @@ export function IdentityPicker({
               </div>
             )}
           </div>
-          <button onClick={() => void onConfirm()} disabled={!selectedStudent || joiningClassroom}
+          {group && choices.length === 0 && <p>这个小组还没有组员，请联系老师。</p>}
+          {(!memberLogin || group) && <button onClick={() => void onConfirm()} disabled={!canConfirm || joiningClassroom}
             className="btn btn-primary btn-lg"
-            style={{ width: '100%', marginTop: 20, fontSize: "1rem", opacity: selectedStudent ? 1 : 0.5 }}>
-            {joiningClassroom ? '进入中...' : isGroupMode ? '确认并进入小组对话' : '确认并进入对话'}
-          </button>
+            style={{ width: '100%', marginTop: 20, fontSize: "1rem", opacity: canConfirm ? 1 : 0.5 }}>
+            {joiningClassroom ? '进入中...' : memberLogin ? '确认姓名并进入课堂' : isGroupMode ? '确认并进入小组对话' : '确认并进入对话'}
+          </button>}
           {loadError && (
             <div style={{
               width: '100%', marginTop: 12, padding: '10px 14px',

@@ -150,6 +150,7 @@ model Classroom {
   /// 学伴每次切换后的上下文起点，键为 classroom 或小组 ID；历史消息仍保留。
   agentContextStarts Json?
   materialsRevision Int @default(0)
+  groupLoginMode String @default("group")
   mode      String   @default("standard") // standard / advanced
   status    String   @default("active") // active / paused / ended
   allowStudentStop Boolean @default(true)
@@ -415,7 +416,7 @@ model ClassroomStudent {
   worksheetResponses WorksheetResponse[]
 
   @@unique([classroomId, studentId])
-  @@unique([classroomId, groupId])
+  @@index([classroomId, groupId])
   @@index([classroomId, status])
   @@index([studentId])
 }

@@ -8,7 +8,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { WORKSHEET_GRADES, WORKSHEET_SUBJECTS, worksheetCurriculumError } from '@/lib/worksheet-curriculum';
 import { useSearchParams } from 'next/navigation';
 import { TeacherEmptyState, TeacherLoadingState, Toast, useTeacherConfirm } from '@/lib/components';
-import type { AgentSummary, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
+import type { AgentSummary, PlatformTokenSummary, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
 import { api } from '@/lib/api';
 // 奖励形式的取值域 / 可选步长只有一份（`src/lib/worksheet-reward.ts`）—— 教师端这四行
 // 与学生端那个徽章用的是同一份，加一档只改那一处。
@@ -959,6 +959,12 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
   // ⚠️ 取失败**不阻断**：下拉退回只剩「（不指定）」那一项，教师仍能编辑别的设置。
   // 与「学习单列表加载失败不阻断创建」那条既有判断同形（`classroom/new/page.tsx`）。
   const [analysisAgents, setAnalysisAgents] = useState<AgentSummary[]>([]);
+  const [cozeTokens, setCozeTokens] = useState<PlatformTokenSummary[]>([]);
+  const analysisAgentLabel = (agent: AgentSummary) => {
+    if (cozeTokens.length <= 1 || agent.platform !== 'coze') return agent.name;
+    const token = cozeTokens.find(item => item.id === agent.credentialId);
+    return `${token?.label ?? '独立令牌'} · ${agent.name}`;
+  };
   const [backgroundUploading, setBackgroundUploading] = useState(false);
   const [backgroundPortraitUploading, setBackgroundPortraitUploading] = useState(false);
   const [backgroundError, setBackgroundError] = useState('');
@@ -967,6 +973,9 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
     api.getAgents('analysis')
       .then(list => { if (alive) setAnalysisAgents(list); })
       .catch(() => { if (alive) setAnalysisAgents([]); });
+    api.getPlatformTokens()
+      .then(list => { if (alive) setCozeTokens(list.filter(token => token.platform === 'coze')); })
+      .catch(() => { if (alive) setCozeTokens([]); });
     return () => { alive = false; };
   }, []);
 
@@ -1107,24 +1116,58 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
             🔴 平台提示必须**在配的时候就**看到 —— 否则教师会在用的那一刻才发现绘图题发不出去。 */}
           <section className="worksheet-settings-section worksheet-settings-analysis">
             <div className="worksheet-settings-section-head"><div><strong>分析智能体</strong></div></div>
-            <label className="worksheet-editor-field">
-              <select
-                className="input"
-                aria-label="分析型智能体"
-                value={settings.analysisAgentId ?? ''}
-                onChange={event => onSettingsChange({ analysisAgentId: event.target.value || null })}
-              >
-                <option value="">不指定（无法使用 AI 分析与评分）</option>
-                {analysisAgents.map(agent => (
-                  <option key={agent.id} value={agent.id}>{agent.name}（{agent.platform}）</option>
-                ))}
-              </select>
-              {/* ★ 2026-09-30：这句原来有 47 个字（两行）；砍掉「当前仅支持 Coze，
-                  绘图题也需要通过 Coze 分析」那半句 —— 它在**配错平台**的时候才会用到，
-                  而那时教师看到的是下拉里没有候选，去智能体管理那一页自然会看见。 */}
-              {analysisAgents.length === 0 && <em className="worksheet-settings-help">暂无分析智能体，请先到「AI智能体」添加分析用途的智能体。</em>}
-              <em className="worksheet-settings-help">本题评价规则和返回格式由系统动态提供。可使用自己的专业学科智能体，也可参考<a href="/teacher/agents/templates/" target="_blank" rel="noreferrer">通用提示词</a>；建议先试用少量作答，确认效果。</em>
-            </label>
+            <div className="grid min-w-0 gap-3">
+              <label className="worksheet-editor-field">
+                <select
+                  className="input"
+                  aria-label="分析型智能体"
+                  value={settings.analysisAgentId ?? ''}
+                  onChange={event => {
+                    const id = event.target.value;
+                    onSettingsChange({
+                      analysisAgentId: id || null,
+                      additionalReviewAgentIds: id ? settings.additionalReviewAgentIds?.filter(extraId => extraId !== id) : [],
+                    });
+                  }}
+                >
+                  <option value="">不指定（无法使用 AI 分析与评分）</option>
+                  {analysisAgents.map(agent => (
+                    <option key={agent.id} value={agent.id}>{analysisAgentLabel(agent)}（{agent.platform}）</option>
+                  ))}
+                </select>
+                {/* ★ 2026-09-30：这句原来有 47 个字（两行）；砍掉「当前仅支持 Coze，
+                    绘图题也需要通过 Coze 分析」那半句 —— 它在**配错平台**的时候才会用到，
+                    而那时教师看到的是下拉里没有候选，去智能体管理那一页自然会看见。 */}
+                {analysisAgents.length === 0 && <em className="worksheet-settings-help">暂无分析智能体，请先到「AI智能体」添加分析用途的智能体。</em>}
+                <em className="worksheet-settings-help">本题评价规则和返回格式由系统动态提供。可使用自己的专业学科智能体，也可参考<a href="/teacher/agents/templates/" target="_blank" rel="noreferrer">通用提示词</a>；建议先试用少量作答，确认效果。</em>
+              </label>
+              {settings.analysisAgentId && [0, 1].map(index => {
+                const selected = settings.additionalReviewAgentIds ?? [];
+                if (index > selected.length) return null;
+                const label = `个人评价智能体 ${index + 2}（可选）`;
+                return (
+                  <label key={index} className="worksheet-editor-field">
+                    <span>{label}</span>
+                    <select
+                      className="input"
+                      value={selected[index] ?? ''}
+                      onChange={event => {
+                        const ids = [...selected];
+                        ids.splice(index, 1, event.target.value);
+                        onSettingsChange({ additionalReviewAgentIds: ids.filter(Boolean) });
+                      }}
+                    >
+                      <option value="">不指定</option>
+                      {analysisAgents.filter(agent => agent.platform === 'coze'
+                        && agent.id !== settings.analysisAgentId
+                        && (!selected.includes(agent.id) || agent.id === selected[index])
+                      ).map(agent => <option key={agent.id} value={agent.id}>{analysisAgentLabel(agent)}</option>)}
+                    </select>
+                  </label>
+                );
+              })}
+              {settings.analysisAgentId && <p className="worksheet-settings-help">个人评价可由最多三个智能体分担。图片和录音的班级分析最多使用两个不同令牌分批处理，由上方的智能体汇总。请使用不同扣子账号，并保持模型和评价设置一致。</p>}
+            </div>
           </section>
         {/* 奖励形式（规格 §9.2）。🔴 它是**这一张单**的配置，不是全局设置 ——
             用户 2026-09-23 的裁定：「教师在编辑学习单时可以选择得分制还是奖励小花、五角星」。

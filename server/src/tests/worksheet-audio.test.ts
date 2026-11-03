@@ -14,6 +14,7 @@ import { createStudentToken } from '../middleware/student-auth.js';
 import { createTeacherSession } from '../middleware/auth.js';
 import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 import { selectAnalyzeEntries, buildAnalysisPayload, DEFAULT_ANALYSIS_KNOBS, entriesFromAggregate, entriesToAggregate } from '../services/analysis-payload.js';
+import { trackCozeRequest } from '../services/ai-file-queue.js';
 import { proxyAnalysisRequest } from '../services/ai-proxy.js';
 import { findAudioValueError } from '../services/worksheet-audio.js';
 
@@ -76,14 +77,15 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
   app.use('/api/upload', uploaded.default);
   app.use('/api/worksheets', worksheetAccessGate, worksheetRoutes);
   let analyzedAudio: unknown;
-  app.set('analysisProxy', async (_agent: unknown, message: string, _images: unknown, _signal: unknown, audio: unknown) => { analyzedAudio = audio; assert.match(message, /语音作答/); return { success: true, content: '学生说明了观察过程。' }; });
+  app.set('analysisProxy', async (_agent: unknown, message: string, _images: unknown, _signal: unknown, audio: unknown) => { if (Array.isArray(audio) && audio.length) { analyzedAudio = audio; assert.match(message, /按音频附件对应表关联学生/); } return { success: true, content: '学生说明了观察过程。' }; });
   const server = createServer(app); await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise<void>(resolve => server.close(() => resolve())));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   let cookie = ''; createTeacherSession({ setHeader: (_n: string, value: string) => { cookie = value.split(';')[0]; } } as never);
   const call = (method: string, suffix: string, body?: unknown, token?: string) => fetch(`${base}/api/worksheets${suffix}`, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : { Cookie: cookie }) }, body: body === undefined ? undefined : JSON.stringify(body) });
   const agent = await db.agent.create({ data: { name: '评价', purpose: 'analysis', platform: 'coze', apiKey: 'unused', botId: 'test' } });
-  const created = await call('POST', '', { title: '口头表达', content: { schemaVersion: 1, nodes: [{ id: 'q', type: 'short-answer', prompt: '说说观察到的现象', inputMode: 'audio', data: {}, children: [] }] }, settings: { answerMode: 'open', analysisAgentId: agent.id } });
+  const secondary = await db.agent.create({ data: { name: '第二个评价智能体', purpose: 'analysis', platform: 'coze', apiKey: 'second-token', botId: 'second' } });
+  const created = await call('POST', '', { title: '口头表达', content: { schemaVersion: 1, nodes: [{ id: 'q', type: 'short-answer', prompt: '说说观察到的现象', inputMode: 'audio', data: {}, children: [] }] }, settings: { answerMode: 'open', analysisAgentId: agent.id, additionalReviewAgentIds: [secondary.id] } });
   assert.equal(created.status, 200); const sheet = await created.json(); assert.equal(sheet.content.nodes[0].inputMode, 'audio');
   const room = await db.classroom.create({ data: { status: 'active', mode: 'standard' } });
   await db.classroomWorksheet.create({ data: { classroomId: room.id, worksheetId: sheet.id } });
@@ -105,7 +107,12 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
   assert.ok(Array.isArray(analyzedAudio)); assert.equal(analyzedAudio[0].url, upload.url);
   assert.equal((await call('PUT', `/${sheet.id}/answers`, { questionId: 'q', value: { ...value, url: 'https://elsewhere/audio.ogg' } }, token)).status, 400);
   await db.worksheet.update({ where: { id: sheet.id }, data: { content: { schemaVersion: 1, nodes: [{ id: 'q', type: 'short-answer', inputMode: 'audio', prompt: '说说发现', data: { aiScoringEnabled: true, studentAiReviewEnabled: true, aiScoringMaxScore: 10, rubricText: '说清楚观察到的变化' }, children: [] }] } } });
-  app.set('analysisProxy', async (_agent: unknown, _message: string, _images: unknown, _signal: unknown, audio: Array<{url:string;label:string}>) => {
+  let releaseBusy!: () => void;
+  const busy = new Promise<void>(resolve => { releaseBusy = resolve; });
+  const otherRequest = trackCozeRequest('unused', () => busy);
+  t.after(() => { releaseBusy(); return otherRequest; });
+  app.set('analysisProxy', async (selected: { botId: string }, _message: string, _images: unknown, _signal: unknown, audio: Array<{url:string;label:string}>) => {
+    assert.equal(selected.botId, secondary.botId);
     assert.equal(audio[0].url, upload.url);
     return { success: true, content: `<classnode-scores>${JSON.stringify({scores:[{student:audio[0].label,score:2,reason:'你说出了观察到的变化。',advice:'你可以补充发生变化的过程。'}]})}</classnode-scores><classnode-evidence>${JSON.stringify({students:[{student:audio[0].label,summary:"教师专用观察依据",criteria:[{requirement:"说清变化",status:"partial",evidence:"说明了变化，未说明过程"}],limitations:[]}]})}</classnode-evidence>` };
   });
@@ -118,6 +125,8 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
     await new Promise(resolve=>setTimeout(resolve,20));
   }
 
+  releaseBusy();
+  await otherRequest;
   const storedEvidence = await db.worksheetAnswerReview.findUnique({where:{id:personal.reviewId}});
   const storedQuestion = storedEvidence?.question;
   assert.ok(storedQuestion && typeof storedQuestion === 'object' && !Array.isArray(storedQuestion));
@@ -134,13 +143,22 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
   let summaryAudioCalls = 0;
   app.set('analysisProxy', async (_agent: unknown, message: string, images: Buffer[], _signal: unknown, clips: unknown[]) => {
     summaryAudioCalls++;
-    assert.match(message, /个人评价结果汇总/); assert.match(message, /教师专用观察依据/);
-    assert.equal(images.length, 0); assert.deepEqual(clips, []); assert.ok(!message.includes(upload.url));
-    return { success: true, content: '### 主要表现\n依据个人评价，学生说明了变化，建议补充过程。' };
+    assert.equal(images.length, 0);
+    if (summaryAudioCalls === 1) {
+      assert.match(message, /按音频附件对应表关联学生/);
+      assert.equal(clips.length, 1);
+      assert.equal((clips[0] as { url: string }).url, upload.url);
+      return { success: true, content: '学生说明了观察到的变化。' };
+    }
+    assert.deepEqual(clips, []);
+    assert.match(message, /学生说明了观察到的变化/);
+    return { success: true, content: '### 主要表现\n学生说明了变化，建议补充过程。' };
   });
   const summary = await call('POST', `/${sheet.id}/analysis/q/run?classroomId=${room.id}&analysisOnly=true`);
-  assert.equal(summary.status, 200, await summary.clone().text()); assert.equal(summaryAudioCalls, 1);
-  assert.match((await summary.json()).narrative, /纳入有效评价 1 人/);
+  assert.equal(summary.status, 200, await summary.clone().text());
+  assert.equal(summaryAudioCalls, 2);
+  assert.match((await summary.json()).narrative, /学生说明了变化/);
+  assert.equal((await db.worksheetAnswerReview.findUniqueOrThrow({where:{id:personal.reviewId}})).score, 2);
   app.set('analysisProxy', personalAudioProxy);
 
   assert.equal((await call('POST',`/${sheet.id}/answers/speech`,{reviewId:personal.reviewId},token)).status,403,'学生不能调用朗读接口');

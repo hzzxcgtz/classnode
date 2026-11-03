@@ -7,6 +7,7 @@ import type { AgentSummary } from '@/lib/types';
 import { AGENT_PLATFORM_MAP, type AgentPlatform } from './agent-platforms';
 
 interface AgentCardProps {
+  tokenLabel?: string;
   agent: AgentSummary;
   testing: boolean;
   toggling: boolean;
@@ -62,7 +63,7 @@ function PurposeChip({ purpose }: { purpose?: string | null }) {
   );
 }
 
-export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest, onEdit, onDelete, onShowError, onHideError, onShowRelatedClassrooms }: AgentCardProps) {
+export function AgentCard({ agent, tokenLabel, testing, toggling, deleting, onToggle, onTest, onEdit, onDelete, onShowError, onHideError, onShowRelatedClassrooms }: AgentCardProps) {
   const platform = AGENT_PLATFORM_MAP[agent.platform as AgentPlatform];
   const color = platform?.color || '#64748b';
   const purpose = agentPurposeOf(agent.purpose);
@@ -103,6 +104,12 @@ export function AgentCard({ agent, testing, toggling, deleting, onToggle, onTest
             <span className="agent-management-platform-badge">
               {platform?.label || agent.platform}
             </span>
+            {tokenLabel && (
+              <span className="agent-management-platform-badge" title={`令牌：${tokenLabel}`}
+                style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#475569' }}>
+                令牌 · {tokenLabel}
+              </span>
+            )}
             {['coze-agent', 'wenxin'].includes(agent.platform) && <CapabilityTag>纯文字</CapabilityTag>}
             {agent.platform === 'wenxin' && <CapabilityTag>非流式</CapabilityTag>}
           </div>

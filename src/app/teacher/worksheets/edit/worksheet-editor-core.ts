@@ -3160,6 +3160,11 @@ export function parseDraft(raw: string | null): WorksheetDraft | null {
       analysisAgentId: typeof settings.analysisAgentId === 'string' && settings.analysisAgentId !== ''
         ? settings.analysisAgentId
         : null,
+      ...(settings.analysisAgentId && Array.isArray(settings.additionalReviewAgentIds) ? {
+        additionalReviewAgentIds: [...new Set(settings.additionalReviewAgentIds.filter(
+          id => typeof id === 'string' && !!id && id !== settings.analysisAgentId,
+        ))].slice(0, 2),
+      } : {}),
       backgroundTheme: normalizeWorksheetBackgroundTheme(settings.backgroundTheme),
       backgroundImageUrl: typeof settings.backgroundImageUrl === 'string' && settings.backgroundImageUrl.startsWith('/uploads/chat/')
         ? settings.backgroundImageUrl
@@ -3218,6 +3223,11 @@ export function normalizeLoadedSettings(raw: unknown): WorksheetSettings {
     analysisAgentId: typeof settings.analysisAgentId === 'string' && settings.analysisAgentId !== ''
       ? settings.analysisAgentId
       : null,
+    ...(settings.analysisAgentId && Array.isArray(settings.additionalReviewAgentIds) ? {
+      additionalReviewAgentIds: [...new Set(settings.additionalReviewAgentIds.filter(
+        id => typeof id === 'string' && !!id && id !== settings.analysisAgentId,
+      ))].slice(0, 2),
+    } : {}),
     backgroundTheme: normalizeWorksheetBackgroundTheme(settings.backgroundTheme),
     backgroundImageUrl: typeof settings.backgroundImageUrl === 'string' && settings.backgroundImageUrl.startsWith('/uploads/chat/')
       ? settings.backgroundImageUrl

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 
 type LegacyGroup = { id: string; classroomId: string; name: string };
 type ClassroomClassRow = { classId: string };
@@ -160,4 +160,25 @@ export async function migrateClassroomParticipants(prisma: PrismaClient): Promis
   await prisma.$executeRawUnsafe(`DELETE FROM "Student" WHERE "tag" = '__group__' AND NOT EXISTS (
     SELECT 1 FROM "ClassroomStudent" cs WHERE cs."studentId" = "Student"."id"
   )`);
+}
+
+// Keep the group participant for historical records and provision separate accounts from the roster.
+export async function provisionGroupMembers(tx: Prisma.TransactionClient, classroomId: string) {
+  const members = await tx.classroomGroupMember.findMany({
+    where: { classroomId, studentId: { not: null } },
+    select: { studentId: true, groupId: true },
+  });
+  for (const { studentId, groupId } of members) {
+    if (!studentId) continue;
+    const participant = await tx.classroomStudent.upsert({
+      where: { classroomId_studentId: { classroomId, studentId } },
+      create: { classroomId, studentId, groupId, type: 'student' },
+      update: { groupId },
+    });
+    await tx.interaction.upsert({
+      where: { classroomId_studentId: { classroomId, studentId: participant.id } },
+      create: { classroomId, studentId: participant.id },
+      update: {},
+    });
+  }
 }

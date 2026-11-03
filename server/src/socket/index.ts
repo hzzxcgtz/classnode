@@ -1,3 +1,4 @@
+import { cozeTokenLoad } from '../services/ai-file-queue.js';
 import { beginClassroomRequest, endClassroomRequest, agentContextStart, agentHistoryWhere } from '../services/classroom-material-edit.js';
 import { createHash } from 'node:crypto';
 import { maintenanceBusy, trackDataTask } from '../services/data-maintenance.js';
@@ -21,6 +22,7 @@ const AGENT_ALERT_COOLDOWN_MS = 2 * 60 * 1000;
 
 /** 平台对话上下文 ID 存储（key: classroomId:studentId:agentId）
  *  智谱清言用 conversationId，文心用 threadId，都是 API 返回的上下文标识 */
+const companionReservations = new Map<string, number>();
 const platformConversations = new Map<string, { conversationId: string; lastUsedAt: number }>();
 const PLATFORM_CONVERSATION_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -1205,10 +1207,15 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
           }
         } catch {}
 
+        const groupMember = studentSession.groupMemberId && await prisma.classroomGroupMember.findFirst({
+          where: { id: studentSession.groupMemberId, classroomId: classroom.id, groupId: classroomStudent.groupId ?? '' },
+          select: { name: true },
+        });
         // 通知教师端
         io.to(`teacher:${classroom.id}`).emit('student-online', {
           studentId: classroomStudent.id,
           socketId: socket.id,
+          ...(groupMember ? { memberDisplayName: groupMember.name } : {}),
         });
 
         // 广播在线状态给身份选择页
@@ -1746,6 +1753,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
       const abortController = new AbortController();
       const streamKey = socket.id;
       activeStreams.set(streamKey, abortController);
+      let reservedCompanionId: string | undefined;
       try {
         const data = validateStudentMessagePayload(input);
         if (!data) {
@@ -1889,7 +1897,7 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         // 🔴 高级模式下**不得回落**到课堂级：那个数组在高级模式里曾是「各组智能体的并集」，
         //    回落到它等于让学生静默地跟另一个组的智能体对话（错名字、错提示词、错平台账号），
         //    而 AI 正常回答、教师完全看不出（§1.2 ①）。
-        const agentId = resolveMaterialTargetId({
+        let agentId = resolveMaterialTargetId({
           mode: classroom.mode,
           studentGroupId: classroomStudent.groupId,
           groupMaterials: classroom.groups.flatMap((g) => g.materials.map((m) => ({
@@ -1908,6 +1916,54 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         // **至多一次** `findUnique` —— 比按「本课堂所有组的 agent 材料」一次 `findMany(in …)`
         // 更省（这里只关心当前这一个学生的那一个智能体）。
         const agentById = new Map(classroom.classroomAgents.map((ca) => [ca.agentId, ca.agent]));
+        const contextStart = agentContextStart(classroom.agentContextStarts,
+          classroom.mode === 'advanced' ? (classroomStudent.groupId ?? '') : 'classroom');
+        const extraIds = classroom.mode === 'advanced'
+          ? classroom.groups.find(group => group.id === classroomStudent.groupId)?.materials
+            .filter(material => material.kind === 'agent-2' || material.kind === 'agent-3')
+            .map(material => material.targetId) ?? []
+          : studentVisibleAgents(classroom.classroomAgents).map(row => row.agentId).filter(id => id !== agentId);
+        if (agentId && extraIds.length) {
+          const ids = [agentId, ...extraIds];
+          const pool = classroom.mode === 'advanced'
+            ? await prisma.agent.findMany({ where: { id: { in: ids } } })
+            : ids.flatMap(id => agentById.get(id) ?? []);
+          const candidates = pool.filter(candidate => candidate.platform === 'coze' &&
+            candidate.purpose !== 'analysis' && candidate.credentialId);
+          if (candidates.some(candidate => candidate.id === agentId) && candidates.length > 1) {
+            const scope = { classroomId: classroom.id, role: 'user', agentId: { in: candidates.map(candidate => candidate.id) },
+              ...(contextStart ? { createdAt: { gte: contextStart } } : {}) };
+            const previous = await prisma.message.findFirst({
+              where: { ...scope, studentId: classroomStudent.id },
+              orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+              select: { agentId: true },
+            });
+            if (previous?.agentId) {
+              agentId = previous.agentId;
+            } else {
+              const assignments = await prisma.message.findMany({
+                where: scope, distinct: ['agentId', 'studentId'], select: { agentId: true, studentId: true },
+              });
+              const loads = await Promise.all(candidates.filter(candidate => candidate.enabled).map(async candidate => {
+                const credential = await prisma.platformToken.findUnique({
+                  where: { id: candidate.credentialId! }, select: { token: true },
+                });
+                return {
+                  id: candidate.id,
+                  active: credential ? cozeTokenLoad(toAgentConfig(candidate, credential).apiKey) : 0,
+                  assigned: assignments.filter(row => row.agentId === candidate.id).length,
+                };
+              }));
+              const pressure = (candidate: typeof loads[number]) =>
+                Math.max(candidate.active, companionReservations.get(candidate.id) ?? 0);
+              loads.sort((left, right) => pressure(left) - pressure(right) || left.assigned - right.assigned);
+              agentId = loads[0]?.id ?? agentId;
+              reservedCompanionId = agentId;
+              companionReservations.set(agentId, (companionReservations.get(agentId) ?? 0) + 1);
+            }
+            for (const candidate of candidates) agentById.set(candidate.id, candidate);
+          }
+        }
         const agent = agentId
           ? (agentById.get(agentId) ?? await prisma.agent.findUnique({ where: { id: agentId } }))
           : null;
@@ -1955,8 +2011,6 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
 
         // AI Proxy call (流式)
         // 先取历史再存消息，确保 additional_messages 不含当前消息，避免重复
-        const contextStart = agentContextStart(classroom.agentContextStarts,
-          classroom.mode === 'advanced' ? (classroomStudent.groupId ?? '') : 'classroom');
         const pastMessages = await prisma.message.findMany({
           where: agentHistoryWhere(classroomStudent.id, agent.id, contextStart),
           orderBy: { createdAt: 'desc' },
@@ -2223,6 +2277,11 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         if (activeStreams.get(streamKey) === abortController) activeStreams.delete(streamKey);
         if (abortController.signal.aborted && socket.data.classroomId) io.to(`teacher:${socket.data.classroomId}`).emit('student-thinking', { studentId: socket.data.studentId, status: false });
         if (participantRequests.get(requestKey)?.owner === owner) participantRequests.delete(requestKey);
+        if (reservedCompanionId) {
+          const remaining = (companionReservations.get(reservedCompanionId) ?? 1) - 1;
+          if (remaining) companionReservations.set(reservedCompanionId, remaining);
+          else companionReservations.delete(reservedCompanionId);
+        }
         endClassroomRequest(requestClassroomId);
       }
     });

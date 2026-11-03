@@ -147,8 +147,9 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
         // 需要先获取学生的 groupId（它只在这个名单接口里下发）
         try {
           const sts = await api.getClassroomStudents(cr.id);
-          const myStudent = sts.find((student) => student.id === sessionStudentId);
-          if (myStudent) setSelectedStudent(myStudent);
+          const myStudent = sts.find(student => student.id === sessionStudentId ||
+            student.groupMembers?.some(member => member.participantId === sessionStudentId));
+          if (myStudent?.id === sessionStudentId && cr.groupLoginMode !== 'member') setSelectedStudent(myStudent);
           if (effectiveGroupAgent(cr, myStudent)?.enabled === false) setAgentDisabled(true);
         } catch {}
       } else {
@@ -199,7 +200,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     setJoiningClassroom(true);
     let token: string;
     try {
-      const session = await api.createStudentSession(code, selectedStudent.id);
+      const session = await api.createStudentSession(code, selectedStudent.id, selectedStudent.groupMemberId);
       token = session.token;
       setStudentSessionToken(token);
     } catch (error: unknown) {
@@ -235,6 +236,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     try { localStorage.setItem(`chat_session_${code}`, JSON.stringify({
       studentId: selectedStudent.id,
       studentName: selectedStudent.name,
+      groupMemberId: selectedStudent.groupMemberId,
       token,
       timestamp: Date.now(),
     })); } catch { setToast({ msg: '浏览器无法保存会话，刷新后需重新选择身份；当前课堂仍可使用。', type: 'error' }); }
@@ -249,6 +251,44 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     await startChatSession(selectedStudent.id, selectedStudent.name, undefined, token);
     joiningRef.current = false;
     setJoiningClassroom(false);
+  };
+
+  const switchGroupMember = async (member: NonNullable<ClassroomStudentSummary['groupMembers']>[number]) => {
+    if (!selectedStudent?.groupMemberId || waitingAI || joiningRef.current) return false;
+    joiningRef.current = true;
+    setJoiningClassroom(true);
+    try {
+      const { token, participantId } = await api.createStudentSession(code, selectedStudent.id, member.id, true);
+      setStudentSessionToken(token);
+      setMessages([]);
+      setTeacherMsgs([]);
+      options.seenNotifIdsRef.current.clear();
+      setTeacherNotifBubble(null);
+      setShieldWarning(null);
+      setConnectionError(null);
+      setStreamingContent('');
+      setThinkingContent('');
+      setBlacklisted(false);
+      setAvatarTokenCount(0);
+      setSelectedStudent({ ...selectedStudent, participantType: 'student', id: participantId, studentId: member.studentId,
+        avatarId: member.avatarId, name: member.name, groupMemberId: member.id });
+      try {
+        localStorage.setItem(`chat_session_${code}`, JSON.stringify({
+          studentId: participantId, studentName: member.name, groupMemberId: member.id,
+          token, timestamp: Date.now(),
+        }));
+      } catch { setToast({ msg: '浏览器无法保存会话，刷新后需重新选择身份。', type: 'error' }); }
+      await startChatSession(participantId, member.name, undefined, token);
+      if (classroom?.id) await loadMessages(classroom.id, participantId);
+      await api.getStudentTokens(participantId).then(result => setAvatarTokenCount(result.tokens || 0)).catch(() => {});
+      return true;
+    } catch (error) {
+      setToast({ msg: error instanceof Error ? error.message : '切换组员失败', type: 'error' });
+      return false;
+    } finally {
+      joiningRef.current = false;
+      setJoiningClassroom(false);
+    }
   };
 
   const handleSwitchIdentity = () => {
@@ -664,6 +704,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
     fetchStudentTokens,
     handleIdentityConfirm,
     handleSwitchIdentity,
+    switchGroupMember,
     handleExit,
     handleClassroomEnded,
     handleRetryRestore,

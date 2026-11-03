@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
+import { SvgAvatar } from '@/components/svg-avatar';
 import { useRouter } from 'next/navigation';
 import type { Socket } from 'socket.io-client';
 import { IdentityPicker } from './identity/identity-picker';
@@ -44,6 +45,7 @@ export default function StudentChatPage() {
  */
 function ClassroomOrchestrator() {
   const router = useRouter();
+  const switchMemberDialog = useRef<HTMLDialogElement>(null);
   const wsRef = useRef<Socket | null>(null);
   const statusSocketRef = useRef<Socket | null>(null);
   const chatConnectionGenerationRef = useRef(0);
@@ -134,7 +136,9 @@ function ClassroomOrchestrator() {
   // 态的学习单会永远弹「这个模块还在准备中」，而 `preview`/`hidden` 都表现正常，症状极难归因。
   // 所以这里不再出现任何模块分派逻辑：`Omit` 让「谁负责打开模块」在类型上只剩外壳一个答案。
   return (
+    <>
     <ClassroomShell
+      key={session.selectedStudent?.id}
       onStepChange={session.setStep}
       // ★ M5a：课堂级「锁定作答」。会话层是唯一持有者（专门 state + socket 事件），
       // 外壳只把它搬给学习单面板 —— 不从 `session.classroom` 那个 15 秒快照里读。
@@ -177,7 +181,10 @@ function ClassroomOrchestrator() {
         setThinkingContent: session.setThinkingContent,
         setTeacherNotifBubble: session.setTeacherNotifBubble,
         fetchStudentTokens: session.fetchStudentTokens,
-        onSwitchIdentity: session.handleSwitchIdentity,
+        onSwitchIdentity: () => {
+          if (session.selectedStudent?.groupMemberId) switchMemberDialog.current?.showModal();
+          else session.handleSwitchIdentity();
+        },
         onExit: session.handleExit,
         onRetryRestore: session.handleRetryRestore,
         wsRef,
@@ -197,5 +204,46 @@ function ClassroomOrchestrator() {
         setToast: session.setToast,
       }}
     />
+    <dialog ref={switchMemberDialog} aria-labelledby="switch-member-title" aria-describedby="switch-member-description"
+      className="m-auto w-[min(25rem,90vw)] max-h-[90dvh] overflow-auto rounded-3xl border border-indigo-100 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/45">
+      <header className="border-b border-indigo-100 bg-indigo-50 px-5 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <h2 id="switch-member-title" className="text-lg font-semibold">切换组员</h2>
+            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-indigo-700">{session.selectedStudent?.groupName}</span>
+          </div>
+          <button type="button" aria-label="关闭" className="grid size-9 shrink-0 place-items-center rounded-full border border-indigo-100 bg-white text-slate-600 hover:bg-indigo-100"
+            onClick={() => switchMemberDialog.current?.close()}>
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <p id="switch-member-description" className="mt-2 text-sm text-slate-600">选择接下来使用这台设备的同学。</p>
+      </header>
+      <div className="px-5 py-4">
+        {session.toast?.type === 'error' && <p role="alert" className="mb-3 text-sm text-red-700">{session.toast.msg}</p>}
+        <div className="grid gap-2">
+          {session.selectedStudent?.groupMembers?.map(member => {
+            const current = member.id === session.selectedStudent?.groupMemberId;
+            const avatar = member.avatarId ? session.avatarSvgs[member.avatarId] : undefined;
+            return <button key={member.id} type="button" aria-current={current || undefined}
+              className={`flex min-h-12 w-full items-center gap-3 rounded-xl border px-3 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-indigo-500 ${current ? 'border-indigo-200 bg-indigo-50 text-indigo-950' : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50'}`}
+              disabled={current || session.joiningClassroom}
+              onClick={async () => { if (await session.switchGroupMember(member)) switchMemberDialog.current?.close(); }}>
+              <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-full bg-indigo-100 font-semibold text-indigo-800">
+                {avatar ? <SvgAvatar svg={avatar} size={36} fallback={member.name[0]} /> : member.name[0]}
+              </span>
+              <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                <span className="truncate font-semibold">{member.name}</span>
+                {member.studentNo?.trim() && <span className="shrink-0 text-xs font-medium tabular-nums text-slate-500">#{member.studentNo.trim()}</span>}
+              </span>
+              {current
+                ? <span className="shrink-0 rounded-full bg-white px-2 py-1 text-xs font-medium text-indigo-700">当前组员</span>
+                : <svg aria-hidden="true" className="shrink-0 text-slate-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg>}
+            </button>;
+          })}
+        </div>
+      </div>
+    </dialog>
+    </>
   );
 }

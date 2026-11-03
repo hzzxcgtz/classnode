@@ -1,3 +1,4 @@
+import { runCozeFileRequest, runFileRequest, trackCozeRequest } from './ai-file-queue.js';
 import { anonymizer } from './anonymizer.js';
 import { CozeBot } from './coze-bot/index.js';
 import { CozeStreamError } from './coze-bot/chat.js';
@@ -9,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { decrypt, isEncrypted } from './crypto.js';
+import { prepareAnalysisImageUpload } from './analysis-image-upload.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -159,11 +161,21 @@ export async function proxyAIRequestStream(
   try {
     switch (agent.platform) {
       case 'coze':
-        return await proxyCozeStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal, onThinking);
+        {
+        const send = () => signal?.aborted
+          ? Promise.resolve({ success: false, aborted: true })
+          : proxyCozeStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal, onThinking);
+        return await (fileUrls?.length ? runCozeFileRequest([agent.apiKey], send) : trackCozeRequest(agent.apiKey, send));
+      }
       case 'coze-agent':
         return await proxyCozeAgentStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
       case 'zhipuai':
-        return await proxyZhipuaiStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
+        {
+        const send = () => signal?.aborted
+          ? Promise.resolve({ success: false, aborted: true })
+          : proxyZhipuaiStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
+        return await (fileUrls?.some(isLocalFileUrl) ? runFileRequest(send) : send());
+      }
       case 'wenxin':
         return await proxyWenxinStream(agent, anonMessage, anonName, onChunk, history, fileUrls, signal);
       default:
@@ -1224,7 +1236,9 @@ export async function proxyAnalysisRequest(
       const items: CozeMultimodalItem[] = [{ type: 'text', text: message }];
       for (const [index, buffer] of images.entries()) {
         signal?.throwIfAborted();
-        const file = await coze.file.uploadBuffer(buffer, `analysis-${index}.png`);
+        const prepared = await prepareAnalysisImageUpload(buffer);
+        signal?.throwIfAborted();
+        const file = await coze.file.uploadBuffer(prepared.buffer, `analysis-${index}.${prepared.extension}`);
         items.push({ type: 'image', file_id: file.id });
       }
       for (const [index, audio] of audioAnswers.entries()) {

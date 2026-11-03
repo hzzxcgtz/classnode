@@ -1,3 +1,4 @@
+import { worksheetReviewAgentIds } from '../services/individual-review.js';
 import { Router } from 'express';
 import { ANALYSIS_TEMPLATE_IDS, readAnalysisTemplate } from '../services/analysis-template-source.js';
 import { Agent, Prisma, PrismaClient } from '@prisma/client';
@@ -207,7 +208,7 @@ router.get('/', async (req, res) => {
           select: { agentId: true, classroomId: true },
         }),
         prisma.classroomGroupMaterial.findMany({
-          where: { kind: 'agent', targetId: { in: agentIds } },
+          where: { kind: { in: ['agent', 'agent-2', 'agent-3'] }, targetId: { in: agentIds } },
           select: { targetId: true, group: { select: { classroomId: true } } },
         }),
       ]);
@@ -236,9 +237,9 @@ router.get('/', async (req, res) => {
     if (agentIds.length > 0) {
       const worksheetRows = await prisma.worksheet.findMany({ select: { settings: true } });
       for (const row of worksheetRows) {
-        const owner = (row.settings as Record<string, unknown> | null)?.analysisAgentId;
-        if (typeof owner !== 'string' || !owner) continue;
-        worksheetCountByAgent.set(owner, (worksheetCountByAgent.get(owner) ?? 0) + 1);
+        for (const id of worksheetReviewAgentIds(row.settings)) {
+          worksheetCountByAgent.set(id, (worksheetCountByAgent.get(id) ?? 0) + 1);
+        }
       }
     }
 
@@ -489,7 +490,7 @@ router.get('/:id/usage', async (req, res) => {
       where: { agentId: req.params.id },
     });
     const cgCount = await prisma.classroomGroupMaterial.count({
-      where: { kind: 'agent', targetId: req.params.id },
+      where: { kind: { in: ['agent', 'agent-2', 'agent-3'] }, targetId: req.params.id },
     });
 
     // 关联课堂清单必须 **union 两张表**：`ClassroomAgent`（标准/分组模式建的课堂）
@@ -504,7 +505,7 @@ router.get('/:id/usage', async (req, res) => {
       include: { classroom: { select: { id: true, title: true, status: true, mode: true } } },
     });
     const groupMaterials = await prisma.classroomGroupMaterial.findMany({
-      where: { kind: 'agent', targetId: req.params.id },
+      where: { kind: { in: ['agent', 'agent-2', 'agent-3'] }, targetId: req.params.id },
       include: { group: { select: { classroom: { select: { id: true, title: true, status: true, mode: true } } } } },
     });
     const byClassroomId = new Map<string, { id: string; title: string; status: string; mode: string }>();
@@ -532,13 +533,13 @@ router.get('/:id/usage', async (req, res) => {
      *   ⇒ 取回在 JS 里筛。学习单是几十行的量级，`select` 也只取必要列。
      * ⚠️ 这与**删除守卫**（本文件下面 `DELETE /:id` 那一支）用的是**同一条判据** ——
      *   两处若分家，"能删却说有引用"或"说没有却能删"都会出现，而两边都不报错。
-     *   所以两处的比较都必须逐字是 `settings.analysisAgentId === id`。
+     *   所以列表、引用查询与删除守卫统一读取学习单的智能体配置。
      */
     const worksheetRows = await prisma.worksheet.findMany({
       select: { id: true, title: true, updatedAt: true, settings: true },
     });
     const relatedWorksheets = worksheetRows
-      .filter((row) => (row.settings as Record<string, unknown> | null)?.analysisAgentId === req.params.id)
+      .filter((row) => worksheetReviewAgentIds(row.settings).includes(String(req.params.id)))
       .map((row) => ({ id: row.id, title: row.title, updatedAt: row.updatedAt }));
 
     res.json({
@@ -564,7 +565,7 @@ router.delete('/:id', async (req, res) => {
     const [agent, caCount, cgCount, worksheets] = await Promise.all([
       prisma.agent.findUnique({ where: { id: req.params.id }, select: { logo: true } }),
       prisma.classroomAgent.count({ where: { agentId: req.params.id } }),
-      prisma.classroomGroupMaterial.count({ where: { kind: 'agent', targetId: req.params.id } }),
+      prisma.classroomGroupMaterial.count({ where: { kind: { in: ['agent', 'agent-2', 'agent-3'] }, targetId: req.params.id } }),
       // ★ M7b（独立审查 M5）：**第三处引用**。`settings.analysisAgentId` 住在学习单的
       // JSON blob 里，两张关联表都数不到它 ⇒ 删掉一个正在被学习单引用的分析 bot，
       // 学习单里会留下一个**悬空 id**：矩阵浮层那边是响亮的（会说「不存在或已停用」），
@@ -576,7 +577,7 @@ router.delete('/:id', async (req, res) => {
     ]);
     if (!agent) return res.status(404).json({ error: '智能体不存在' });
     const usedByWorksheets = worksheets.filter(
-      (worksheet) => (worksheet.settings as Record<string, unknown> | null)?.analysisAgentId === req.params.id);
+      (worksheet) => worksheetReviewAgentIds(worksheet.settings).includes(String(req.params.id)));
     if (caCount > 0 || cgCount > 0 || usedByWorksheets.length > 0) {
       const titles = usedByWorksheets.map((worksheet) => `《${worksheet.title}》`).join('、');
       return res.status(400).json({

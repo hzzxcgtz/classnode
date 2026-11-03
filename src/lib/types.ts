@@ -498,6 +498,7 @@ export interface WorksheetSettings {
    * ⚠️ **没有默认值**是刻意的：默认指定一个等于「默认把全班作业发出去」。
    */
   analysisAgentId: string | null;
+  additionalReviewAgentIds?: string[];
   /** 学生端学习单的背景主题。`custom` 时读取下面的横、竖两张上传图。 */
   backgroundTheme: WorksheetBackgroundTheme;
   /** 自定义背景只允许站内上传地址；预设主题时保留但不读取。 */
@@ -756,6 +757,7 @@ export interface WorksheetBoard {
 }
 
 export interface StudentSessionResponse {
+  participantId: string;
   token: string;
   expiresIn: number;
 }
@@ -864,6 +866,8 @@ export interface ClassroomStudentSummary {
   avatarId: number | null;
   groupId: string | null;
   groupName?: string;
+  groupMemberId?: string;
+  groupMembers?: { id: string; name: string; participantId: string; studentId: string | null; studentNo: string | null; avatarId: number | null }[];
   status: string;
 }
 
@@ -886,6 +890,7 @@ export interface ClassroomCardGroup {
 }
 
 export interface ClassroomCardStudent {
+  memberDisplayName?: string | null;
   id: string;
   participantId?: string;
   participantType?: 'student' | 'group';
@@ -901,6 +906,7 @@ export interface ClassroomCardStudent {
 }
 
 export interface ClassroomDetail extends Omit<ClassroomSummary, 'students' | 'groups'> {
+  groupLoginMode?: 'group' | 'member';
   classes: Array<{ classId: string; class: ClassSummary }>;
   classroomAgents: Array<{ agentId: string; agent: AgentSummary }>;
   /**
@@ -1055,6 +1061,7 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
 }
 
 export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'students'> {
+  groupLoginMode?: 'group' | 'member';
   agents: AgentSummary[];
   worksheets?: WorksheetMaterialSummary[];
   /**
@@ -1163,6 +1170,7 @@ export interface TeacherNotification {
  * 不会静默拿到别的组的。
  */
 export interface AdvancedClassroomGroupInput {
+  extraAgentIds?: string[];
   name: string;
   agentId: string | null;
   webappId: string | null;

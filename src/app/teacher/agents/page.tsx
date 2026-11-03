@@ -271,6 +271,7 @@ export default function AgentsPage() {
             <AgentCard
               key={agent.id}
               agent={agent}
+              tokenLabel={tokens.find(token => token.id === agent.credentialId)?.label}
               testing={testing === agent.id}
               toggling={busyOperation === `${agent.id}:toggle`}
               deleting={busyOperation === `${agent.id}:delete`}

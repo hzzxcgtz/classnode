@@ -258,7 +258,7 @@ export function ModuleTabBar({
           <SvgAvatar svg={avatarSvgs[student.avatarId]} size={28} fallback={student.name[0]} />
         ) : student.name[0]}
       </span>
-      <span className={styles.studentName}>{student.name}</span>
+      <span className={styles.studentName}>{student.name}{student.groupMemberId && student.groupName ? ` · ${student.groupName}` : ''}</span>
       {showChipBadge && (
         <span className={`${styles.actionBadge} ${styles.chipBadge}`} aria-hidden="true">{avatarTokenCount}</span>
       )}
@@ -389,6 +389,21 @@ export function ModuleTabBar({
       {/* ── 操作组（M1b-3 T1 / T5）。四项都是**共用**能力：任何层（首页或三个模块）下都在，
           因为它们属于「这一节课的会话」，不属于任何一个模块。 */}
       <div className={styles.actions}>
+        <button
+          type="button"
+          ref={teacherMsgsButtonRef}
+          className={teacherMsgsOpen ? `${styles.action} ${styles.actionActive}` : styles.action}
+          onClick={onToggleTeacherMsgs}
+          aria-expanded={teacherMsgsOpen}
+          aria-label={messagesLabel}
+          title={messagesLabel}
+        >
+          <MessagesIcon />
+          {teacherMsgCount > 0 && (
+            <span className={styles.actionBadge} aria-hidden="true">{teacherMsgCount}</span>
+          )}
+        </button>
+
         {/* 连接状态。**不是按钮** —— 它没有可执行的动作，做成按钮只会让学生去点它。
             配色由 `.connectionOnline` / `.connectionOffline` 给；**文字就是信息载体本身**
             （Ruling 3 续：颜色不能是唯一的信息载体 —— T5 之前这里只有一个孤零零的圆点，
@@ -454,38 +469,6 @@ export function ModuleTabBar({
             </span>
           )
         )}
-
-        {/* ── 老师消息（M1b-3 T3）──
-            入口从学伴面板头搬到这里：那条栏属于「这一节课的会话」，任何层（首页或三个模块）
-            下都在，而面板头整行已随 T4 撤除。搬过来之后**面板侧不再有这个入口**，删掉它
-            等于把「老师发的消息」整个藏起来。
-
-            ⚠️ 位置在「学生 chip」与「切换用户」之间是照着面板头原来的次序
-            （连接 / 学生 / 消息 / 切换 / 退出）排的，不是随手插的。
-
-            ⚠️ 下拉本体**不在这里** —— 它 portal 到 body，由外壳渲染（见 prop 注释）。
-            这里只有入口。
-
-            ⚠️ **这是操作组里唯一一枚纯图标按钮**（T5 只给用户点名的四项加了文字：连接状态 /
-            学生 chip / 切换用户 / 退出课堂，消息不在这份名单里）。它留着图标 + 角标，条数
-            仍然完整写在 aria-label / title 里 —— 读屏用户不比视觉用户少听到任何东西。
-
-            角标只在有条数时出现：36px 的图标按钮里塞不下「消息 0」，而 0 本身也不是学生
-            需要一眼看到的信息。 */}
-        <button
-          type="button"
-          ref={teacherMsgsButtonRef}
-          className={teacherMsgsOpen ? `${styles.action} ${styles.actionActive}` : styles.action}
-          onClick={onToggleTeacherMsgs}
-          aria-expanded={teacherMsgsOpen}
-          aria-label={messagesLabel}
-          title={messagesLabel}
-        >
-          <MessagesIcon />
-          {teacherMsgCount > 0 && (
-            <span className={styles.actionBadge} aria-hidden="true">{teacherMsgCount}</span>
-          )}
-        </button>
 
         {/* 切换用户 / 退出课堂（M1b-3 T5 恢复文字）。与 `.home` / `.tab` 同一套度量
             （36px 高、12px 内边距、0.813rem / 650 字重、图标 + 文字），所以栏里五个入口看起来

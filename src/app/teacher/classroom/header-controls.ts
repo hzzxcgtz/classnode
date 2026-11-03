@@ -3,7 +3,7 @@
  *
  * 🔴 这一层为什么存在：那 6–9 个控件的「在不在 / 叫什么 / 禁不禁用」原先全写在 260k 的
  * `page.tsx` 的 JSX 里，**没有任何回归网**。而它每一条错了都**不报错** ——
- * `同步分组` 的两道条件、两个开关的标签翻转、三个忙态键：
+ * 两个开关的标签翻转、两个忙态键：
  * 屏幕上只是「按钮不对 / 不见了」，没有任何东西会红。
  * （★ 2026-09-30：「全屏只在指定模式」那一条**已经取消**，见下面 `fullscreen` 的注释。）
  *
@@ -43,7 +43,6 @@ export type HeaderControlId =
   /** 课堂状态开关：停笔（仍可交卷）。 */
   | 'lock'
   /** 把班级的分组同步进课堂（只在分组 / 高级模式、且课堂未结束时才有）。 */
-  | 'sync-groups'
   /** 给全班发一条消息（★ 2026-09-29：原名「通知全体」）。 */
   | 'notify'
   /**
@@ -122,7 +121,6 @@ export const WORKSHEET_MENU_ITEMS: ReadonlyArray<{ id: 'overview' | 'student' | 
  *（按钮看着能点、点了没反应），而没有任何东西会红。
  */
 export const HEADER_BUSY_KEYS = {
-  syncGroups: 'sync-groups',
   pause: 'questions',
   lock: 'answers-lock',
 } as const;
@@ -210,7 +208,6 @@ function build(
 export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
   const busyPause = input.busy === HEADER_BUSY_KEYS.pause;
   const busyLock = input.busy === HEADER_BUSY_KEYS.lock;
-  const busySync = input.busy === HEADER_BUSY_KEYS.syncGroups;
   /**
    * 🔴 **禁用是整排的，而文案是逐个的** —— 这一条与直觉相反，理由在 `page.tsx` 的
    * `runControlAction`：它开头是 `if (controlBusyRef.current) return;` ⇒ 任何控制动作在飞时，
@@ -244,17 +241,6 @@ export function headerControls(input: HeaderLayoutInput): HeaderControl[] {
 
   // ── ② 对全班 / 整屏起作用。
   //
-  // 同步分组：只有分组 / 高级模式、且课堂**没有结束**时才存在。
-  // ⚠️ 判据是 `status === 'ended'`（不是「非 active」）—— 暂停的课堂里分组照旧是活的。
-  // ⚠️ 教师这一轮**没有点名它**（标准模式下它压根不出现）⇒ 位置是实施时定的：
-  //    它是个**动作**（把班级分组同步进课堂），既不是课堂状态开关、也不是某个模块的入口
-  //    ⇒ 只能进第 2 组，排在「全体消息」前面（两件事都是「对全班做一件事」）。
-  if ((input.mode === 'group' || input.mode === 'advanced') && input.status !== 'ended') {
-    controls.push(build('sync-groups', 'global', busySync ? '同步中...' : '同步分组', {
-      title: '把当前班级的分组名称和成员同步到正在进行的课堂',
-      disabled: anyBusy,
-    }));
-  }
   // ★ 2026-09-29（教师）：「『通知全体』改成『全体消息』」。
   controls.push(build('notify', 'global', '全体消息', { title: '给全班或某一组、某个人发一条消息' }));
   // ★ 2026-09-30（教师）：「全屏」**两种看板模式都给**。

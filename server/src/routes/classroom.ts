@@ -1,8 +1,9 @@
+import { provisionGroupMembers } from '../services/participant-migration.js';
 import { beginMaterialEdit, endMaterialEdit, hasClassroomRequests } from '../services/classroom-material-edit.js';
 import { Router, type RequestHandler } from 'express';
 import annotationRoutes from './classroom-annotations.js';
 import { PrismaClient, Prisma } from '@prisma/client';
-import { createStudentToken, getStudentSession } from '../middleware/student-auth.js';
+import { createStudentToken, getStudentSession, revokeStudentSession } from '../middleware/student-auth.js';
 import { hasTeacherSession, requireTeacher } from '../middleware/auth.js';
 import { ALLOWED_SOURCE_STATUSES } from '../services/classroom-state.js';
 import { compareStudentNumbers } from '../services/student-sort.js';
@@ -131,12 +132,41 @@ router.post('/code/:code/student-session', async (req, res) => {
     const participantId = typeof req.body?.studentId === 'string' ? req.body.studentId : '';
     const classroom = await prisma.classroom.findUnique({ where: { code: req.params.code } });
     if (!classroom || classroom.status === 'ended') return res.status(404).json({ error: '课堂不存在或已结束' });
-    const member = await prisma.classroomStudent.findFirst({
+    const participant = await prisma.classroomStudent.findFirst({
       where: { classroomId: classroom.id, id: participantId },
-      select: { id: true },
+      select: { id: true, groupId: true, studentId: true, type: true },
     });
-    if (!member) return res.status(403).json({ error: '该参与者不属于当前课堂' });
-    res.json({ token: createStudentToken(classroom.id, member.id), expiresIn: 7200 });
+    if (!participant) return res.status(403).json({ error: '该参与者不属于当前课堂' });
+    let groupMemberId: string | undefined;
+    let sessionParticipantId = participant.id;
+    const switching = req.body?.switchMember === true;
+    const current = switching ? getStudentSession(req) : null;
+    if (switching && (classroom.groupLoginMode !== 'member' || !participant.groupId ||
+        current?.classroomId !== classroom.id || current.studentId !== participant.id || !current.groupMemberId)) {
+      return res.status(403).json({ error: '只能切换到当前小组的组员' });
+    }
+    if (classroom.groupLoginMode === 'member' && participant.groupId) {
+      const member = await prisma.classroomGroupMember.findFirst({
+        where: {
+          classroomId: classroom.id,
+          groupId: participant.groupId,
+          ...(switching || participant.type === 'group'
+            ? { id: typeof req.body?.groupMemberId === 'string' ? req.body.groupMemberId : '' }
+            : { studentId: participant.studentId }),
+        },
+        select: { id: true, studentId: true },
+      });
+      if (!member?.studentId) return res.status(403).json({ error: '请选择当前小组的组员' });
+      const personal = await prisma.classroomStudent.findFirst({
+        where: { classroomId: classroom.id, studentId: member.studentId, groupId: participant.groupId },
+        select: { id: true },
+      });
+      if (!personal) return res.status(403).json({ error: '未找到组员的课堂身份' });
+      sessionParticipantId = personal.id;
+      groupMemberId = member.id;
+    }
+    if (current && current.studentId !== sessionParticipantId) revokeStudentSession(current);
+    res.json({ token: createStudentToken(classroom.id, sessionParticipantId, groupMemberId), participantId: sessionParticipantId, expiresIn: 7200 });
   } catch {
     res.status(500).json({ error: '创建学生会话失败' });
   }
@@ -411,11 +441,26 @@ async function trimExtraClassroomWebapps(
   return dropped;
 }
 
+const toIdList = (raw: unknown): string[] => Array.from(new Set<string>(
+  (Array.isArray(raw) ? raw : []).filter((id): id is string => typeof id === 'string' && !!id),
+));
+
+async function validCompanionPool(prisma: PrismaClient, ids: string[]) {
+  if (ids.length > 3) return false;
+  if (ids.length < 2) return true;
+  const agents = await prisma.agent.findMany({
+    where: { id: { in: ids }, platform: 'coze', enabled: true, purpose: 'tutoring' },
+    select: { credentialId: true },
+  });
+  return agents.length === ids.length && agents.every(agent => agent.credentialId) &&
+    new Set(agents.map(agent => agent.credentialId)).size === ids.length;
+}
+
 // 创建课堂（标准模式）
 router.post('/create', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { title, classIds, agentIds, mode = 'standard', webappIds, worksheetIds } = req.body;
+    const { title, classIds, agentIds, mode = 'standard', webappIds, worksheetIds, groupLoginMode } = req.body;
 
     // ① 参与班级 —— **不属于三件套**。它是学生名册的来源，仍然必填。
     //    与三件套**分开报错**：从前合在一句「请选择班级和智能体」里，只缺班级的教师
@@ -428,11 +473,11 @@ router.post('/create', async (req, res) => {
     // （从前那条 `!agentIds?.length` 的守卫顺带挡住了这一句，拆开报错后它就没人挡了）。
     // 顺带把 `classIds` 也收紧 —— 传个字符串进来 `"abc".length` 为真、`.filter` 却不存在，
     // 那是 500 而不是「请选择班级」，与「报错要告诉教师该怎么办」相悖。
-    const toIdList = (raw: unknown): string[] => Array.from(new Set<string>(
-      (Array.isArray(raw) ? raw : []).filter((id): id is string => typeof id === 'string' && !!id),
-    ));
     const uniqueClassIds = toIdList(classIds);
     const uniqueAgentIds = toIdList(agentIds);
+    if (!await validCompanionPool(prisma, uniqueAgentIds)) {
+      return res.status(400).json({ error: '请选择最多 3 个使用不同令牌的扣子对话智能体' });
+    }
     if (uniqueClassIds.length === 0) return res.status(400).json({ error: '所选班级无效，请刷新页面后重新选择' });
     if (mode === 'group' && uniqueClassIds.length !== 1) return res.status(400).json({ error: '分组模式一次只能选择一个班级' });
 
@@ -460,6 +505,7 @@ router.post('/create', async (req, res) => {
         code,
         title: title || null,
         mode,
+        groupLoginMode: mode === 'group' && groupLoginMode === 'member' ? 'member' : 'group',
         webappThumbnailWidth: DEFAULT_WEBAPP_CAPTURE.width,
         classes: {
           create: uniqueClassIds.map(classId => ({ classId })),
@@ -533,6 +579,7 @@ router.post('/create', async (req, res) => {
         await tx.interaction.create({ data: { classroomId: created.id, studentId: participant.id } });
       }
       }
+      if (created.groupLoginMode === 'member') await provisionGroupMembers(tx, created.id);
       return created;
     });
 
@@ -547,7 +594,7 @@ router.post('/create', async (req, res) => {
 router.post('/create-advanced', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const { title, classId, groups, webappIds, worksheetIds } = req.body;
+    const { title, classId, groups, webappIds, worksheetIds, groupLoginMode } = req.body;
 
     if (!classId || !groups?.length) {
       return res.status(400).json({ error: '请选择班级和分组' });
@@ -563,10 +610,17 @@ router.post('/create-advanced', async (req, res) => {
       return {
         name: typeof input.name === 'string' ? input.name.trim() : '',
         agentId: toId(input.agentId),
+        extraAgentIds: toIdList(input.extraAgentIds),
         webappId: toId(input.webappId),
         worksheetId: toId(input.worksheetId),
       };
     });
+    for (const group of normalizedGroups) {
+      if (group.extraAgentIds.length && (!group.agentId ||
+          !await validCompanionPool(prisma, [group.agentId, ...group.extraAgentIds]))) {
+        return res.status(400).json({ error: '每组最多选择 3 个使用不同令牌的扣子对话智能体' });
+      }
+    }
     // ⚠️ 文案只说**名称**。智能体在高级模式里是**选填**（每组可以不指定），把它写进这条
     // 文案会把「只忘了填组名」的教师指到「智能体」那一栏去找原因 —— 那一栏根本没有错。
     if (normalizedGroups.some(group => !group.name)) return res.status(400).json({ error: '分组名称不能为空' });
@@ -648,6 +702,7 @@ router.post('/create-advanced', async (req, res) => {
         code: await generateUniqueClassroomCode(tx),
         title: title || null,
         mode: 'advanced',
+        groupLoginMode: groupLoginMode === 'member' ? 'member' : 'group',
         webappThumbnailWidth: DEFAULT_WEBAPP_CAPTURE.width,
           classes: { create: { classId } },
           // ★ 2026-09-29（教师）：「这三个模块在创建后默认是开放」—— 与 `/create` 那处
@@ -676,7 +731,8 @@ router.post('/create-advanced', async (req, res) => {
       // ⚠️ `targetId` 没有真外键，所以「目标已不存在」的兜底在删除守卫（agents.ts / webapps.ts）
       // 与读路径的容忍里，不在这里。
       for (const [kind, targetId] of [
-        ['agent', group.agentId], ['webapp', group.webappId], ['worksheet', group.worksheetId],
+        ['agent', group.agentId], ['agent-2', group.extraAgentIds[0]], ['agent-3', group.extraAgentIds[1]],
+        ['webapp', group.webappId], ['worksheet', group.worksheetId],
       ] as const) {
         if (!targetId) continue;
         await tx.classroomGroupMaterial.create({ data: { groupId: classroomGroup.id, kind, targetId } });
@@ -695,6 +751,8 @@ router.post('/create-advanced', async (req, res) => {
       } });
       await tx.interaction.create({ data: { classroomId: created.id, studentId: participant.id } });
     }
+
+    if (created.groupLoginMode === 'member') await provisionGroupMembers(tx, created.id);
 
     // 🔴 这里**不再**从各组 agentId 派生 `ClassroomAgent`。
     // 理由：迁移后组不再有 agentId，而高级模式下那个数组本就是「各组智能体的并集」，
@@ -801,13 +859,13 @@ router.get('/active', async (req, res) => {
 router.post('/:id/sync-groups', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
+    const automatic = req.query.automatic === 'true';
     const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const classroom = await tx.classroom.findUnique({
         where: { id: req.params.id },
         include: {
           classes: { select: { classId: true } },
           groups: { select: { id: true, name: true, sourceClassGroupId: true } },
-          classroomAgents: { select: { agentId: true } },
           // 高级模式补新组时要照迁移（§4.2 第 5 步）的同一条规则把课堂级网页实体化，
           // 否则新补的组与它同组的老组不是一套材料（老组看得到网页、新组看不到）。
           webapps: { select: { webappId: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
@@ -820,12 +878,6 @@ router.post('/:id/sync-groups', async (req, res) => {
 
       const classId = classroom.classes[0].classId;
       const sourceGroups = await tx.classGroup.findMany({ where: { classId }, orderBy: { createdAt: 'asc' } });
-      // 分组模式的学生仍用**课堂级**智能体（§4.4），所以它必须存在 —— 这条守卫只对分组模式成立。
-      // ⚠️ 高级模式不能要求它：那里每组各自配材料，而 `classroomAgents` 已**不再派生**
-      //    （Step 7 第 5 点）⇒ 新建的高级课堂这个数组是空的，照旧抛 MISSING_AGENT 会让
-      //    「同步分组」对所有新的高级课堂永久 400。
-      const fallbackAgentId = classroom.classroomAgents[0]?.agentId ?? null;
-      if (classroom.mode === 'group' && !fallbackAgentId) throw new Error('MISSING_AGENT');
       // 高级模式：新补的组照迁移的同一条规则继承课堂级网页（单选 ⇒ 第一行）。
       const classroomWebappId = classroom.mode === 'advanced'
         ? (classroom.webapps[0]?.webappId ?? null)
@@ -842,6 +894,25 @@ router.post('/:id/sync-groups', async (req, res) => {
             !group.sourceClassGroupId && !claimedLegacyGroupIds.has(group.id) && group.name === sourceGroup.name,
           );
           if (classroomGroup) claimedLegacyGroupIds.add(classroomGroup.id);
+        }
+
+        let memberIds: string[] = [];
+        try {
+          const parsed: unknown = JSON.parse(sourceGroup.studentIds || '[]');
+          memberIds = Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+        } catch { /* Treat malformed legacy data as an empty group. */ }
+        const members = memberIds.length === 0 ? [] : await tx.student.findMany({
+          where: { id: { in: memberIds }, classId },
+          select: { id: true, name: true, studentNo: true },
+        });
+        if (automatic && classroomGroup?.sourceClassGroupId === sourceGroup.id && classroomGroup.name === sourceGroup.name) {
+          const snapshot = await tx.classroomGroupMember.findMany({
+            where: { groupId: classroomGroup.id },
+            select: { studentId: true, name: true, studentNo: true },
+          });
+          if (snapshot.length === members.length && members.every(member =>
+            snapshot.some(row => row.studentId === member.id && row.name === member.name && row.studentNo === member.studentNo)
+          )) continue;
         }
 
         if (!classroomGroup) {
@@ -874,15 +945,20 @@ router.post('/:id/sync-groups', async (req, res) => {
           updatedGroups++;
         }
 
-        let memberIds: string[] = [];
-        try {
-          const parsed: unknown = JSON.parse(sourceGroup.studentIds || '[]');
-          memberIds = Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
-        } catch { /* Treat malformed legacy data as an empty group. */ }
-        const members = memberIds.length === 0 ? [] : await tx.student.findMany({
-          where: { id: { in: memberIds }, classId },
-          select: { id: true, name: true, studentNo: true },
-        });
+        if (classroom.groupLoginMode === 'member') {
+          await tx.classroomGroupMember.deleteMany({
+            where: { groupId: classroomGroup.id, studentId: { notIn: members.map(member => member.id) } },
+          });
+          for (const member of members) {
+            await tx.classroomGroupMember.upsert({
+              where: { groupId_studentId: { groupId: classroomGroup.id, studentId: member.id } },
+              create: { classroomId: classroom.id, groupId: classroomGroup.id,
+                studentId: member.id, name: member.name, studentNo: member.studentNo },
+              update: { name: member.name, studentNo: member.studentNo },
+            });
+          }
+          continue;
+        }
         await tx.classroomGroupMember.deleteMany({ where: { groupId: classroomGroup.id } });
         if (members.length) {
           await tx.classroomGroupMember.createMany({
@@ -897,18 +973,18 @@ router.post('/:id/sync-groups', async (req, res) => {
         }
       }
 
+      if ((addedGroups || updatedGroups) && classroom.groupLoginMode === 'member') await provisionGroupMembers(tx, classroom.id);
       return { addedGroups, updatedGroups, sourceGroupCount: sourceGroups.length };
     });
 
     const io = req.app.get('io');
-    io?.to(`teacher:${req.params.id}`).emit('classroom-groups-synced', result);
+    if (result.addedGroups || result.updatedGroups) io?.to(`teacher:${req.params.id}`).emit('classroom-groups-synced', result);
     res.json({ success: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
     if (message === 'CLASSROOM_NOT_FOUND') return res.status(404).json({ error: '课堂不存在' });
     if (message === 'NOT_GROUP_CLASSROOM') return res.status(400).json({ error: '只有分组课堂可以同步分组' });
     if (message === 'CLASSROOM_ENDED') return res.status(409).json({ error: '已结束课堂保留原有分组快照，不能同步' });
-    if (message === 'MISSING_AGENT') return res.status(400).json({ error: '课堂未配置可用智能体' });
     if (message === 'INVALID_CLASSROOM_CLASS') return res.status(400).json({ error: '该课堂无法确定所属班级' });
     console.error('[Classroom] sync groups error:', error);
     res.status(500).json({ error: '同步分组失败' });
@@ -947,7 +1023,7 @@ router.get('/:id', async (req, res) => {
       groupMembersMap[group.id] = snapshot;
     }
 
-    const students = classroom.students.map(cs => ({
+    const students = classroom.students.filter(cs => classroom.groupLoginMode !== 'member' || cs.type !== 'group' || classroom.status === 'ended').map(cs => ({
       ...cs,
       participantType: cs.type,
       participantId: cs.id,
@@ -1116,6 +1192,7 @@ router.get('/code/:code', async (req, res) => {
       code: classroom.code,
       title: classroom.title,
       materialsRevision: classroom.materialsRevision,
+      groupLoginMode: classroom.groupLoginMode,
       mode: classroom.mode,
       status: classroom.status,
       // ★ M5a：课堂级「锁定作答」。学生端读它来显示锁定态（与 `status` 同一条通道）。
@@ -1172,16 +1249,18 @@ router.get('/:id/students', limitPublicCodeRequests, async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
     const classroom = await prisma.classroom.findUnique({
       where: { id: req.params.id },
-      select: { mode: true, status: true },
+      select: { mode: true, status: true, groupLoginMode: true },
     });
     if (!classroom || classroom.status === 'ended') {
       return res.status(404).json({ error: '课堂不存在或已结束' });
     }
     const students = await prisma.classroomStudent.findMany({
       where: { classroomId: req.params.id },
-      include: { student: true, group: true },
+      include: { student: true, group: { include: { members: { select: { id: true, name: true, studentId: true, studentNo: true } } } } },
     });
-    const filtered = students;
+    const filtered = classroom.groupLoginMode === 'member'
+      ? students.filter(cs => cs.type === 'group')
+      : students;
     if (classroom.mode === 'standard') {
       filtered.sort((left, right) => compareStudentNumbers(
         left.student?.studentNo,
@@ -1191,7 +1270,7 @@ router.get('/:id/students', limitPublicCodeRequests, async (req, res) => {
       ));
     }
     const isTeacher = hasTeacherSession(req);
-    res.json(filtered.map((cs: Prisma.ClassroomStudentGetPayload<{ include: { student: true; group: true } }>) => ({
+    res.json(filtered.map(cs => ({
       // id 始终是稳定的课堂参与者 ID；标准模式另外保留真实 studentId。
       id: cs.id,
       participantType: cs.type,
@@ -1204,6 +1283,10 @@ router.get('/:id/students', limitPublicCodeRequests, async (req, res) => {
       groupId: cs.groupId,
       groupName: classroom?.mode === 'standard' ? undefined : cs.group?.name,
       status: cs.status,
+      ...(classroom.groupLoginMode === 'member' && cs.type === 'group' ? { groupMembers: (cs.group?.members ?? []).flatMap(member => {
+        const personal = students.find(row => row.studentId === member.studentId && row.type === 'student');
+        return personal ? [{ ...member, participantId: personal.id, avatarId: personal.student?.avatarId ?? null }] : [];
+      }).sort((left, right) => compareStudentNumbers(left.studentNo, right.studentNo, left.name, right.name)) } : {}),
     })));
   } catch (error) {
     res.status(500).json({ error: '获取学生列表失败' });
@@ -1356,6 +1439,9 @@ router.put('/:id/settings', async (req, res) => {
         && !Array.isArray(classroom.agentContextStarts) ? { ...classroom.agentContextStarts } as Record<string, string> : {};
       for (const patch of patches) {
         if (patch.groupId) {
+          if (patch.kind === 'agent') await tx.classroomGroupMaterial.deleteMany({
+            where: { groupId: patch.groupId, kind: { in: ['agent-2', 'agent-3'] } },
+          });
           await tx.classroomGroupMaterial.upsert({
             where: { groupId_kind: { groupId: patch.groupId, kind: patch.kind } },
             create: { groupId: patch.groupId, kind: patch.kind, targetId: patch.targetId },

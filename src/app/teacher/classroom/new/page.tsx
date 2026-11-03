@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { TeacherPageHeader } from '@/lib/components';
-import type { AgentSummary, ClassGroup, ClassSummary, WebappSummary, WorksheetSummary } from '@/lib/types';
+import type { AgentSummary, ClassGroup, ClassSummary, PlatformTokenSummary, WebappSummary, WorksheetSummary } from '@/lib/types';
 
 type CreateMode = 'standard' | 'group' | 'advanced';
 
@@ -252,6 +252,38 @@ export default function NewClassroomPage() {
   const [selectedClassId, setSelectedClassId] = useState('');
   const [classGroups, setClassGroups] = useState<ClassGroup[]>([]);
   const [mode, setMode] = useState<CreateMode>('standard');
+  const [groupLoginMode, setGroupLoginMode] = useState<'group' | 'member'>('group');
+  const [cozeTokens, setCozeTokens] = useState<PlatformTokenSummary[]>([]);
+  const companionAgentLabel = (agent: AgentSummary) => {
+    if (cozeTokens.length <= 1 || agent.platform !== 'coze') return agent.name;
+    const token = cozeTokens.find(item => item.id === agent.credentialId);
+    return `${token?.label ?? '独立令牌'} · ${agent.name}`;
+  };
+  const [extraAgentsByScope, setExtraAgentsByScope] = useState<Record<string, string[]>>({});
+  const renderExtraAgents = (scope: string, primaryId?: string | null) => {
+    const primary = agents.find(agent => agent.id === primaryId);
+    if (primary?.platform !== 'coze' || !primary.credentialId) return null;
+    const selected = extraAgentsByScope[scope] ?? [];
+    return <div className="mt-2 grid gap-2">
+      {[0, 1].slice(0, selected.length + 1).map(index => (
+        <label key={index} className="grid gap-1 text-xs text-slate-600">
+          对话智能体 {index + 2}（可选）
+          <select className="input" value={selected[index] ?? ''} onChange={event => {
+            const next = [...selected];
+            next.splice(index, 1, event.target.value);
+            setExtraAgentsByScope(previous => ({ ...previous, [scope]: next.filter(Boolean) }));
+          }}>
+            <option value="">不指定</option>
+            {agents.filter(agent => agent.platform === 'coze' && agent.credentialId &&
+              agent.credentialId !== primary.credentialId &&
+              !selected.some((id, slot) => slot !== index && agents.find(other => other.id === id)?.credentialId === agent.credentialId))
+              .map(agent => <option key={agent.id} value={agent.id}>{companionAgentLabel(agent)}</option>)}
+          </select>
+        </label>
+      ))}
+      <p className="text-xs text-slate-500">最多选择三个使用不同扣子账号的智能体。学生首次发消息时自动分配，后续继续使用同一个智能体。</p>
+    </div>;
+  };
   const [selectedAgentId, setSelectedAgentId] = useState('');
   /**
    * 高级模式：每个小组各自的两份材料，键是 `ClassGroup.id`。
@@ -322,6 +354,7 @@ export default function NewClassroomPage() {
     // 关联（课堂级 `ClassroomAgent` 或组级 `ClassroomGroupMaterial`）—— 让分析型 bot 进来，
     // 下游三条路径就都得各自记着「别忘了筛」（而那正是 C2 漏掉第三处的原因）。
     // ⇒ **挡在上游**：过滤器由服务端做（`?purpose=tutoring`），前端不复述那条规则。
+    api.getPlatformTokens().then(tokens => setCozeTokens(tokens.filter(token => token.platform === 'coze'))).catch(() => {});
     Promise.all([api.getAgents('tutoring'), api.getClasses()]).then(([a, c]) => {
       if (!mountedRef.current) return;
       setAgents(a.filter((agent) => agent.enabled !== false));
@@ -459,6 +492,7 @@ export default function NewClassroomPage() {
           // 值只在 `string` 时是选中的 id；`null`（不指定）与键不存在（还没选）都发 `null`，
           // 两者在服务端归一成同一件事（`toId` 把空值一律变成 null ⇒ 不落库）。
           agentId: groupAgentIds[g.id] ?? null,
+          extraAgentIds: (extraAgentsByScope[g.id] ?? []).filter(Boolean),
           webappId: groupWebappIds[g.id] ?? null,
           worksheetId: groupWorksheetIds[g.id] ?? null,
           studentIds: g.studentIds || [],
@@ -466,6 +500,7 @@ export default function NewClassroomPage() {
         const result = await api.createAdvancedClassroom({
           title: title || undefined,
           classId: selectedClassId,
+          groupLoginMode,
           groups,
         });
         router.push(`/teacher/classroom?id=${result.id}`);
@@ -476,8 +511,9 @@ export default function NewClassroomPage() {
           // 智能体是**选填**（三件套之一）⇒ 没选就发空数组，**不要发 `['']`**：
           // 那会让「没选」在服务端表现为「给了一个空 id」，虽然两边都会过滤掉，
           // 但它把「空数组 = 没选」这条明确语义弄脏了（也让人以为智能体是必填的）。
-          agentIds: selectedAgentId ? [selectedAgentId] : [],
+          agentIds: selectedAgentId ? [selectedAgentId, ...(extraAgentsByScope.classroom ?? []).filter(Boolean)] : [],
           mode: mode === 'group' ? 'group' : 'standard',
+          groupLoginMode,
           webappIds,
           worksheetIds,
         });
@@ -592,7 +628,7 @@ export default function NewClassroomPage() {
               {
                 id: 'standard' as CreateMode,
                 label: '标准模式',
-                desc: '学生选择姓名加入，以个人身份与AI互动',
+                desc: '选择姓名加入，独立与 AI 对话',
                 icon: (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
@@ -602,7 +638,7 @@ export default function NewClassroomPage() {
               {
                 id: 'group' as CreateMode,
                 label: '分组模式',
-                desc: '学生选择小组加入，同组共享一个对话窗口',
+                desc: '按组加入，同组共享对话',
                 icon: (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                     <rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" />
@@ -612,7 +648,7 @@ export default function NewClassroomPage() {
               {
                 id: 'advanced' as CreateMode,
                 label: '高级模式',
-                desc: '每个小组各自选AI智能体、探究网页与学习单，分组独立对话',
+                desc: '各组独立配置学习材料与 AI 学伴',
                 icon: (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                     <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -620,33 +656,44 @@ export default function NewClassroomPage() {
                 ),
               },
             ].map(m => (
-              <button type="button" key={m.id} onClick={() => handleModeChange(m.id)} aria-pressed={mode === m.id}
-                className="new-classroom-mode-card"
+              <div key={m.id} className="flex h-32 min-w-0 flex-1 flex-col"
                 style={{
-                  flex: 1, padding: '14px 16px', borderRadius: 10, cursor: 'pointer',
+                  borderRadius: 10,
                   border: `2px solid ${mode === m.id ? 'var(--primary)' : '#e2e8f0'}`,
                   background: mode === m.id ? 'var(--primary-tint)' : 'white',
                   transition: 'all 0.12s',
                   display: 'flex', flexDirection: 'column', textAlign: 'left', font: 'inherit',
                 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <div style={{
-                    width: 16, height: 16, borderRadius: '50%',
-                    border: `2px solid ${mode === m.id ? 'var(--primary)' : '#cbd5e1'}`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {mode === m.id && (
-                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--primary)' }} />
-                    )}
+                <button type="button" onClick={() => handleModeChange(m.id)} aria-pressed={mode === m.id}
+                  className="new-classroom-mode-card flex w-full flex-1 cursor-pointer flex-col px-3 pt-3 text-left sm:px-4">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 24, marginBottom: 6 }}>
+                    <div style={{
+                      width: 16, height: 16, borderRadius: '50%',
+                      border: `2px solid ${mode === m.id ? 'var(--primary)' : '#cbd5e1'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {mode === m.id && (
+                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--primary)' }} />
+                      )}
+                    </div>
+                    <span style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a' }}>{m.label}</span>
+                    {m.id === 'standard' && <span className="recommended-mode-tag">推荐</span>}
                   </div>
-                  <span style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a' }}>{m.label}</span>
-                  {m.id === 'standard' && <span className="recommended-mode-tag">推荐</span>}
-                </div>
-                <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', lineHeight: 1.4, marginLeft: 24, display: 'flex', alignItems: 'flex-start', gap: 5, flex: 1 }}>
-                  <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? 'var(--primary)' : 'var(--text-muted)' }}>{m.icon}</span>
-                  <span>{m.desc}</span>
-                </div>
-              </button>
+                  <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', lineHeight: 1.4, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? 'var(--primary)' : 'var(--text-muted)' }}>{m.icon}</span>
+                    <span>{m.desc}</span>
+                  </div>
+                </button>
+                {mode === m.id && mode !== 'standard' && (
+                  <div role="group" aria-label="学生登录方式" className="px-3 pb-2 sm:px-4">
+                    <div className="relative isolate grid w-fit grid-cols-2 rounded-full bg-slate-200/80 p-0.5">
+                      <span aria-hidden="true" className={`absolute inset-y-0.5 left-0.5 -z-10 w-[calc(50%-2px)] rounded-full bg-white shadow-sm transition-transform motion-reduce:transition-none ${groupLoginMode === 'member' ? 'translate-x-full' : ''}`} />
+                      <button type="button" aria-pressed={groupLoginMode === 'group'} onClick={() => setGroupLoginMode('group')} className="rounded-full px-2 py-1 text-xs text-slate-700 aria-pressed:font-semibold">小组登录</button>
+                      <button type="button" aria-pressed={groupLoginMode === 'member'} onClick={() => setGroupLoginMode('member')} className="rounded-full px-2 py-1 text-xs text-slate-700 aria-pressed:font-semibold">组员登录</button>
+                    </div>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -795,34 +842,6 @@ export default function NewClassroomPage() {
                     gap: 8, minWidth: 0,
                   }}>
                     <GroupMaterialPicker
-                      label="AI 智能体"
-                      placeholder="选择AI智能体"
-                      value={groupAgentIds[g.id]}
-                      options={agents.map(a => ({ id: a.id, name: a.name, logo: a.logo }))}
-                      emptyHint="还没有可用的智能体，请先在「AI智能体」里接入"
-                      open={openDropdownKey === agentKey}
-                      onToggle={() => setOpenDropdownKey(openDropdownKey === agentKey ? null : agentKey)}
-                      onPick={(id) => {
-                        setGroupAgentIds(prev => ({ ...prev, [g.id]: id }));
-                        clearError('groupAgents');
-                        setOpenDropdownKey(null);
-                      }}
-                    />
-                    <GroupMaterialPicker
-                      label="探究网页"
-                      placeholder="选择探究网页"
-                      value={groupWebappIds[g.id]}
-                      options={webapps.map(w => ({ id: w.id, name: w.name }))}
-                      emptyHint="还没有探究网页，可以先在「探究网页」里添加"
-                      open={openDropdownKey === webappKey}
-                      onToggle={() => setOpenDropdownKey(openDropdownKey === webappKey ? null : webappKey)}
-                      onPick={(id) => {
-                        setGroupWebappIds(prev => ({ ...prev, [g.id]: id }));
-                        clearError('groupAgents');
-                        setOpenDropdownKey(null);
-                      }}
-                    />
-                    <GroupMaterialPicker
                       label="学习单"
                       placeholder="选择学习单"
                       value={groupWorksheetIds[g.id]}
@@ -836,6 +855,36 @@ export default function NewClassroomPage() {
                         setOpenDropdownKey(null);
                       }}
                     />
+                    <GroupMaterialPicker
+                      label="探究空间"
+                      placeholder="选择探究网页"
+                      value={groupWebappIds[g.id]}
+                      options={webapps.map(w => ({ id: w.id, name: w.name }))}
+                      emptyHint="还没有探究网页，可以先在「探究网页」里添加"
+                      open={openDropdownKey === webappKey}
+                      onToggle={() => setOpenDropdownKey(openDropdownKey === webappKey ? null : webappKey)}
+                      onPick={(id) => {
+                        setGroupWebappIds(prev => ({ ...prev, [g.id]: id }));
+                        clearError('groupAgents');
+                        setOpenDropdownKey(null);
+                      }}
+                    />
+                    <div><GroupMaterialPicker
+                      label="对话智能体"
+                      placeholder="选择对话智能体"
+                      value={groupAgentIds[g.id]}
+                      options={agents.map(a => ({ id: a.id, name: companionAgentLabel(a), logo: a.logo }))}
+                      emptyHint="还没有可用的智能体，请先在「AI智能体」里接入"
+                      open={openDropdownKey === agentKey}
+                      onToggle={() => setOpenDropdownKey(openDropdownKey === agentKey ? null : agentKey)}
+                      onPick={(id) => {
+                        setGroupAgentIds(prev => ({ ...prev, [g.id]: id }));
+                        setExtraAgentsByScope(prev => ({ ...prev, [g.id]: [] }));
+                        clearError('groupAgents');
+                        setOpenDropdownKey(null);
+                      }}
+                    />
+                    {renderExtraAgents(g.id, groupAgentIds[g.id])}</div>
                   </div>
                 </div>
                 );
@@ -870,105 +919,8 @@ export default function NewClassroomPage() {
           <div onClick={() => setOpenDropdownKey(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} />
         )}
 
-        {/* 标准/分组模式：选择AI智能体。
-            ★ 2026-09-25（教师）：「三件套的选择都改成下拉列表，这样在内容多的情况下就可以
-            完美显示了」。原来是**平铺的胶囊**，十来个还凑合、几十个就把这一块撑成一堵墙
-            （而它旁边那两块早就因为同一个理由改成了下拉 —— 见下面「关联学习单」的注释）。
-            ⇒ 三块现在是**同一个控件**（`GroupMaterialPicker`：扁平下拉 + 自绘箭头 +
-              点已选中项取消），语义也一致（都是单选、都能取消）。 */}
-        {mode !== 'advanced' && (
-          <div ref={agentSectionRef} style={{
-            background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-            padding: '12px 16px', marginBottom: 12,
-          }}>
-            <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>
-              选择AI智能体
-              {/* 三件套（AI 智能体 / 探究网页 / 学习单）每一项都是选填，至少一项即可 ——
-                  这里从前写的是「必填」，与实际规则不符：只挂一个探究网页也能建课堂。 */}
-              <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 学习模块任选其一</span>
-            </div>
-            <GroupMaterialPicker
-              label="AI 智能体"
-              placeholder="选择AI智能体"
-              value={selectedAgentId || undefined}
-              options={agents.map(a => ({ id: a.id, name: a.name, logo: a.logo }))}
-              emptyHint={loadingOptions ? '正在加载智能体…' : '暂无可选智能体，请先在「AI智能体」中接入'}
-              open={openDropdownKey === CLASSROOM_AGENT_KEY}
-              onToggle={() => setOpenDropdownKey(openDropdownKey === CLASSROOM_AGENT_KEY ? null : CLASSROOM_AGENT_KEY)}
-              onPick={(id) => { setSelectedAgentId(id ?? ''); clearError('agent'); clearError('material'); }}
-              // 与学习单那一格同款：**不给「不指定」项**（三件套任选其一，不该有第三个状态），
-              // 但要保留「点已选中项取消」的能力，否则选错一次只能刷新整个页面。
-              allowUnspecified={false}
-              clearOnReselect
-            />
-            {fieldErrors.agent && <div style={{ fontSize: "0.75rem", color: '#a85d5d', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-              {fieldErrors.agent}
-            </div>}
-          </div>
-        )}
-
-        {/* 关联探究网页（可选）—— **课堂级**的网页，只属于标准 / 分组模式。
-            🔴 高级模式**不再渲染这一块**，这不是漏了：那个模式下网页的权威来源是**每组一份**
-            （上面每个小组的「探究网页」下拉），服务端也**不写**课堂级那一行。从前两边都渲染，
-            于是教师在这里勾的网页会被服务端校验通过后**丢掉** —— 界面显示「创建成功」，
-            网页却不见了，而且没有任何地方报错。
-            ⚠️ 历史上这里写过「三种模式下都渲染」并把 `mode !== 'advanced'` 说成 bug，
-            那是**当时**的口径（高级模式没有别的地方能挂网页）。口径变了，注释也跟着变 ——
-            留着旧注释会让下一个人把这段代码「修」回去。
-            ⚠️ `webappSectionRef` 因此只在非高级模式下存在：高级模式下提交校验里那条
-            滚动兜底会落到 `agentSectionRef`（那个模式里挂的是每组材料那一块）。 */}
-        {mode !== 'advanced' && (
-        <div ref={webappSectionRef} style={{
-          background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-          padding: '12px 16px', marginBottom: 12,
-        }}>
-          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>
-            关联探究网页
-            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 只能选一个 · 学习模块任选其一</span>
-          </div>
-          <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', marginBottom: 12 }}>
-            学生在「探究空间」里会打开这个网页。<strong style={{ fontWeight: 600 }}>一个课堂只关联一个网页</strong>；
-            不选也可以 —— 那就记得至少选一个 AI 智能体。
-          </div>
-          {webappLoadError ? (
-            <div role="alert" style={{ padding: '12px 14px', background: '#faf4eb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.813rem", color: '#92400e', lineHeight: 1.7 }}>
-              探究网页列表没有加载成功（{webappLoadError}）。
-              这次创建的课堂**不会带任何网页**；网页本身没丢，可以去「探究网页」页确认后再发一次课堂。
-            </div>
-          ) : webapps.length === 0 ? (
-            <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: 'var(--text-muted)', textAlign: 'center' }}>
-              还没有探究网页，可以先在「探究网页」里添加
-            </div>
-          ) : (
-            /* ★ 2026-09-25（教师）：「三件套的选择都改成下拉列表，这样在内容多的情况下就可以
-               完美显示了」。原来是**平铺的卡片**（每张还带一行入口文件名），十几个就把这一块
-               撑得很高；而学习单那一格早就因为同一个理由改成了下拉。
-               ⇒ 现在三块是**同一个控件**、同一套语义（单选 + 点已选中项取消）。
-               ⚠️ 网页在列表里用**地球图标**（`GroupMaterialPicker` 的 logo 走 `<img>`，
-               而地球是内联 SVG ⇒ 这里给它一个 data URI，让下拉里那份与标题那一行**同一个地球**）。
-               ⚠️ 入口文件名不再逐张列出：它与名字几乎总是重复（名字就是文件名去扩展名），
-               而它正是把卡片撑高的那一行 —— 要看全文可以去「探究网页」页。 */
-            <GroupMaterialPicker
-              label="探究网页"
-              placeholder="选择探究网页"
-              value={selectedWebappId || undefined}
-              options={webapps.map(w => ({ id: w.id, name: w.name, logo: GLOBE_LOGO_DATA_URI }))}
-              emptyHint="还没有探究网页，可以先在「探究网页」里添加"
-              open={openDropdownKey === CLASSROOM_WEBAPP_KEY}
-              onToggle={() => setOpenDropdownKey(openDropdownKey === CLASSROOM_WEBAPP_KEY ? null : CLASSROOM_WEBAPP_KEY)}
-              onPick={(id) => { setSelectedWebappId(id ?? ''); clearError('material'); }}
-              allowUnspecified={false}
-              clearOnReselect
-            />
-          )}
-        </div>
-        )}
-
         {/* 关联学习单（可选）—— **课堂级**的学习单，只属于标准 / 分组模式。
-            与上一块「关联探究网页」逐条同构，包括 `mode !== 'advanced'` 那条：高级模式下
+            与「探究空间」逐条同构，包括 `mode !== 'advanced'` 那条：高级模式下
             学习单的权威来源是**每组一份**，服务端在那个分支里同样不写课堂级这一行
             （见 `createClassroom` 的 `worksheetIds` 注释）。
 
@@ -990,7 +942,7 @@ export default function NewClassroomPage() {
         }}>
           <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>
-            关联学习单
+            学习单
             <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 只能选一份 · 学习模块任选其一</span>
           </div>
           {/* ★ 2026-09-25：三句话收成一句 —— 教师说「整个页面高度有点大」，
@@ -1041,6 +993,103 @@ export default function NewClassroomPage() {
         </div>
         )}
 
+        {/* 关联探究网页（可选）—— **课堂级**的网页，只属于标准 / 分组模式。
+            🔴 高级模式**不再渲染这一块**，这不是漏了：那个模式下网页的权威来源是**每组一份**
+            （上面每个小组的「探究网页」下拉），服务端也**不写**课堂级那一行。从前两边都渲染，
+            于是教师在这里勾的网页会被服务端校验通过后**丢掉** —— 界面显示「创建成功」，
+            网页却不见了，而且没有任何地方报错。
+            ⚠️ 历史上这里写过「三种模式下都渲染」并把 `mode !== 'advanced'` 说成 bug，
+            那是**当时**的口径（高级模式没有别的地方能挂网页）。口径变了，注释也跟着变 ——
+            留着旧注释会让下一个人把这段代码「修」回去。
+            ⚠️ `webappSectionRef` 因此只在非高级模式下存在：高级模式下提交校验里那条
+            滚动兜底会落到 `agentSectionRef`（那个模式里挂的是每组材料那一块）。 */}
+        {mode !== 'advanced' && (
+        <div ref={webappSectionRef} style={{
+          background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
+          padding: '12px 16px', marginBottom: 12,
+        }}>
+          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>
+            探究空间
+            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 只能选一个 · 学习模块任选其一</span>
+          </div>
+          <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', marginBottom: 12 }}>
+            学生在「探究空间」里会打开这个网页。<strong style={{ fontWeight: 600 }}>一个课堂只关联一个网页</strong>。
+          </div>
+          {webappLoadError ? (
+            <div role="alert" style={{ padding: '12px 14px', background: '#faf4eb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.813rem", color: '#92400e', lineHeight: 1.7 }}>
+              探究网页列表没有加载成功（{webappLoadError}）。
+              这次创建的课堂**不会带任何网页**；网页本身没丢，可以去「探究网页」页确认后再发一次课堂。
+            </div>
+          ) : webapps.length === 0 ? (
+            <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: 'var(--text-muted)', textAlign: 'center' }}>
+              还没有探究网页，可以先在「探究网页」里添加
+            </div>
+          ) : (
+            /* ★ 2026-09-25（教师）：「三件套的选择都改成下拉列表，这样在内容多的情况下就可以
+               完美显示了」。原来是**平铺的卡片**（每张还带一行入口文件名），十几个就把这一块
+               撑得很高；而学习单那一格早就因为同一个理由改成了下拉。
+               ⇒ 现在三块是**同一个控件**、同一套语义（单选 + 点已选中项取消）。
+               ⚠️ 网页在列表里用**地球图标**（`GroupMaterialPicker` 的 logo 走 `<img>`，
+               而地球是内联 SVG ⇒ 这里给它一个 data URI，让下拉里那份与标题那一行**同一个地球**）。
+               ⚠️ 入口文件名不再逐张列出：它与名字几乎总是重复（名字就是文件名去扩展名），
+               而它正是把卡片撑高的那一行 —— 要看全文可以去「探究网页」页。 */
+            <GroupMaterialPicker
+              label="探究网页"
+              placeholder="选择探究网页"
+              value={selectedWebappId || undefined}
+              options={webapps.map(w => ({ id: w.id, name: w.name, logo: GLOBE_LOGO_DATA_URI }))}
+              emptyHint="还没有探究网页，可以先在「探究网页」里添加"
+              open={openDropdownKey === CLASSROOM_WEBAPP_KEY}
+              onToggle={() => setOpenDropdownKey(openDropdownKey === CLASSROOM_WEBAPP_KEY ? null : CLASSROOM_WEBAPP_KEY)}
+              onPick={(id) => { setSelectedWebappId(id ?? ''); clearError('material'); }}
+              allowUnspecified={false}
+              clearOnReselect
+            />
+          )}
+        </div>
+        )}
+
+        {/* 标准/分组模式：选择AI智能体。
+            ★ 2026-09-25（教师）：「三件套的选择都改成下拉列表，这样在内容多的情况下就可以
+            完美显示了」。原来是**平铺的胶囊**，十来个还凑合、几十个就把这一块撑成一堵墙
+            （而它旁边那两块早就因为同一个理由改成了下拉 —— 见「学习单」的注释）。
+            ⇒ 三块现在是**同一个控件**（`GroupMaterialPicker`：扁平下拉 + 自绘箭头 +
+              点已选中项取消），语义也一致（都是单选、都能取消）。 */}
+        {mode !== 'advanced' && (
+          <div ref={agentSectionRef} style={{
+            background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
+            padding: '12px 16px', marginBottom: 12,
+          }}>
+            <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>
+              智能学伴
+              {/* 三件套（AI 智能体 / 探究网页 / 学习单）每一项都是选填，至少一项即可 ——
+                  这里从前写的是「必填」，与实际规则不符：只挂一个探究网页也能建课堂。 */}
+              <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 学习模块任选其一</span>
+            </div>
+            <GroupMaterialPicker
+              label="对话智能体"
+              placeholder="选择对话智能体"
+              value={selectedAgentId || undefined}
+              options={agents.map(a => ({ id: a.id, name: companionAgentLabel(a), logo: a.logo }))}
+              emptyHint={loadingOptions ? '正在加载智能体…' : '暂无可选智能体，请先在「AI智能体」中接入'}
+              open={openDropdownKey === CLASSROOM_AGENT_KEY}
+              onToggle={() => setOpenDropdownKey(openDropdownKey === CLASSROOM_AGENT_KEY ? null : CLASSROOM_AGENT_KEY)}
+              onPick={(id) => { setSelectedAgentId(id ?? ''); setExtraAgentsByScope(prev => ({ ...prev, classroom: [] })); clearError('agent'); clearError('material'); }}
+              // 与学习单那一格同款：**不给「不指定」项**（三件套任选其一，不该有第三个状态），
+              // 但要保留「点已选中项取消」的能力，否则选错一次只能刷新整个页面。
+              allowUnspecified={false}
+              clearOnReselect
+            />
+            {renderExtraAgents('classroom', selectedAgentId)}
+            {fieldErrors.agent && <div style={{ fontSize: "0.75rem", color: '#a85d5d', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+              {fieldErrors.agent}
+            </div>}
+          </div>
+        )}
+
         {/* 三件套「至少一项」的横幅。
             它跨了「AI 智能体」「探究网页」「学习单」三块，所以不能挂在其中任何一块的错误位上
             —— 挂在智能体那块会让「只选了网页」的教师以为问题出在网页那一栏。
@@ -1066,7 +1115,7 @@ export default function NewClassroomPage() {
             <span>
               {modeLabel} · {selectedClass?.name || '未选班级'} · {mode === 'advanced'
                 ? `${configuredGroupCount}/${classGroups.length} 个小组已决定`
-                : selectedAgent?.name || '未选智能体'}
+                : selectedAgent?.name || '未选智能学伴'}
               {/* 高级模式的三件套都是**每组一份**，汇总在每行自己的三个下拉里（以及上面那句
                   「N/M 个小组已决定」）。这里只报课堂级那两个 —— 否则摘要会把 `selectedWebapp`
                   / `selectedWorksheet` 说成「这个课堂用的」，而它们在高级模式下**根本不生效**。
@@ -1074,7 +1123,7 @@ export default function NewClassroomPage() {
                   ⚠️ 顺带记下一条**既有**的小别扭（本次不动它）：标准 / 分组模式下若只选了网页或
                   学习单，前半句仍会显示「未选智能体」——它字面为真，且后面两截会把真实选择补齐，
                   所以整句读完不会误导；改它属于改这一段既有文案，不在本任务范围内。 */}
-              {mode !== 'advanced' && selectedWebapp ? ` · 探究网页：${selectedWebapp.name}` : ''}
+              {mode !== 'advanced' && selectedWebapp ? ` · 探究空间：${selectedWebapp.name}` : ''}
               {mode !== 'advanced' && selectedWorksheet ? ` · 学习单：${selectedWorksheet.title}` : ''}
             </span>
           </div>

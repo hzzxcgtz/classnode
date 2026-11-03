@@ -12,21 +12,6 @@ export function individualReviewSettings(node: QuestionNode) {
   };
 }
 
-/** A process-wide bounded queue; external requests never hold a SQLite transaction. */
-const queue: Array<() => Promise<void>> = [];
-let running = 0;
-export function enqueueIndividualReview(job: () => Promise<void>) {
-  queue.push(job);
-  const drain = () => {
-    while (running < 2 && queue.length) {
-      const next = queue.shift()!;
-      running++;
-      void next().catch(error => console.error('[individual-review]', error)).finally(() => { running--; drain(); });
-    }
-  };
-  drain();
-}
-
 /** Quota changes unlock editing without invalidating an already running evaluation. */
 export function reviewConfigurationKey(node: QuestionNode): string {
   const { aiReviewLimit: _limit, studentAiReviewEnabled: _automatic, ...data } = node.data;
@@ -45,4 +30,13 @@ export async function recoverInterruptedReviews(prisma: PrismaClient) {
 export function classAnalysisConfigurationKey(node: QuestionNode): string {
   const { studentAiReviewEnabled: _automatic, ...data } = node.data;
   return reviewConfigurationKey({ ...node, data });
+}
+
+
+export function worksheetReviewAgentIds(settings: unknown): string[] {
+  const config = settings as Record<string, unknown> | null;
+  const primary = config?.analysisAgentId;
+  if (typeof primary !== 'string' || !primary) return [];
+  const additional: unknown[] = Array.isArray(config?.additionalReviewAgentIds) ? config.additionalReviewAgentIds : [];
+  return [...new Set([primary, ...additional.filter((id): id is string => typeof id === 'string' && !!id)])].slice(0, 3);
 }

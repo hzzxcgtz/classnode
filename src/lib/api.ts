@@ -234,18 +234,18 @@ export const api = {
   // 单选（数组里最多一个元素）。服务端 `resolveSingleMaterialId` 是它的唯一写入口。
   // 🔴 高级模式同样**不发**它 —— 服务端在那个分支里会解析它、然后**丢掉**（只写个 warn），
   // 理由与上面那段逐字相同：静默丢掉教师勾过的选项属于改数据不留痕。
-  createClassroom: (data: { title?: string; classIds: string[]; agentIds: string[]; mode?: string; webappIds?: string[]; worksheetIds?: string[] }) =>
+  createClassroom: (data: { title?: string; classIds: string[]; agentIds: string[]; mode?: string; groupLoginMode?: 'group' | 'member'; webappIds?: string[]; worksheetIds?: string[] }) =>
     request<ClassroomSummary>('/api/classroom/create', { method: 'POST', body: JSON.stringify(data) }),
-  createAdvancedClassroom: (data: { title?: string; classId: string; groups: AdvancedClassroomGroupInput[] }) =>
+  createAdvancedClassroom: (data: { title?: string; classId: string; groupLoginMode?: 'group' | 'member'; groups: AdvancedClassroomGroupInput[] }) =>
     request<ClassroomSummary>('/api/classroom/create-advanced', { method: 'POST', body: JSON.stringify(data) }),
   getActiveClassrooms: () => request<ActiveClassroom[]>('/api/classroom/active'),
   getClassroom: (id: string) => request<ClassroomDetail>(`/api/classroom/${id}`),
-  syncClassroomGroups: (id: string) =>
-    request<{ success: true; addedGroups: number; updatedGroups: number; sourceGroupCount: number }>(`/api/classroom/${id}/sync-groups`, { method: 'POST' }),
+  syncClassroomGroups: (id: string, automatic = false) =>
+    request<{ success: true; addedGroups: number; updatedGroups: number; sourceGroupCount: number }>(`/api/classroom/${id}/sync-groups${automatic ? '?automatic=true' : ''}`, { method: 'POST' }),
   getClassroomByCode: (code: string) => request<StudentClassroom>(`/api/classroom/code/${code}`),
-  createStudentSession: (code: string, studentId: string) =>
+  createStudentSession: (code: string, studentId: string, groupMemberId?: string, switchMember?: boolean) =>
     request<StudentSessionResponse>(`/api/classroom/code/${code}/student-session`, {
-      method: 'POST', body: JSON.stringify({ studentId }),
+      method: 'POST', body: JSON.stringify({ studentId, groupMemberId, switchMember }),
     }),
   getClassroomStudents: (id: string) => request<ClassroomStudentSummary[]>(`/api/classroom/${id}/students`),
   getStudentMessages: (classroomId: string, studentId: string) =>

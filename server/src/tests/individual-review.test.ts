@@ -38,7 +38,8 @@ test('真实提交：幂等、失败重试、次数、稿件隔离、奖励替�
   const db = new PrismaClient({ datasources: { db: { url } } });
   t.after(async () => { await db.$disconnect(); fs.rmSync(dir, { recursive: true, force: true }); });
   const agent = await db.agent.create({ data: { name: '分析', platform: 'coze', apiKey: 'test', botId: '123', purpose: 'analysis' } });
-  const sheet = await db.worksheet.create({ data: { title: '习作', content: { nodes: [node] }, settings: { allowResubmit: false, autoGrade: true, analysisAgentId: agent.id, rewardStyle: 'points' } } });
+  const secondAgent = await db.agent.create({ data: { name: '第二个分析智能体', platform: 'coze', apiKey: 'second-token', botId: '456', purpose: 'analysis' } });
+  const sheet = await db.worksheet.create({ data: { title: '习作', content: { nodes: [node] }, settings: { allowResubmit: false, autoGrade: true, analysisAgentId: agent.id, additionalReviewAgentIds: [secondAgent.id], rewardStyle: 'points' } } });
   const room = await db.classroom.create({ data: { code: '1234', title: '班级', mode: 'standard', status: 'active' } });
   const person = await db.classroomStudent.create({ data: { classroomId: room.id, type: 'student' } });
   const other = await db.classroomStudent.create({ data: { classroomId: room.id, type: 'student' } });
@@ -48,7 +49,9 @@ test('真实提交：幂等、失败重试、次数、稿件隔离、奖励替�
   app.set('io', { to: (room: string) => ({ emit: (name: string, payload: unknown) => events.push({ room, name, payload }) }) });
   let score = 8.5, fail = false, omitScores = false, calls = 0, release: (() => void) | undefined;
   const messages: string[] = [];
-  app.set('analysisProxy', async (_agent: unknown, message: string) => {
+  const usedBotIds = new Set<string>();
+  app.set('analysisProxy', async (agentConfig: { botId: string }, message: string) => {
+    usedBotIds.add(agentConfig.botId);
     calls++; messages.push(message);
     if (release === undefined) await new Promise<void>(resolve => { release = resolve; });
     if (fail) return { success: false, error: '测试失败' };
@@ -116,6 +119,7 @@ test('真实提交：幂等、失败重试、次数、稿件隔离、奖励替�
   await db.worksheetQuestionAnalysis.updateMany({ where: { classroomId: room.id, worksheetId: sheet.id, questionId: 'q' }, data: { perStudent: { ...teacherAfterReview.perStudent, analysisFeedback: { version: 1, students: [{ studentId: person.id, advice: '旧的全班建议' }], groups: [], missing: [] } } } });
   assert.equal((await call('POST', '/answers/reviews', { reviewId: failed.reviewId })).status, 200);
   await wait('succeeded', failed.reviewId);
+  assert.deepEqual(usedBotIds, new Set(['123', '456']), '同一份学习单的个人评价分发给两个账号');
   assert.equal((await db.worksheetAnswer.findUnique({ where: { id: r1.answerId } }))?.score, 6, '新评分降低时替换旧分，不能累加');
   const teacherAfterSecond = await (await call('GET', `/analysis/q?classroomId=${room.id}`, undefined, '')).json();
   assert.equal(teacherAfterSecond.perStudent.scores[0].score, 6);

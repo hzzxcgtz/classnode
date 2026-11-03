@@ -32,23 +32,36 @@ test('participant migration still converts legacy virtual groups after db push c
 });
 
 test('group classroom exposes a group participant without a virtual Student', async (t) => {
+  let mode = 'group';
+  let groupLoginMode = 'group';
+  const groupMembers = [{ id: 'member-a', name: '小明', studentId: 'a', studentNo: '10' }, { id: 'member-b', name: '小红', studentId: 'b', studentNo: '2' }];
+  const personalRows = groupMembers.map(member => ({
+    id: `participant-${member.studentId}`, type: 'student', studentId: member.studentId,
+    student: { avatarId: null }, groupId: 'group-a',
+  }));
   const app = express();
   app.use(express.json());
   app.set('prisma', {
     classroom: {
       findUnique: async () => ({
-        id: 'group-classroom', code: '2468', title: '小组探究', mode: 'group', status: 'active',
+        id: 'group-classroom', code: '2468', title: '小组探究', mode, groupLoginMode, status: 'active',
         allowStudentStop: true, allowStudentExport: true,
         classroomAgents: [], groups: [{ id: 'group-a', name: '探索组', agent: { id: 'agent-a', name: '探究空间', logo: null, platform: 'coze', enabled: true, greeting: null } }],
       }),
     },
+    classroomGroupMember: {
+      findFirst: async ({ where }: { where: { id: string; groupId: string } }) =>
+        where.groupId === 'group-a' ? groupMembers.find(member => member.id === where.id) ?? null : null,
+    },
     classroomStudent: {
-      findFirst: async ({ where }: { where: { id: string; classroomId: string } }) =>
-        where.id === 'participant-group-a' && where.classroomId === 'group-classroom' ? { id: 'participant-group-a' } : null,
+      findFirst: async ({ where }: { where: { id?: string; classroomId: string; studentId?: string; groupId?: string } }) =>
+        where.id === 'participant-group-a' && where.classroomId === 'group-classroom'
+          ? { id: 'participant-group-a', type: 'group', groupId: 'group-a' }
+          : personalRows.find(row => where.id ? row.id === where.id : row.studentId === where.studentId && row.groupId === where.groupId) ?? null,
       findMany: async () => [{
         id: 'participant-group-a', type: 'group', studentId: null, student: null,
-        groupId: 'group-a', group: { id: 'group-a', name: '探索组' }, status: 'offline',
-      }],
+        groupId: 'group-a', group: { id: 'group-a', name: '探索组', members: groupMembers }, status: 'offline',
+      }, ...(groupLoginMode === 'member' ? personalRows : [])],
     },
   });
   app.use(classroomRoutes);
@@ -73,6 +86,29 @@ test('group classroom exposes a group participant without a virtual Student', as
   assert.equal(sessionResponse.status, 200);
   const { token } = await sessionResponse.json() as { token: string };
   assert.equal(verifyStudentToken(token)?.studentId, 'participant-group-a');
+
+  groupLoginMode = 'member';
+  const login = (groupMemberId?: string, currentToken?: string) => fetch(`${baseUrl}/code/2468/student-session`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}) },
+    body: JSON.stringify({ studentId: currentToken ? 'participant-a' : 'participant-group-a', groupMemberId, switchMember: !!currentToken }),
+  });
+  for (mode of ['group', 'advanced']) {
+    const members = await (await fetch(`${baseUrl}/group-classroom/students`)).json();
+    assert.deepEqual(members[0].groupMembers.map((member: { participantId: string }) => member.participantId), ['participant-b', 'participant-a']);
+    assert.equal((await login()).status, 403);
+    const first = await login('member-a');
+    assert.equal(first.status, 200);
+    const { token: firstToken } = await first.json();
+    assert.equal(verifyStudentToken(firstToken)?.studentId, 'participant-a');
+    assert.equal(verifyStudentToken(firstToken)?.groupMemberId, 'member-a');
+    assert.equal((await login('other-group-member', firstToken)).status, 403);
+    const switched = await login('member-b', firstToken);
+    assert.equal(switched.status, 200);
+    const { token: switchedToken } = await switched.json();
+    assert.equal(verifyStudentToken(firstToken), null);
+    assert.equal(verifyStudentToken(switchedToken)?.studentId, 'participant-b');
+    assert.equal(verifyStudentToken(switchedToken)?.groupMemberId, 'member-b');
+  }
 });
 
 test('syncing an active group classroom refreshes rosters and creates newly added groups', async (t) => {

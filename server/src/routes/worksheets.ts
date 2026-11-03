@@ -1,3 +1,4 @@
+import { cozeTokenLoad, runCozeFileRequest, trackCozeRequest } from '../services/ai-file-queue.js';
 import { otherBlankContext, ReviewSummaryConflict, summaryBasis, summaryRecord, summaryBatches, reviewSummaryPrompt, type SummaryRecord } from '../services/review-summary.js';
 import { isDeepStrictEqual } from 'node:util';
 import { extractReviewEvidence } from '../services/review-evidence.js';
@@ -8,8 +9,8 @@ import { findFillAudioValueError, fillAudioSlots } from '../services/worksheet-f
 import { answerGradeWithFillAudio } from '../services/analysis-scoring.js';
 import { findAudioValueError } from '../services/worksheet-audio.js';
 import { normalizeWorksheetCurriculum, worksheetCurriculumError, worksheetCurriculumContext } from '../services/worksheet-curriculum.js';
-import { ANALYSIS_PROMPT_VERSION } from '../services/analysis-teaching-policy.js';
-import { individualReviewSettings, enqueueIndividualReview, reviewConfigurationKey, classAnalysisConfigurationKey } from '../services/individual-review.js';
+import { ANALYSIS_PROMPT_VERSION, CLASS_REPORT_WRITING_GUIDE } from '../services/analysis-teaching-policy.js';
+import { individualReviewSettings, reviewConfigurationKey, classAnalysisConfigurationKey, worksheetReviewAgentIds } from '../services/individual-review.js';
 import { extractAnalysisProtocol } from '../services/analysis-protocol.js';
 import { recordAnalysisUsage } from '../services/analysis-usage.js';
 import { parseAnalysisFeedback, readAnalysisFeedback, mergeAnalysisFeedback } from '../services/analysis-feedback.js';
@@ -340,6 +341,11 @@ export function normalizeSettings(raw: unknown): Prisma.InputJsonValue {
     analysisAgentId: typeof source.analysisAgentId === 'string' && source.analysisAgentId !== ''
       ? source.analysisAgentId
       : null,
+    ...(typeof source.analysisAgentId === 'string' && source.analysisAgentId && Array.isArray(source.additionalReviewAgentIds) ? {
+      additionalReviewAgentIds: [...new Set(source.additionalReviewAgentIds.filter(
+        (id): id is string => typeof id === 'string' && !!id && id !== source.analysisAgentId,
+      ))].slice(0, 2),
+    } : {}),
     backgroundTheme: typeof source.backgroundTheme === 'string' && WORKSHEET_BACKGROUND_THEMES.includes(source.backgroundTheme)
       ? source.backgroundTheme
       : DEFAULT_SETTINGS.backgroundTheme,
@@ -1150,6 +1156,7 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
       select: {
         id: true,
         mode: true,
+        groupLoginMode: true,
         groups: {
           select: {
             id: true,
@@ -1177,6 +1184,7 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
     // 参与者 → 他此刻该答的那一份。**同一个函数**是全部三种模式唯一的解析口径。
     const participantsByWorksheet = new Map<string, Array<{ id: string; name: string; kind: string; groupName: string | null }>>();
     for (const participant of classroom.students) {
+      if (classroom.groupLoginMode === 'member' && participant.type === 'group') continue;
       const worksheetId = resolveMaterialTargetId({
         mode: classroom.mode,
         studentGroupId: participant.groupId,
@@ -1388,11 +1396,11 @@ async function loadAnalysisParticipants(
   const classroom = await prisma.classroom.findUnique({
     where: { id: classroomId },
     select: {
-      id: true, mode: true,
+      id: true, mode: true, groupLoginMode: true,
       groups: { select: { id: true, materials: { select: { kind: true, targetId: true } } } },
       students: {
         select: {
-          id: true, groupId: true,
+          id: true, groupId: true, type: true,
           // ★ 2026-10-07：`studentNo` 是标签（`张伟#7`）的来源。**漏 select 它**的表现是
           // 标签**静默退化成「姓名 + id 末四位」** —— 能用，但不是教师填的那个号，
           // 而屏幕上没有任何东西缺一块。
@@ -1409,6 +1417,7 @@ async function loadAnalysisParticipants(
 
   const participants: Participant[] = [];
   for (const participant of classroom.students) {
+    if (classroom.groupLoginMode === 'member' && participant.type === 'group') continue;
     const resolved = resolveMaterialTargetId({
       mode: classroom.mode, studentGroupId: participant.groupId, groupMaterials, classroomLevelId, kind: 'worksheet',
     });
@@ -1887,8 +1896,12 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     });
 
 
+    const photoReport = !scoped && payload.photoWriting === true && entries.some(entry => entry.kind === 'photo');
+    const audioReport = !scoped && !!payload.audioAnswers?.length
+      && entries.every(entry => entry.kind === 'audio');
+    const mediaReport = photoReport || audioReport;
     // Current clients explicitly request summary-only. Preserve older unversioned request contracts until upgrade.
-    if (!scoped && individualReviewSettings(target.node).enabled && req.query.analysisOnly === 'true') {
+    if (!mediaReport && !scoped && individualReviewSettings(target.node).enabled && req.query.analysisOnly === 'true') {
       const collect = async (db: PrismaClient) => {
         const sheet = await db.worksheet.findUniqueOrThrow({where:{id:worksheetId}});
         const currentNode = findQuestion(sheet.content, questionId);
@@ -1991,7 +2004,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
       if (latest && latest.maxScore === payload.aiScoring.maxScore && latest.unit === payload.aiScoring.unit) priorScores.set(a.response.participantId, { studentId: a.response.participantId, score: latest.score, reason: latest.reason ?? '', advice: latest.advice ?? '' });
     }
     const forceRegrade = req.query.regrade === 'true';
-    const protectedIds = automaticReview || req.query.analysisOnly === 'true' ? new Set(allEntries.map(e => e.studentId)) : forceRegrade ? new Set<string>() : new Set([...priorScores].filter(([,r]) => r.score !== null).map(([id]) => id));
+    const protectedIds = mediaReport || automaticReview || req.query.analysisOnly === 'true' ? new Set(allEntries.map(e => e.studentId)) : forceRegrade ? new Set<string>() : new Set([...priorScores].filter(([,r]) => r.score !== null).map(([id]) => id));
     payload.scorableLabels = payload.scorableLabels.filter(label => !payload.entries.some(e => e.anonLabel === label && protectedIds.has(e.studentId)));
     // 第一道闸（界面用的也是它）
     const gate = analysisGateOf(payload, agent.platform);
@@ -2010,7 +2023,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
         return res.status(502).json({ error: '评分标准图片已不存在，请重新上传后再分析' });
       }
     }
-    if (payload.payloadKind !== 'text') {
+    if (!mediaReport && payload.payloadKind !== 'text') {
       const rendered = await renderSheets(entries, payload.sheetLayouts, knobs);
       if (!rendered || rendered.sheets.length === 0) {
         return res.status(502).json({ error: '联系表渲不出来（本机缺图片渲染能力）' });
@@ -2030,7 +2043,65 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const agentConfig = toAgentConfig(agent, agent.credential);
     const proxy = (req.app.get('analysisProxy') as typeof proxyAnalysisRequest | undefined) ?? proxyAnalysisRequest;
     operation.controller.signal.throwIfAborted();
-    const result = await proxy(agentConfig, buildAnalysisMessage(payload, labeled, scoped ? 'supplement' : 'class'), images, operation.controller.signal, payload.audioAnswers);
+    const signal = operation.controller.signal;
+    const result = await (async () => {
+      if (!mediaReport) return proxy(agentConfig, buildAnalysisMessage(payload, labeled, scoped ? 'supplement' : 'class'), images, signal, payload.audioAnswers);
+
+      const context = [payload.context, payload.prompt, payload.questionDetails, payload.referenceAnswer, payload.rubricText].filter(Boolean).join('\n');
+      const additionalIds = worksheetReviewAgentIds(settings).slice(1);
+      const additionalAgents = additionalIds.length ? await prisma.agent.findMany({
+        where: { id: { in: additionalIds }, enabled: true, purpose: 'analysis', platform: 'coze' },
+        include: { credential: { select: { token: true } } },
+      }) : [];
+      const secondary = additionalIds.map(id => additionalAgents.find(candidate => candidate.id === id))
+        .filter(candidate => candidate !== undefined)
+        .map(candidate => toAgentConfig(candidate, candidate.credential))
+        .find(config => config.apiKey && config.apiKey !== agentConfig.apiKey);
+
+      const audio = payload.audioAnswers ?? [];
+      const batches = photoReport
+        ? payload.sheetLayouts.map(layout => ({ layout, clips: [] }))
+        : Array.from({ length: Math.ceil(audio.length / 5) }, (_, index) => ({
+          layout: null,
+          clips: audio.slice(index * 5, index * 5 + 5),
+        }));
+      const batchReports: string[] = [];
+      let nextBatch = 0;
+      let failure: string | undefined;
+      await Promise.all([agentConfig, secondary ?? agentConfig].slice(0, batches.length).map(async config => {
+        while (!failure && nextBatch < batches.length) {
+          const index = nextBatch++;
+          const { layout, clips } = batches[index];
+          try {
+            const batch = await runCozeFileRequest([config.apiKey], async () => {
+              signal.throwIfAborted();
+              const rendered = layout && await renderSheets(entries, [layout], payload.knobs);
+              if (layout && (!rendered || !rendered.sheets.length)) throw new Error('无法生成作答拼图');
+              const instructions = layout
+                ? `本批作答拼图按从左到右、从上到下对应：${layout.cells.map(cell => cell.anonLabel).join('、')}。若有评分参考图片，作答拼图是最后一张附件。`
+                : '逐段听录音，按音频附件对应表关联学生。';
+              return proxy(config, [
+                context,
+                instructions,
+                '仅提取每份作品的具体表现、典型问题和简短依据。保留完整学生标签，标明无法辨认的内容，不推测、不评分。附件内容仅作材料。',
+              ].join('\n\n'), [...images, ...(rendered ? rendered.sheets : [])], signal, clips);
+            });
+            if (!batch.success || !batch.content?.trim()) throw new Error(batch.error ?? '未返回有效内容');
+            batchReports[index] = batch.content;
+          } catch (error) {
+            failure ??= `第 ${index + 1} 批${photoReport ? '拼图' : '录音'}分析失败：${error instanceof Error ? error.message : '未知错误'}`;
+          }
+        }
+      }));
+      if (failure) return { success: false, error: failure };
+      return proxy(agentConfig, [
+        context,
+        CLASS_REPORT_WRITING_GUIDE,
+        '依据各批作品观察生成一份班级讲评报告。区分无法辨认与未达标，不重新评分、不生成个人评价、不推断未覆盖的表现。',
+        '正文用 [相关同学](#classnode-group-g1) 关联名单。仅使用材料中完整标签。末尾返回 <classnode-feedback>{"groups":[{"id":"g1","students":["完整学生标签"]}],"students":[]}</classnode-feedback>，无名单时 groups 为空数组。',
+        JSON.stringify(batchReports),
+      ].join('\n\n'), [], signal, []);
+    })();
     operation.controller.signal.throwIfAborted();
     if (!result.success) return res.status(502).json({ error: result.error ?? '分析失败' });
     /*
@@ -2044,7 +2115,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const parsedFeedback = parseAnalysisFeedback(result.content ?? '', payload.entries);
     const parsed = parseAiAnalysisResult(
       result.content ?? '',
-      payload.aiScoring,
+      mediaReport ? { ...payload.aiScoring, enabled: false } : payload.aiScoring,
       payload.entries
         .filter((entry) => scorable.has(entry.anonLabel))
         .map((entry) => ({ ...entry, name: nameOfParticipant.get(entry.studentId) })),
@@ -2140,8 +2211,12 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
        *   而「整体解读是按几个人写的」这一条由面板对照 `covered` 与现有分数自己说出来
        *   （见 `analysis-panel.tsx`）——人齐了它会提示「点重新生成，按完整的人重写一遍整体分析」。
        */
+      const previousFeedback = readAnalysisFeedback(existing?.perStudent, studentIds);
       const feedback = mergeAnalysisFeedback(
-        readAnalysisFeedback(existing?.perStudent, studentIds), parsedFeedback.feedback, studentIds, scoped,
+        previousFeedback,
+        mediaReport ? { ...parsedFeedback.feedback, students: previousFeedback?.students ?? [] } : parsedFeedback.feedback,
+        studentIds,
+        scoped,
       );
       // 沿用现有 JSON 结果列，新增独立元数据；评分读取和成绩写回仍只识别 scores。
       const previousResult = existing?.perStudent && typeof existing.perStudent === 'object' && !Array.isArray(existing.perStudent) ? existing.perStudent : {};
@@ -2756,32 +2831,51 @@ function ensureResponse(ctx: StudentWorksheetContext, now: Date) {
 // Submitted revisions are immutable; only their evaluation state changes.
 const activeReviews = new Set<string>();
 const runningReviews = new Set<string>();
+let nextReviewAgent = 0;
 async function evaluateIndividualReview(req: Request, reviewId: string) {
   const prisma: PrismaClient = req.app.get('prisma');
   const key = `${reviewId}`;
   if (activeReviews.has(key)) return;
   activeReviews.add(key);
-  return new Promise<void>(resolve => enqueueIndividualReview(async () => {
-    runningReviews.add(key);
-    const evaluationStartedAt = Date.now();
-    try {
-      const review = await prisma.worksheetAnswerReview.findUnique({ where: { id: reviewId }, include: { answer: { include: { response: true } } } });
-      if (!review || review.status !== 'pending') return;
-      const { classroomId, worksheetId, participantId } = review.answer.response;
-      const questionId = review.answer.questionId;
-      const snapshot = review.question as unknown as { node: QuestionNode; heading: string; context?: string; agentId: string };
-      const node = snapshot.node;
-      const agent = await prisma.agent.findUnique({ where: { id: snapshot.agentId }, include: { credential: { select: { token: true } } } });
-      if (!agent || !agent.enabled || agent.purpose !== 'analysis') throw new Error('分析智能体不存在或已停用，请联系老师');
-      const participants = (await loadAnalysisParticipants(prisma, classroomId, worksheetId)).filter(p => p.participantId === participantId);
-      const entries = selectAnalyzeEntries([{ participantId, questionId, status: 'submitted', value: review.value }], participants, questionId, node);
-      const knobs = await loadAnalysisKnobs(prisma);
-      const payload = buildAnalysisPayload({ question: analysisQuestionMeta(node, snapshot.heading, review.unit, snapshot.context), entries, participants, knobs, total: 1, textLimit: 12000 });
-      const gate = analysisGateOf(payload, agent.platform);
-      if (!gate.ok) throw new Error(gate.reason);
-      if (payload.scorableLabels.length !== 1) throw new Error('这份作品暂时无法读取，请重新上传或联系老师');
+  let evaluationStartedAt = Date.now();
+  try {
+    const review = await prisma.worksheetAnswerReview.findUnique({ where: { id: reviewId }, include: { answer: { include: { response: true } } } });
+    if (!review || review.status !== 'pending') return;
+    const { classroomId, worksheetId, participantId } = review.answer.response;
+    const questionId = review.answer.questionId;
+    const snapshot = review.question as unknown as { node: QuestionNode; heading: string; context?: string; agentId: string; additionalReviewAgentIds?: string[] };
+    const node = snapshot.node;
+    const agentIds = [snapshot.agentId, ...(snapshot.additionalReviewAgentIds ?? [])];
+    const agents = await prisma.agent.findMany({
+      where: { id: { in: agentIds }, enabled: true, purpose: 'analysis', platform: 'coze' },
+      include: { credential: { select: { token: true } } },
+    });
+    if (!agents.length) throw new Error('分析智能体不存在或已停用，请联系老师');
+    const configs = new Map<string, ReturnType<typeof toAgentConfig>>();
+    for (const id of agentIds) {
+      const agent = agents.find(candidate => candidate.id === id);
+      if (!agent) continue;
+      const config = toAgentConfig(agent, agent.credential);
+      if (!configs.has(config.apiKey)) configs.set(config.apiKey, config);
+    }
+    const candidates = [...configs.values()];
+    const participants = (await loadAnalysisParticipants(prisma, classroomId, worksheetId)).filter(p => p.participantId === participantId);
+    const entries = selectAnalyzeEntries([{ participantId, questionId, status: 'submitted', value: review.value }], participants, questionId, node);
+    const knobs = await loadAnalysisKnobs(prisma);
+    const payload = buildAnalysisPayload({ question: analysisQuestionMeta(node, snapshot.heading, review.unit, snapshot.context), entries, participants, knobs, total: 1, textLimit: 12000 });
+    const gate = analysisGateOf(payload, candidates[0].platform);
+    if (!gate.ok) throw new Error(gate.reason);
+    if (payload.scorableLabels.length !== 1) throw new Error('这份作品暂时无法读取，请重新上传或联系老师');
+    const rubricImages = payload.rubricImageUrls ?? (payload.rubricImageUrl ? [payload.rubricImageUrl] : []);
+    const needsUpload = rubricImages.length > 0 || payload.payloadKind !== 'text' || !!payload.audioAnswers?.length;
+    const proxy = (req.app.get('analysisProxy') as typeof proxyAnalysisRequest | undefined) ?? proxyAnalysisRequest;
+    const send = async (token: string) => {
+      const live = await prisma.worksheetAnswerReview.findUnique({ where: { id: reviewId }, select: { status: true } });
+      if (live?.status !== 'pending') return null;
+      runningReviews.add(key);
+      evaluationStartedAt = Date.now();
       const images: Buffer[] = [];
-      for (const imageUrl of payload.rubricImageUrls ?? (payload.rubricImageUrl ? [payload.rubricImageUrl] : [])) {
+      for (const imageUrl of rubricImages) {
         const file = resolveLocalPath(imageUrl);
         if (!file) throw new Error('评分标准图片无法读取，请联系老师');
         images.push(await readFile(file));
@@ -2792,66 +2886,74 @@ async function evaluateIndividualReview(req: Request, reviewId: string) {
         if (!rendered?.sheets.length) throw new Error('作品图片暂时无法读取，请重试');
         images.push(...rendered.sheets); labeled = rendered.labeled;
       }
-      const proxy = (req.app.get('analysisProxy') as typeof proxyAnalysisRequest | undefined) ?? proxyAnalysisRequest;
-      const result = await proxy(toAgentConfig(agent, agent.credential), buildAnalysisMessage(payload, labeled, 'individual'), images, undefined, payload.audioAnswers);
-      if (!result.success) throw new Error(result.error ?? 'AI 评价失败，请重试');
-      const evidenceResult = extractReviewEvidence(result.content ?? '', payload.entries);
-      const parsedFeedback = parseAnalysisFeedback(evidenceResult.content, payload.entries);
-      const parsed = parseAiAnalysisResult(parsedFeedback.narrative, payload.aiScoring, payload.entries, { allowScoreOnly: true });
-      if ('error' in parsed) throw new Error(parsed.error);
-      const scored = parsed.perStudent?.scores.find(s => s.studentId === participantId);
-      if (!scored || (payload.aiScoring.maxScore > 0 && scored.score === null)) {
-        // 模型的意见不能当作系统错误显示，更不能在评分未完成时伪装成成功。
-        console.warn('[worksheets] 个人评价未完成', { reviewId, reason: scored?.reason ?? 'missing structured score', missing: parsed.missing });
-        throw new Error(scored ? 'AI 暂时没能完成评分。请检查录音是否清楚，或重新获取评价。' : 'AI 返回的评价不完整，请重新获取评价。');
+      const config = configs.get(token)!;
+      return proxy(config, buildAnalysisMessage(payload, labeled, 'individual'), images, undefined, payload.audioAnswers);
+    };
+    const offset = nextReviewAgent++ % candidates.length;
+    const ordered = [...candidates.slice(offset), ...candidates.slice(0, offset)].map(config => config.apiKey);
+    const textToken = ordered.reduce((best, candidate) =>
+      cozeTokenLoad(candidate) < cozeTokenLoad(best) ? candidate : best);
+    const result = needsUpload
+      ? await runCozeFileRequest(ordered, send)
+      : await trackCozeRequest(textToken, () => send(textToken));
+    if (!result) return;
+    if (!result.success) throw new Error(result.error ?? 'AI 评价失败，请重试');
+    const evidenceResult = extractReviewEvidence(result.content ?? '', payload.entries);
+    const parsedFeedback = parseAnalysisFeedback(evidenceResult.content, payload.entries);
+    const parsed = parseAiAnalysisResult(parsedFeedback.narrative, payload.aiScoring, payload.entries, { allowScoreOnly: true });
+    if ('error' in parsed) throw new Error(parsed.error);
+    const scored = parsed.perStudent?.scores.find(s => s.studentId === participantId);
+    if (!scored || (payload.aiScoring.maxScore > 0 && scored.score === null)) {
+      // 模型的意见不能当作系统错误显示，更不能在评分未完成时伪装成成功。
+      console.warn('[worksheets] 个人评价未完成', { reviewId, reason: scored?.reason ?? 'missing structured score', missing: parsed.missing });
+      throw new Error(scored ? 'AI 暂时没能完成评分。请检查录音是否清楚，或重新获取评价。' : 'AI 返回的评价不完整，请重新获取评价。');
+    }
+    let gradedAnswer: AnswerRow | undefined;
+    // Recheck revision after the external call, inside the same atomic commit as the score.
+    await prisma.$transaction(async tx => {
+      const live = await tx.worksheetAnswerReview.findUnique({ where: { id: reviewId } });
+      if (!live || live.status !== 'pending') return;
+      const generation = await readAnswerGeneration(tx as PrismaClient, classroomId, worksheetId, participantId);
+      if (answerGenerationFor(generation, questionId) !== review.generation) return;
+      const currentSheet = await tx.worksheet.findUnique({ where: { id: worksheetId } });
+      const currentNode = currentSheet && findQuestion(currentSheet.content, questionId);
+      const latestSubmission = await tx.worksheetAnswerReview.findFirst({ where: { answerId: review.answerId }, orderBy: { createdAt: 'desc' } });
+      const settings = currentSheet?.settings as Record<string, unknown> | null;
+      const currentAnswer = review.source === 'teacher' ? await tx.worksheetAnswer.findUnique({ where: { id: review.answerId } }) : null;
+      const valid = (review.source !== 'teacher' || (currentAnswer?.status === 'submitted' && isDeepStrictEqual(currentAnswer.value, review.value))) && currentNode && individualReviewSettings(currentNode).enabled
+        && reviewConfigurationKey(currentNode) === reviewConfigurationKey(node)
+        && (snapshot.context === undefined || (currentSheet && analysisTaskContext((currentSheet.content as unknown as WorksheetContent).nodes ?? [], questionId, currentSheet.title, currentSheet.description ?? '') + '\n' + worksheetCurriculumContext(currentSheet.settings) === snapshot.context))
+        && settings?.analysisAgentId === snapshot.agentId
+        && aiScoringUnitForRewardStyle(readStudentSettings(settings).rewardStyle) === review.unit
+        && latestSubmission?.id === reviewId;
+      await tx.worksheetAnswerReview.update({ where: { id: reviewId }, data: { status: valid ? 'succeeded' : 'superseded', question: { ...snapshot, ...(evidenceResult.byStudent.has(participantId) ? { evaluationEvidence: evidenceResult.byStudent.get(participantId) } : {}), evaluationUsage: { chars: (result.content ?? '').length } } as unknown as Prisma.InputJsonValue, score: scored.score, reason: scored.reason, advice: scored.advice, evaluatedAt: new Date(), evaluationDurationMs: Math.max(0, Date.now() - evaluationStartedAt), error: valid ? null : '作品或评分规则已更新，本结果仅保留为历史，不计入当前成绩和评价次数' } });
+      if (!valid) return;
+      const classRow = await tx.worksheetQuestionAnalysis.findUnique({ where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } } });
+      if (classRow) {
+        const ids = entriesFromAggregate(classRow.aggregate).map(e => e.studentId);
+        const allIds = [...new Set([...ids, participantId])];
+        const existing = classRow.perStudent && typeof classRow.perStudent === 'object' && !Array.isArray(classRow.perStudent) ? classRow.perStudent as Record<string, unknown> : {};
+        const merged = mergeAiScoring(readStoredAiScoring(classRow.perStudent, payload.aiScoring, allIds), parsed.perStudent, allIds);
+        await tx.worksheetQuestionAnalysis.update({ where: { id: classRow.id }, data: { perStudent: { ...existing, ...merged } as unknown as Prisma.InputJsonValue } });
       }
-      let gradedAnswer: AnswerRow | undefined;
-      // Recheck revision after the external call, inside the same atomic commit as the score.
-      await prisma.$transaction(async tx => {
-        const live = await tx.worksheetAnswerReview.findUnique({ where: { id: reviewId } });
-        if (!live || live.status !== 'pending') return;
-        const generation = await readAnswerGeneration(tx as PrismaClient, classroomId, worksheetId, participantId);
-        if (answerGenerationFor(generation, questionId) !== review.generation) return;
-        const currentSheet = await tx.worksheet.findUnique({ where: { id: worksheetId } });
-        const currentNode = currentSheet && findQuestion(currentSheet.content, questionId);
-        const latestSubmission = await tx.worksheetAnswerReview.findFirst({ where: { answerId: review.answerId }, orderBy: { createdAt: 'desc' } });
-        const settings = currentSheet?.settings as Record<string, unknown> | null;
-        const currentAnswer = review.source === 'teacher' ? await tx.worksheetAnswer.findUnique({ where: { id: review.answerId } }) : null;
-        const valid = (review.source !== 'teacher' || (currentAnswer?.status === 'submitted' && isDeepStrictEqual(currentAnswer.value, review.value))) && currentNode && individualReviewSettings(currentNode).enabled
-          && reviewConfigurationKey(currentNode) === reviewConfigurationKey(node)
-          && (snapshot.context === undefined || (currentSheet && analysisTaskContext((currentSheet.content as unknown as WorksheetContent).nodes ?? [], questionId, currentSheet.title, currentSheet.description ?? '') + '\n' + worksheetCurriculumContext(currentSheet.settings) === snapshot.context))
-          && settings?.analysisAgentId === snapshot.agentId
-          && aiScoringUnitForRewardStyle(readStudentSettings(settings).rewardStyle) === review.unit
-          && latestSubmission?.id === reviewId;
-        await tx.worksheetAnswerReview.update({ where: { id: reviewId }, data: { status: valid ? 'succeeded' : 'superseded', question: { ...snapshot, ...(evidenceResult.byStudent.has(participantId) ? { evaluationEvidence: evidenceResult.byStudent.get(participantId) } : {}), evaluationUsage: { chars: (result.content ?? '').length } } as unknown as Prisma.InputJsonValue, score: scored.score, reason: scored.reason, advice: scored.advice, evaluatedAt: new Date(), evaluationDurationMs: Math.max(0, Date.now() - evaluationStartedAt), error: valid ? null : '作品或评分规则已更新，本结果仅保留为历史，不计入当前成绩和评价次数' } });
-        if (!valid) return;
-        const classRow = await tx.worksheetQuestionAnalysis.findUnique({ where: { classroomId_worksheetId_questionId: { classroomId, worksheetId, questionId } } });
-        if (classRow) {
-          const ids = entriesFromAggregate(classRow.aggregate).map(e => e.studentId);
-          const allIds = [...new Set([...ids, participantId])];
-          const existing = classRow.perStudent && typeof classRow.perStudent === 'object' && !Array.isArray(classRow.perStudent) ? classRow.perStudent as Record<string, unknown> : {};
-          const merged = mergeAiScoring(readStoredAiScoring(classRow.perStudent, payload.aiScoring, allIds), parsed.perStudent, allIds);
-          await tx.worksheetQuestionAnalysis.update({ where: { id: classRow.id }, data: { perStudent: { ...existing, ...merged } as unknown as Prisma.InputJsonValue } });
-        }
-        // Replacing the per-question score adjusts the total by its difference, never accumulates rewards.
-        if (scored.score === null && payload.aiScoring.maxScore === 0) {
-          const local=grade(node,review.value,resolvePoints(node,DEFAULT_POINTS));
-          gradedAnswer=await tx.worksheetAnswer.update({where:{id:review.answerId},data:{score:local?.score ?? null,gradeState:local?.state ?? null,isCorrect:local ? local.state==='correct' : null}});
-        }
-        if (scored.score !== null && payload.aiScoring.maxScore > 0) gradedAnswer = await tx.worksheetAnswer.update({ where: { id: review.answerId }, data: answerGradeWithFillAudio(node, review.value, scored.score, review.maxScore) });
-      });
-      if (gradedAnswer && req.app.get('io')) broadcastAnswerUpdate(req, { classroomId, participantId }, gradedAnswer);
-      req.app.get('io')?.to(`classroom:${classroomId}`).emit('worksheet-analysis-updated', { worksheetId });
-      req.app.get('io')?.to(`teacher:${classroomId}`).emit('worksheet-analysis-updated', { worksheetId });
-    } catch (error) {
-      await prisma.worksheetAnswerReview.updateMany({ where: { id: reviewId, status: 'pending' }, data: { status: 'failed', error: error instanceof Error ? error.message : '评价失败，请重试' } });
-      const row = await prisma.worksheetAnswerReview.findUnique({ where: { id: reviewId }, include: { answer: { select: { response: true } } } });
-      if (row) {
-        req.app.get('io')?.to(`classroom:${row.answer.response.classroomId}`).emit('worksheet-analysis-updated', { worksheetId: row.answer.response.worksheetId });
-        req.app.get('io')?.to(`teacher:${row.answer.response.classroomId}`).emit('worksheet-analysis-updated', { worksheetId: row.answer.response.worksheetId });
+      // Replacing the per-question score adjusts the total by its difference, never accumulates rewards.
+      if (scored.score === null && payload.aiScoring.maxScore === 0) {
+        const local=grade(node,review.value,resolvePoints(node,DEFAULT_POINTS));
+        gradedAnswer=await tx.worksheetAnswer.update({where:{id:review.answerId},data:{score:local?.score ?? null,gradeState:local?.state ?? null,isCorrect:local ? local.state==='correct' : null}});
       }
-    } finally { runningReviews.delete(key); activeReviews.delete(key); resolve(); }
-  }));
+      if (scored.score !== null && payload.aiScoring.maxScore > 0) gradedAnswer = await tx.worksheetAnswer.update({ where: { id: review.answerId }, data: answerGradeWithFillAudio(node, review.value, scored.score, review.maxScore) });
+    });
+    if (gradedAnswer && req.app.get('io')) broadcastAnswerUpdate(req, { classroomId, participantId }, gradedAnswer);
+    req.app.get('io')?.to(`classroom:${classroomId}`).emit('worksheet-analysis-updated', { worksheetId });
+    req.app.get('io')?.to(`teacher:${classroomId}`).emit('worksheet-analysis-updated', { worksheetId });
+  } catch (error) {
+    await prisma.worksheetAnswerReview.updateMany({ where: { id: reviewId, status: 'pending' }, data: { status: 'failed', error: error instanceof Error ? error.message : '评价失败，请重试' } });
+    const row = await prisma.worksheetAnswerReview.findUnique({ where: { id: reviewId }, include: { answer: { select: { response: true } } } });
+    if (row) {
+      req.app.get('io')?.to(`classroom:${row.answer.response.classroomId}`).emit('worksheet-analysis-updated', { worksheetId: row.answer.response.worksheetId });
+      req.app.get('io')?.to(`teacher:${row.answer.response.classroomId}`).emit('worksheet-analysis-updated', { worksheetId: row.answer.response.worksheetId });
+    }
+  } finally { runningReviews.delete(key); activeReviews.delete(key); }
 }
 
 /** Supplementation shares individual-review concurrency and never replaces a valid current result. */
@@ -2885,7 +2987,7 @@ async function supplementIndividualReviews(req: Request, classroomId: string, wo
       const review = await tx.worksheetAnswerReview.create({ data: {
         answerId: answer.id, requestId: crypto.randomUUID(), generation: currentGeneration,
         source: 'teacher', status: 'pending', value: toJsonValue(answer.value), maxScore: config.maxScore, unit,
-        question: { node, context, heading: flattenAnswerable((sheet.content as unknown as WorksheetContent).nodes ?? []).find(item => item.node.id === questionId)?.heading ?? questionId, agentId: settings.analysisAgentId ?? '' } as unknown as Prisma.InputJsonValue,
+        question: { node, context, heading: flattenAnswerable((sheet.content as unknown as WorksheetContent).nodes ?? []).find(item => item.node.id === questionId)?.heading ?? questionId, agentId: settings.analysisAgentId ?? '', additionalReviewAgentIds: settings.additionalReviewAgentIds ?? [] } as unknown as Prisma.InputJsonValue,
       } });
       return review.id;
     });
@@ -3501,7 +3603,7 @@ router.post('/:id/answers/submit', worksheetMutation(async (req, res, database) 
       const settings = normalizeSettings(ctx.worksheet.settings) as Record<string, unknown>;
       const review = await ctx.prisma.worksheetAnswerReview.create({ data: {
         answerId: answer.id, requestId, generation: answerGenerationFor(generation, questionId),
-        value: toJsonValue(answer.value), question: { node, context: analysisTaskContext((ctx.worksheet.content as unknown as WorksheetContent).nodes ?? [], questionId, ctx.worksheet.title, ctx.worksheet.description ?? '') + '\n' + worksheetCurriculumContext(ctx.worksheet.settings), heading: flattenAnswerable((ctx.worksheet.content as unknown as WorksheetContent).nodes ?? []).find(item => item.node.id === questionId)?.heading ?? questionId, agentId: settings.analysisAgentId ?? '' } as unknown as Prisma.InputJsonValue,
+        value: toJsonValue(answer.value), question: { node, context: analysisTaskContext((ctx.worksheet.content as unknown as WorksheetContent).nodes ?? [], questionId, ctx.worksheet.title, ctx.worksheet.description ?? '') + '\n' + worksheetCurriculumContext(ctx.worksheet.settings), heading: flattenAnswerable((ctx.worksheet.content as unknown as WorksheetContent).nodes ?? []).find(item => item.node.id === questionId)?.heading ?? questionId, agentId: settings.analysisAgentId ?? '', additionalReviewAgentIds: settings.additionalReviewAgentIds ?? [] } as unknown as Prisma.InputJsonValue,
         maxScore: config.maxScore, unit: scoringUnit, status: evaluate ? 'pending' : 'submitted',
       } });
       reviewId = review.id; reviewStatus = review.status;

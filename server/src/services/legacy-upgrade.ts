@@ -1,6 +1,6 @@
 import { ensureClassroomMaterialColumns } from './classroom-material-schema.js';
 import type { PrismaClient } from "@prisma/client";
-import { migrateClassroomParticipants } from './participant-migration.js';
+import { migrateClassroomParticipants, provisionGroupMembers } from './participant-migration.js';
 import { ensureGroupMaterials } from './group-materials-migration.js';
 import { ensureAnalysisClassroomColumn, ensureWorksheetAnswerColumns, ensureWorksheetTables } from './worksheet-schema.js';
 import { ensurePlatformTokenSchema } from './platform-token-schema.js';
@@ -314,6 +314,9 @@ export async function migrateLegacyDatabase(prisma: PrismaClient, backupDatabase
     // `allowStudentStop` / `allowStudentExport` 同一方向（认不出就当开）。
     // ⚠️ 若这里写成 0，所有老课堂会**静默地禁止学生提问**，而教师端那条开关显示「关」，
     //    看起来像是他自己关的。
+    if (!classroomColNames.includes('groupLoginMode')) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "groupLoginMode" TEXT NOT NULL DEFAULT 'group'`);
+    }
     if (!classroomColNames.includes('allowStudentAsk')) {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Classroom" ADD COLUMN "allowStudentAsk" BOOLEAN NOT NULL DEFAULT 1`);
       console.log('[server] Added allowStudentAsk column to Classroom');
@@ -501,6 +504,15 @@ export async function migrateLegacyDatabase(prisma: PrismaClient, backupDatabase
       if (backupPath) console.log(`[server] Database backup created: ${backupPath}`);
     }
     await migrateClassroomParticipants(prisma);
+    await prisma.$executeRawUnsafe('DROP INDEX IF EXISTS "ClassroomStudent_classroomId_groupId_key"');
+    await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "ClassroomStudent_classroomId_groupId_idx" ON "ClassroomStudent"("classroomId", "groupId")');
+    const memberClassrooms = await prisma.classroom.findMany({
+      where: { groupLoginMode: 'member', status: { in: ['active', 'paused'] } },
+      select: { id: true },
+    });
+    for (const { id } of memberClassrooms) {
+      await prisma.$transaction(tx => provisionGroupMembers(tx, id));
+    }
     if (!completed) {
       await prisma.setting.upsert({ where: { key: migrationKey }, update: { value: 'completed' }, create: { key: migrationKey, value: 'completed' } });
     }

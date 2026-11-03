@@ -119,13 +119,13 @@ test('🔴 分组是**结构**（一个盒子装一组），不是「在第几�
   ]);
 });
 
-test('🔴 同步分组进第 2 组、排在最前（它和「全体消息」一样是对全班做一件事）', () => {
+test('🔴 全体消息排在第 2 组最前', () => {
   // ⚠️ 教师这一轮**没有点名它**（标准模式下它压根不出现）⇒ 这条是实施时定的：
   //    它是个**动作**（把班级的分组同步进课堂），既不是课堂状态开关，
   //    也不是某个模块自己的入口 ⇒ 只能进第 2 组。教师看到后可以改。
   assert.deepEqual(headerControlGroups(headerControls({ ...BASE, mode: 'group' })).map((g) => g.map((c) => c.id)), [
     ['pause', 'lock'],
-    ['sync-groups', 'notify', 'fullscreen', 'module-state'],
+    ['notify', 'fullscreen', 'module-state'],
     ['worksheet-menu', 'explore-settings', 'companion-menu'],
   ]);
 });
@@ -178,23 +178,10 @@ test('🔴 没有重复的 id（重复 = 屏幕上两个「暂停课堂」）', 
   assert.equal(new Set(list).size, list.length);
 });
 
-/* ── 2. 同步分组：两道条件（分组/高级 且 未结束）──────────────────── */
-
-test('🔴 同步分组：标准模式**没有**它（阴性对照：分组模式有）', () => {
-  assert.equal(ids().indexOf('sync-groups'), -1);
-  assert.ok(ids({ mode: 'group' }).indexOf('sync-groups') !== -1);
-  assert.ok(ids({ mode: 'advanced' }).indexOf('sync-groups') !== -1);
-});
-
-test('🔴 同步分组：课堂**已结束**时没有它（阴性对照：进行中有）', () => {
-  assert.equal(ids({ mode: 'group', status: 'ended' }).indexOf('sync-groups'), -1);
-  assert.ok(ids({ mode: 'group', status: 'active' }).indexOf('sync-groups') !== -1);
-});
-
-test('⚠️ 同步分组：`paused` 的课堂仍然有它（暂停 ≠ 结束）', () => {
-  // 暂停只是停了学生的学习模块，分组仍然是活的 —— 写成「非 active 就没有」会让教师
-  // 在一个暂停的课堂里改完分组名却同步不过去。
-  assert.ok(ids({ mode: 'group', status: 'paused' }).indexOf('sync-groups') !== -1);
+test('各课堂模式的工具栏均省略手动同步分组', () => {
+  for (const mode of ['standard', 'group', 'advanced'] as const) {
+    assert.ok(!ids({ mode }).some(id => id === String('sync-groups')));
+  }
 });
 
 /* ── 3. 全屏：两种看板模式都有 ─────────────────────────────────── */
@@ -245,14 +232,13 @@ test('🔴 两个开关的 `active` 各管各的（暂停课堂不会把锁定�
 
 test('🔴 忙态键只留一份（三个键的名字就是读写两处共用的那一份）', () => {
   assert.deepEqual(HEADER_BUSY_KEYS, {
-    syncGroups: 'sync-groups', pause: 'questions', lock: 'answers-lock',
+    pause: 'questions', lock: 'answers-lock',
   });
 });
 
 test('🔴 忙的时候那三个控件显示忙态文案并禁用', () => {
   assert.equal(control('pause', { busy: HEADER_BUSY_KEYS.pause }).label, '更新中...');
   assert.equal(control('lock', { busy: HEADER_BUSY_KEYS.lock }).label, '更新中...');
-  assert.equal(control('sync-groups', { mode: 'group', busy: HEADER_BUSY_KEYS.syncGroups }).label, '同步中...');
   assert.equal(control('pause', { busy: HEADER_BUSY_KEYS.pause }).disabled, true);
   assert.equal(control('lock', { busy: HEADER_BUSY_KEYS.lock }).disabled, true);
 });
@@ -319,7 +305,6 @@ test('⚠️ 非设置项没有浮层（`popup: null`）—— 别给普通按�
 test('🔴 关键悬浮说明与两个分析维度一致（它们是唯一的解释来源）', () => {
   assert.equal(control('pause').title, '暂停后学生无法使用学习模块中的任何功能');
   assert.equal(control('lock').title, '停笔：学生不能再修改答案，但仍然可以交卷');
-  assert.equal(control('sync-groups', { mode: 'group' }).title, '把当前班级的分组名称和成员同步到正在进行的课堂');
   assert.equal(control('worksheet-menu').title, '按任务分析全班，或按学生分析整份学习单');
   assert.equal(control('fullscreen').title, '全屏显示学生面板');
   // 那两项各自的悬浮说明在 `WORKSHEET_MENU_ITEMS` 里（它们不是头部的控件）。

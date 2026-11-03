@@ -649,6 +649,7 @@ export function layoutSheets(entries: AnalyzeEntry[], labels: Map<string, string
 
 /** 一道题的聚合载荷。图**不在**里面 —— 它是派生物，走单独的端点按需渲染。 */
 export interface AnalysisPayload {
+  photoWriting?: boolean;
   analysisMode?: string;
   analysisFocus?: string;
   context?: string;
@@ -757,7 +758,7 @@ export function buildAnalysisPayload(input: {
       cellWidth: Math.max(input.knobs.cellWidth, 768),
       cellHeight: Math.max(input.knobs.cellHeight, 1024),
       columns: Math.min(input.knobs.columns, 2),
-      maxCellsPerSheet: Math.min(input.knobs.maxCellsPerSheet, 4),
+      maxCellsPerSheet: Math.min(input.knobs.maxCellsPerSheet, Math.min(input.knobs.columns, 2) * 2),
     }
     : input.knobs;
   const labels = payloadLabels(entries, participants);
@@ -781,6 +782,7 @@ export function buildAnalysisPayload(input: {
     drawingStarter: question.drawingStarter === true,
     localStats: localStatsOf(entries),
     payloadKind,
+    ...(question.photoWriting ? { photoWriting: true } : {}),
     audioAnswers: entries.flatMap(entry => [...(entry.kind === 'audio' && entry.audioUrl ? [{url: entry.audioUrl, label: labels.get(entry.studentId)!}] : []), ...(entry.fillAudios ?? []).map(audio => ({url: audio.url, label: `${labels.get(entry.studentId)!} · 第 ${audio.index + 1} 空`}))]),
     covered: entries.length,
     total,

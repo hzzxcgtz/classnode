@@ -44,12 +44,12 @@ export function useStudentSession(options: StudentSessionOptions) {
     o.setCode(codeFromUrl);
     let saved: string | null = null;
     try { saved = localStorage.getItem(`chat_session_${codeFromUrl}`); } catch {}
-    let sessionData: { studentId: string; studentName: string; token?: string } | null = null;
+    let sessionData: { studentId: string; studentName: string; groupMemberId?: string; token?: string } | null = null;
     if (saved) {
       try {
         const session = JSON.parse(saved);
         if (now - session.timestamp < 7200000) {
-          sessionData = { studentId: session.studentId, studentName: session.studentName, token: session.token };
+          sessionData = { studentId: session.studentId, studentName: session.studentName, groupMemberId: session.groupMemberId, token: session.token };
           setStudentSessionToken(session.token);
           o.setSelectedStudent({ id: session.studentId, participantType: 'student', studentId: null, name: session.studentName, studentNo: null, gender: null, avatarId: null, groupId: null, status: 'offline' });
         } else {
@@ -71,19 +71,22 @@ export function useStudentSession(options: StudentSessionOptions) {
       if (sessionData) {
         // 每次刷新都在后台静默续领，兼容应用重启和旧版保存的本地会话。
         try {
-          const renewed = await api.createStudentSession(codeFromUrl, sessionData.studentId);
+          const renewed = await api.createStudentSession(codeFromUrl, sessionData.studentId, sessionData.groupMemberId);
           sessionData.token = renewed.token;
+          sessionData.studentId = renewed.participantId;
           setStudentSessionToken(renewed.token);
           try {
             localStorage.setItem(`chat_session_${codeFromUrl}`, JSON.stringify({
               studentId: sessionData.studentId,
               studentName: sessionData.studentName,
+              groupMemberId: sessionData.groupMemberId,
               token: renewed.token,
               timestamp: Date.now(),
             }));
           } catch {}
         } catch {
           try { localStorage.removeItem(`chat_session_${codeFromUrl}`); } catch {}
+          setStudentSessionToken();
           o.setSelectedStudent(null);
           o.setStep('identity');
           return;
@@ -94,11 +97,14 @@ export function useStudentSession(options: StudentSessionOptions) {
         o.setStep('home');
         // 身份与分组决定学习单的选择，不能排在通知、聊天记录和头像库之后。
         const restoredStudent = cr.id ? api.getClassroomStudents(cr.id).then(async (students) => {
-          const cur = students.find((student) => student.id === sessionData!.studentId);
+          const cur = students.find(student => student.id === sessionData!.studentId ||
+            student.groupMembers?.some(member => member.participantId === sessionData!.studentId));
           if (!cur) return;
-          o.setSelectedStudent(cur);
-          if (cur.studentId) {
-            const tokens = await api.getStudentTokens(cur.id);
+          const member = cur.groupMembers?.find(item => item.participantId === sessionData!.studentId);
+          o.setSelectedStudent(member ? { ...cur, participantType: 'student', id: member.participantId, studentId: member.studentId,
+            avatarId: member.avatarId, name: member.name, groupMemberId: member.id } : cur);
+          if (member?.studentId || cur.studentId) {
+            const tokens = await api.getStudentTokens(sessionData!.studentId);
             o.setAvatarTokenCount(tokens.tokens || 0);
           } else o.setAvatarTokenCount(0);
         }).catch(() => {}) : Promise.resolve();

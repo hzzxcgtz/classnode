@@ -626,7 +626,7 @@ type TileModule = FocusModule;
 /** 小组格子专用：组内成员此刻**不在同一个模块**。 */
 type GroupTileModule = TileModule | 'mixed';
 
-type StudentPresenceEvent = { studentId: string };
+type StudentPresenceEvent = { studentId: string; memberDisplayName?: string };
 type StudentThinkingEvent = StudentPresenceEvent & { status: boolean };
 type StudentMessageEvent = StudentPresenceEvent & {
   content: string;
@@ -962,7 +962,7 @@ function ClassroomBoardContent() {
 
   // 分组/高级模式：按小组聚合卡片
   const groupCards = useMemo<ClassroomGroupCard[] | null>(() => {
-    if (!classroom || (classroom.mode !== 'advanced' && classroom.mode !== 'group')) return null;
+    if (!classroom || classroom.groupLoginMode === 'member' || (classroom.mode !== 'advanced' && classroom.mode !== 'group')) return null;
     const map = new Map<string, ClassroomGroupCard>();
     for (const cs of students) {
       if (!cs.groupId) continue;
@@ -1179,13 +1179,24 @@ function ClassroomBoardContent() {
   // ★ 2026-09-28：题目树那条 60 秒的定期重拉也搬进了 `useWorksheetBoard`
   //（教师课上改单**不广播**，所以它必须留着，理由逐字未变）。
 
-  const loadClassroom = useCallback(async () => {
+  const loadClassroom = useCallback(async (syncOnEntry = false) => {
     if (!id) return;
     // ★ 2026-09-30：发请求**之前**记下「此刻本地那份逐题开放清单」—— 回来时拿它做等值判断
     //（见下面 `setWorksheetOpen` 那一行：期间被改过就不收这份快照）。
     const openAtRequest = worksheetOpenRef.current;
     try {
-      const cr = await api.getClassroom(id);
+      let cr = await api.getClassroom(id);
+      if (syncOnEntry && cr.status !== 'ended' && (cr.mode === 'group' || cr.mode === 'advanced')) {
+        try {
+          const result = await api.syncClassroomGroups(id, true);
+          if (result.addedGroups || result.updatedGroups) {
+            cr = await api.getClassroom(id);
+            void refreshWorksheetBoard();
+          }
+        } catch {
+          setToast({ msg: '自动同步分组失败，请重新进入课堂重试', type: 'error' });
+        }
+      }
       setClassroom(cr);
       setTeacherCode(cr.code || '');
       setPaused(cr.status === 'paused');
@@ -1195,7 +1206,7 @@ function ClassroomBoardContent() {
       // ★ 2026-09-30：同上一条 —— 老服务端不发这一格 ⇒ 收成空映射（= 一份单都没开放）。
       // 🔴 **只在本地这一份没被改过时才收下**（与学生会话层 `flagsSnapshotRef` 同一条理由）：
       //    这次 GET 是**在**教师的某次「开放」之前发出的，而它带着**旧**清单回来
-      //    （`syncGroups` 之后也会走这一条）⇒ 不看一眼就覆盖，屏幕上的开放状态会**退回去**，
+      //    ⇒ 不看一眼就覆盖，屏幕上的开放状态会**退回去**，
       //    而没有任何东西会红（下一次广播才自愈，中间那段时间教师看到的是一份假的进度）。
       setWorksheetOpen((previous) => (previous === openAtRequest ? normalizeOpenMap(cr.worksheetOpen) : previous));
       const students = cr.students || [];
@@ -1275,7 +1286,7 @@ function ClassroomBoardContent() {
       // 名字与头像。署名改由 `drawerAgent`（下方，走 `effectiveGroupAgent`）算，
       // 顺带省掉一次「把整个智能体库拉下来只为挑第一个」的请求。
     } catch {}
-  }, [id]);
+  }, [id, refreshWorksheetBoard]);
 
   const loadAnalytics = useCallback(async () => {
     if (!id) return;
@@ -1294,11 +1305,12 @@ function ClassroomBoardContent() {
 
   useEffect(() => {
     if (!id) { router.push('/teacher'); return; }
-    const initialLoadTimer = window.setTimeout(() => { void loadClassroom(); }, 0);
+    const initialLoadTimer = window.setTimeout(() => { void loadClassroom(true); }, 0);
     joinTeacherBoard(id);
 
     const unsub1 = on('student-online', (data: StudentPresenceEvent) => {
       setStudentStatuses(prev => ({ ...prev, [data.studentId]: 'online' }));
+      if (data.memberDisplayName) setStudents(prev => prev.map(card => card.id === data.studentId ? { ...card, memberDisplayName: data.memberDisplayName } : card));
     });
     const unsub2 = on('student-offline', (data: StudentPresenceEvent) => {
       setStudentStatuses(prev => ({ ...prev, [data.studentId]: 'offline' }));
@@ -1688,17 +1700,6 @@ function ClassroomBoardContent() {
     }
   });
 
-  const syncGroups = () => runControlAction(HEADER_BUSY_KEYS.syncGroups, async () => {
-    const result = await api.syncClassroomGroups(id);
-    await loadClassroom();
-    setToast({
-      msg: result.addedGroups > 0
-        ? `分组已同步，新增 ${result.addedGroups} 个小组${classroom?.mode === 'advanced' ? '（使用课堂默认智能体）' : ''}`
-        : '分组成员已同步到课堂看板',
-      type: 'success',
-    });
-  });
-
   const toggleStop = () => runControlAction('stop', async () => {
     const result = await api.toggleAllowStop(id);
     setClassroom((previous) => previous ? { ...previous, allowStudentStop: result.allowStudentStop } : previous);
@@ -2069,7 +2070,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
 
   // ★ M5a：模块筛选行那六个数字的量词（分组/高级模式下参与者是组 ⇒ 那是组数）。
   // 与 `moduleDistribution` 同一处：两者必须同源，否则量词与数字会各说各的。
-  const moduleCountUnitSuffix = moduleCountUnit(classroom.mode);
+  const moduleCountUnitSuffix = moduleCountUnit(classroom.groupLoginMode === 'member' ? 'standard' : classroom.mode);
 
   /**
    * 模块筛选的**生效值**。
@@ -2118,6 +2119,53 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
     // 模块那一组的生效值见 `effectiveModuleFilter`（固定模式下恒为 `all`）。
     return effectiveModuleFilter === 'all' || cardInModule(card, effectiveModuleFilter);
   });
+  const renderDisplayCards = (
+    renderCard: (card: ClassroomDisplayCard, groupColor?: { background: string; border: string }) => ReactNode,
+  ) => {
+    if (classroom.groupLoginMode !== 'member') return displayCards.map(card => renderCard(card));
+
+    const collator = new Intl.Collator('zh-CN', { numeric: true });
+    const groups = [...classroom.groups].sort((left, right) =>
+      collator.compare(left.name, right.name) || left.id.localeCompare(right.id));
+    const colors = [
+      { background: '#f0f6ff', border: '#a9c4e4' },
+      { background: '#eff8f2', border: '#aacdb7' },
+      { background: '#fff7eb', border: '#dec19c' },
+      { background: '#f7f2fc', border: '#cab6e0' },
+      { background: '#fff2f4', border: '#e3b8c3' },
+      { background: '#edf8f8', border: '#a8cdd0' },
+      { background: '#f8f8eb', border: '#cecea5' },
+    ];
+    const knownGroups = new Set(groups.map(group => group.id));
+    const sections = [...groups, { id: null, name: '未分组' }];
+    return sections.map((group, index) => {
+      const cards = displayCards.filter((card): card is ClassroomCardStudent =>
+        !isClassroomGroupCard(card) && (group.id
+          ? card.groupId === group.id
+          : !card.groupId || !knownGroups.has(card.groupId)));
+      if (cards.length === 0) return null;
+      cards.sort((left, right) => {
+        const leftNo = left.student.studentNo?.trim();
+        const rightNo = right.student.studentNo?.trim();
+        return Number(!leftNo) - Number(!rightNo) ||
+          collator.compare(leftNo ?? '', rightNo ?? '') ||
+          collator.compare(left.student.name, right.student.name) || left.id.localeCompare(right.id);
+      });
+      const color = group.id ? colors[index % colors.length] : undefined;
+      return (
+        <Fragment key={group.id ?? 'ungrouped'}>
+          <h3 style={{
+            gridColumn: '1 / -1', margin: 0, padding: '6px 12px', fontSize: '0.875rem',
+            color: '#334155', borderInlineStart: `4px solid ${color?.border ?? '#cbd5e1'}`,
+            background: color?.background ?? '#f1f5f9', borderRadius: 6,
+          }}>
+            {group.name} <span style={{ marginInlineStart: 8, fontWeight: 400 }}>{cards.length} 人</span>
+          </h3>
+          {cards.map(card => renderCard(card, color))}
+        </Fragment>
+      );
+    });
+  };
   /**
    * 「这间课堂在用什么材料」的那一份形状（`ClassroomMaterials`）。
    *
@@ -2149,7 +2197,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
    * 这一屏头部有哪些控件、各叫什么、禁不禁用 —— 全部来自那个纯函数
    *（逐条用例在 `header-controls.test.ts`；⚠️ 不在这里写条数，它每次加用例都会过期）。
    *
-   * 🔴 这里**只递输入、只画结果**：`同步分组` 的两道条件、
+   * 🔴 这里**只递输入、只画结果**：
    * 两个开关的标签翻转、忙态的三个键，原先全写在这一段的 JSX 三元里，**没有任何回归网**。
    * 判据搬走之后，本文件只剩「把 `control.id` 接到哪个 handler、配哪个图标」。
    * ⚠️ 那两件事（handler / 图标）**不进判据层**：它们是本文件里的闭包与 JSX，
@@ -2176,7 +2224,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
   const headerActions: Record<HeaderControlId, () => void> = {
     pause: () => void toggleQuestions(),
     lock: () => void toggleAnswersLock(),
-    'sync-groups': () => void syncGroups(),
     notify: () => { setNotifyText(''); setNotifySent(false); setNotifyState({ show: true }); },
     'worksheet-menu': () => setShowWorksheetMenu((visible) => !visible),
     fullscreen: () => setGridFullscreen(true),
@@ -2198,9 +2245,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         <rect x="4" y="11" width="16" height="10" rx="2" />
         <path d="M8 11V7a4 4 0 0 1 8 0v4" />
       </svg>
-    ),
-    'sync-groups': () => (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/><path d="M3 12A9 9 0 0 1 18.5 5.8L21 8"/><path d="M21 3v5h-5"/></svg>
     ),
     notify: () => (
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
@@ -2920,7 +2964,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 <button type="button" onClick={() => { setStudentBoardFilter('all'); setStudentModuleFilter('all'); }} style={{ marginTop: 10, border: 0, background: 'transparent', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }}>查看全部学生</button>
               </div>
             ) : (
-              displayCards.map((item: ClassroomDisplayCard) => {
+              renderDisplayCards((item, groupColor) => {
                 const isGroup = isClassroomGroupCard(item);
                 const cs = isGroup ? item.members[0] : item;
                 const student = cs.student;
@@ -2971,11 +3015,11 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                     style={{
                       cursor: 'pointer',
                       border: '2px solid',
-                      borderColor: isSelected ? 'var(--primary)' : status === 'thinking' ? '#956834' : '#e2e8f0',
+                      borderColor: isSelected ? 'var(--primary)' : status === 'thinking' ? '#956834' : groupColor?.border ?? '#e2e8f0',
                       padding: isGroup ? '18px 18px 16px' : '20px 18px 18px',
                       borderRadius: 12,
                       position: 'relative',
-                      background: 'white',
+                      background: groupColor?.background ?? 'white',
                       display: 'flex',
                       flexDirection: 'column',
                       /* ★ 2026-10-07（教师）：「把学生卡片的高度再做得大一些」—— 上面那块方格阵
@@ -2994,7 +3038,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                         fontWeight: 700, fontSize: "0.938rem", overflow: 'hidden',
                       }}>
                         {isGroup ? (
-                          getGroupInitial(item.group?.name)
+                          getGroupInitial(cs.memberDisplayName === null ? '待' : cs.memberDisplayName || item.group?.name)
                         ) : student.avatarId && studentAvatars[student.avatarId] ? (
                           <div style={{ filter: status === 'offline' ? 'grayscale(1)' : 'none' }}><SvgAvatar svg={studentAvatars[student.avatarId]} size={36} /></div>
                         ) : student.name[0]}
@@ -3008,7 +3052,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                 onMouseEnter={(e) => setGroupTooltip({ id: item.group?.id ?? '', x: e.clientX, y: e.clientY })}
                                 onMouseMove={(e) => { const n = Date.now(); if (n - groupTooltipThrottle.current < 100) return; groupTooltipThrottle.current = n; setGroupTooltip({ id: item.group?.id ?? '', x: e.clientX, y: e.clientY }); }}
                                 onMouseLeave={() => setGroupTooltip(null)}>
-                                {item.group?.name || '(未命名)'}
+                                {cs.memberDisplayName === null ? '等待组员登录' : cs.memberDisplayName || item.group?.name || '(未命名)'}
                               </span>
                             ) : (
                               <>{student.name}{student.studentNo && <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)', marginLeft: 4 }}>#{student.studentNo}</span>}</>
@@ -3715,7 +3759,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                   没有符合条件的学生
                 </div>
               ) : (
-                displayCards.map((item: ClassroomDisplayCard) => {
+                renderDisplayCards((item, groupColor) => {
                   const isGroup = isClassroomGroupCard(item);
                   const cs = isGroup ? item.members[0] : item;
                   const student = cs.student;
@@ -3760,10 +3804,10 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       style={{
                         cursor: 'pointer',
                         border: '2px solid',
-                        borderColor: isSelected ? 'var(--primary)' : status === 'thinking' ? '#956834' : '#e2e8f0',
+                        borderColor: isSelected ? 'var(--primary)' : status === 'thinking' ? '#956834' : groupColor?.border ?? '#e2e8f0',
                         padding: compact ? (isGroup ? '14px 10px 6px' : '16px 12px 6px') : (isGroup ? '18px 14px 8px' : '20px 16px 8px'),
                         borderRadius: 12,
-                        background: 'white', position: 'relative',
+                        background: groupColor?.background ?? 'white', position: 'relative',
                         display: 'flex', flexDirection: 'column',
                         transition: 'all 0.15s',
                         boxShadow: isSelected ? '0 4px 16px rgba(var(--primary-focus-rgb), 0.12)' : '0 1px 4px rgba(0,0,0,0.04)',
@@ -3789,7 +3833,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                           fontWeight: 700, fontSize: compact ? 12 : 14, overflow: 'hidden',
                         }}>
                           {isGroup ? (
-                            getGroupInitial(item.group?.name)
+                            getGroupInitial(cs.memberDisplayName === null ? '待' : cs.memberDisplayName || item.group?.name)
                           ) : student.avatarId && studentAvatars[student.avatarId] ? (
                             <div style={{ filter: status === 'offline' ? 'grayscale(1)' : 'none' }}><SvgAvatar svg={studentAvatars[student.avatarId]} size={compact ? 26 : 36} /></div>
                           ) : student.name[0]}
@@ -3802,7 +3846,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                                 <span style={{ cursor: 'help', borderBottom: '1px dashed #94a3b8' }}
                                   onMouseMove={(e) => setGroupTooltip({ id: item.group?.id ?? '', x: e.clientX, y: e.clientY })}
                                   onMouseLeave={() => setGroupTooltip(null)}>
-                                  {item.group?.name || '(未命名)'}
+                                  {cs.memberDisplayName === null ? '等待组员登录' : cs.memberDisplayName || item.group?.name || '(未命名)'}
                                 </span>
                               ) : (
                                 <>{student.name}{student.studentNo && <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', marginLeft: 3 }}>#{student.studentNo}</span>}</>

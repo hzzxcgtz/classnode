@@ -73,11 +73,12 @@ async function main() {
   // Middleware
   app.use(maintenanceGate);
   installRequestSecurity(app, originPolicy);
-  app.use((_req, res, next) => {
+  app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
+    const camera = /^\/classroom\/?$/.test(req.path) ? '(self)' : '()';
+    res.setHeader('Permissions-Policy', `camera=${camera}, microphone=(self), geolocation=()`);
     next();
   });
   app.use(express.json({ limit: '10mb' }));

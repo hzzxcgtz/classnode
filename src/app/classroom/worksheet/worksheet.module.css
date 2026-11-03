@@ -3385,3 +3385,52 @@
 .aiScoreWithActions { position: relative; }
 .aiScoreWithActions .aiScoreCommentHeading { padding-right: 44px; }
 .aiScoreActions { position: absolute; right: 10px; top: 10px; }
+
+.photoCropDialog { position: fixed; inset: 0; margin: auto; width: min(680px, calc(100% - 24px)); max-height: 92vh; overflow: auto; padding: 20px; border: 1px solid #ccd9e8; border-radius: 16px; background: white; color: #263b52; text-align: center; }
+.photoCropDialog::backdrop { background: #14263a99; }
+.photoCropDialog h2 { margin: 0 0 8px; font-size: 1.15rem; }
+.photoCropDialog p { margin: 0 0 16px; font-size: .875rem; }
+.photoCropFrame { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; }
+.photoCropFrame img, .photoCropResult { display: block; max-width: 100%; max-height: 58vh; margin: auto; }
+.photoCropFrame svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.photoCropFrame polygon { fill: #418bd41a; stroke: #2487ea; stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.photoCropHandle { position: absolute; transform: translate(-50%, -50%); width: 44px; height: 44px; touch-action: none; cursor: grab; border: 0; background: transparent; padding: 0; }
+.photoCropHandle::after { content: ''; display: block; width: 15px; height: 15px; margin: auto; border: 2px solid white; border-radius: 50%; background: #2487ea; box-shadow: 0 1px 5px #14263a88; }
+.photoCropActions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; }
+.photoCropAction { min-height: 44px; }
+
+.paperCameraFrame { position: relative; margin: 0 auto; overflow: hidden; border-radius: 10px; background: #192838; }
+.paperCameraFrame video { display: block; width: 100%; height: auto; }
+.paperCameraFrame svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.paperCameraFrame polygon { fill: #19d09a23; stroke: #26e1a6; stroke-width: 3px; vector-effect: non-scaling-stroke; }
+.paperCameraFrame rect { fill: none; stroke: white; stroke-width: 2px; stroke-dasharray: 7 5; vector-effect: non-scaling-stroke; }
+
+.photoCropReview { width: min(760px, calc(100% - 40px)); padding: 0; text-align: left; border-color: #d6e1ed; border-radius: 20px; box-shadow: 0 18px 60px #102b4540; }
+.photoCropHeader { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 16px; }
+.photoCropHeader h2 { margin: 0 0 4px; font-size: 1.1rem; outline: none; }
+.photoCropHeader p { margin: 0; color: #596f85; line-height: 1.5; }
+.photoCropBadge { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: #eaf2fb; color: #416c96; }
+.photoCropClose { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 50%; background: #f1f5f9; color: #4f647a; cursor: pointer; }
+.photoCropStage { margin: 0 12px; padding: 22px; border: 1px solid #dce6ef; border-radius: 14px; background: #edf3f9; }
+.photoCropStage img { border-radius: 4px; box-shadow: 0 2px 10px #233d5426; }
+.photoCropFooter { display: grid; gap: 4px; padding: 12px 16px 8px; }
+.photoCropPrimary { min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 12px; background: #345e88; color: white; font: inherit; font-weight: 650; cursor: pointer; }
+.photoCropPrimary:disabled, .photoCropClose:disabled, .photoCropLink:disabled { opacity: .55; cursor: default; }
+.photoCropSecondary { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
+.photoCropLink { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; border: 0; background: transparent; color: #456587; font: inherit; font-size: .875rem; cursor: pointer; }
+
+@media (min-width: 768px) and (orientation: landscape) {
+  .photoCropReview[open] { width: min(1040px, calc(100% - 48px)); display: grid; grid-template-columns: minmax(0, 1fr) 208px; align-items: center; padding-bottom: 16px; }
+  .photoCropReview .photoCropHeader { grid-column: 1 / -1; padding: 16px 20px; }
+  .photoCropReview .photoCropStage { margin: 0 0 0 16px; }
+  .photoCropReview .photoCropFooter { padding: 16px; }
+  .photoCropReview .photoCropSecondary { flex-direction: column; gap: 0; }
+  .photoCropReview .photoCropLink { justify-content: center; }
+  .photoCropReview .photoCropFrame img, .photoCropReview .photoCropResult { max-height: 66vh; }
+}
+@media (max-width: 600px) {
+  .photoCropReview { width: calc(100% - 20px); }
+  .photoCropReview .photoCropHeader { gap: 8px; padding: 10px 12px; }
+  .photoCropReview .photoCropStage { margin: 0 8px; }
+  .photoCropReview .photoCropFooter { padding: 10px 12px 6px; }
+}

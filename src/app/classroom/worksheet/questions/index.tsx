@@ -10,6 +10,8 @@ import { prepareWorksheetPhoto } from '@/lib/worksheet-photo-upload';
 import { ClassroomImagePreview } from '@/app/teacher/classroom/image-preview';
 import { useRotatedImageSource } from '@/components/use-image-rotation';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { PaperCameraDialog } from './paper-camera-dialog';
+import { PhotoCropDialog } from './photo-crop-dialog';
 import { AudioBody } from './audio-body';
 import { CategorizeBody } from './categorize-body';
 import { ChoiceBody } from './choice-body';
@@ -224,12 +226,22 @@ function PhotoBody({ draft, onChange, disabled, localOnly }: {
   disabled: boolean;
 }) {
   const [preview, setPreview] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
   const photoSource = useRotatedImageSource(worksheetAssetUrl(draft.url));
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
 
-  const upload = async (file: File) => {
+  const openCamera = () => {
+    if (!localOnly && window.isSecureContext && typeof navigator.mediaDevices?.getUserMedia === 'function') {
+      setCameraOpen(true);
+    } else {
+      inputRef.current?.click();
+    }
+  };
+
+  const upload = async (file: File, cropped = false, needsWebp = false) => {
     setUploading(true);
     setError('');
     try {
@@ -245,8 +257,8 @@ function PhotoBody({ draft, onChange, disabled, localOnly }: {
         onChange({ kind: 'photo', url });
         return;
       }
-      const prepared = await prepareWorksheetPhoto(file);
-      const result = await api.uploadWorksheetImage(prepared);
+      const prepared = cropped ? file : await prepareWorksheetPhoto(file);
+      const result = await api.uploadWorksheetImage(prepared, needsWebp);
       onChange({ kind: 'photo', url: result.url });
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : '照片上传失败，请重试');
@@ -267,7 +279,11 @@ function PhotoBody({ draft, onChange, disabled, localOnly }: {
         disabled={disabled || uploading}
         onChange={(event) => {
           const file = event.target.files?.[0];
-          if (file) void upload(file);
+          event.target.value = '';
+          if (file && !disabled && !uploading) {
+            if (localOnly) void upload(file);
+            else setPendingPhoto(file);
+          }
         }}
       />
       {draft.url ? (
@@ -280,7 +296,7 @@ function PhotoBody({ draft, onChange, disabled, localOnly }: {
           {preview && <ClassroomImagePreview key={draft.url} src={worksheetAssetUrl(draft.url)} onClose={() => setPreview(false)} />}
           {!disabled && (
             <div className={styles.photoAnswerActions}>
-              <button type="button" className={styles.photoAnswerAction} disabled={uploading} onClick={() => inputRef.current?.click()}>
+              <button type="button" className={styles.photoAnswerAction} disabled={uploading} onClick={openCamera}>
                 {uploading ? '正在上传…' : '重新拍照或选择照片'}
               </button>
               <button type="button" className={styles.photoAnswerAction} onClick={() => onChange({ kind: 'photo', url: '' })}>移除</button>
@@ -292,13 +308,25 @@ function PhotoBody({ draft, onChange, disabled, localOnly }: {
           type="button"
           className={styles.photoAnswerPlaceholder}
           disabled={disabled || uploading}
-          onClick={() => inputRef.current?.click()}
+          onClick={openCamera}
         >
           <span aria-hidden="true">＋</span>
           <strong>{uploading ? '正在上传照片…' : '在这里拍照或上传作答照片'}</strong>
           <small>支持 JPG、PNG、WebP</small>
         </button>
       )}
+      {cameraOpen && !disabled && <PaperCameraDialog
+        onCancel={() => setCameraOpen(false)}
+        onFallback={() => {setCameraOpen(false); inputRef.current?.click();}}
+        onCapture={(file) => {setCameraOpen(false); setPendingPhoto(file);}}
+      />}
+      {pendingPhoto && !disabled && <PhotoCropDialog file={pendingPhoto} onCancel={() => setPendingPhoto(null)} onRetake={() => {
+        setPendingPhoto(null);
+        openCamera();
+      }} onConfirm={(file, needsWebp) => {
+        setPendingPhoto(null);
+        void upload(file, needsWebp !== undefined, needsWebp);
+      }} />}
       {error && <p className={styles.photoAnswerError}>{error}</p>}
     </div>
   );

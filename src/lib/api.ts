@@ -370,9 +370,10 @@ export const api = {
   },
   getImageOrientation: (url: string) => request<{ url: string; version: string }>(`/api/upload/image-orientation?url=${encodeURIComponent(url)}`, { cache: 'no-store' }),
   saveImageOrientation: (url: string, degrees: number, version: string) => request<{ url: string; version: string }>('/api/upload/image-orientation', { method: 'POST', body: JSON.stringify({ url, degrees, version }) }),
-  uploadWorksheetImage: (file: File) => {
+  uploadWorksheetImage: (file: File, needsWebp = false) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (needsWebp) formData.append('encodeWebp', '1');
     return formRequest<{ success: true; url: string; name: string; size: number }>('/api/upload/worksheet-image', 'POST', formData, {
       timeoutMs: PHOTO_UPLOAD_TIMEOUT_MS,
       timeoutMessage: '照片上传超时，可能是网络较慢或照片较大，请检查网络后重试',

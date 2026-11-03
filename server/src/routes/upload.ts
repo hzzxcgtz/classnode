@@ -1,6 +1,7 @@
 import { ATTACHMENT_URL, classroomUploadRelative, ensureAttachmentDirectory } from '../services/upload-paths.js';
 import { Router } from 'express';
 import multer from 'multer';
+import sharp from 'sharp';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -276,25 +277,35 @@ router.get('/image-orientation', requireActiveStudentUpload, (req, res) => { voi
 router.post('/image-orientation', requireActiveStudentUpload, (req, res) => { void imageOrientationRequest(req, res, true); });
 
 // 学习单题干与选择题选项配图：单独校验图片真实内容，不能沿用聊天附件的文档格式。
-router.post('/worksheet-image', requireActiveStudentUpload, upload.single('file'), (req, res) => {
+router.post('/worksheet-image', requireActiveStudentUpload, upload.single('file'), async (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: '未选择图片' });
+  let target: string | undefined;
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: '未选择图片' });
-    }
-    const content = fs.readFileSync(req.file.path);
+    const content = await fs.promises.readFile(file.path);
     const kind = detectSafeImage(content);
-    if (!kind) {
-      fs.rmSync(req.file.path, { force: true });
-      return res.status(400).json({ error: '题目配图仅支持有效的 JPEG、PNG 或 WebP 图片' });
+    if (!kind) return res.status(400).json({ error: '题目配图仅支持有效的 JPEG、PNG 或 WebP 图片' });
+
+    const encodeWebp = req.body?.encodeWebp === '1';
+    const extension = encodeWebp ? 'webp' : kind;
+    target = path.join(path.dirname(file.path), `chat-${crypto.randomUUID()}.${extension}`);
+    let size = file.size;
+    if (encodeWebp) {
+      const encoded = await sharp(content, { limitInputPixels: 40_000_000 })
+        .autoOrient().webp({ quality: 70 }).toBuffer();
+      await fs.promises.writeFile(target, encoded, { flag: 'wx' });
+      size = encoded.length;
+    } else {
+      await fs.promises.rename(file.path, target);
     }
-    const safeName = `chat-${crypto.randomUUID()}.${kind}`;
-    const target = path.join(path.dirname(req.file.path), safeName);
-    fs.renameSync(req.file.path, target);
     const url = '/uploads/' + path.relative(uploadsBase, target).split(path.sep).join('/');
     rememberImageOwner(req, url);
-    res.json({ success: true, url, name: req.file.originalname, size: req.file.size });
+    return res.json({ success: true, url, name: file.originalname, size });
   } catch {
-    res.status(500).json({ error: '题目配图上传失败' });
+    if (target) await fs.promises.rm(target, { force: true }).catch(() => {});
+    return res.status(500).json({ error: '照片保存失败，请重试' });
+  } finally {
+    await fs.promises.rm(file.path, { force: true }).catch(() => {});
   }
 });
 

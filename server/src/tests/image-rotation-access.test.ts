@@ -63,6 +63,18 @@ test('rotation authorizes only teachers and active owners; saves immediately wit
     assert.equal(scopedRotate.status,200);
     const scopedMeta=await sharp(await fs.readFile(scopedFile)).metadata();
     assert.equal(scopedMeta.width,40);assert.equal(scopedMeta.height,80);
+    const fallback = new FormData();
+    fallback.append('file', new Blob([original], {type: 'image/png'}), 'crop.png');
+    fallback.append('encodeWebp', '1');
+    const converted = await fetch(base+'/api/upload/worksheet-image', {
+      method: 'POST', headers: {Authorization: `Bearer ${token}`}, body: fallback,
+    });
+    assert.equal(converted.status, 200);
+    const crop = await converted.json() as {url: string; size: number};
+    assert.match(crop.url, /\.webp$/);
+    const cropBytes = await fs.readFile(path.join(directory, crop.url.slice(1)));
+    assert.deepEqual(cropBytes, await sharp(original).autoOrient().webp({quality: 70}).toBuffer());
+    assert.equal(crop.size, cropBytes.length);
     const chatForm=new FormData();chatForm.append('file',new Blob([original],{type:'image/png'}),'chat.png');
     const chatUpload=await fetch(base+'/api/upload/',{method:'POST',headers:{Authorization:`Bearer ${token}`},body:chatForm});
     assert.equal(chatUpload.status,200);

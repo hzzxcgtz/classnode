@@ -973,6 +973,13 @@ router.post('/:id/sync-groups', async (req, res) => {
         }
       }
 
+      const sourceIds = new Set(sourceGroups.map(group => group.id));
+      for (const group of classroom.groups) {
+        if (!group.sourceClassGroupId || sourceIds.has(group.sourceClassGroupId)) continue;
+        const removed = await tx.classroomGroupMember.deleteMany({ where: { groupId: group.id } });
+        if (removed.count) updatedGroups++;
+      }
+
       if ((addedGroups || updatedGroups) && classroom.groupLoginMode === 'member') await provisionGroupMembers(tx, classroom.id);
       return { addedGroups, updatedGroups, sourceGroupCount: sourceGroups.length };
     });
@@ -1187,6 +1194,30 @@ router.get('/code/:code', async (req, res) => {
     // 共用同一个解析口径 —— 五条路径的形状必须逐字一致。
     const groupMaterialViews = await resolveGroupMaterialViews(prisma, classroom.groups);
 
+    const classroomCompanions = classroom.classroomAgents.filter(row => studentAgentView(row) !== null);
+    const classroomPrimary = classroomCompanions[0]?.agent;
+    const classroomPool = classroomCompanions.filter(({ agent }) => agent.platform === 'coze' && agent.credentialId);
+    const classroomCompanionAvailable = classroomPrimary?.platform === 'coze' && classroomPrimary.credentialId && classroomPool.length > 1
+      ? classroomPool.some(({ agent }) => agent.enabled)
+      : undefined;
+    const poolGroups = classroom.mode === 'advanced'
+      ? classroom.groups.filter(group => group.materials?.some(material => material.kind === 'agent-2' || material.kind === 'agent-3'))
+      : [];
+    const poolAgentIds = [...new Set(poolGroups.flatMap(group => group.materials
+      .filter(material => ['agent', 'agent-2', 'agent-3'].includes(material.kind))
+      .map(material => material.targetId)))];
+    const poolAgents = poolAgentIds.length ? await prisma.agent.findMany({
+      where: { id: { in: poolAgentIds }, platform: 'coze', purpose: 'tutoring', credentialId: { not: null } },
+      select: { id: true, enabled: true },
+    }) : [];
+    const availablePoolByGroup = new Map(poolGroups.flatMap(group => {
+      const primary = groupMaterialViews.get(group.id)?.agent;
+      if (!poolAgents.some(agent => agent.id === primary?.id)) return [];
+      const candidates = poolAgents.filter(agent => group.materials.some(material =>
+        ['agent', 'agent-2', 'agent-3'].includes(material.kind) && material.targetId === agent.id));
+      return [[group.id, candidates.some(agent => agent.enabled)] as const];
+    }));
+
     res.json({
       id: classroom.id,
       code: classroom.code,
@@ -1216,6 +1247,7 @@ router.get('/code/:code', async (req, res) => {
       // ★ M7b：**学生绝不可见分析型**（一个「会收到全班作业」的 bot 不该出现在小学生的
       // 聊天列表里）。走共用助手 —— 「首屏」与「socket 的 joined」两处必须是同一把尺子
       // （`socket/index.ts` 那条注释逐字要求两者逐字一致）。
+      companionAvailable: classroomCompanionAvailable,
       agents: classroom.classroomAgents
         .map((ca) => studentAgentView(ca))
         .filter((view): view is NonNullable<typeof view> => view !== null),
@@ -1231,6 +1263,7 @@ router.get('/code/:code', async (req, res) => {
               //    （Map 里本该每个组都有一条），逐字段判空更直白。三个字段一个都不能少 ——
               //    学生端按「有没有这个键」区分「未配置」与「这一版服务端还没这个功能」。
               agent: view?.agent ?? null,
+              ...(availablePoolByGroup.has(group.id) ? { companionAvailable: availablePoolByGroup.get(group.id) } : {}),
               webapp: view?.webapp ?? null,
               worksheet: view?.worksheet ?? null,
             };

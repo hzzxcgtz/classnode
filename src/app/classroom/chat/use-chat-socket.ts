@@ -1,6 +1,6 @@
 import { publishImageOrientationUpdated } from '@/components/use-image-rotation';
 import { mergeMaterialSnapshot } from '@/lib/classroom-material-snapshot';
-import { effectiveGroupAgent } from '@/lib/classroom-material';
+import { isClassroomCompanionDisabled } from '@/lib/classroom-material';
 import { useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Socket } from 'socket.io-client';
@@ -189,16 +189,6 @@ export function useChatSocket(options: ChatSocketOptions) {
         optionsRef.current.setSelectedStudent(null);
         optionsRef.current.setMessages([]);
         optionsRef.current.setStep('identity');
-      });
-
-      socket.on('agent-disabled', () => {
-        optionsRef.current.sendingRef.current = false;
-        optionsRef.current.setWaitingAI(false);
-        optionsRef.current.setAgentDisabled(true);
-      });
-
-      socket.on('agent-enabled', () => {
-        optionsRef.current.setAgentDisabled(false);
       });
 
       socket.on('classroom-ended', () => {
@@ -446,16 +436,28 @@ export function useChatSocket(options: ChatSocketOptions) {
       //      却丢掉，是该窗口唯一的缺口）。两条兜底都只合并 modules。
       // 设计 §4.4 要求实时，这条不能省。
       // 载荷是线缆上的值，先过类型守卫 —— 连 null / undefined 都会走到这里，所以不能直接解构。
-      socket.on('classroom-materials-changed', () => {
+      const refreshMaterials = () => {
         api.getClassroomByCode(joinCode).then(cr => {
           if (generation !== optionsRef.current.chatConnectionGenerationRef.current) return;
           const current = optionsRef.current.classroom;
           if (current && (cr.materialsRevision ?? 0) < (current.materialsRevision ?? 0)) return;
           optionsRef.current.setClassroom(prev => mergeMaterialSnapshot(prev, cr));
-          optionsRef.current.setAgentDisabled(effectiveGroupAgent(cr, { groupId: optionsRef.current.selectedStudent?.groupId })?.enabled === false);
+          optionsRef.current.setAgentDisabled(isClassroomCompanionDisabled(cr, optionsRef.current.selectedStudent));
 
         }).catch(() => { /* 15 秒轮询会重试 */ });
+      };
+      socket.on('classroom-materials-changed', refreshMaterials);
+      socket.on('agent-disabled', (data?: { classroomId?: string }) => {
+        if (data?.classroomId) {
+          refreshMaterials();
+          return;
+        }
+        // A direct response ends this request. A classroom broadcast does not.
+        optionsRef.current.sendingRef.current = false;
+        optionsRef.current.setWaitingAI(false);
+        optionsRef.current.setToast({ msg: '你的智能学伴暂时停用了，请联系老师。', type: 'info' });
       });
+      socket.on('agent-enabled', refreshMaterials);
 
       socket.on('module-state-changed', (data: ModuleStateEvent) => {
         const { moduleKey, state } = data ?? {};

@@ -457,7 +457,7 @@ router.put('/:id', upload.single('logo'), secureLogoUpload, async (req, res) => 
       // 只会让「高级模式下只经组级材料关联的课堂」收不到启停通知 ⇒ 学生继续对着一个
       // 教师以为已经停用的智能体说话。
       const groupMaterials = await prisma.classroomGroupMaterial.findMany({
-        where: { kind: 'agent', targetId: agent.id },
+        where: { kind: { in: ['agent', 'agent-2', 'agent-3'] }, targetId: agent.id },
         include: { group: { select: { classroom: { select: { id: true, status: true } } } } },
       });
       groupMaterials.forEach(m => { if (m.group.classroom.status !== 'ended') allClassroomIds.add(m.group.classroom.id); });

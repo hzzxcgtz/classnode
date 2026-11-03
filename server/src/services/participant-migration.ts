@@ -168,8 +168,12 @@ export async function provisionGroupMembers(tx: Prisma.TransactionClient, classr
     where: { classroomId, studentId: { not: null } },
     select: { studentId: true, groupId: true },
   });
+  const studentIds = [...new Set(members.flatMap(member => member.studentId ?? []))];
+  if (!studentIds.length) return;
+  const students = await tx.student.findMany({ where: { id: { in: studentIds } }, select: { id: true } });
+  const existingStudentIds = new Set(students.map(student => student.id));
   for (const { studentId, groupId } of members) {
-    if (!studentId) continue;
+    if (!studentId || !existingStudentIds.has(studentId)) continue;
     const participant = await tx.classroomStudent.upsert({
       where: { classroomId_studentId: { classroomId, studentId } },
       create: { classroomId, studentId, groupId, type: 'student' },

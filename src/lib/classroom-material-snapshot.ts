@@ -5,8 +5,9 @@ export function mergeMaterialSnapshot(current: StudentClassroom | null, fresh: S
   if (!current || current.id !== fresh.id) return current;
   if ((fresh.materialsRevision ?? 0) < (current.materialsRevision ?? 0)) return current;
   if ((fresh.materialsRevision ?? 0) === (current.materialsRevision ?? 0)
+    && current.companionAvailable === fresh.companionAvailable
     && current.title === fresh.title
     && JSON.stringify([current.agents, current.webapps, current.groups]) === JSON.stringify([fresh.agents, fresh.webapps, fresh.groups])) return current;
   return { ...current, title: fresh.title, agents: fresh.agents, webapps: fresh.webapps,
-    groups: fresh.groups, materialsRevision: fresh.materialsRevision };
+    groups: fresh.groups, companionAvailable: fresh.companionAvailable, materialsRevision: fresh.materialsRevision };
 }

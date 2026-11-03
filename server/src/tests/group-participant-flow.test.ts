@@ -4,7 +4,7 @@ import test from 'node:test';
 import express from 'express';
 import classroomRoutes from '../routes/classroom.js';
 import { verifyStudentToken } from '../middleware/student-auth.js';
-import { migrateClassroomParticipants } from '../services/participant-migration.js';
+import { migrateClassroomParticipants, provisionGroupMembers } from '../services/participant-migration.js';
 
 test('participant migration still converts legacy virtual groups after db push changed the table shape', async () => {
   const executed: string[] = [];
@@ -111,7 +111,7 @@ test('group classroom exposes a group participant without a virtual Student', as
   }
 });
 
-test('syncing an active group classroom refreshes rosters and creates newly added groups', async (t) => {
+test('syncing an active group classroom refreshes rosters and clears removed group snapshots', async (t) => {
   const deletedSnapshots: string[] = [];
   const createdSnapshots: Array<{ groupId: string; studentId: string }> = [];
   const tx = {
@@ -120,7 +120,10 @@ test('syncing an active group classroom refreshes rosters and creates newly adde
         id: 'classroom-1', mode: 'group', status: 'active',
         classes: [{ classId: 'class-1' }],
         classroomAgents: [{ agentId: 'agent-default' }],
-        groups: [{ id: 'classroom-group-old', name: '旧组名', agentId: 'agent-default', sourceClassGroupId: 'source-1' }],
+        groups: [
+          { id: 'classroom-group-old', name: '旧组名', sourceClassGroupId: 'source-1' },
+          { id: 'classroom-group-removed', name: '已删除', sourceClassGroupId: 'source-removed' },
+        ],
       }),
     },
     classGroup: {
@@ -141,7 +144,7 @@ test('syncing an active group classroom refreshes rosters and creates newly adde
     classroomStudent: { create: async () => ({ id: 'participant-new' }) },
     interaction: { create: async () => ({}) },
     classroomGroupMember: {
-      deleteMany: async ({ where }: { where: { groupId: string } }) => { deletedSnapshots.push(where.groupId); },
+      deleteMany: async ({ where }: { where: { groupId: string } }) => { deletedSnapshots.push(where.groupId); return { count: 1 }; },
       createMany: async ({ data }: { data: Array<{ groupId: string; studentId: string }> }) => { createdSnapshots.push(...data); },
     },
   };
@@ -158,10 +161,27 @@ test('syncing an active group classroom refreshes rosters and creates newly adde
 
   const response = await fetch(`http://127.0.0.1:${address.port}/classroom-1/sync-groups`, { method: 'POST' });
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { success: true, addedGroups: 1, updatedGroups: 1, sourceGroupCount: 2 });
-  assert.deepEqual(deletedSnapshots, ['classroom-group-old', 'classroom-group-new']);
+  assert.deepEqual(await response.json(), { success: true, addedGroups: 1, updatedGroups: 2, sourceGroupCount: 2 });
+  assert.deepEqual(deletedSnapshots, ['classroom-group-old', 'classroom-group-new', 'classroom-group-removed']);
   assert.deepEqual(createdSnapshots.map(({ groupId, studentId }) => ({ groupId, studentId })), [
     { groupId: 'classroom-group-old', studentId: 'student-1' },
     { groupId: 'classroom-group-new', studentId: 'student-2' },
   ]);
+});
+
+test('provisioning skips snapshots for deleted students', async () => {
+  const provisioned: string[] = [];
+  await provisionGroupMembers({
+    classroomGroupMember: { findMany: async () => [
+      { studentId: 'deleted', groupId: 'old' },
+      { studentId: 'present', groupId: 'current' },
+    ] },
+    student: { findMany: async () => [{ id: 'present' }] },
+    classroomStudent: { upsert: async ({ create }: { create: { studentId: string } }) => {
+      provisioned.push(create.studentId);
+      return { id: 'participant' };
+    } },
+    interaction: { upsert: async () => ({}) },
+  } as never, 'classroom');
+  assert.deepEqual(provisioned, ['present']);
 });

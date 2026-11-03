@@ -31,6 +31,7 @@ interface GroupMaterials {
   /** 高级模式下卡片 / 弹窗要按组说明「这一份是谁的」，所以组名要读得到。 */
   name?: string | null;
   agent?: AgentSummary | null;
+  companionAvailable?: boolean;
   webapp?: ClassroomWebappSummary | null;
   /** 该组的学习单（`resolveGroupMaterialViews` 下发；高级模式下「本组没配」是 `null`）。 */
   worksheet?: WorksheetMaterialSummary | null;
@@ -48,6 +49,7 @@ interface GroupMaterials {
  * `classroomAgents`（不是 `agents`）—— 调用方拼一下即可，`classroomMaterialsInUse` 只认这里的名字。
  */
 interface ClassroomMaterials {
+  companionAvailable?: boolean;
   mode?: string;
   groups?: GroupMaterials[];
   agents?: AgentSummary[];
@@ -88,6 +90,16 @@ export function effectiveGroupAgent(
   if (!classroom) return null;
   if (classroom.mode === 'advanced') return ownGroup(classroom, selectedStudent)?.agent ?? null;
   return classroom.agents?.[0] ?? null;
+}
+
+export function isClassroomCompanionDisabled(
+  classroom: ClassroomMaterials | null | undefined,
+  student: { groupId?: string | null } | null | undefined,
+): boolean {
+  const available = classroom?.mode === 'advanced'
+    ? ownGroup(classroom, student)?.companionAvailable
+    : classroom?.companionAvailable;
+  return available === undefined ? effectiveGroupAgent(classroom, student)?.enabled === false : !available;
 }
 
 /**

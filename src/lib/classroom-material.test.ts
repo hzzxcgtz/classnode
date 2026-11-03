@@ -21,7 +21,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { classroomMaterialsInUse, effectiveGroupAgent, effectiveGroupWebapp, effectiveGroupWorksheet, visibleModules } from './classroom-material.ts';
+import { classroomMaterialsInUse, effectiveGroupAgent, effectiveGroupWebapp, effectiveGroupWorksheet, isClassroomCompanionDisabled, visibleModules } from './classroom-material.ts';
 import type { AgentSummary, ClassroomModuleSetting, ClassroomWebappSummary, WorksheetMaterialSummary } from './types';
 
 /** 只填本测试读到的字段；其余字段的存在与否与本函数无关（服务端下发的组材料也只是子集）。 */
@@ -430,4 +430,20 @@ test('`modules` 缺字段 / 数组里没有那一项 ⇒ 用 `moduleStateOf` 的
 
 test('`classroom` 为 null ⇒ 一个都不出现，也不抛错', () => {
   assert.deepEqual(visibleModules(null, null), []);
+});
+
+test('学伴可用性按当前课堂或小组的候选池判断', () => {
+  const primary = agent('primary', '主学伴', false);
+  const classroom = {
+    mode: 'advanced',
+    groups: [
+      { id: 'a', agent: primary, companionAvailable: true },
+      { id: 'b', agent: primary, companionAvailable: false },
+      { id: 'legacy', agent: primary },
+    ],
+  };
+  assert.equal(isClassroomCompanionDisabled(classroom, { groupId: 'a' }), false);
+  assert.equal(isClassroomCompanionDisabled(classroom, { groupId: 'b' }), true);
+  assert.equal(isClassroomCompanionDisabled(classroom, { groupId: 'legacy' }), true);
+  assert.equal(isClassroomCompanionDisabled({ agents: [primary], companionAvailable: true }, null), false);
 });

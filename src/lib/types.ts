@@ -1062,6 +1062,7 @@ export interface ActiveClassroom extends Omit<ClassroomSummary, 'groups' | 'stud
 
 export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'students'> {
   groupLoginMode?: 'group' | 'member';
+  companionAvailable?: boolean;
   agents: AgentSummary[];
   worksheets?: WorksheetMaterialSummary[];
   /**
@@ -1086,6 +1087,7 @@ export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'stu
    */
   groups?: Array<ClassroomCardGroup & {
     agent: AgentSummary | null;
+    companionAvailable?: boolean;
     webapp: ClassroomWebappSummary | null;
     worksheet?: WorksheetMaterialSummary | null;
   }>;

@@ -4,7 +4,7 @@ import type { Socket } from 'socket.io-client';
 import { api, setStudentSessionToken } from '@/lib/api';
 import type { AvatarSummary, ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
 import type { WebappDemand } from '@/lib/socket-events';
-import { effectiveGroupAgent } from '@/lib/classroom-material';
+import { effectiveGroupAgent, isClassroomCompanionDisabled } from '@/lib/classroom-material';
 import { API_BASE_URL, fixSvgUrl } from './avatar-utils';
 import type { ChatToast, StudentChatMessage, TeacherMessage } from './classroom-types';
 import { useStudentSession } from './identity/use-student-session';
@@ -150,10 +150,10 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
           const myStudent = sts.find(student => student.id === sessionStudentId ||
             student.groupMembers?.some(member => member.participantId === sessionStudentId));
           if (myStudent?.id === sessionStudentId && cr.groupLoginMode !== 'member') setSelectedStudent(myStudent);
-          if (effectiveGroupAgent(cr, myStudent)?.enabled === false) setAgentDisabled(true);
+          if (isClassroomCompanionDisabled(cr, myStudent)) setAgentDisabled(true);
         } catch {}
       } else {
-        if (effectiveGroupAgent(cr, null)?.enabled === false) setAgentDisabled(true);
+        if (isClassroomCompanionDisabled(cr, null)) setAgentDisabled(true);
       }
       return cr;
     } catch (error: unknown) {
@@ -434,7 +434,7 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
         // ⚠️ 轮询这一路**两个方向都会写**（停用后又被启用要能恢复），与 `loadClassroom` 那条
         // 「只置位、不清除」不同 —— 这里靠下面的陈旧守卫防止用旧快照把新值写回去。
         setClassroom(prev => mergeMaterialSnapshot(prev, cr));
-        const freshAgentDisabled = effectiveGroupAgent(cr, { groupId })?.enabled === false;
+        const freshAgentDisabled = isClassroomCompanionDisabled(cr, { groupId });
         if ((cr.materialsRevision ?? 0) >= (materialClassroomRef.current?.materialsRevision ?? 0)) {
           setAgentDisabled((prev) => (prev === flagsAtRequest.agentDisabled ? freshAgentDisabled : prev));
         }

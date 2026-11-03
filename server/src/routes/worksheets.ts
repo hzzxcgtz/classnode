@@ -1,4 +1,4 @@
-import { cozeTokenLoad, runCozeFileRequest, trackCozeRequest } from '../services/ai-file-queue.js';
+import { cozeTokenLoad, runCozeFileRequest, runFileRequest, trackCozeRequest } from '../services/ai-file-queue.js';
 import { otherBlankContext, ReviewSummaryConflict, summaryBasis, summaryRecord, summaryBatches, reviewSummaryPrompt, type SummaryRecord } from '../services/review-summary.js';
 import { isDeepStrictEqual } from 'node:util';
 import { extractReviewEvidence } from '../services/review-evidence.js';
@@ -2847,12 +2847,14 @@ async function evaluateIndividualReview(req: Request, reviewId: string) {
     const node = snapshot.node;
     const agentIds = [snapshot.agentId, ...(snapshot.additionalReviewAgentIds ?? [])];
     const agents = await prisma.agent.findMany({
-      where: { id: { in: agentIds }, enabled: true, purpose: 'analysis', platform: 'coze' },
+      where: { id: { in: agentIds }, enabled: true, purpose: 'analysis', OR: [{ id: snapshot.agentId }, { platform: 'coze' }] },
       include: { credential: { select: { token: true } } },
     });
     if (!agents.length) throw new Error('分析智能体不存在或已停用，请联系老师');
     const configs = new Map<string, ReturnType<typeof toAgentConfig>>();
-    for (const id of agentIds) {
+    const primary = agents.find(agent => agent.id === snapshot.agentId);
+    const eligibleIds = primary && primary.platform !== 'coze' ? [primary.id] : agentIds;
+    for (const id of eligibleIds) {
       const agent = agents.find(candidate => candidate.id === id);
       if (!agent) continue;
       const config = toAgentConfig(agent, agent.credential);
@@ -2893,9 +2895,15 @@ async function evaluateIndividualReview(req: Request, reviewId: string) {
     const ordered = [...candidates.slice(offset), ...candidates.slice(0, offset)].map(config => config.apiKey);
     const textToken = ordered.reduce((best, candidate) =>
       cozeTokenLoad(candidate) < cozeTokenLoad(best) ? candidate : best);
-    const result = needsUpload
-      ? await runCozeFileRequest(ordered, send)
-      : await trackCozeRequest(textToken, () => send(textToken));
+    let result;
+    if (candidates[0].platform !== 'coze') {
+      const sendPrimary = () => send(candidates[0].apiKey);
+      result = needsUpload ? await runFileRequest(sendPrimary) : await sendPrimary();
+    } else {
+      result = needsUpload
+        ? await runCozeFileRequest(ordered, send)
+        : await trackCozeRequest(textToken, () => send(textToken));
+    }
     if (!result) return;
     if (!result.success) throw new Error(result.error ?? 'AI 评价失败，请重试');
     const evidenceResult = extractReviewEvidence(result.content ?? '', payload.entries);

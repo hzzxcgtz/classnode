@@ -1309,8 +1309,8 @@ router.get('/:id/students', limitPublicCodeRequests, async (req, res) => {
       participantType: cs.type,
       studentId: cs.studentId,
       name: cs.type === 'group' ? (cs.group?.name || '未命名小组') : (cs.student?.name || '未知学生'),
-      // 学生端只需姓名和头像完成极简身份选择；学号、性别仅提供给教师端。
-      studentNo: isTeacher ? (cs.student?.studentNo || null) : null,
+      // 学生端用学号辅助确认身份，性别仅提供给教师端。
+      studentNo: cs.student?.studentNo || null,
       gender: isTeacher ? (cs.student?.gender || null) : null,
       avatarId: cs.student?.avatarId || null,
       groupId: cs.groupId,

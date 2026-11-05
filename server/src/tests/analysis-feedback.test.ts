@@ -55,3 +55,34 @@ test('裸 JSON 名单区兼容解析，机器数据不进入正文', () => {
   assert.deepEqual(parsed.feedback.groups, [{id:'g1',studentIds:['b']}]);
   assert.equal(parsed.narrative, '核心结论\n正文\n\n<classnode-scores>{"scores":[]}</classnode-scores>');
 });
+
+test('班级词云按已核对的作答名单计数，并能随分析结果读回', () => {
+  const output = raw({ wordCloud: [
+    { phrase: '想多玩跳绳', students: ['张伟#1', '张伟#2', '张伟#2'] },
+    { phrase: '担心操场太挤', students: ['张伟#2'] },
+    { phrase: '喜欢画画', students: ['张伟#3'] },
+    { phrase: '会', students: ['张伟#1'] },
+  ] });
+  assert.equal(parseAnalysisFeedback(output, entries).feedback.wordCloud, undefined);
+  const { feedback, narrative } = parseAnalysisFeedback(output, entries, true);
+  assert.doesNotMatch(narrative, /wordCloud/);
+  assert.deepEqual(feedback.wordCloud, [
+    { phrase: '想多玩跳绳', studentIds: ['a', 'b'] },
+    { phrase: '担心操场太挤', studentIds: ['b'] },
+  ]);
+  const stored = mergeAnalysisFeedback(null, feedback, ['a', 'b'], false);
+  assert.deepEqual(readAnalysisFeedback({ analysisFeedback: stored }, ['a', 'b'])?.wordCloud, feedback.wordCloud);
+  const supplement = parseAnalysisFeedback(raw({}), entries).feedback;
+  assert.deepEqual(mergeAnalysisFeedback(stored, supplement, ['a', 'b'], true).wordCloud, feedback.wordCloud);
+});
+
+test('独立返回的词云 JSON 可与反馈块共存，也能从已保存正文中恢复', () => {
+  const cloud = '{"wordCloud":[{"phrase":"设置安静休息角","students":["张伟#2"]}]}';
+  const expected = [{ phrase: '设置安静休息角', studentIds: ['b'] }];
+  const report = raw({ groups: [{ id: 'g1', students: ['张伟#1'] }] });
+  const parsed = parseAnalysisFeedback(report + '\n```json\n' + cloud + '\n```', entries, true);
+  assert.deepEqual(parsed.feedback.wordCloud, expected);
+  assert.deepEqual(parsed.feedback.groups, [{ id: 'g1', studentIds: ['a'] }]);
+  assert.doesNotMatch(parsed.narrative, /wordCloud|```/);
+  assert.deepEqual(parseAnalysisFeedback(parsed.narrative + '\n' + cloud, entries, true).feedback.wordCloud, expected);
+});

@@ -15,6 +15,7 @@ import { BlankDistribution, OrderDistribution } from './question-type-distributi
 import { QuestionContentPreview, QuestionTypeBadge } from './question-content-preview';
 import { OptionDistribution } from './question-option-distribution';
 import { useWorksheetAnalysis } from './analysis-panel';
+import { CollectionResults, isCollectionQuestion } from './collection-results';
 import { QuestionAnalysisSection } from './question-analysis-section';
 
 /**
@@ -149,10 +150,11 @@ function Section({ title, children, note }: { title: React.ReactNode; children: 
 }
 
 export function QuestionStatsOverlay({
-  classroomId, mode, board, worksheetId, questionId, nodesByWorksheet, onClose, onOpenStudent, expandAnalysis = false, embedded = false,
+  classroomId, mode, memberLogin, board, worksheetId, questionId, nodesByWorksheet, onClose, onOpenStudent, expandAnalysis = false, embedded = false,
 }: {
   /** 课堂 mode —— 只在量词上用（分组 / 高级模式下「人」要写成「组」），与旁边两屏同源。 */
   mode: string;
+  memberLogin?: boolean;
   classroomId: string;
   board: WorksheetBoard | null;
   worksheetId: string;
@@ -169,14 +171,16 @@ export function QuestionStatsOverlay({
   const nodes = nodesByWorksheet[worksheetId] ?? null;
   const node = nodes ? indexQuestions(nodes).byId.get(questionId) ?? null : null;
   const heading = nodes ? indexQuestions(nodes).headingOf(questionId) : null;
-  const analysisState = useWorksheetAnalysis(classroomId, worksheetId, questionId, mode, Boolean(node && showsAgentAnalysis(node)));
+  const collection = Boolean(node && isCollectionQuestion(node));
+  const analysisState = useWorksheetAnalysis(classroomId, worksheetId, questionId, mode,
+    Boolean(node && showsAgentAnalysis(node)), !collection);
   const subjective = Boolean(node && supportsAiScoring(node));
 
-  const stats = useMemo(() => {
+  const rows = useMemo(() => {
     if (!node || !worksheet) return null;
     // 🔴 每个参与者**占一格**（没作答的是 `undefined`）—— 分母是参与者数，
     // 把没作答的人过滤掉会让「已交 N/M」凭空满员（与 `questionAggregate` 同一条纪律）。
-    const rows: Array<StatsRow | undefined> = worksheet.participants.map((participant) => {
+    return worksheet.participants.map<StatsRow | undefined>((participant) => {
       const row = participant.answerRows.filter((item) => item.questionId === questionId)[0];
       if (!row) return undefined;
       return {
@@ -192,8 +196,8 @@ export function QuestionStatsOverlay({
         saveCount: row.saveCount,
       };
     });
-    return questionStats(node, rows);
   }, [node, worksheet, questionId, subjective, analysisState.payload]);
+  const stats = useMemo(() => node && rows ? questionStats(collection ? { ...node, autoGrade: false, data: { ...node.data, pairs: [], placement: {} } } : node, rows) : null, [node, rows, collection]);
   const scoring = analysisState.payload?.aiScoring;
   const validScores = scoring?.enabled
     ? (analysisState.payload?.perStudent?.scores ?? []).filter(item =>
@@ -204,7 +208,7 @@ export function QuestionStatsOverlay({
     ? Number((validScores.reduce((sum, item) => sum + item.score!, 0) / validScores.length).toFixed(1)) : null;
   const rewardUnit = scoring?.unit ?? '';
 
-  const unit = mode === 'group' || mode === 'advanced' ? '组' : '人';
+  const unit = !memberLogin && (mode === 'group' || mode === 'advanced') ? '组' : '人';
   const distribution = stats?.distribution ?? null;
 
   const panel = (
@@ -220,7 +224,10 @@ export function QuestionStatsOverlay({
             </div>
             {!embedded && <button type="button" onClick={onClose} className={styles.closeButton}>关闭</button>}
           </div>
-          {stats && (
+          {collection && node && <div className={styles.taskDescription}>
+            <QuestionContentPreview node={node} showType={false} />
+          </div>}
+          {stats && !collection && (
             // ★ 2026-09-28（教师：课堂展示、有听课老师）：页头改成**数字块 + 结论环**。
             // 数字块给精确值，环给「一眼抓住比例」—— 两者并列才算「丰富」。
             <div className={styles.summary}>
@@ -285,7 +292,12 @@ export function QuestionStatsOverlay({
         <div className={styles.body}>
           {!node && <div style={{ color: FAINT, fontSize: '0.813rem' }}>这项任务的内容还没加载到。</div>}
 
-          {stats && (
+          {collection && node && stats && rows && <CollectionResults key={`${worksheetId}:${questionId}`} node={node} stats={stats} unit={unit}
+            rows={rows} analysisState={analysisState} onOpenStudent={onOpenStudent} renderMatrix={(data) => data.kind === 'match'
+              ? <Matrix rowLabel="左栏" colLabel="右栏" rows={data.left} cols={data.right} cells={data.cells} />
+              : <Matrix rowLabel="条目" colLabel="框" rows={data.items} cols={data.zones} cells={data.cells} />} />}
+
+          {stats && !collection && (
             <>
 
               <div className={styles.insightGrid} data-subjective={node ? supportsAiScoring(node) : false}>

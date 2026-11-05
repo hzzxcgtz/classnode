@@ -59,7 +59,7 @@ export type QuestionDistribution =
   /** 填空（含表格）：逐空的高频答案。 */
   | { kind: 'blanks'; blanks: Array<{ label: string; bars: Bar[]; distinct: number }> }
   /** 排序：每一位有多少人排对 + 最常见的顺序。 */
-  | { kind: 'order'; positions: Array<{ index: number; hits: number }>; topOrders: Bar[] }
+  | { kind: 'order'; positions: Array<{ index: number; hits: number }>; topOrders: Array<Bar & { steps: string[] }> }
   /** 连线：左 × 右矩阵。 */
   | { kind: 'match'; left: WorksheetEntry[]; right: WorksheetEntry[]; cells: MatrixCell[] }
   /** 归类：条目 × 框矩阵。 */
@@ -304,12 +304,15 @@ function buildDistribution(
       draft.order.forEach((id, index) => {
         if (index < hits.length && id === correctOrder[index]) hits[index] += 1;
       });
-      bump(orders, draft.order.map((id) => textOf(items, id)).join(' → '));
+      bump(orders, JSON.stringify(draft.order.map((id) => textOf(items, id))));
     }
     return {
       kind: 'order',
       positions: hits.map((hit, index) => ({ index, hits: hit })),
-      topOrders: toBars(orders, 3),
+      topOrders: [...orders].map(([key, count]) => {
+        const steps: string[] = JSON.parse(key);
+        return { label: steps.join(' → '), count, steps };
+      }).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, 3),
     };
   }
 

@@ -56,6 +56,7 @@ export function MatrixOverlay({
   classroomId,
   advancedMode,
   mode,
+  memberLogin,
   reviewBusy,
   onClose,
   onReview,
@@ -78,6 +79,7 @@ export function MatrixOverlay({
   /** ★ 只有高级模式才谈得上「有的组没配学习单」—— 下面那行提示按它收窄。 */
   advancedMode: boolean;
   mode: string;
+  memberLogin?: boolean;
   reviewBusy: string | null;
   onClose: () => void;
   onReview: (worksheetId: string, participantId: string, questionId: string) => void;
@@ -326,6 +328,7 @@ export function MatrixOverlay({
                   key={`${selectedQuestionTarget.worksheetId}:${selectedQuestionTarget.questionId}:${Boolean(analysisTarget)}:${analysisJumpCount}`}
                   classroomId={classroomId}
                   mode={mode}
+                  memberLogin={memberLogin}
                   board={board}
                   worksheetId={selectedQuestionTarget.worksheetId}
                   questionId={selectedQuestionTarget.questionId}

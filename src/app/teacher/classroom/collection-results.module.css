@@ -1,0 +1,289 @@
+.board, .projection {
+  color: #21384e;
+  overflow-wrap: anywhere;
+}
+
+.board {
+  border: 1px solid #cfdeeb;
+  border-radius: 14px;
+  background: #f3f8fc;
+}
+
+.boardContent { padding: clamp(12px, 2vw, 24px); }
+
+.projection {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  box-sizing: border-box;
+  padding: clamp(16px, 4vw, 56px);
+  margin: 0;
+  border: 0;
+  background: #edf4fa;
+  font-size: clamp(1rem, 1.6vw, 1.45rem);
+  overflow: auto;
+}
+
+.views {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.projectionActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.submission {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #e7eff6;
+  color: #45627d;
+  font-size: .82em;
+  white-space: nowrap;
+}
+
+.submission strong { font-variant-numeric: tabular-nums; }
+.projectionButton { display: inline-flex; align-items: center; gap: 6px; }
+.views { margin: 12px 0; }
+.views button { font-size: inherit; }
+
+.bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.distributionHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin: 16px 0 10px;
+}
+.distributionHeading h4, .distributionHeading p { margin: 0; }
+.distributionHeading p { color: #496783; font-size: .85em; }
+
+.bars { display: grid; gap: 10px; }
+.bars > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px 12px;
+  padding: 12px 14px;
+  border: 1px solid #d6e2ed;
+  border-radius: 10px;
+  background: #fff;
+}
+.barLabel { align-self: center; font-weight: 650; }
+.barValue {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  color: #496783;
+  font-size: .85em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.barValue strong { color: #234c76; font-size: 1.2em; }
+.orderSteps {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12em), 1fr));
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.orderSteps li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: #f2f6fa;
+}
+.orderSteps span {
+  min-width: 1.6em;
+  border-radius: 4px;
+  background: #e2edf7;
+  color: #234c76;
+  text-align: center;
+  font-weight: 700;
+}
+.track { grid-column: 1 / -1; height: 6px; background: #e5edf5; border-radius: 10px; overflow: hidden; }
+.track div { height: 100%; border-radius: inherit; background: #4273a0; }
+
+.cloudHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px 0 4px;
+}
+
+.boardContent[data-view="cloud"] { padding-top: 12px; }
+.boardContent > .cloudHeader:first-child { padding-top: 0; }
+
+.cloudTitle { display: flex; align-items: center; gap: 8px; margin: 0; color: #234c76; font-size: 1rem; font-weight: 700; }
+.cloudNote { margin: 2px 0; color: #496783; font-size: .85em; }
+
+.cloudControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cloudNotice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 6px;
+  padding: 11px 13px;
+  border: 1px solid #d8e5ef;
+  border-radius: 10px;
+  color: #45627d;
+  background: #f8fbfe;
+  font-size: .9em;
+}
+
+.cloudNotice svg { flex-shrink: 0; color: #537ba2; }
+
+.cloudControls button {
+  padding: 4px 10px;
+  font-size: .875rem;
+}
+
+.cloudControls button[aria-pressed="true"] {
+  background: #e4eef8;
+  color: #224e83;
+}
+
+.cloud {
+  position: relative;
+  overflow: hidden;
+  min-height: clamp(216px, 25vw, 300px);
+  border-radius: 14px;
+  background: radial-gradient(ellipse at center, #ffffffb3, transparent 76%);
+}
+
+.projection .cloud {
+  min-height: clamp(280px, 44vh, 480px);
+}
+
+.cloudChart {
+  position: absolute;
+  left: var(--cloud-pan-x, 0px);
+  top: var(--cloud-pan-y, 0px);
+  width: 100%;
+  height: 100%;
+}
+
+.cloud[data-cloud-pannable] { cursor: grab; }
+.cloud[data-cloud-dragging] { cursor: grabbing; user-select: none; }
+.cloud[data-cloud-dragging] .cloudChart { pointer-events: none; }
+
+.cloudChart[data-cloud-layout="pending"] {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cloudChart[data-cloud-layout="enter"] {
+    transform-origin: 50% 50%;
+    animation: cloud-expand 320ms cubic-bezier(.22, .61, .36, 1) backwards;
+  }
+}
+
+@keyframes cloud-expand {
+  from {
+    opacity: 0;
+    transform: translate(var(--cloud-enter-x), var(--cloud-enter-y)) scale(var(--cloud-enter-scale));
+  }
+  to { opacity: 1; transform: none; }
+}
+
+.cloudChart svg text {
+  cursor: pointer;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.cloudChart[data-cloud-focused]:not([data-cloud-hovered]) svg text[aria-pressed="false"],
+.cloudChart[data-cloud-hovered] svg text:not(:hover) {
+  opacity: .35;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cloudChart svg text { transition: opacity 180ms ease-out; }
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .cloudChart svg text[style*="--cloud-placement"] {
+    transform: var(--cloud-placement) scale(var(--cloud-hover, 1));
+    transition: transform 180ms ease-out, opacity 180ms ease-out;
+  }
+
+  .cloudChart svg text:hover {
+    --cloud-hover: 1.16;
+  }
+}
+
+.cloudFallback {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: center;
+  gap: 14px 28px;
+  min-height: inherit;
+  padding: 12px;
+  margin: 0;
+  list-style: none;
+  font-size: calc(1em * var(--cloud-font-scale, 1));
+  font-weight: 650;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+}
+
+.cards article {
+  min-width: 0;
+  padding: 16px;
+  background: white;
+  border: 1px solid #d6e2ed;
+  border-radius: 12px;
+}
+
+.cards h4 { margin: 0 0 10px; }
+.cards button { margin-top: 10px; }
+
+.projection .cloudHeader { padding-top: 0; }
+.projection .cloudTitle { font-size: 1.25em; }
+
+.fontControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  border-radius: 10px;
+  background: #e7eff6;
+}
+
+.fontControls output {
+  min-width: 3.5em;
+  text-align: center;
+  color: #45627d;
+  font-size: .8em;
+  font-variant-numeric: tabular-nums;
+}

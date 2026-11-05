@@ -1,6 +1,7 @@
 'use client';
 
 import { TeacherPendingText } from '@/components/teacher-pending-text';
+import { IconSparkles } from '@tabler/icons-react';
 import { useEffect, useRef } from 'react';
 import { AnalysisActions, AnalysisBanners, AnalysisBody, type WorksheetAnalysisState } from './analysis-panel';
 import styles from './question-stats-overlay.module.css';
@@ -35,10 +36,10 @@ export function QuestionAnalysisSection({ classroomId, worksheetId, questionId, 
     return () => window.cancelAnimationFrame(frame);
   }, [initiallyExpanded, state.loading]);
 
-  return <section ref={region} aria-label="当前任务 AI 分析">
+  return <section ref={region} aria-label="当前任务 AI 分析看板">
     <div className={styles.inlineAnalysis}>
     <header className={styles.analysisResultHeader}>
-      <span><strong className={styles.analysisHeading}>AI 分析</strong>{!state.busy && <TeacherPendingText active={false}>{status}</TeacherPendingText>}</span>
+      <div className={styles.analysisIdentity}><h3 className={styles.analysisResultTitle}><IconSparkles size={22} aria-hidden="true" />AI 分析看板</h3>{!state.busy && <TeacherPendingText active={false}>{status}</TeacherPendingText>}</div>
       <div className={styles.inlineAnalysisActions}><AnalysisActions state={state} compact /></div>
     </header>
       <AnalysisBanners state={state} />

@@ -58,14 +58,14 @@ function Empty() {
   return <span style={{ fontSize: '0.813rem', color: FAINT }}>未作答</span>;
 }
 
-export function AnswerViewBody({ node, value, transcription = true, transcriptionActions = true }: { node: WorksheetQuestionNode; value: unknown; transcription?: boolean; transcriptionActions?: boolean }) {
+export function AnswerViewBody({ node, value, transcription = true, transcriptionActions = true, neutral = false }: { node: WorksheetQuestionNode; value: unknown; transcription?: boolean; transcriptionActions?: boolean; neutral?: boolean }) {
   // ⚠️ **必须 memo**：`answerView` 每次调用都返回一个新对象，而下面有些渲染分支
   // 用它做 `useMemo`/依赖。不 memo 的话每次父组件重渲染都会产生一份新的呈现模型。
   const view = useMemo(() => answerView(node, value), [node, value]);
-  return <>{renderView(node, view, transcription, transcriptionActions)}</>;
+  return <>{renderView(node, view, transcription, transcriptionActions, neutral)}</>;
 }
 
-function renderView(node: WorksheetQuestionNode, view: AnswerView, transcription: boolean, transcriptionActions: boolean) {
+function renderView(node: WorksheetQuestionNode, view: AnswerView, transcription: boolean, transcriptionActions: boolean, neutral: boolean) {
   switch (view.kind) {
     case 'none':
       return <Empty />;
@@ -87,6 +87,9 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView, transcription
       return <AnswerPhoto url={view.url} />;
 
     case 'choice':
+      if (neutral) return <ul>{view.options.filter(option => option.picked).map(option => (
+        <li key={option.key}>{option.key}. <PromptText text={option.text} placeholder="" /></li>
+      ))}</ul>;
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {view.options.map((option) => (
@@ -228,8 +231,8 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView, transcription
                 <line key={`s${index}`} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2}
                   // ⚠️ 错的那几条**只靠虚线区分、不用第二种颜色**：颜色之外再给一个
                   // 不依赖色觉的信号（教师里可能有色觉障碍，而红绿是最不该独占的一组）。
-                  stroke={line.ok ? OK : BAD} strokeWidth={2}
-                  strokeDasharray={line.ok ? undefined : '4 4'} />
+                  stroke={neutral ? '#547a9e' : line.ok ? OK : BAD} strokeWidth={2}
+                  strokeDasharray={neutral || line.ok ? undefined : '4 4'} />
               ))}
             </svg>
           </div>
@@ -247,7 +250,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView, transcription
         </div>
         {/* 说明只在**真的需要**时出现（有线可看时才说线是什么）——
             每次都给一段图例是噪声，而教师一天要看几十遍这一屏。 */}
-        {(wrong > 0 || view.missed.length > 0) && (
+        {!neutral && (wrong > 0 || view.missed.length > 0) && (
           <div style={{ fontSize: "0.75rem", color: MUTED }}>
             {wrong > 0 && <span style={{ color: BAD }}>红色虚线是他连错的（{wrong} 条）</span>}
             {wrong > 0 && view.missed.length > 0 && ' · '}
@@ -276,7 +279,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView, transcription
                       // 「学生放对了没有」，两回事）。
                       // ⚠️ 这条注释只能用 `//`：这里是箭头函数的**表达式体**，
                       // `{/* … */}` 是 JSX **子元素**位置的语法，放这儿是语法错。
-                      <span key={index} style={chip(item.ok ? OK : BAD)}>
+                      <span key={index} style={chip(neutral ? '#547a9e' : item.ok ? OK : BAD)}>
                         <PromptText text={item.text} placeholder="" />
                       </span>
                     ))}

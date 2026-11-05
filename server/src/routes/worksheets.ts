@@ -51,6 +51,7 @@ import {
   POINTS_MAX,
   DEFAULT_POINTS,
   fillBlankWrongIndexes,
+  explicitFillGrading,
   flattenQuestions,
   grade,
   questionTextFor,
@@ -1101,7 +1102,7 @@ router.delete('/classroom/:classroomId/answers', worksheetMutation(async (req, r
         computedAt: new Date(), narrative: null, analyzedAt: null,
         perStudent: { ...metadata, scores, missing: Array.isArray(metadata.missing) ? metadata.missing.filter(id => id !== participantId) : [],
           analysisDurationMs: null,
-          ...(feedback ? { analysisFeedback: { ...feedback, students: feedback.students.filter(item => item.studentId !== participantId), groups: [], missing: feedback.missing.filter(id => id !== participantId) } } : {}),
+          ...(feedback ? { analysisFeedback: { ...feedback, students: feedback.students.filter(item => item.studentId !== participantId), groups: [], wordCloud: [], missing: feedback.missing.filter(id => id !== participantId) } } : {}),
         } as unknown as Prisma.InputJsonValue,
       } });
     }
@@ -1631,9 +1632,14 @@ async function payloadResponse(
   const analysisDurationMs = typeof storedMetadata.analysisDurationMs === 'number' && Number.isFinite(storedMetadata.analysisDurationMs) && storedMetadata.analysisDurationMs >= 0
     ? storedMetadata.analysisDurationMs : null;
   const storedFeedback = readAnalysisFeedback(analysis.perStudent, payload.entries.map(entry => entry.studentId));
-  const legacyFeedback = (!storedFeedback || storedFeedback.groups.length === 0) && analysis.narrative ? parseAnalysisFeedback(analysis.narrative, payload.entries).feedback : null;
-  let feedback = storedFeedback ? { ...storedFeedback, groups: storedFeedback.groups.length ? storedFeedback.groups : legacyFeedback?.groups ?? [] }
-    : legacyFeedback && (legacyFeedback.groups.length || legacyFeedback.students.length) ? legacyFeedback : null;
+  const legacyFeedback = analysis.narrative && (!storedFeedback?.groups.length || !storedFeedback.wordCloud?.length)
+    ? parseAnalysisFeedback(analysis.narrative, payload.entries, true).feedback : null;
+  const recoveredCloud = legacyFeedback?.wordCloud;
+  let feedback = storedFeedback ? {
+    ...storedFeedback,
+    groups: storedFeedback.groups.length ? storedFeedback.groups : legacyFeedback?.groups ?? [],
+    ...(!storedFeedback.wordCloud?.length && recoveredCloud?.length ? { wordCloud: recoveredCloud } : {}),
+  } : legacyFeedback && (legacyFeedback.groups.length || legacyFeedback.students.length || recoveredCloud?.length) ? legacyFeedback : null;
   if (feedback && latestReviews.size) {
     feedback = { ...feedback, students: feedback.students.map(row => {
       const latest = latestReviews.get(row.studentId);
@@ -1900,6 +1906,18 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const audioReport = !scoped && !!payload.audioAnswers?.length
       && entries.every(entry => entry.kind === 'audio');
     const mediaReport = photoReport || audioReport;
+    const fillGrading = ['fill-blank', 'choice-blank'].includes(target.node.type) ? explicitFillGrading(target.node.data) : [];
+    const collectionBlanks = fillGrading.length > 0 && fillGrading.every(slot => slot.gradingMode === 'none');
+    const textExpression = target.node.type === 'short-answer' || target.node.type === 'open-ended';
+    const collectionMode = hasEvaluation(target.node.data)
+      ? target.node.data.evaluationMode === 'collect'
+      : textExpression || target.node.autoGrade === false;
+    const textCollection = (textExpression || ['fill-blank', 'choice-blank'].includes(target.node.type))
+      && !individualReviewSettings(target.node).enabled
+      && !payload.aiScoring.enabled
+      && (collectionMode || collectionBlanks);
+    const includeWordCloud = !scoped && !mediaReport && textCollection
+      && entries.some(entry => entry.kind === 'text' && entry.text?.trim());
     // Current clients explicitly request summary-only. Preserve older unversioned request contracts until upgrade.
     if (!mediaReport && !scoped && individualReviewSettings(target.node).enabled && req.query.analysisOnly === 'true') {
       const collect = async (db: PrismaClient) => {
@@ -2045,7 +2063,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     operation.controller.signal.throwIfAborted();
     const signal = operation.controller.signal;
     const result = await (async () => {
-      if (!mediaReport) return proxy(agentConfig, buildAnalysisMessage(payload, labeled, scoped ? 'supplement' : 'class'), images, signal, payload.audioAnswers);
+      if (!mediaReport) return proxy(agentConfig, buildAnalysisMessage(payload, labeled, scoped ? 'supplement' : 'class', includeWordCloud), images, signal, payload.audioAnswers);
 
       const context = [payload.context, payload.prompt, payload.questionDetails, payload.referenceAnswer, payload.rubricText].filter(Boolean).join('\n');
       const additionalIds = worksheetReviewAgentIds(settings).slice(1);
@@ -2112,7 +2130,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     // ★ 2026-10-07：姓名只喂给**解析**这一侧（模型偶尔会只回姓名、丢掉 `#学号`）——
     //   不进载荷、不进 aggregate。名册用的就是上面构造载荷那一份，标签与姓名才是同一批人。
     const nameOfParticipant = new Map(participants.map((participant) => [participant.participantId, participant.name]));
-    const parsedFeedback = parseAnalysisFeedback(result.content ?? '', payload.entries);
+    const parsedFeedback = parseAnalysisFeedback(result.content ?? '', payload.entries, includeWordCloud);
     const parsed = parseAiAnalysisResult(
       result.content ?? '',
       mediaReport ? { ...payload.aiScoring, enabled: false } : payload.aiScoring,

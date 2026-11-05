@@ -79,6 +79,7 @@ export function useWorksheetAnalysis(
   questionId: string,
   mode: string,
   enabled = true,
+  poll = true,
 ): WorksheetAnalysisState {
   const { on } = useSocket();
   const [payload, setPayload] = useState<WorksheetAnalysisPayload | null>(null);
@@ -192,10 +193,10 @@ export function useWorksheetAnalysis(
     };
     const stopReview = on('worksheet-analysis-updated', data => { if (data.worksheetId === worksheetId) refresh(); });
     const stopAnswer = on('worksheet-answer-updated', data => { if (data.classroomId === classroomId && data.questionId === questionId) refresh(); });
-    const fallback = window.setInterval(refresh, 10000);
+    const fallback = poll ? window.setInterval(refresh, 10000) : undefined;
     window.addEventListener('focus', refresh);
     return () => { alive = false; clearTimeout(timer); clearInterval(fallback); stopReview(); stopAnswer(); window.removeEventListener('focus', refresh); };
-  }, [enabled, on, classroomId, worksheetId, questionId]);
+  }, [enabled, on, classroomId, worksheetId, questionId, poll]);
 
   const run = useCallback(async (only?: string[], regrade = false, incremental = false, analysisOnly = false) => {
     if (ownedRun.current) return;

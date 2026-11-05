@@ -51,6 +51,13 @@
   flex: 1;
 }
 
+.taskDescription {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e7edf3;
+  overflow-wrap: anywhere;
+}
+
 .eyebrow {
   margin-bottom: 3px;
   color: #71859a;
@@ -228,6 +235,8 @@
 
 
 .inlineAnalysis { margin-top: 12px; border-radius: 10px; background: #fff; overflow: hidden; }
+.analysisResultHeader[data-tone='feedback'] { background: #e6eff8; border-color: #ceddeb; border-inline-start-color: #5780ad; }
+.analysisResultHeader[data-tone='feedback'] .analysisResultTitle { color: #234c76; }
 .inlineAnalysisActions { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px 24px; border-top: 1px solid #e3ebf3; }
 
 .analysisSummary > span { min-width: 0; }
@@ -278,10 +287,11 @@
 .summaryFigures { display: flex; align-items: center; gap: 14px; padding: 12px 16px 17px; }
 .summaryStatus { position: absolute; bottom: 0; left: 0; right: 0; }
 .summaryLegend { padding: 0 16px 12px; }
-.analysisResultHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 14px 20px; border-bottom: 1px solid #e7edf3; }
-.analysisResultHeader > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
-.analysisResultHeader strong { color: #29465f; font-size: .85rem; }
-.analysisResultHeader span span { color: #718397; font-size: 0.75rem; }
+.analysisResultHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding: 12px 17px; border-bottom: 1px solid #e2dcec; border-inline-start: 3px solid #8874aa; border-radius: 10px 10px 0 0; background: #f1edf7; }
+.analysisIdentity { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; color: #655c73; font-size: .8rem; }
+.analysisResultTitle { display: flex; align-items: center; gap: 8px; margin: 0; color: #4f3b70; font-size: 1.2rem; font-weight: 750; }
+.analysisResultHeader[data-tone='feedback'] { background: #e6eff8; border-color: #ceddeb; border-inline-start-color: #5780ad; }
+.analysisResultHeader[data-tone='feedback'] .analysisResultTitle { color: #234c76; }
 .inlineAnalysisActions { border: 0; padding: 0; margin-left: auto; }
 
 .subjectiveLegend { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; padding: 0 16px 10px; color: #718397; font-size: 0.75rem; }

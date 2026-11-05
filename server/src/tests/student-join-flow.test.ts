@@ -96,9 +96,9 @@ test('student join flow exposes a minimal roster and issues a classroom-bound se
   const studentsResponse = await fetch(`${baseUrl}/classroom-1/students`);
   assert.equal(studentsResponse.status, 200);
   assert.deepEqual(await studentsResponse.json(), [
-    { id: 'membership-1', participantType: 'student', studentId: 'student-1', name: '小林', studentNo: null, gender: null, avatarId: 7, groupId: null, status: 'offline' },
-    { id: 'membership-2', participantType: 'student', studentId: 'student-2', name: '二号', studentNo: null, gender: null, avatarId: null, groupId: null, status: 'offline' },
-    { id: 'membership-10', participantType: 'student', studentId: 'student-10', name: '十号', studentNo: null, gender: null, avatarId: null, groupId: null, status: 'offline' },
+    { id: 'membership-1', participantType: 'student', studentId: 'student-1', name: '小林', studentNo: '1', gender: null, avatarId: 7, groupId: null, status: 'offline' },
+    { id: 'membership-2', participantType: 'student', studentId: 'student-2', name: '二号', studentNo: '2', gender: null, avatarId: null, groupId: null, status: 'offline' },
+    { id: 'membership-10', participantType: 'student', studentId: 'student-10', name: '十号', studentNo: '10', gender: null, avatarId: null, groupId: null, status: 'offline' },
   ]);
 
   const sessionResponse = await fetch(`${baseUrl}/code/1234/student-session`, {

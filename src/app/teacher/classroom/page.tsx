@@ -462,7 +462,7 @@ function SegmentedButton({ label, hint, selected, onSelect }: {
 }) {
   return (
     <button type="button" aria-pressed={selected} title={hint} onClick={onSelect}
-      style={{ minHeight: 30, padding: '5px 10px', border: `1px solid ${selected ? 'var(--primary)' : '#e2e8f0'}`, borderRadius: 8, background: selected ? '#f2f5f8' : 'white', color: selected ? 'var(--primary-dark)' : '#475569', cursor: 'pointer', fontSize: "0.875rem", fontWeight: selected ? 700 : 500, whiteSpace: 'nowrap' }}>
+      style={{ minHeight: 30, padding: '3px 8px', border: `1px solid ${selected ? 'var(--primary)' : '#e2e8f0'}`, borderRadius: 8, background: selected ? '#f2f5f8' : 'white', color: selected ? 'var(--primary-dark)' : '#475569', cursor: 'pointer', fontSize: "0.875rem", fontWeight: selected ? 700 : 500, whiteSpace: 'nowrap' }}>
       {label}
     </button>
   );
@@ -502,7 +502,7 @@ function ModuleCountChip({ label, value, unit, hint, muted = false, tone = 'defa
     <button type="button" aria-pressed={selected} title={hint} onClick={onSelect}
       style={{
         display: 'inline-flex', alignItems: 'baseline', gap: 5, whiteSpace: 'nowrap',
-        minHeight: 34, padding: '5px 11px', borderRadius: 8, cursor: 'pointer',
+        minHeight: 30, padding: '3px 8px', borderRadius: 8, cursor: 'pointer',
         border: `1px solid ${selected ? 'var(--primary)' : tone === 'attention' ? '#fecaca' : '#e2e8f0'}`,
         background: selected ? 'var(--primary)' : tone === 'attention' ? '#f8eeee' : 'white',
         color: selected ? 'white' : idleColor,
@@ -2582,7 +2582,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
 
       {/* 顶部区域（非全屏时显示） */}
       {!gridFullscreen && (<>
-      <div className="teacher-header">
+      <div className="teacher-header teacher-classroom-header">
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
           <button type="button" className="worksheet-editor-back" aria-label="返回教师首页" onClick={() => router.push('/teacher')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
@@ -2695,7 +2695,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       )}
       <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0 }}>
         <div ref={gridRef} style={{ flex: 1, overflow: 'auto' }}>
-          <div className="student-board-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div className="student-board-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
             <div>
               {/* ⊘ 2026-09-30（教师）：「这些字不要了」—— 原来这一行下面还有一句
                   「点击学生卡片查看完整对话，使用筛选快速定位课堂状态」。
@@ -2704,30 +2704,17 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               <h2 style={{ fontSize: "1.125rem", fontWeight: 700, margin: 0, color: '#0f172a' }}>学生互动面板</h2>
             </div>
             <div className="student-board-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              {/* ★ 2026-09-29（教师选「乙」）：这一行的控件由**判据表**驱动 ——
-                  「在不在 / 叫什么 / 禁不禁用 / 分到哪一组」全来自 `header-controls.ts`
-                  （25 条用例），这里只做两件本文件才有的事：把 id 接到 handler、配图标。
-                  ⚠️ 分组靠**位置 + 分隔线**，不靠颜色深浅 —— 这是投影给全班看的屏，
-                  把按钮改淡有真实的可发现性代价，而分组本身已经解决了「五种东西看着像一种」。
-                  ⚠️ `矩阵` 挪到了 `学习单` 旁边：两者是「按学习单看全班」的两面
-                  （一个按题看正确率与逐生作答、一个看学生×题谁卡住），原先被两个设置项隔开。 */}
-              {/* ★ 2026-09-30（教师第三轮）：「这个要**归归类**，按钮样式要有区分。」
-                  ⇒ 分组从「组与组之间一条 1px 分隔线」改成**一个盒子装一组**：
-                  那条线（`#e2e8f0`）在投影仪上基本看不见，而盒子是**结构性**的。
-                  ⚠️ 按钮本身**一个字没改**（对比度、尺寸、圆角都不动）——
-                     这一屏是投影给全班看的，把按钮按类别改淡有真实的可发现性代价。
-                  ⚠️ 分组是**判据层给的**（`headerControlGroups`），这里只管画：
-                     别在这一层自己数「第几个开始是新组」—— 那种数法没有任何东西钉得住。 */}
               {headerControlGroups(header.controls).map((group) => (
                 <div
                   key={group[0].id}
                   className="student-board-action-group"
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 4,
-                    padding: '3px 4px', borderRadius: 12,
-                    background: 'transparent',
-                  }}
+                  data-kind={group[0].kind}
+                  role="group"
+                  aria-labelledby={`board-actions-${group[0].kind}`}
                 >
+                  <span id={`board-actions-${group[0].kind}`} className="student-board-action-label">
+                    {{ state: '课堂状态', global: '全班操作', module: '模块工具' }[group[0].kind]}
+                  </span>
                   {group.map((control) => {
                   const button = (
                     <button type="button"
@@ -2741,7 +2728,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                       aria-haspopup={control.popup ?? undefined}
                       aria-expanded={control.popup ? control.expanded : undefined}
                       style={{
-                        minHeight: 36, padding: '7px 12px',
+                        minHeight: 32, padding: '5px 8px',
                         // 两个**状态开关**是唯一点蓝字的（与「已暂停 / 已锁定」时整块变蓝同一套语义）；
                         // 其余控件用默认字色。这是既有的层级，重构没动它。
                         color: control.active ? 'white' : control.kind === 'state' ? 'var(--primary)' : undefined,
@@ -2812,37 +2799,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           </div>
 
           <div className="student-board-view-controls">
-          {/* 看板模式开关（P2.3）。⚠️ **独立一行**，与筛选行同处（就在格子正上方）：
-              它是「这一屏答的是哪个问题」的总开关，藏在某个菜单里等于没有。
-              显不显示由 `header.showsHeader` 给（全屏时整块头部一起藏掉）。 */}
-          {header.showsHeader && (
-            <div className="student-board-mode" aria-label="看板模式" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>看板模式</span>
-              {/* ★ 2026-09-29（头部重构）：**那句常显的解释搬进了悬浮说明**。
-                  「每格显示该学生此刻在用的模块；还没收到状态的学生显示「…」」原来是
-                  紧跟在这两个按钮后面的一行灰字 —— 而它是**读一次就够**的知识
-                  （「…」的含义），却常年占着格子上方的一行。放进 `hint`（= `title`）
-                  之后仍然查得到，而且紧挨着它解释的那个按钮。
-                  ⚠️ 「…」的含义必须留着：教师看到一格画着「…」时唯一的解释就是这一句。 */}
-              <SegmentedButton label="跟随"
-                hint="每格显示该学生此刻在用哪个模块；还没收到状态的学生显示「…」"
-                selected={boardMode === 'follow'} onSelect={() => setBoardMode('follow')} />
-              <SegmentedButton label="固定" hint="全班格子统一显示下面选定的那一个模块"
-                selected={boardMode === 'assign'} onSelect={() => setBoardMode('assign')} />
-              {boardMode === 'assign' && (
-                <>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 4 }}>全班显示</span>
-                  {(['worksheet', 'explore', 'companion'] as ModuleId[]).map((moduleId) => (
-                    <SegmentedButton key={moduleId}
-                      label={MODULE_ID_LABELS[moduleId]}
-                      hint={`全班格子都显示「${MODULE_ID_LABELS[moduleId]}」`}
-                      selected={assignModule === moduleId} onSelect={() => setAssignModule(moduleId)} />
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-
           {/* ★ 2026-09-25（教师截图批注）：**两组筛选并成一行**，只留六格 ——
               全部 / 学习单 / 探究空间 / 智能学伴 / 需关注 / 离线。
               原来上面一组是**状态**（全部 / 在线 / 互动中 / 需关注 / 离线），下面一组是**模块**
@@ -2863,7 +2819,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               它不进任何格子，`需关注 / 离线` 会**小于** `全部`。合并前两个「全部」分处两行、
               看不出来，现在同一行上会显形。那是数据本身的问题（一个没有组的参与者），
               不是这一行算错 —— 别在这里加个减法把它抹平。 */}
-          <div className="student-board-filters" aria-label="学生筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
+          <div className="student-board-filters" aria-label="学生筛选" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             {/* ── 左段：状态。分母 = **参与者总数**（含离线）。 ──
                 全部 —— 合并后**只剩这一个**，而且它是**重置**：点它会把两组筛选一起清回 `all`。
                 ⚠️ 上面那段窄缝说的就是它与「需关注 / 离线」可能不等。 */}
@@ -2930,6 +2886,35 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
               </>
             )}
           </div>
+
+          {/* 看板模式与筛选都位于学生卡片上方，空间不足时自动换行。 */}
+          {header.showsHeader && (
+            <div className="student-board-mode" aria-label="看板模式" style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>看板模式</span>
+              {/* ★ 2026-09-29（头部重构）：**那句常显的解释搬进了悬浮说明**。
+                  「每格显示该学生此刻在用的模块；还没收到状态的学生显示「…」」原来是
+                  紧跟在这两个按钮后面的一行灰字 —— 而它是**读一次就够**的知识
+                  （「…」的含义），却常年占着格子上方的一行。放进 `hint`（= `title`）
+                  之后仍然查得到，而且紧挨着它解释的那个按钮。
+                  ⚠️ 「…」的含义必须留着：教师看到一格画着「…」时唯一的解释就是这一句。 */}
+              <SegmentedButton label="跟随"
+                hint="每格显示该学生此刻在用哪个模块；还没收到状态的学生显示「…」"
+                selected={boardMode === 'follow'} onSelect={() => setBoardMode('follow')} />
+              <SegmentedButton label="固定" hint="全班格子统一显示下面选定的那一个模块"
+                selected={boardMode === 'assign'} onSelect={() => setBoardMode('assign')} />
+              {boardMode === 'assign' && (
+                <>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 4 }}>全班显示</span>
+                  {(['worksheet', 'explore', 'companion'] as ModuleId[]).map((moduleId) => (
+                    <SegmentedButton key={moduleId}
+                      label={MODULE_ID_LABELS[moduleId]}
+                      hint={`全班格子都显示「${MODULE_ID_LABELS[moduleId]}」`}
+                      selected={assignModule === moduleId} onSelect={() => setAssignModule(moduleId)} />
+                  ))}
+                </>
+              )}
+            </div>
+          )}
           </div>
           {/* `data-webapp-monitor` 三个属性是给**离线 E2E 探针**用的锚点
               （`.superpowers/sdd/…/dom-shot-e2e` 下那几个 verify 脚本按选择器取本块 innerText）。
@@ -4003,6 +3988,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           // ⇒ 不收窄的话屏幕上会出现一句「另有 1 个参与者没有可作答的学习单」的**假话**（审查抓到）。
           advancedMode={classroom?.mode === 'advanced'}
           mode={classroom?.mode ?? 'standard'}
+          memberLogin={classroom?.groupLoginMode === 'member'}
           reviewBusy={worksheetReviewBusy}
           onClose={closeWorksheetLayer}
           onReview={(worksheetId, participantId, questionId) => void reviewWorksheetAnswer(worksheetId, participantId, questionId)}

@@ -556,6 +556,7 @@ export type WorksheetGradeState = 'correct' | 'partial' | 'incorrect';
  * 派生物，见规格 §3.1 决定 1）。所以这个类型里只有 `sheetLayouts`（每张的尺寸与格数）。
  */
 export interface WorksheetAnalysisFeedback {
+  wordCloud?: Array<{ phrase: string; studentIds: string[] }>;
   version: 1;
   groups: Array<{ id: string; studentIds: string[] }>;
   students: Array<{ studentId: string; advice: string }>;

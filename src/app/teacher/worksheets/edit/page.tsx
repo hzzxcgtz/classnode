@@ -872,6 +872,9 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
    */
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [addingReviewAgent, setAddingReviewAgent] = useState(false);
+  const reviewAgentIds = settings.additionalReviewAgentIds ?? [];
+
 
   /**
    * ★ 2026-09-27（教师）：「鼠标停留一会儿后，浮动显示大图，看效果。」
@@ -1124,6 +1127,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
                   value={settings.analysisAgentId ?? ''}
                   onChange={event => {
                     const id = event.target.value;
+                    setAddingReviewAgent(false);
                     onSettingsChange({
                       analysisAgentId: id || null,
                       additionalReviewAgentIds: id ? settings.additionalReviewAgentIds?.filter(extraId => extraId !== id) : [],
@@ -1135,38 +1139,57 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
                     <option key={agent.id} value={agent.id}>{analysisAgentLabel(agent)}（{agent.platform}）</option>
                   ))}
                 </select>
-                {/* ★ 2026-09-30：这句原来有 47 个字（两行）；砍掉「当前仅支持 Coze，
-                    绘图题也需要通过 Coze 分析」那半句 —— 它在**配错平台**的时候才会用到，
-                    而那时教师看到的是下拉里没有候选，去智能体管理那一页自然会看见。 */}
-                {analysisAgents.length === 0 && <em className="worksheet-settings-help">暂无分析智能体，请先到「AI智能体」添加分析用途的智能体。</em>}
-                <em className="worksheet-settings-help">本题评价规则和返回格式由系统动态提供。可使用自己的专业学科智能体，也可参考<a href="/teacher/agents/templates/" target="_blank" rel="noreferrer">通用提示词</a>；建议先试用少量作答，确认效果。</em>
+                {analysisAgents.length === 0 && <em className="worksheet-settings-help">请先到「AI 智能体」添加分析智能体。</em>}
+                <em className="worksheet-settings-help">可使用学科智能体，或参考<a href="/teacher/agents/templates/" target="_blank" rel="noreferrer">通用提示词</a>。</em>
               </label>
-              {settings.analysisAgentId && [0, 1].map(index => {
-                const selected = settings.additionalReviewAgentIds ?? [];
-                if (index > selected.length) return null;
-                const label = `个人评价智能体 ${index + 2}（可选）`;
-                return (
-                  <label key={index} className="worksheet-editor-field">
-                    <span>{label}</span>
-                    <select
-                      className="input"
-                      value={selected[index] ?? ''}
-                      onChange={event => {
-                        const ids = [...selected];
-                        ids.splice(index, 1, event.target.value);
-                        onSettingsChange({ additionalReviewAgentIds: ids.filter(Boolean) });
-                      }}
-                    >
-                      <option value="">不指定</option>
-                      {analysisAgents.filter(agent => agent.platform === 'coze'
-                        && agent.id !== settings.analysisAgentId
-                        && (!selected.includes(agent.id) || agent.id === selected[index])
-                      ).map(agent => <option key={agent.id} value={agent.id}>{analysisAgentLabel(agent)}</option>)}
-                    </select>
-                  </label>
-                );
-              })}
-              {settings.analysisAgentId && <p className="worksheet-settings-help">个人评价可由最多三个智能体分担。图片和录音的班级分析最多使用两个不同令牌分批处理，由上方的智能体汇总。请使用不同扣子账号，并保持模型和评价设置一致。</p>}
+              {settings.analysisAgentId && (
+                <div className="grid gap-3 border-t border-slate-200 pt-3">
+                  <div>
+                    <strong className="text-sm">负载均衡 · {1 + reviewAgentIds.length}/3</strong>
+                    <p className="worksheet-settings-help">多个智能体分担个人评价。请使用不同扣子账号，并保持模型与评价设置一致。</p>
+                  </div>
+                  {[...reviewAgentIds, ...(addingReviewAgent && reviewAgentIds.length < 2 ? [''] : [])].map((id, index) => {
+                    const label = `分担评价的智能体 ${index + 2}`;
+                    return (
+                      <div key={index} className="flex min-w-0 items-end gap-2">
+                        <label className="worksheet-editor-field min-w-0 flex-1">
+                          <span>{label}</span>
+                          <select
+                            className="input"
+                            value={id}
+                            onChange={event => {
+                              const ids = [...reviewAgentIds];
+                              ids.splice(index, 1, event.target.value);
+                              onSettingsChange({ additionalReviewAgentIds: ids });
+                              setAddingReviewAgent(false);
+                            }}
+                          >
+                            <option value="" disabled>选择分析智能体</option>
+                            {id && !analysisAgents.some(agent => agent.id === id && agent.platform === 'coze') && (
+                              <option value={id}>已配置的智能体（当前不可选）</option>
+                            )}
+                            {analysisAgents.filter(agent => agent.platform === 'coze'
+                              && agent.id !== settings.analysisAgentId
+                              && (!reviewAgentIds.includes(agent.id) || agent.id === id)
+                            ).map(agent => <option key={agent.id} value={agent.id}>{analysisAgentLabel(agent)}</option>)}
+                          </select>
+                        </label>
+                        <button type="button" className="btn btn-secondary shrink-0" aria-label={id ? `移除${label}` : '取消添加智能体'}
+                          onClick={() => {
+                            if (id) onSettingsChange({ additionalReviewAgentIds: reviewAgentIds.filter((_, position) => position !== index) });
+                            else setAddingReviewAgent(false);
+                          }}
+                        >{id ? '移除' : '取消'}</button>
+                      </div>
+                    );
+                  })}
+                  {reviewAgentIds.length < 2 && !addingReviewAgent && (
+                    <button type="button" className="btn btn-secondary justify-self-start" onClick={() => setAddingReviewAgent(true)}>
+                      <span aria-hidden="true">＋</span> 添加智能体
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </section>
         {/* 奖励形式（规格 §9.2）。🔴 它是**这一张单**的配置，不是全局设置 ——

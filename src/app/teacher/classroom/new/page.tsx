@@ -260,29 +260,60 @@ export default function NewClassroomPage() {
     return `${token?.label ?? '独立令牌'} · ${agent.name}`;
   };
   const [extraAgentsByScope, setExtraAgentsByScope] = useState<Record<string, string[]>>({});
+  const [addingAgentScope, setAddingAgentScope] = useState<string | null>(null);
   const renderExtraAgents = (scope: string, primaryId?: string | null) => {
     const primary = agents.find(agent => agent.id === primaryId);
     if (primary?.platform !== 'coze' || !primary.credentialId) return null;
     const selected = extraAgentsByScope[scope] ?? [];
-    return <div className="mt-2 grid gap-2">
-      {[0, 1].slice(0, selected.length + 1).map(index => (
-        <label key={index} className="grid gap-1 text-xs text-slate-600">
-          对话智能体 {index + 2}（可选）
-          <select className="input" value={selected[index] ?? ''} onChange={event => {
-            const next = [...selected];
-            next.splice(index, 1, event.target.value);
-            setExtraAgentsByScope(previous => ({ ...previous, [scope]: next.filter(Boolean) }));
-          }}>
-            <option value="">不指定</option>
-            {agents.filter(agent => agent.platform === 'coze' && agent.credentialId &&
-              agent.credentialId !== primary.credentialId &&
-              !selected.some((id, slot) => slot !== index && agents.find(other => other.id === id)?.credentialId === agent.credentialId))
-              .map(agent => <option key={agent.id} value={agent.id}>{companionAgentLabel(agent)}</option>)}
-          </select>
-        </label>
-      ))}
-      <p className="text-xs text-slate-500">最多选择三个使用不同扣子账号的智能体。学生首次发消息时自动分配，后续继续使用同一个智能体。</p>
-    </div>;
+    const adding = addingAgentScope === scope && selected.length < 2;
+    const candidatesFor = (index: number) => agents.filter(agent =>
+      agent.platform === 'coze' && agent.credentialId && agent.credentialId !== primary.credentialId &&
+      !selected.some((id, slot) => slot !== index && agents.find(other => other.id === id)?.credentialId === agent.credentialId)
+    );
+    const canAdd = candidatesFor(selected.length).length > 0;
+    return (
+      <div className="mt-3 grid gap-3 border-t border-slate-200 pt-3">
+        <div>
+          <strong className="text-sm">负载均衡 · {1 + selected.length}/3</strong>
+          <p className="worksheet-settings-help">请使用不同扣子账号。首次对话自动分配，之后沿用同一智能体。</p>
+        </div>
+        {[...selected, ...(adding ? [''] : [])].map((id, index) => {
+          const label = `分担对话的智能体 ${index + 2}`;
+          return (
+            <div key={index} className="flex min-w-0 items-end gap-2">
+              <label className="worksheet-editor-field min-w-0 flex-1">
+                <span>{label}</span>
+                <select className="input" value={id} onChange={event => {
+                  const next = [...selected];
+                  next.splice(index, 1, event.target.value);
+                  setExtraAgentsByScope(previous => ({ ...previous, [scope]: next }));
+                  if (!id) setAddingAgentScope(null);
+                }}>
+                  <option value="" disabled>选择对话智能体</option>
+                  {candidatesFor(index).map(agent => (
+                    <option key={agent.id} value={agent.id}>{companionAgentLabel(agent)}</option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" className="btn btn-secondary shrink-0" aria-label={id ? `移除${label}` : '取消添加智能体'}
+                onClick={() => {
+                  if (id) setExtraAgentsByScope(previous => ({ ...previous, [scope]: selected.filter((_, position) => position !== index) }));
+                  else setAddingAgentScope(null);
+                }}
+              >{id ? '移除' : '取消'}</button>
+            </div>
+          );
+        })}
+        {selected.length < 2 && !adding && (
+          <button type="button" className="btn btn-secondary justify-self-start" onClick={() => setAddingAgentScope(scope)}
+            disabled={!canAdd}
+            title={canAdd ? undefined : '暂无使用其他扣子令牌的可选智能体'}
+          >
+            <span aria-hidden="true">＋</span> 添加智能体
+          </button>
+        )}
+      </div>
+    );
   };
   const [selectedAgentId, setSelectedAgentId] = useState('');
   /**
@@ -878,6 +909,7 @@ export default function NewClassroomPage() {
                       open={openDropdownKey === agentKey}
                       onToggle={() => setOpenDropdownKey(openDropdownKey === agentKey ? null : agentKey)}
                       onPick={(id) => {
+                        setAddingAgentScope(null);
                         setGroupAgentIds(prev => ({ ...prev, [g.id]: id }));
                         setExtraAgentsByScope(prev => ({ ...prev, [g.id]: [] }));
                         clearError('groupAgents');
@@ -1076,7 +1108,14 @@ export default function NewClassroomPage() {
               emptyHint={loadingOptions ? '正在加载智能体…' : '暂无可选智能体，请先在「AI智能体」中接入'}
               open={openDropdownKey === CLASSROOM_AGENT_KEY}
               onToggle={() => setOpenDropdownKey(openDropdownKey === CLASSROOM_AGENT_KEY ? null : CLASSROOM_AGENT_KEY)}
-              onPick={(id) => { setSelectedAgentId(id ?? ''); setExtraAgentsByScope(prev => ({ ...prev, classroom: [] })); clearError('agent'); clearError('material'); }}
+              onPick={(id) => {
+                setOpenDropdownKey(null);
+                setAddingAgentScope(null);
+                setSelectedAgentId(id ?? '');
+                setExtraAgentsByScope(prev => ({ ...prev, classroom: [] }));
+                clearError('agent');
+                clearError('material');
+              }}
               // 与学习单那一格同款：**不给「不指定」项**（三件套任选其一，不该有第三个状态），
               // 但要保留「点已选中项取消」的能力，否则选错一次只能刷新整个页面。
               allowUnspecified={false}

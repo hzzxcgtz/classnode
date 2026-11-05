@@ -1,0 +1,28 @@
+.turnForward {
+  --turn-angle: 24deg;
+  transform-origin: left center;
+}
+
+.turnBack {
+  --turn-angle: -24deg;
+  transform-origin: right center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .turnForward,
+  .turnBack {
+    animation: turn-page 240ms ease-out;
+  }
+}
+
+@keyframes turn-page {
+  from {
+    opacity: 0.35;
+    transform: perspective(700px) rotateY(var(--turn-angle));
+  }
+
+  to {
+    opacity: 1;
+    transform: perspective(700px) rotateY(0);
+  }
+}

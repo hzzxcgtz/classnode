@@ -1,5 +1,5 @@
 /** 纯文本协议分离；服务端解析与教师端旧报告清理共用，禁止依赖数据库或 Node API。 */
-export type AnalysisProtocolKind = 'scores' | 'feedback';
+export type AnalysisProtocolKind = 'scores' | 'feedback' | 'word-cloud';
 export interface AnalysisProtocolBlock { kind: AnalysisProtocolKind; body: string }
 
 function jsonEnd(text: string, start: number): number {
@@ -25,11 +25,11 @@ export function analysisProtocolJson(body: string): unknown {
 }
 
 /** 完整、转义、缺结束标签及裸 JSON 都从正文隔离；无效数据不尝试猜补分数或身份。 */
-export function extractAnalysisProtocol(source: string, kinds: readonly AnalysisProtocolKind[] = ['scores', 'feedback']) {
+export function extractAnalysisProtocol(source: string, kinds: readonly AnalysisProtocolKind[] = ['scores', 'feedback', 'word-cloud']) {
   const allowed = new Set(kinds);
   const blocks: AnalysisProtocolBlock[] = [];
   const ranges: Array<{ start: number; end: number }> = [];
-  const tags = [...source.matchAll(/(?:\\?<|&lt;)\s*(\\?\/)?classnode-(scores|feedback)\s*(?:\\?>|&gt;)/gi)];
+  const tags = [...source.matchAll(/(?:\\?<|&lt;)\s*(\\?\/)?classnode-(scores|feedback|word-cloud)\s*(?:\\?>|&gt;)/gi)];
   for (let index = 0; index < tags.length; index++) {
     const tag = tags[index], kind = tag[2].toLowerCase() as AnalysisProtocolKind;
     if (!allowed.has(kind)) continue;
@@ -40,7 +40,7 @@ export function extractAnalysisProtocol(source: string, kinds: readonly Analysis
     let bodyEnd = next?.index ?? source.length;
     if (!closed) {
       const body = source.slice(bodyStart, bodyEnd);
-      const json = body.search(/\{\s*"(?:scores|groups|students)"\s*:/);
+      const json = body.search(/\{\s*"(?:scores|groups|students|wordCloud)"\s*:/);
       if (json >= 0) {
         const end = jsonEnd(body, json);
         // 缺结束标签但 JSON 完整时，保留之后的讲评文字；不补写数据。
@@ -55,11 +55,11 @@ export function extractAnalysisProtocol(source: string, kinds: readonly Analysis
   for (const range of ranges.sort((a, b) => b.start - a.start)) narrative = narrative.slice(0, range.start) + narrative.slice(range.end);
 
   // 只接受根对象以协议字段开头的裸 JSON，普通教学文字、示例代码和计算式保持原样。
-  const bare = /\{\s*"(scores|groups|students)"\s*:/g;
+  const bare = /\{\s*"(scores|groups|students|wordCloud)"\s*:/g;
   const bareRanges: Array<{ start: number; end: number }> = [];
   let match: RegExpExecArray | null;
   while ((match = bare.exec(narrative))) {
-    const kind: AnalysisProtocolKind = match[1] === 'scores' ? 'scores' : 'feedback';
+    const kind: AnalysisProtocolKind = match[1] === 'scores' ? 'scores' : match[1] === 'wordCloud' ? 'word-cloud' : 'feedback';
     const end = jsonEnd(narrative, match.index);
     if (allowed.has(kind)) {
       blocks.push({ kind, body: narrative.slice(match.index, end) });

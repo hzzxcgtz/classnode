@@ -1,0 +1,29 @@
+.word {
+  opacity: .88;
+  cursor: pointer;
+  paint-order: stroke;
+  stroke: #ffffff4d;
+  stroke-width: .5px;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .appear {
+    animation: word-appear .4s cubic-bezier(.34, 1.56, .64, 1) var(--word-delay) backwards;
+  }
+
+  .word { transition: transform .4s cubic-bezier(.34, 1.56, .64, 1), opacity .25s, filter .25s; }
+
+  @keyframes word-appear {
+    from { opacity: 0; transform: scale(0); }
+    to { opacity: 1; transform: scale(1); }
+  }
+}
+
+.word:hover,
+.word:focus-visible,
+.word[aria-pressed="true"] {
+  opacity: 1;
+  filter: brightness(1.15) drop-shadow(0 0 6px currentColor);
+}

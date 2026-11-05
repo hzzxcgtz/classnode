@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, memo, Suspense, useLayoutEffect, Fragment, type ReactNode, type Ref } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { WordCloud, type Word, type WordRendererData } from "@isoterik/react-word-cloud";
+import { WordCloud, type Word } from "@isoterik/react-word-cloud";
+import { CLOUD_FONT, horizontalCloudWord, renderClassroomCloudWord, useClassroomCloudColors } from './classroom-word-cloud';
 import { api } from '@/lib/api';
 import { CompanionAudioPreview, companionAudioUrls } from './companion-audio-preview';
 import { VoiceAnswerPlayer } from '@/components/voice-answer-player';
@@ -4270,41 +4271,6 @@ interface AnalyticsPanelProps {
   tabs?: ReactNode;
 }
 
-function WordText({ data, ref }: { data: WordRendererData; ref?: Ref<SVGTextElement> }) {
-  const [visible, setVisible] = useState(false);
-  const [hovered, setHovered] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setVisible(true), (data.index ?? 0) * 45);
-    return () => clearTimeout(timer);
-  }, [data.index]);
-
-  return (
-    <text
-      ref={ref}
-      textAnchor="middle"
-      transform={`translate(${data.x}, ${data.y}) rotate(${data.rotate}) scale(${visible ? 1 : 0})`}
-      style={{
-        fontFamily: data.font,
-        fontSize: data.size,
-        fontWeight: 600,
-        fill: data.fill,
-        cursor: 'pointer',
-        paintOrder: 'stroke',
-        stroke: 'rgba(255,255,255,0.3)',
-        strokeWidth: '0.5px',
-        transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
-        opacity: visible ? (hovered ? 1 : 0.88) : 0,
-        filter: hovered ? 'brightness(1.15) drop-shadow(0 0 6px currentColor)' : 'none',
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {data.text}
-    </text>
-  );
-}
-
 /**
  * ⚠️ `memo` 不是装饰（P2.3 起才需要）：探究空间的订阅搬到了 `page.tsx`，于是**每一帧**
  * （每个学生每 10 秒左右一帧）都会让那一层重渲染，而这个面板挂在那层下面。
@@ -4388,7 +4354,6 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
 
   // 词云组件 props 全部用 useMemo/useCallback 稳定引用，避免父组件重渲染时触发 WordCloud 重算
   const wordCloudData = useMemo(() => words.map(w => ({ text: w.word, value: w.count })), [words]);
-  const stableFont = useCallback(() => '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif', []);
   const wordFontSize = useCallback((word: Word) => {
     const counts = words.map(w => w.count);
     const min = Math.min(...counts);
@@ -4396,17 +4361,7 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
     const range = max - min || 1;
     return 12 + ((word.value - min) / range) * 15;
   }, [words]);
-  const wordFill = useCallback((_word: Word, i: number) => `url(#wcg${(i % 6) + 1})`, []);
-  const wordGradients = useMemo(() => [
-    { id: 'wcg1', type: 'linear' as const, angle: 45, stops: [{ offset: '0%' as const, color: 'var(--primary)' }, { offset: '100%' as const, color: '#7c3aed' }] },
-    { id: 'wcg2', type: 'linear' as const, angle: -45, stops: [{ offset: '0%' as const, color: '#db2777' }, { offset: '100%' as const, color: '#ea580c' }] },
-    { id: 'wcg3', type: 'linear' as const, angle: 135, stops: [{ offset: '0%' as const, color: '#059669' }, { offset: '100%' as const, color: '#10b981' }] },
-    { id: 'wcg4', type: 'linear' as const, angle: 90, stops: [{ offset: '0%' as const, color: '#7c3aed' }, { offset: '100%' as const, color: '#c084fc' }] },
-    { id: 'wcg5', type: 'linear' as const, angle: 0, stops: [{ offset: '0%' as const, color: '#934e4e' }, { offset: '100%' as const, color: '#fbbf24' }] },
-    { id: 'wcg6', type: 'linear' as const, angle: -90, stops: [{ offset: '0%' as const, color: '#0891b2' }, { offset: '100%' as const, color: '#2dd4bf' }] },
-  ], []);
-  const renderWord = useCallback((data: WordRendererData, ref?: Ref<SVGTextElement>) => <WordText data={data} ref={ref} />, []);
-  const stableRotate = useCallback(() => 0, []);
+  const { fill: wordFill, gradients: wordGradients } = useClassroomCloudColors();
 
   if (collapsed) {
     return (
@@ -4551,16 +4506,15 @@ const AnalyticsPanel = memo(function AnalyticsPanel({ classroomId, allMessages, 
                 words={wordCloudData}
                 width={cloudWidth}
                 height={Math.min(Math.floor(cloudWidth * 0.38), 220)}
-                font={stableFont}
+                font={CLOUD_FONT}
+                fontWeight={600}
                 fontSize={wordFontSize}
                 fill={wordFill}
                 gradients={wordGradients}
-                renderWord={renderWord}
-                rotate={stableRotate}
+                renderWord={renderClassroomCloudWord}
+                rotate={horizontalCloudWord}
                 spiral="archimedean"
                 padding={3}
-                enableTooltip
-                transition="all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)"
               />
             </div>
           )}

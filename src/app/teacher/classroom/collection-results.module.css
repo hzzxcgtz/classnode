@@ -9,7 +9,10 @@
   background: #f3f8fc;
 }
 
-.boardContent { padding: clamp(12px, 2vw, 24px); }
+.boardContent {
+  --board-content-padding: clamp(12px, 2vw, 24px);
+  padding: var(--board-content-padding);
+}
 
 .projection {
   position: fixed;
@@ -25,6 +28,16 @@
   background: #edf4fa;
   font-size: clamp(1rem, 1.6vw, 1.45rem);
   overflow: auto;
+}
+
+.projection[data-view="cloud"] {
+  padding-block: 12px;
+}
+
+.projectionContent[data-view="cloud"] {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .views {
@@ -171,69 +184,57 @@
 .cloud {
   position: relative;
   overflow: hidden;
-  min-height: clamp(216px, 25vw, 300px);
   border-radius: 14px;
   background: radial-gradient(ellipse at center, #ffffffb3, transparent 76%);
 }
 
-.projection .cloud {
-  min-height: clamp(280px, 44vh, 480px);
+.boardContent > .cloud {
+  /* Use the card's existing side and bottom padding as part of the drag area. */
+  height: calc(clamp(216px, 25vw, 300px) + var(--board-content-padding));
+  margin-inline: calc(-1 * var(--board-content-padding));
+  margin-block-end: calc(-1 * var(--board-content-padding));
+}
+
+.cloud[data-presentation] {
+  flex: 1 0 220px;
+}
+
+.cloudViewport,
+.cloudChart {
+  position: absolute;
+  inset: 0;
 }
 
 .cloudChart {
-  position: absolute;
-  left: var(--cloud-pan-x, 0px);
-  top: var(--cloud-pan-y, 0px);
-  width: 100%;
-  height: 100%;
+  display: grid;
+  place-items: center;
 }
 
-.cloud[data-cloud-pannable] { cursor: grab; }
-.cloud[data-cloud-dragging] { cursor: grabbing; user-select: none; }
-.cloud[data-cloud-dragging] .cloudChart { pointer-events: none; }
+.cloudViewport[data-cloud-pannable] { cursor: grab; }
+.cloudViewport[data-cloud-dragging] { cursor: grabbing; user-select: none; }
+.cloudViewport[data-cloud-dragging] .cloudChart { pointer-events: none; }
+.cloudChart:not([data-cloud-ready]) { visibility: hidden; }
 
-.cloudChart[data-cloud-layout="pending"] {
-  visibility: hidden;
-}
+.cloudChart[data-cloud-focused] text[aria-pressed="false"] { opacity: .35; }
 
-@media (prefers-reduced-motion: no-preference) {
-  .cloudChart[data-cloud-layout="enter"] {
-    transform-origin: 50% 50%;
-    animation: cloud-expand 320ms cubic-bezier(.22, .61, .36, 1) backwards;
-  }
-}
-
-@keyframes cloud-expand {
-  from {
-    opacity: 0;
-    transform: translate(var(--cloud-enter-x), var(--cloud-enter-y)) scale(var(--cloud-enter-scale));
-  }
-  to { opacity: 1; transform: none; }
-}
-
-.cloudChart svg text {
-  cursor: pointer;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.cloudChart[data-cloud-focused]:not([data-cloud-hovered]) svg text[aria-pressed="false"],
-.cloudChart[data-cloud-hovered] svg text:not(:hover) {
-  opacity: .35;
+@media (hover: hover) {
+  .cloudChart text[aria-pressed]:hover { opacity: 1; }
+  .cloudChart:has(text:hover) text:not(:hover) { opacity: .35; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .cloudChart svg text { transition: opacity 180ms ease-out; }
-}
-
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .cloudChart svg text[style*="--cloud-placement"] {
-    transform: var(--cloud-placement) scale(var(--cloud-hover, 1));
-    transition: transform 180ms ease-out, opacity 180ms ease-out;
+  .cloudChart[data-cloud-ready] svg {
+    animation: cloud-expand .32s cubic-bezier(.22, .61, .36, 1) backwards;
   }
 
-  .cloudChart svg text:hover {
-    --cloud-hover: 1.16;
+  .cloudChart text:hover,
+  .cloudChart text:focus-visible {
+    transform: scale(1.16);
+  }
+
+  @keyframes cloud-expand {
+    from { opacity: 0; transform: scale(.2); }
+    to { opacity: 1; transform: scale(1); }
   }
 }
 
@@ -241,9 +242,11 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  align-content: center;
+  align-content: safe center;
   gap: 14px 28px;
-  min-height: inherit;
+  height: 100%;
+  overflow: auto;
+  overflow-wrap: anywhere;
   padding: 12px;
   margin: 0;
   list-style: none;

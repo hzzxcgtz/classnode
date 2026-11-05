@@ -108,7 +108,7 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
         {view !== 'cloud' && projectionButton}
       </header>}
       {presentation && view !== 'cloud' && <div className={styles.projectionActions}>{projectionButton}</div>}
-      <div className={presentation ? undefined : styles.boardContent} data-view={view}>
+      <div className={presentation ? styles.projectionContent : styles.boardContent} data-view={view}>
         {views.length > 1 && <div role="group" aria-label="结果展示方式" className={styles.views}>
           {views.map(key => <button type="button" key={key} aria-pressed={view === key} onClick={() => setSelected(key)}
             className={`btn ${view === key ? 'btn-primary' : 'btn-secondary'}`}>{VIEW_LABELS[key]}</button>)}
@@ -181,7 +181,7 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
 
   return <section className={styles.board}>
     {!projecting && renderContent(false)}
-    <dialog ref={dialog} className={styles.projection} aria-label="信息收集结果投屏" onKeyDown={event => {
+    <dialog ref={dialog} className={styles.projection} data-view={view} aria-label="信息收集结果投屏" onKeyDown={event => {
         if (event.key === 'Escape') event.stopPropagation();
       }} onClose={() => {
         setProjecting(false);

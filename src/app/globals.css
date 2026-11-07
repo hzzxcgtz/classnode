@@ -11602,3 +11602,56 @@ tr:hover td {
 .worksheet-editor-blank-detail-heading > span { padding: 3px 10px; border-radius: 999px; color: #627b94; background: #eaf0f6; font-size: .75rem; font-weight: 500; }
 .worksheet-settings-curriculum select[aria-invalid='true'] { border-color: #c44949; box-shadow: 0 0 0 2px #c4494914; }
 .worksheet-settings-validation { margin: 0 auto 0 0; color: #b43d3d; font-size: .8rem; line-height: 1.5; }
+
+.worksheet-choice-break-editor > textarea.input {
+  min-height: 76px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.worksheet-symbol-control,
+.worksheet-choice-break-editor {
+  display: block;
+  position: relative;
+  grid-column: 1 / -1;
+  min-width: 0;
+  width: 100%;
+  border-radius: 8px;
+  background: #fff;
+}
+.worksheet-choice-break-editor > .input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: inherit;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.worksheet-choice-break-editor > .worksheet-choice-break-mirror {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  overflow: hidden;
+  border-color: transparent;
+  color: transparent;
+  pointer-events: none;
+  user-select: none;
+  background: transparent;
+}
+.worksheet-choice-break-mirror mark {
+  color: transparent;
+  background: #e1edf8;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px #e1edf8;
+}
+.worksheet-choice-break-editor > textarea.input {
+  position: relative;
+  background: transparent;
+}

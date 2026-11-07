@@ -1016,3 +1016,8 @@ test('text typed between adjacent frames stays outside after reopening', () => {
   assert.equal(reopened[0].frameId,'left');
   assert.equal(reopened[2].frameId,'right');
 });
+
+
+test('multiline blank auto width measures the longest line', () => {
+  assert.equal(inputWidthCh('日初出沧沧凉凉\n及日中则如探汤'),14);
+});

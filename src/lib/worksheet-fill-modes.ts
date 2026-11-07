@@ -231,3 +231,12 @@ export function fixedBlankWidth(setting: Pick<FillBlankSetting, 'widthMode' | 'w
   const width = setting?.widthChars;
   return typeof width === 'number' && Number.isInteger(width) && width >= 1 && width <= 100 ? width : 10;
 }
+
+
+/** The editor shows an explicit break marker; saved choices retain actual line breaks. */
+export function choiceBreakEditorText(text: string): string {
+  return text.replace(/\r\n?|\n/g, '↵');
+}
+export function choiceBreakValueText(text: string): string {
+  return text.replace(/↵/g, '\n');
+}

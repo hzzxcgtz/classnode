@@ -4,7 +4,7 @@ import { needsWholeFillConversion, convertWholeFillSettings, updateSharedFillEva
 import { EvaluationSettings } from '../evaluation-settings';
 import { hasEvaluation } from '@/lib/worksheet-evaluation';
 import { fillEditorKind } from '@/lib/worksheet-fill-layout';
-import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from 'react';
 
 import { EditorRewardUnit } from '../editor-reward-unit';
 import type { RewardStyle } from '@/lib/worksheet-reward';
@@ -12,7 +12,7 @@ import type { WorksheetQuestionNode } from '@/lib/types';
 import { readBlankCount } from '@/lib/worksheet-questions';
 // ★ 2026-10-06：粘贴去格式那一个纯函数（唯一一份，题目卡里「评分标准」那个 textarea 用的也是它）。
 import { normalizePastedText } from '@/lib/worksheet-text-normalize';
-import { fixedBlankWidth, CHOICE_SEPARATOR_HINT, CHOICE_JOINER, FILL_GRADING_MODE, blankSlots, fillSettingsFor, hasExplicitFillGrading, isLegacyFillGrading, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode, type FillBlankSetting } from '@/lib/worksheet-fill-modes';
+import { choiceBreakEditorText, choiceBreakValueText, fixedBlankWidth, CHOICE_SEPARATOR_HINT, CHOICE_JOINER, FILL_GRADING_MODE, blankSlots, fillSettingsFor, hasExplicitFillGrading, isLegacyFillGrading, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode, type FillBlankSetting } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
   readBlankAnswers,
@@ -27,7 +27,9 @@ export function SymbolListInput({ values, split, placeholder, onChange, shuffle 
   placeholder: string;
   onChange: (items: string[]) => void;
 }) {
-  const canonical = values.join(CHOICE_JOINER);
+  const formatDraft = (words: string[]) => shuffle ? choiceBreakEditorText(words.join(CHOICE_JOINER)) : words.join(CHOICE_JOINER);
+  const canonical = formatDraft(values);
+  const parseDraft = useCallback((raw: string) => split(shuffle ? choiceBreakValueText(raw) : raw), [shuffle, split]);
   const [draft, setDraft] = useState(canonical);
   /**
    * 这一帧手里那一份。
@@ -35,6 +37,28 @@ export function SymbolListInput({ values, split, placeholder, onChange, shuffle 
    *    一次渲染再跑一遍）。用 ref 读当下值，与 `prompt-editor` 里 `runsRef` 同一套写法。
    */
   const draftRef = useRef(draft);
+  const breakMirrorRef = useRef<HTMLSpanElement>(null);
+  const controlRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const control = controlRef.current;
+    const mirror = breakMirrorRef.current;
+    if (!shuffle || !control || !mirror) return;
+    const align = () => {
+      // Use the native control's computed metrics, including global textarea rules.
+      const metrics = getComputedStyle(control);
+      for (const property of ['font-family', 'font-size', 'font-weight', 'font-style', 'font-stretch', 'font-variant', 'font-kerning', 'font-feature-settings', 'font-variation-settings', 'letter-spacing', 'word-spacing', 'line-height', 'text-indent', 'text-align', 'text-transform', 'direction', 'tab-size', 'white-space', 'word-break', 'overflow-wrap', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width']) {
+        mirror.style.setProperty(property, metrics.getPropertyValue(property));
+      }
+      const borders = parseFloat(metrics.borderLeftWidth) + parseFloat(metrics.borderRightWidth);
+      mirror.style.width = `${control.clientWidth + borders}px`;
+      mirror.scrollTop = control.scrollTop;
+      mirror.scrollLeft = control.scrollLeft;
+    };
+    align();
+    const observer = new ResizeObserver(align);
+    observer.observe(control);
+    return () => observer.disconnect();
+  }, [shuffle, draft]);
   draftRef.current = draft;
 
   /**
@@ -51,9 +75,9 @@ export function SymbolListInput({ values, split, placeholder, onChange, shuffle 
    *    但函数体第一句就把绝大多数情况挡回去了（判据只是几个短字符串的比较）。
    */
   useEffect(() => {
-    if (sameChoiceItems(split(draftRef.current), values)) return;
-    setDraft(values.join(CHOICE_JOINER));
-  }, [canonical, values, split]);
+    if (sameChoiceItems(parseDraft(draftRef.current), values)) return;
+    setDraft(canonical);
+  }, [canonical, values, parseDraft]);
 
   /**
    * ★ 2026-10-06（教师）：「这里复制进来的文本，格式要去掉」——**粘贴去格式**。
@@ -91,21 +115,44 @@ export function SymbolListInput({ values, split, placeholder, onChange, shuffle 
     raw.replace(/[\t\r\n]+/g, CHOICE_JOINER),
   );
 
-  const pasteCleanedText = (event: ReactClipboardEvent<HTMLInputElement>) => {
+  const pasteCleanedText = (event: ReactClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const raw = event.clipboardData.getData('text/plain');
     if (!raw) return;
     event.preventDefault();
     const element = event.currentTarget;
     const start = element.selectionStart ?? element.value.length;
     const end = element.selectionEnd ?? element.value.length;
-    const next = `${element.value.slice(0, start)}${cleanedText(raw)}${element.value.slice(end)}`;
+    const next = `${element.value.slice(0, start)}${shuffle ? choiceBreakEditorText(normalizePastedText(raw)) : cleanedText(raw)}${element.value.slice(end)}`;
     setDraft(next);
-    onChange(split(next));
+    onChange(parseDraft(next));
   };
 
+  const ListControl = shuffle ? 'textarea' : 'input';
   return (
     <span className="worksheet-symbol-list">
-    <input
+    <span className={shuffle ? 'worksheet-choice-break-editor' : 'worksheet-symbol-control'}>
+    {shuffle && <span ref={breakMirrorRef} className="worksheet-choice-break-mirror input" aria-hidden="true">{draft.split('↵').map((part, index) => <span key={index}>{index > 0 && <mark>↵</mark>}{part}</span>)}</span>}
+    <ListControl
+      ref={(element: HTMLInputElement | HTMLTextAreaElement | null) => {controlRef.current = element;}}
+      rows={shuffle ? 2 : undefined}
+      onScroll={event => {
+        if (breakMirrorRef.current) {
+          breakMirrorRef.current.scrollTop = event.currentTarget.scrollTop;
+          breakMirrorRef.current.scrollLeft = event.currentTarget.scrollLeft;
+        }
+      }}
+      onKeyDown={event => {
+        if (!shuffle || event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+        event.preventDefault();
+        if (!event.shiftKey) return;
+        const element = event.currentTarget;
+        const start = element.selectionStart ?? element.value.length;
+        const end = element.selectionEnd ?? start;
+        const next = `${element.value.slice(0, start)}↵${element.value.slice(end)}`;
+        setDraft(next);
+        onChange(parseDraft(next));
+        requestAnimationFrame(() => element.setSelectionRange(start + 1, start + 1));
+      }}
       title={CHOICE_SEPARATOR_HINT}
       className="input"
       value={draft}
@@ -114,10 +161,11 @@ export function SymbolListInput({ values, split, placeholder, onChange, shuffle 
       onChange={(event) => {
         const next = event.target.value;
         setDraft(next);
-        onChange(split(next));
+        onChange(parseDraft(next));
       }}
     />
-    <small>{CHOICE_SEPARATOR_HINT}</small>
+    </span>
+    <small>{CHOICE_SEPARATOR_HINT}{shuffle && ' 词内按 Shift＋Enter 插入 ↵，表示学生端换行。'}</small>
     {shuffle && <button type="button" className="btn btn-secondary" disabled={values.length < 2} onClick={() => {
       const words = [...values];
       for (let i = words.length - 1; i > 0; i--) {
@@ -125,7 +173,7 @@ export function SymbolListInput({ values, split, placeholder, onChange, shuffle 
         [words[i], words[j]] = [words[j], words[i]];
       }
       if (sameChoiceItems(words, values)) words.push(words.shift()!);
-      setDraft(words.join(CHOICE_JOINER));
+      setDraft(formatDraft(words));
       onChange(words);
     }}>一键打乱</button>}
     </span>
@@ -221,14 +269,14 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
         )}
         {isScoredPool(settings[index]) && rule ? sourceAvailable && [...new Set(answerSets[sourceIndex].filter(answer => answer.trim()))].map(when => (
           <label key={when} className="grid gap-1">
-            <span>第 {sourceIndex + 1} 空填「{when}」时，本空应填</span>
+            <span>第 {sourceIndex + 1} 空填「{choiceBreakEditorText(when)}」时，本空应填</span>
             <select className="input" value={rule.cases.find(item => item.when === when)?.answer ?? ''} onChange={event => {
               const answer = event.target.value;
               const cases = rule.cases.filter(item => item.when !== when && answerSets[sourceIndex].includes(item.when));
               setRule({ ...rule, cases: answer ? [...cases, { when, answer }] : cases });
             }}>
               <option value="">请选择共用选词</option>
-              {poolChoices.map(choice => <option key={choice} value={choice}>{choice}</option>)}
+              {poolChoices.map(choice => <option key={choice} value={choice}>{choiceBreakEditorText(choice)}</option>)}
             </select>
           </label>
         )) : (

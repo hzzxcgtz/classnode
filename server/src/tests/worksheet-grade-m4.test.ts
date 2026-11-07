@@ -978,3 +978,20 @@ test('共用选词联动：整列可互换，混填按空扣分，规则不可�
   settings.b.conditionalAnswer!.sourceId = 'c';
   assert.ok(validateQuestion(incomplete).some(error => error.includes('已设置固定答案')));
 });
+
+
+test('选词内手动换行只影响显示，固定答案和联动答案照常评分', () => {
+  for (const mode of ['pool','inline']) {
+    const node = question('fill-blank',{answers:[['日初出沧沧凉凉及日中则如探汤']],fillBlankSettings:{a:{mode,gradingMode:'auto',maxScore:1}}});
+    assert.deepEqual(grade(node,{format:'fill-multi/v1',texts:['日初出沧沧凉凉\n及日中则如探汤']},P),{state:'correct',score:1});
+    assert.deepEqual(wrongBlankAnswers(node,{format:'fill-multi/v1',texts:['日初出沧沧凉凉\n及日中则如探汤']}),{});
+  }
+  const node = question('fill-blank', {
+    answers:[['甲乙'],[]], fillChoicePool:['甲\n乙','丙\n丁'],
+    fillBlankSettings:{a:{mode:'pool',gradingMode:'auto',maxScore:1},b:{mode:'pool',gradingMode:'auto',maxScore:1,conditionalAnswer:{sourceId:'a',cases:[{when:'甲\n乙',answer:'丙\n丁'}]}}},
+  });
+  assert.deepEqual(validateQuestion(node),[]);
+  assert.deepEqual(grade(node,{format:'fill-multi/v1',texts:['甲\n乙','丙\n丁']},P),{state:'correct',score:2});
+  const typed = question('fill-blank',{answers:[['甲乙']],fillBlankSettings:{a:{mode:'text',gradingMode:'auto',maxScore:1}}});
+  assert.deepEqual(grade(typed,{format:'fill-multi/v1',texts:['甲\n乙']},P),{state:'incorrect',score:0});
+});

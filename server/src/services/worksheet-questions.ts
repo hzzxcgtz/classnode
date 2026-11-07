@@ -455,7 +455,7 @@ export function grade(node: QuestionNode, value: unknown, points: QuestionPoints
       const text = texts[setting.index];
       const accepted = gradableAnswers(data, setting.index, texts);
       if (typeof text !== 'string' || accepted.length === 0) return;
-      const normalized = normalizeFillText(text);
+      const normalized = normalizeFillText(fillDisplayText(data, setting.index, text));
       if (accepted.some(answer => normalizeFillText(answer) === normalized)) {
         hit += 1;
         score += setting.maxScore;
@@ -848,7 +848,7 @@ export function conditionalFillAnswerReference(data: Record<string, unknown>, in
 }
 
 function normalizePoolAnswer(answer: string): string {
-  return normalizeFillText(mathText(splitMath(answer)));
+  return normalizeFillText(mathText(splitMath(answer)).replace(/[\r\n]+/g, ''));
 }
 
 function effectiveFillAnswers(data: Record<string, unknown>, index: number, texts: readonly unknown[]): string[] {
@@ -856,10 +856,10 @@ function effectiveFillAnswers(data: Record<string, unknown>, index: number, text
   if (!rule) return acceptableAnswersFor(data, index);
   const source = texts[rule.sourceIndex];
   if (typeof source !== 'string' || !acceptableAnswersFor(data, rule.sourceIndex)
-      .some(answer => normalizePoolAnswer(answer) === normalizeFillText(source))) return [];
+      .some(answer => normalizePoolAnswer(answer) === normalizePoolAnswer(source))) return [];
   const matchingCase = rule.cases.find(item => {
     const when = readField(item, 'when');
-    return typeof when === 'string' && normalizePoolAnswer(when) === normalizeFillText(source);
+    return typeof when === 'string' && normalizePoolAnswer(when) === normalizePoolAnswer(source);
   });
   const answer = readField(matchingCase, 'answer');
   return typeof answer === 'string' && normalizePoolAnswer(answer) ? [answer] : [];
@@ -900,8 +900,16 @@ function validateConditionalPoolRule(data: Record<string, unknown>, index: numbe
  * 🔴 剥离走的是**同一个** `mathText(splitMath(...))`（服务端孪生），不是另写一条 ——
  *    显示侧与判分侧是从同一条规则派生出的**两个投影**，谁都不许自己造一份。
  */
+/** Manual choice line breaks affect display only; typed answers keep whitespace semantics. */
+function fillDisplayText(data: Record<string, unknown>, index: number, text: string): string {
+  const mode = readField(fillSettingsEntries(data)[index]?.[1], 'mode');
+  const choice = mode === 'pool' || mode === 'inline'
+    || (mode === undefined && (Array.isArray(data.fillChoicePool) || Array.isArray(data.choices)));
+  return choice ? text.replace(/[\r\n]+/g, '') : text;
+}
+
 function gradableAnswers(data: Record<string, unknown>, index: number, texts: readonly unknown[] = []): string[] {
-  return effectiveFillAnswers(data, index, texts).map((answer) => mathText(splitMath(answer)));
+  return effectiveFillAnswers(data, index, texts).map((answer) => fillDisplayText(data, index, mathText(splitMath(answer))));
 }
 
 function fillHitStats(data: Record<string, unknown>, value: unknown): { hit: number; total: number } {
@@ -913,7 +921,7 @@ function fillHitStats(data: Record<string, unknown>, value: unknown): { hit: num
     const acceptable = gradableAnswers(data, index, texts);
     const text = texts[index];
     if (typeof text !== 'string' || acceptable.length === 0) continue;
-    const normalized = normalizeFillText(text);
+    const normalized = normalizeFillText(fillDisplayText(data, index, text));
     if (acceptable.some(answer => normalizeFillText(answer) === normalized)) hit += 1;
   }
   return { hit, total };
@@ -982,7 +990,7 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown, tolerance
       const text = texts[index];
       // 这一空没有可接受答案 / 学生没填 / 填的不是字符串 ⇒ **这一空算错**，其余照常给分。
       if (acceptable.length === 0 || typeof text !== 'string') continue;
-      const normalized = normalizeFillText(text);
+      const normalized = normalizeFillText(fillDisplayText(data, index, text));
       if (acceptable.some((answer) => normalizeFillText(answer) === normalized)) hit += 1;
     }
     if (hit === total) return 'correct';
@@ -998,7 +1006,7 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown, tolerance
   const acceptable = gradableAnswers(data, 0);
   const text = readField(value, 'text');
   if (typeof text !== 'string') return 'incorrect';
-  const normalized = normalizeFillText(text);
+  const normalized = normalizeFillText(fillDisplayText(data, 0, text));
   return acceptable.some((answer) => normalizeFillText(answer) === normalized) ? 'correct' : 'incorrect';
 }
 
@@ -1158,7 +1166,7 @@ export function fillBlankWrongIndexes(node: QuestionNode, value: unknown): numbe
       wrong.push(index);
       continue;
     }
-    const normalized = normalizeFillText(text);
+    const normalized = normalizeFillText(fillDisplayText(node.data, index, text));
     if (!acceptable.some(answer => normalizeFillText(answer) === normalized)) wrong.push(index);
   }
   return wrong;

@@ -994,10 +994,12 @@ export function promptTextStyle(
 export function inputWidthCh(text: string): number {
   if (typeof text !== 'string') return 0;
   let width = 0;
+  let longest = 0;
   for (const char of text) {
+    if (char === '\n' || char === '\r') { longest = Math.max(longest, width); width = 0; continue; }
     width += char.codePointAt(0)! >= 0x1100 ? 2 : 1;
   }
-  return width;
+  return Math.max(longest, width);
 }
 
 /** 一份分段是不是**全是默认样式**（= 没有格式）。写库时用它决定那个键要不要留。 */

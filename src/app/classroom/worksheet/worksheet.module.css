@@ -3434,3 +3434,6 @@
   .photoCropReview .photoCropStage { margin: 0 8px; }
   .photoCropReview .photoCropFooter { padding: 10px 12px 6px; }
 }
+
+/* Explicit teacher-authored line breaks stay inside a choice chip. */
+.choiceWord > span { white-space: pre-wrap; text-align: center; }

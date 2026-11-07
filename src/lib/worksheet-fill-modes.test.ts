@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fixedBlankWidth, CHOICE_JOINER, CHOICE_SEPARATORS, blankSlots, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, isLegacyFillGrading, placedValue, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
+import { choiceBreakEditorText, choiceBreakValueText, fixedBlankWidth, CHOICE_JOINER, CHOICE_SEPARATORS, blankSlots, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, isLegacyFillGrading, placedValue, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 import { DEFAULT_PROMPT_STYLE, type PromptRun } from './worksheet-prompt-marks.ts';
 
@@ -394,4 +394,25 @@ test('width modes: automatic by default, fixed defaults to ten and preserves set
     assert.equal(setting.widthMode,widthMode);
     assert.equal(fixedBlankWidth(setting),widthMode === 'auto' ? undefined : 16);
   }
+});
+
+
+test('choice line breaks remain inside a single item through save and reopen', () => {
+  const choices = splitChoiceText('日初出沧沧凉凉\n及日中则如探汤 | 近大远小');
+  assert.equal(choices.length,2);
+  assert.equal(choices[0],'日初出沧沧凉凉\n及日中则如探汤');
+  const saved = writeFillSettings(node({}),runs,[{mode:'inline',choices}]);
+  assert.deepEqual(fillSettingsFor(node({fillBlankSettings:saved}),runs)[0].choices,choices);
+  assert.equal(placedValue(choices[0]),choices[0]);
+  assert.deepEqual(sharedPoolChoices(node({fillChoicePool:choices})),choices);
+});
+
+
+test('explicit line breaks display as editor markers and decode without changing items', () => {
+  const raw = '日初出沧沧凉凉\n及日中则如探汤 | 近大远小';
+  const editor = choiceBreakEditorText(raw);
+  assert.equal(editor,'日初出沧沧凉凉↵及日中则如探汤 | 近大远小');
+  assert.equal(choiceBreakValueText(editor),raw);
+  assert.deepEqual(splitChoiceText(choiceBreakValueText(editor)),splitChoiceText(raw));
+  assert.equal(choiceBreakEditorText('甲\r\n乙'),'甲↵乙');
 });

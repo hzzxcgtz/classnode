@@ -273,8 +273,8 @@ test('③ 每空答案 / 参考答案共用的那个列表输入已接「粘贴�
   const fn = source.slice(fnAt, nextFnAt > 0 ? nextFnAt : undefined);
   assert.ok(fn.length > 200, '切出来的组件区域是空的 —— 下面几条会对空串假绿');
 
-  const inputAt = fn.indexOf('<input');
-  assert.ok(inputAt > 0, '组件里那个单行输入不见了');
+  const inputAt = fn.indexOf('<ListControl');
+  assert.ok(inputAt > 0, '共用列表输入控件不见了');
   const input = fn.slice(inputAt, fn.indexOf('/>', inputAt));
   assert.match(input, /onPaste=\{/, '这一格没有接管粘贴 —— 从 Word 粘进来的排版会留在答案里');
   assert.match(fn, /normalizePastedText/, '没有走那个纯函数（自己写一套去格式 = 第二份真源）');

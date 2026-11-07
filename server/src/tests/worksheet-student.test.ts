@@ -365,6 +365,24 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
   const server = await startServer(t, db.prisma);
 
   const worksheet = await seedWorksheet(db.prisma);
+  await db.prisma.worksheet.update({
+    where: {id:worksheet.id},
+    data: {content: {...SAMPLE_CONTENT, nodes:SAMPLE_CONTENT.nodes.map(node => node.id !== 'q_2' ? node : {
+      ...node, prompt:'水的化学式是____，分子组成是____',
+      // Conditional answers are nested secrets too: exercise real saved rules in both read paths.
+      data: {
+        answers: [['H2O'], []],
+        fillChoicePool: ['H2O', '两个氢一个氧'],
+        fillBlankSettings: {
+          formula: {mode:'pool', gradingMode:'auto', maxScore:1},
+          composition: {mode:'pool', gradingMode:'auto', maxScore:1,
+            conditionalAnswer: {sourceId:'formula', cases:[{when:'H2O', answer:'两个氢一个氧'}]},
+          },
+        },
+        explanation: '两个氢一个氧',
+      },
+    })}},
+  });
   const { classroom, participant } = await seedClassroom(db.prisma, '9001');
   await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
   const token = createStudentToken(classroom.id, participant.id);

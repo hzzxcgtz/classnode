@@ -297,6 +297,24 @@ test('安全：响应里**不存在 ANSWER_KEYS 中的任何一个键**，且不
   const server = await startServer(t, db.prisma);
 
   const worksheet = await seedWorksheet(db.prisma, '光合作用学习单');
+  await db.prisma.worksheet.update({
+    where: {id:worksheet.id},
+    data: {content: {...SAMPLE_CONTENT, nodes:SAMPLE_CONTENT.nodes.map(node => node.id !== 'q_2' ? node : {
+      ...node, prompt:'水的化学式是____，分子组成是____',
+      // Conditional answers are nested secrets too: exercise real saved rules in both read paths.
+      data: {
+        answers: [['H2O'], []],
+        fillChoicePool: ['H2O', '两个氢一个氧'],
+        fillBlankSettings: {
+          formula: {mode:'pool', gradingMode:'auto', maxScore:1},
+          composition: {mode:'pool', gradingMode:'auto', maxScore:1,
+            conditionalAnswer: {sourceId:'formula', cases:[{when:'H2O', answer:'两个氢一个氧'}]},
+          },
+        },
+        explanation: '两个氢一个氧',
+      },
+    })}},
+  });
   const classroom = await db.prisma.classroom.create({ data: { code: '9002', title: '安全课堂', mode: 'standard' } });
   await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
   const participant = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, type: 'student' } });

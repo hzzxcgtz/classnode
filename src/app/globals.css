@@ -11472,7 +11472,7 @@ tr:hover td {
   box-shadow: 0 2px 5px rgba(38, 59, 80, .1);
 }
 .purpose-segmented-control > button:hover:not(.is-selected) { color: #304b64; background: rgba(255,255,255,.4); }
-.purpose-segmented-control > button:focus-visible { outline: 2px solid #527aa3; outline-offset: 1px; }
+.purpose-segmented-control > button:focus { outline: 2px solid #527aa3; outline-offset: 1px; }
 .purpose-segmented-control > button svg { flex-shrink: 0; }
 .worksheet-evaluation-help{margin:0;color:#6b8098;font-size:13px;line-height:1.7}
 .worksheet-evaluation-requirements{display:grid;gap:8px}.worksheet-evaluation-requirements strong{font-size:15px;color:#304b65}.worksheet-evaluation-requirements>span{font-size:13px;color:#6b8098}

@@ -11181,9 +11181,9 @@ tr:hover td {
 /* 题面直接编辑：横线显示，稳定 ID 继续负责答案关联。 */
 .worksheet-editor-visual-fill { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 22px; align-items: start; }
 .worksheet-editor-visual-content { min-width: 0; }
-.worksheet-editor-blank-inspector { position: sticky; top: 18px; min-width: 0; border: 1px solid #d8e3ee; border-radius: 12px; background: #f8fafc; padding: 18px; }
-.worksheet-editor-inspector-head { display: grid; gap: 14px; margin-bottom: 16px; color: #263b50; }
-.worksheet-editor-inspector-head label { display: grid; gap: 7px; color: #64748b; font-size: .8rem; }
+.worksheet-editor-blank-inspector { position: sticky; top: 18px; min-width: 0; border: 1px solid #d8e3ee; border-radius: 12px; background: #f8fafc; padding: 12px; }
+.worksheet-editor-inspector-head { display: grid; gap: 8px; margin-bottom: 12px; color: #263b50; }
+.worksheet-editor-inspector-head label { display: grid; gap: 4px; color: #64748b; font-size: .8rem; }
 .worksheet-editor-inspector-head select { width: 100%; min-width: 0; height: 44px; min-height: 44px; box-sizing: border-box; padding: 10px 12px; font-size: .85rem; }
 .worksheet-editor-inspector-hint { color: #64748b; font-size: .85rem; line-height: 1.8; }
 .worksheet-editor-choice-blank-setup.is-inspector { display: block; }
@@ -11345,14 +11345,15 @@ tr:hover td {
 .worksheet-editor-table-blank-count { right: 92px; }
 
 /* 普通填空编辑：增加题面宽度，辅助操作压为图标。 */
-.worksheet-editor-visual-fill { grid-template-columns: minmax(0, 1fr) 270px; gap: 20px; }
+.worksheet-editor-visual-fill,
+.worksheet-editor-table-top { grid-template-columns: minmax(0, 1fr) 200px; gap: 20px; }
 .worksheet-editor-blank-actions { min-height: 34px; gap: 5px; padding: 4px 10px; }
 .worksheet-editor-blank-actions > strong { margin-right: 5px; font-size: 11px; font-weight: 500; }
 .worksheet-editor-blank-actions > button { display: inline-grid; place-items: center; width: 27px; min-height: 27px; padding: 0; border: 0; background: transparent; }
 .worksheet-editor-blank-actions > button:hover { background: #e0ebf8; }
 .worksheet-editor-caret-stop { display: inline; padding-inline: 4px; min-height: 0; font-size: inherit; line-height: inherit; vertical-align: baseline; }
 .worksheet-editor-caret-stop[data-caret-block='true'] { display: block; padding: 0; min-height: 1.3em; }
-@media(max-width: 1050px) { .worksheet-editor-visual-fill { grid-template-columns: minmax(0, 1fr); } }
+@media(max-width: 1050px) { .worksheet-editor-visual-fill, .worksheet-editor-table-top { grid-template-columns: minmax(0, 1fr); } }
 .worksheet-editor-blank-actions > button:disabled { opacity: .3; cursor: default; }
 
 /* 普通填空题同样保持描述框与设置框等高，并与题型标题留出呼吸间距。 */
@@ -11399,7 +11400,11 @@ tr:hover td {
 .worksheet-editor-inline-blank[data-audio-blank='true']::after { content: '语音作答'; border: 0; color: #426c55; font: 11px/16px system-ui; bottom: 2px; text-align: center; }
 /* 右侧只选作答方式；答案、候选词、评分要求在下方宽区编辑。 */
 .worksheet-editor-text-fill > .worksheet-editor-blank-inspector,
-.worksheet-editor-table-top > .worksheet-editor-blank-inspector { min-height: 260px; }
+.worksheet-editor-table-top > .worksheet-editor-blank-inspector { min-height: 360px; }
+@media(max-width: 1050px) {
+  .worksheet-editor-text-fill > .worksheet-editor-blank-inspector,
+  .worksheet-editor-table-top > .worksheet-editor-blank-inspector { min-height: 320px; }
+}
 .worksheet-editor-blank-detail-panel { margin: 16px 0; padding: 20px 22px; border: 1px solid #d7e3ed; border-radius: 12px; background: #f8fafc; }
 .worksheet-editor-blank-detail-heading { margin: 0 0 16px; font-size: .9rem; color: #304b64; }
 .worksheet-editor-blank-detail-empty { color: #7a8c9f; font-size: .8rem; line-height: 1.7; }
@@ -11492,10 +11497,10 @@ tr:hover td {
 /* Blank width controls share the inspector's full column, with help on its own line. */
 .worksheet-editor-blank-width {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  margin-top: 20px;
-  padding-top: 18px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid #e0e8f0;
 }
 .worksheet-editor-blank-width-title {
@@ -11515,19 +11520,13 @@ tr:hover td {
   background: #eaf0f6;
 }
 .worksheet-editor-blank-width > .worksheet-editor-mode-tabs label > span {
-  min-height: 32px;
+  min-height: 26px;
   border-radius: 7px;
 }
-.worksheet-editor-blank-width > small {
-  display: block;
-  color: #7b8da0;
-  font-size: .75rem;
-  line-height: 1.6;
-  font-weight: 400;
-}
 .worksheet-editor-blank-width-number {
+  white-space: nowrap;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -11541,7 +11540,7 @@ tr:hover td {
   color: #7b8da0;
 }
 .worksheet-editor-blank-width-value > .input {
-  width: 80px;
+  width: 64px;
   min-height: 36px;
   padding: 6px 8px;
   border-radius: 8px;
@@ -11655,3 +11654,9 @@ tr:hover td {
   position: relative;
   background: transparent;
 }
+
+.worksheet-editor-whole-fill-scoring { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; }
+.worksheet-editor-whole-fill-scoring > label { display: flex; align-items: center; gap: 8px; }
+.purpose-segmented-control > button:disabled { opacity: .5; cursor: not-allowed; }
+
+.worksheet-editor-reward-amount { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; vertical-align: middle; }

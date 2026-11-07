@@ -24,7 +24,7 @@ import { resolveFullPoints, resolveRewardScale, resolveWorksheetFullStep, reward
 import { correctKeysFromPayload, isMultipleChoice, questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { readBlankCount } from '@/lib/worksheet-answer-value';
-import { fillSettingsFor, hasExplicitFillGrading } from '@/lib/worksheet-fill-modes';
+import { fillWholeScore, fillSettingsFor, hasExplicitFillGrading } from '@/lib/worksheet-fill-modes';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 import { questionTypeNickname } from '@/lib/worksheet-questions';
@@ -530,7 +530,7 @@ export function WorksheetQuestionList({
          * 🔴 与服务端的 `resolvePoints` 是**同一句话的两个实现** —— 代价与三处同步的约束
          *    写在 `@/lib/worksheet-reward` 的 `resolveFullPoints` 上，改那里就要一起改。
          */
-        const fullPoints = resolveFullPoints(node.points, rewardFullFallback ?? 1);
+        const fullPoints = fillWholeScore(node.data) ?? resolveFullPoints(node.points, rewardFullFallback ?? 1);
         const verdictLabel = mixedFillScoring
           ? (gradeState === 'correct' ? '自动评分部分全对' : gradeState === 'partial' ? '自动评分部分答对' : '自动评分部分再想想')
           : gradeState === 'correct' ? '全部答对' : gradeState === 'partial' ? '部分答对' : '再想一想';

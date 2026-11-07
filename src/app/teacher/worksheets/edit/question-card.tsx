@@ -6,7 +6,7 @@ import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { EvaluationSettings } from './evaluation-settings';
 import { hasEvaluation, aiEvaluationEnabled } from '@/lib/worksheet-evaluation';
-import { EditorRewardUnit } from './editor-reward-unit';
+import { EditorRewardAmount, EditorRewardUnit } from './editor-reward-unit';
 import type { RewardStyle } from '@/lib/worksheet-reward';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 // ★ 2026-09-26（spec 第 4 步）：题干的**所见即所得**编辑器（contenteditable）。
@@ -56,7 +56,7 @@ import { TrueFalseBody } from './bodies/true-false-body';
 import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choice-body';
 import { ChoiceBlankSetup } from './bodies/fill-blanks-body';
 // 表达题参考作答支持完整段落，仍沿用 nested answers 数据结构。
-import { fillGradingTotals, fillSettingsFor, hasExplicitFillGrading } from '@/lib/worksheet-fill-modes';
+import { fillWholeScore, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading } from '@/lib/worksheet-fill-modes';
 import { TableBody } from './bodies/table-body';
 import { tableMarkIndex } from '@/lib/worksheet-table';
 // ⚠️ 只引 `OrderBody` —— `OrderAnswerBody`（正确顺序）现在住在它里面（两栏并排），
@@ -359,6 +359,9 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
   const fillSettings = node.type === 'fill-blank' || (node.type === 'choice-blank' && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation)) ? fillSettingsFor(node, readPromptRunsFor(node)) : [];
   const explicitFillScoring = hasExplicitFillGrading(fillSettings);
   const fillTotals = fillGradingTotals(fillSettings);
+  const wholeScore = fillWholeScore(node.data);
+  const fillMaximum = fillTotals.total > 0 ? wholeScore ?? fillTotals.total : 0;
+  const scoredExpression = fillSettings.some(setting => setting.evaluationVersion === 1 ? setting.evaluationMode === 'ai' && setting.evaluationScored === true : setting.mode === 'audio' && setting.gradingMode === 'ai');
   /**
    * 这一型有没有**整题级**的 AI 评分设置块（开关 + 满额 + 评分标准 + 图片）。
    *
@@ -387,13 +390,15 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
     //    总分就是 0 —— 那时说「逐空评分 · 最高 0 分」是一句让人以为界面坏了的话。
     //    判分侧这时**根本不出分**（`grade()` 里 `auto.length === 0` 直接回 null），
     //    与「仅统计作答」逐字对应，所以走它。
-    ? ((gradedOn || aiScoringEnabled) && fillTotals.total > 0 ? `逐空评分 · 最高 ${fillTotals.total}` : '仅统计作答')
+    ? ((gradedOn || aiScoringEnabled) && fillTotals.total > 0 ? `${wholeScore !== undefined ? '整题计分' : '逐空评分'} · 最高 ${fillMaximum}` : '仅统计作答')
     : aiScoringEnabled
     ? `AI 评分 · 最高 ${aiScoringMaxScore}`
     : isGradedQuestionType(node.type)
       ? (gradedOn ? `自动评分 · 最高 ${maximumPoints}` : '仅统计作答')
       : '教师查看';
 
+
+  const gradingStatusAmount = gradingStatus.match(/^(.*最高) (\d+)$/);
 
   return (
     <section
@@ -452,7 +457,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             <span className="worksheet-editor-question-type"><span className="worksheet-editor-type-glyph">{node.type === 'fill-blank' && fillEditorKind(node) === 'table' ? TABLE_QUESTION_ICON : questionTypeIcon(node.type)}</span>{typeLabel}</span>
           )}
           <span className={`worksheet-editor-grade-status${gradedOn ? ' is-on' : ' is-manual'}`}>
-            {gradingStatus}{gradingStatus.includes('最高') && <>{rewardStyle && rewardStyle !== 'points' && <span aria-hidden="true">×</span>}<EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></>}
+            {gradingStatusAmount ? <>{gradingStatusAmount[1]} <EditorRewardAmount style={rewardStyle} unit={pointsUnit} amount={Number(gradingStatusAmount[2])} /></> : gradingStatus}
           </span>
         </button>
         {/* ⚠️ `stopPropagation`：这一块在折叠时也挂在可点的 `<section>` 里，
@@ -642,7 +647,28 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         🔴 这不是纯显隐：服务端 `grade()` 与 AI 评分入口也必须先读 `node.autoGrade`，
         否则教师看到关闭，学生提交后仍会得到分数。
       */}
-      {isGradedQuestionType(node.type) && (isBlankType ? !Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation) : !hasEvaluation(node.data) || node.data.evaluationMode === 'answer') && (
+      {isBlankType && (explicitFillScoring || Object.values((node.data.fillBlankSettings as Record<string, Record<string, unknown>>) ?? {}).some(hasEvaluation)) && (
+        <section className="worksheet-editor-question-section is-grading">
+          <div className="worksheet-editor-section-head">
+            <div>
+              <h3><EditorIcon kind="grading" />整题计分</h3>
+              <p>{wholeScore !== undefined ? '参与判分的空全部答对才获得整题奖励，调查收集的空不参与判分。' : '各空分别计分，整题满分为计分空的分值合计。'}</p>
+            </div>
+            <div className="worksheet-editor-head-actions">
+              <span className="worksheet-editor-points-badge">{fillTotals.total > 0 ? <>当前任务满分 <EditorRewardAmount style={rewardStyle} unit={pointsUnit} amount={fillMaximum} /></> : '当前任务不计分'}</span>
+            </div>
+          </div>
+          <div className="worksheet-editor-block worksheet-editor-whole-fill-scoring">
+            <div className="purpose-segmented-control" role="group" aria-label="填空计分方式">
+              <button type="button" aria-pressed={wholeScore === undefined} className={wholeScore === undefined ? 'is-selected' : ''} onClick={() => onDataChange({fillWholeScore:undefined})}>逐空计分</button>
+              <button type="button" disabled={scoredExpression} title={scoredExpression ? '表达评价计分请使用逐空计分' : undefined} aria-pressed={wholeScore !== undefined} className={wholeScore !== undefined ? 'is-selected' : ''} onClick={() => {if(wholeScore === undefined)onDataChange({fillWholeScore:1});}}>整题计分</button>
+            </div>
+            {wholeScore !== undefined && <label className="worksheet-editor-fill-score-input"><span>{pointsUnit === '分' ? '整题分值' : '整题奖励'}</span><input type="number" min={1} max={99} value={wholeScore} onChange={event => {const score=Number(event.target.value);if(Number.isInteger(score)&&score>=1&&score<=99)onDataChange({fillWholeScore:score});}}/><EditorRewardUnit style={rewardStyle} unit={pointsUnit}/></label>}
+          </div>
+        </section>
+      )}
+
+      {isGradedQuestionType(node.type) && (isBlankType ? !explicitFillScoring && !Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation) : !hasEvaluation(node.data) || node.data.evaluationMode === 'answer') && (
         <section className={`worksheet-editor-question-section is-grading${gradedOn ? '' : ' is-collection'}`}>
           <div className="worksheet-editor-section-head">
             <div>
@@ -653,7 +679,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
               {/* ⚠️ 徽章里**不写「自动评分」** —— 卡片标题就是它（原来那句
                   `gradingStatus`（「自动评分 · 最高 1 颗星星」）是给**折叠态那一行**用的，
                   那里没有标题，所以不能直接搬过来）。 */}
-              {gradedOn && <span className="worksheet-editor-points-badge">当前任务满分 {explicitFillScoring ? fillTotals.total : maximumPoints} {rewardStyle && rewardStyle !== 'points' && <span aria-hidden="true">×</span>}<EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>}
+              {gradedOn && <span className="worksheet-editor-points-badge">当前任务满分 <EditorRewardAmount style={rewardStyle} unit={pointsUnit} amount={explicitFillScoring ? fillTotals.total : maximumPoints} /></span>}
             </div>
           </div>
 

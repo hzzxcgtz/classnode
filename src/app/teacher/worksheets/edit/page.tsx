@@ -495,6 +495,7 @@ function WorksheetEditorBody() {
           <button
             type="button"
             className="btn btn-primary"
+            data-preserve-blank-selection="true"
             onClick={() => void editor.save()}
             disabled={saveStatus.kind === 'saving'}
             title="保存整张学习单（标题、任务、设置、使用说明）"

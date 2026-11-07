@@ -3738,3 +3738,16 @@ test('整题粘贴兼容教材分隔符，列表编辑仍只按半角竖线切�
   }
   assert.deepEqual(splitChoiceText('高兴、难过 | 兴奋／平静'), ['高兴、难过','兴奋／平静']);
 });
+
+
+test('整题奖励汇总与逐空设置独立，切回逐空恢复原分值', () => {
+  const base = tableOfTwoBlanks('whole-test');
+  base.data.fillBlankSettings = {
+    t1:{mode:'text',choices:[],gradingMode:'auto',maxScore:3,evaluationVersion:1,evaluationMode:'answer',evaluationScored:true},
+    t2:{mode:'text',choices:[],gradingMode:'auto',maxScore:2,evaluationVersion:1,evaluationMode:'answer',evaluationScored:true},
+  };
+  assert.equal(maximumPointsFor(base,1),5);
+  assert.equal(maximumPointsFor({...base,data:{...base.data,fillWholeScore:1}},1),1);
+  assert.equal(maximumPointsFor({...base,data:{...base.data,fillWholeScore:4}},1),4);
+  assert.equal(maximumPointsFor({...base,data:{...base.data,fillWholeScore:undefined}},1),5);
+});

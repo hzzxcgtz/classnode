@@ -175,7 +175,7 @@ test('② 面板：奖励在白底圆角条**外面**（它是条子的兄弟、
   assert.ok(rewardAt < boxAt,
     '② 奖励排在结果条**里面** ⇒ 教师说的"图标在框外"没做到');
 
-  assert.match(PANEL, /const fullPoints = resolveFullPoints\(node\.points, rewardFullFallback \?\? 1\)/,
+  assert.match(PANEL, /const fullPoints = fillWholeScore\(node\.data\) \?\? resolveFullPoints\(node\.points, rewardFullFallback \?\? 1\)/,
     '② 没有逐题算满分（槽位数会全部退化成同一个值）');
   assert.match(PANEL, /<QuestionReward scale=\{reward\} full=\{fullPoints\}/,
     '② 算出来的满分没有传给槽位组件');

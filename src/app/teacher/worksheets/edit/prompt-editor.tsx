@@ -774,7 +774,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
     if (!selectedBlankId || !onBlankSelect) return;
     const clearOutside = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
-      if (!target || editorRootRef.current?.contains(target) || target.closest('.worksheet-editor-floating-table-tools') || target.closest('[data-blank-settings-for]')?.getAttribute('data-blank-settings-for') === node.id || target.closest('[data-question-id]')?.getAttribute('data-question-id') === node.id) return;
+      if (!target || target.closest('[data-preserve-blank-selection]') || editorRootRef.current?.contains(target) || target.closest('.worksheet-editor-floating-table-tools') || target.closest('[data-blank-settings-for]')?.getAttribute('data-blank-settings-for') === node.id || target.closest('[data-question-id]')?.getAttribute('data-question-id') === node.id) return;
       onBlankSelect('');
     };
     document.addEventListener('pointerdown', clearOutside);

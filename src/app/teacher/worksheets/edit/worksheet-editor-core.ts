@@ -50,7 +50,7 @@ import {
   readOptions,
   TRUE_FALSE_OPTIONS,
 } from '../../../../lib/worksheet-questions.ts';
-import { fillGradingTotals, hasExplicitFillGrading } from '../../../../lib/worksheet-fill-modes.ts';
+import { fillWholeScore, fillGradingTotals, hasExplicitFillGrading } from '../../../../lib/worksheet-fill-modes.ts';
 // 奖励形式的取值域、默认档与归一化函数也只有一份，在 `src/lib/worksheet-reward.ts`
 // （学生端的奖励徽章与这里读的是同一份）。⚠️ 同样必须是相对路径 + `.ts` 后缀。
 import {
@@ -259,7 +259,10 @@ export function maximumPointsFor(node: WorksheetQuestionNode, fullPoints: number
   if (hasEvaluation(node.data) && node.type !== 'fill-blank' && node.type !== 'choice-blank') return countsEvaluation(node.data) ? node.data.evaluationMode === 'ai' ? Number(node.data.aiScoringMaxScore) || 1 : fullPoints : 0;
   if (node.type === 'fill-blank' || (node.type === 'choice-blank' && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation))) {
     const settings = fillSettingsFor(node, readPromptRuns(node.data.promptRuns, node.prompt));
-    if (hasExplicitFillGrading(settings)) return fillGradingTotals(settings).total;
+    if (hasExplicitFillGrading(settings)) {
+      const total = fillGradingTotals(settings).total;
+      return total > 0 ? fillWholeScore(node.data) ?? total : 0;
+    }
   }
   const perBlank = (node.type === 'fill-blank' || node.type === 'choice-blank')
     && node.data.fillScoring === 'per-blank';

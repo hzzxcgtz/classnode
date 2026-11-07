@@ -240,3 +240,10 @@ export function choiceBreakEditorText(text: string): string {
 export function choiceBreakValueText(text: string): string {
   return text.replace(/↵/g, '\n');
 }
+
+
+/** Explicit opt-in: old whole-question records keep their existing grading policy. */
+export function fillWholeScore(data: Record<string, unknown>): number | undefined {
+  const score = data?.fillWholeScore;
+  return typeof score === 'number' && Number.isInteger(score) && score >= 1 && score <= 99 ? score : undefined;
+}

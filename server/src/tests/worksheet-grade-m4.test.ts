@@ -995,3 +995,29 @@ test('选词内手动换行只影响显示，固定答案和联动答案照常�
   const typed = question('fill-blank',{answers:[['甲乙']],fillBlankSettings:{a:{mode:'text',gradingMode:'auto',maxScore:1}}});
   assert.deepEqual(grade(typed,{format:'fill-multi/v1',texts:['甲\n乙']},P),{state:'incorrect',score:0});
 });
+
+
+test('整题独立奖励：全部计分空正确才奖励，收集空不参与，切换保留逐空分值', () => {
+  for (const type of ['fill-blank','choice-blank'] as const) {
+    const data = {
+      fillWholeScore:1, answers:[['甲'],['乙'],[]],
+      fillBlankSettings:{
+        a:{mode:'pool',gradingMode:'auto',maxScore:3,evaluationVersion:1,evaluationMode:'answer',evaluationScored:true},
+        b:{mode:'text',gradingMode:'auto',maxScore:2,evaluationVersion:1,evaluationMode:'answer',evaluationScored:true},
+        c:{mode:'text',gradingMode:'none',maxScore:9,evaluationVersion:1,evaluationMode:'collect',evaluationScored:false},
+      },fillChoicePool:['甲','丙'],
+    };
+    const node = question(type,data);
+    const value = (texts:string[]) => ({format:'fill-multi/v1',texts});
+    assert.deepEqual(validateQuestion(node),[]);
+    assert.deepEqual(grade(node,value(['甲','乙','']),P),{state:'correct',score:1});
+    assert.deepEqual(grade(node,value(['甲','错','']),P),{state:'partial',score:0});
+    assert.deepEqual(grade(node,value(['错','错','']),P),{state:'incorrect',score:0});
+    assert.deepEqual(resolvePoints(node,P),{full:1,half:0});
+    assert.deepEqual(grade({...node,data:{...data,fillWholeScore:4}},value(['甲','乙','']),P),{state:'correct',score:4});
+    assert.deepEqual(grade({...node,data:{...data,fillWholeScore:undefined}},value(['甲','错','']),P),{state:'partial',score:3});
+    for (const invalid of [0,-1,1.5,100,'1']) assert.ok(validateQuestion({...node,data:{...data,fillWholeScore:invalid}}).some(message=>message.includes('整题奖励')));
+    assert.ok(validateQuestion({...node,data:{...data,fillBlankSettings:{...data.fillBlankSettings,b:{...data.fillBlankSettings.b,evaluationMode:'ai'}}}}).some(message=>message.includes('表达评价')));
+    assert.equal(grade({...node,data:{...data,fillBlankSettings:Object.fromEntries(Object.entries(data.fillBlankSettings).map(([id,s])=>[id,{...s,gradingMode:'none',evaluationMode:'collect',evaluationScored:false}]))}},value(['','','']),P),null);
+  }
+});

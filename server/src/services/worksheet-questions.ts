@@ -274,8 +274,14 @@ export interface WorksheetContent { schemaVersion: number; nodes: QuestionNode[]
  * 那会让读出口与写入口对同一个库里形状给出**不同**的答案（写入口补 0、读出口补学习单级），
  * 而两者都不会报错 —— 正是本文件反复在防的那种失效。
  */
+export function fillWholeScore(data: Record<string, unknown>): number | undefined {
+  const score = data?.fillWholeScore;
+  return typeof score === 'number' && Number.isInteger(score) && score >= 1 && score <= 99 ? score : undefined;
+}
+
 export function resolvePoints(node: QuestionNode, fallback: QuestionPoints): QuestionPoints {
-  return normalizePoints(node.points) ?? fallback;
+  const whole = (node.type === 'fill-blank' || node.type === 'choice-blank') ? fillWholeScore(node.data) : undefined;
+  return whole !== undefined ? {full:whole, half:0} : normalizePoints(node.points) ?? fallback;
 }
 
 /**
@@ -461,6 +467,8 @@ export function grade(node: QuestionNode, value: unknown, points: QuestionPoints
         score += setting.maxScore;
       }
     });
+    const whole = fillWholeScore(data);
+    if (whole !== undefined) score = hit === auto.length ? whole : 0;
     return { state: hit === auto.length ? 'correct' : hit > 0 ? 'partial' : 'incorrect', score };
   }
   if ((node.type === 'fill-blank' || node.type === 'choice-blank')
@@ -1611,6 +1619,11 @@ function validateFillBlank(node: QuestionNode, errors: string[]): void {
 }
 
 function validateFillModes(node: QuestionNode, errors: string[]): void {
+  if (node.data.fillWholeScore !== undefined) {
+    if (fillWholeScore(node.data) === undefined) errors.push('整题奖励数量须为 1 到 99 的整数');
+    if (fillAudioSlots(node).some(slot => slot.scored) || Object.values((node.data.fillBlankSettings as Record<string, Record<string, unknown>>) ?? {}).some(s => hasEvaluation(s) && s.evaluationMode === 'ai' && countsEvaluation(s))) errors.push('整题计分仅支持练习判分；表达评价计分请使用逐空计分');
+  }
+
   if (node.data.fillScoring !== undefined && node.data.fillScoring !== 'per-blank' && node.data.fillScoring !== 'whole') {
     errors.push('填空题的给分方法不合法');
   }

@@ -175,7 +175,7 @@ test('★ 「分值」那一格只在**真的有人读它**的地方画（选择
   //   AI 评分同样只认填空题）⇒ 选择填空的空卡片上那一格填进去**没有任何人读**，
   //   它的成绩仍按题目级「得分方式 + 分值」发。
   const bodySrc = body(BODY);
-  assert.match(bodySrc, /const perBlankScoreShown = node\.type === 'fill-blank'/, '那一格又没有按题型收口');
+  assert.match(bodySrc, /const perBlankScoreShown = fillWholeScore\(node\.data\) === undefined && node\.type === 'fill-blank'/, '那一格又没有按题型收口');
   // ★ 2026-10-09：`&& gradingModeOf(...) !== 'none'` 那半随「不算分」那一档一起删了 ——
   //    今天每个空都算分（有答案键才存得下），所以「分值」跟着 `perBlankScoreShown` 走就够。
   assert.match(

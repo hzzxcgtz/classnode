@@ -12,7 +12,7 @@ import type { WorksheetQuestionNode } from '@/lib/types';
 import { readBlankCount } from '@/lib/worksheet-questions';
 // ★ 2026-10-06：粘贴去格式那一个纯函数（唯一一份，题目卡里「评分标准」那个 textarea 用的也是它）。
 import { normalizePastedText } from '@/lib/worksheet-text-normalize';
-import { choiceBreakEditorText, choiceBreakValueText, fixedBlankWidth, CHOICE_SEPARATOR_HINT, CHOICE_JOINER, FILL_GRADING_MODE, blankSlots, fillSettingsFor, hasExplicitFillGrading, isLegacyFillGrading, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode, type FillBlankSetting } from '@/lib/worksheet-fill-modes';
+import { choiceBreakEditorText, choiceBreakValueText, fillWholeScore, fixedBlankWidth, CHOICE_SEPARATOR_HINT, CHOICE_JOINER, FILL_GRADING_MODE, blankSlots, fillSettingsFor, hasExplicitFillGrading, isLegacyFillGrading, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings, type FillAnswerMode, type FillBlankSetting } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import {
   readBlankAnswers,
@@ -340,7 +340,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
    *    那一型由下面那句「旧口径」说明 + 一个转换按钮交代（**不猜**：不替教师把整题那一份
    *    分偷偷摊到每个空上，那是静默改分）。
    */
-  const perBlankScoreShown = node.type === 'fill-blank'
+  const perBlankScoreShown = fillWholeScore(node.data) === undefined && node.type === 'fill-blank'
     && (explicitGrading || node.data.fillScoring === 'per-blank');
   const explicitSettings = () => settings.map(setting => ({
     ...setting,
@@ -353,6 +353,11 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
     maxScore: setting.maxScore ?? inheritScore,
   }));
   const setMode = (index: number, mode: FillAnswerMode) => {
+    if (fillWholeScore(node.data) !== undefined && mode === 'audio') {
+      updateSettings(settings.map((setting, i) => i === index ? {...setting, mode, evaluationVersion:1, evaluationMode:'collect', evaluationScored:false, gradingMode:'none'} : setting));
+      return;
+    }
+
     // ★ 2026-10-09：原先这里还带一手「选词那两种方式 ⇒ 顺手把这一空的 AI 评分关掉」，
     //    它服务的是那条**会拒绝保存**的服务端校验（「只有手工填写时才能使用 AI 评分」）。
     //    两档一起删之后没有这个组合了，历史值也原样留着 —— 那一条接线整个删掉。
@@ -443,11 +448,10 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                     updateSettings(settings.map((setting, i) => i === index ? {...setting, widthMode:'fixed', widthChars} : setting));
                   }} /><span>字符</span></span>
                 </label>}
-                <small>{fixedBlankWidth(settings[index]) === undefined ? '随内容自动增宽' : '超出宽度后在框内换行'}</small>
               </div>}
               {section !== 'mode' && <>
               {settings[index].evaluationMode === 'ai' && <p className="worksheet-evaluation-help">本题所有表达空共用以下评价标准，修改会自动同步；各空的分值仍分别设置。</p>}
-              {!needsConversion && <EvaluationSettings allowAi={settings[index].mode === 'text' || settings[index].mode === 'audio'} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls,slot.id)} unit={pointsUnit} data={settings[index] as unknown as Record<string, unknown>} allowAnswer={settings[index].mode !== 'audio'} legacyMode={!gradingEnabled ? 'collect' : settings[index].mode === 'audio' ? settings[index].gradingMode === 'ai' ? 'ai' : 'collect' : 'answer'} legacyScored={gradingEnabled && (settings[index].mode !== 'audio' || settings[index].gradingMode === 'ai')} maxScore={settings[index].maxScore ?? inheritScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onChange={patch => updateSettings(updateSharedFillEvaluation(explicitSettings(),index,{...patch,gradingMode:patch.evaluationMode === 'answer' ? 'auto' : patch.evaluationMode === 'ai' ? 'ai' : 'none'}))}/>}
+              {!needsConversion && <EvaluationSettings allowAi={fillWholeScore(node.data) === undefined && (settings[index].mode === 'text' || settings[index].mode === 'audio')} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls,slot.id)} unit={pointsUnit} data={settings[index] as unknown as Record<string, unknown>} allowAnswer={settings[index].mode !== 'audio'} legacyMode={!gradingEnabled ? 'collect' : settings[index].mode === 'audio' ? settings[index].gradingMode === 'ai' ? 'ai' : 'collect' : 'answer'} legacyScored={gradingEnabled && (settings[index].mode !== 'audio' || settings[index].gradingMode === 'ai')} maxScore={settings[index].maxScore ?? inheritScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onChange={patch => updateSettings(updateSharedFillEvaluation(explicitSettings(),index,{...patch,gradingMode:patch.evaluationMode === 'answer' ? 'auto' : patch.evaluationMode === 'ai' ? 'ai' : 'none'}))}/>}
               {settings[index].mode === 'inline' && (
                 <label className="worksheet-editor-field worksheet-editor-inline-word-field">
                   <span>这一空的待选词</span>

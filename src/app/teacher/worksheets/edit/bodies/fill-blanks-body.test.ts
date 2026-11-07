@@ -109,7 +109,7 @@ test('★ 逐空设置是**两行**：作答方式 → 答案，分值带学习�
   assert.match(bodySrc, /<EditorRewardUnit style=\{rewardStyle\} unit=\{pointsUnit\} \/>/, '分值输入框后应跟随学习单奖励类型显示图标或分数单位');
 });
 
-test('★ 只剩一排胶囊：作答方式（分段胶囊）；评分方式那一排连同它的样式一起删了', () => {
+test('作答方式与宽度各有分段选择，旧评分方式控件保持移除', () => {
   // ★ 2026-10-09（教师裁定）：填空题只剩「每空有答案键、都算分」一条路 ⇒ 那一排单选没有
   //    存在的理由。★ 2026-10-05 那版是为了与作答方式**区分**才给它做了描边胶囊变体；
   //    现在整排删掉，那段 CSS 也一并删 —— 留着就是一段没有任何消费者的样式
@@ -117,8 +117,8 @@ test('★ 只剩一排胶囊：作答方式（分段胶囊）；评分方式那�
   const bodySrc = body(BODY);
 
   assert.equal(
-    (bodySrc.match(/className="worksheet-editor-mode-tabs"/g) ?? []).length, 1,
-    '作答方式那一排应当仍是**独占**药丸样式的那一个',
+    (bodySrc.match(/className="worksheet-editor-mode-tabs"/g) ?? []).length, 2,
+    '作答方式和宽度方式各保留一组分段选择',
   );
   assert.ok(!/is-scoring-pills/.test(bodySrc), '评分方式那一排回来了（它只剩一档，是装饰）');
 
@@ -304,7 +304,11 @@ test('③ 每空答案 / 参考答案共用的那个列表输入已接「粘贴�
   // 接的是**哪两处**：每空答案那一格、以及主观题的「参考答案 / 参考要点」—— 两处用的都是这一个组件。
   const answerAt = source.indexOf('worksheet-editor-fill-answer-editor');
   assert.ok(answerAt > 0, '找不到每空答案那一格');
-  assert.match(source.slice(answerAt, answerAt + 700), /<SymbolListInput/, '每空答案那一格换控件了 —— 粘贴去格式接不到它');
+  assert.match(source.slice(answerAt, answerAt + 700), /renderAnswer\(index\)/, '答案区域必须接上逐空答案编辑器');
+  const renderAt = source.indexOf('const renderAnswer =');
+  assert.ok(renderAt >= 0);
+  const answerRenderer = source.slice(renderAt, source.indexOf('const setMode', renderAt));
+  assert.match(answerRenderer, /<SymbolListInput[\s\S]*values=\{answerSets\[index\]/, '固定答案必须使用支持粘贴去格式的列表输入');
   const card = body(CARD);
   assert.match(card, /reference=\{node.type === 'short-answer'/);
   const evaluation = fs.readFileSync(path.join(HERE,'..','evaluation-settings.tsx'),'utf8');

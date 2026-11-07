@@ -19,6 +19,7 @@
  * 选项重编号 / 填空题 / 草稿与加载守卫。
  */
 import { test } from 'node:test';
+import { splitChoiceText } from '../../../../lib/worksheet-fill-modes.ts';
 // ★ 2026-09-30：下面有一条**跨文件核对**（前端的默认值 vs 服务端那一份），只读文本。
 import fs from 'node:fs';
 import path from 'node:path';
@@ -3656,7 +3657,7 @@ test('🔴 只剩一条时**连那个选择都没有**（把唯一一条拿走�
  * 本文件的 `POOL_SPLIT` 一条、判 `loose` 那一条），而且后两条的注释写着
  * 「与 `splitChoiceText`（输入那一侧）**同一套**」—— 那句话在我给输入那一侧加了
  * 全角斜杠之后**当场变成假话**，而假的注释会被下一个人当依据。
- * ⇒ 现在三处都从 `CHOICE_SEPARATORS` 派生，下面这几条钉住「派生出来的真的管用」。
+ * ⇒ 整题粘贴独立兼容这些教材分隔符，编辑输入仍只使用半角竖线。
  */
 test('🔴 extractPoolWords：**中文输入法打出来的**分隔符也要认（全角斜杠等）', () => {
   // ⚠️ 判据是「括号里不止一个词」⇒ 抽出来当词库。少认一个分隔符的症状是
@@ -3726,4 +3727,14 @@ test('新建学习单的设置草稿可保留空任务，恢复后任务与外�
   assert.equal(restored.settings.rewardStyle, 'classnode');
   assert.equal(restored.settings.backgroundTheme, 'forest-explorer');
   assert.equal(isDirtyAgainst(snapshotsOf(buildPayload('', '', DEFAULT_SETTINGS, createEmptyContent())), payload), true, '保存本机草稿不能将整单标记为已保存');
+});
+
+
+test('整题粘贴兼容教材分隔符，列表编辑仍只按半角竖线切分', () => {
+  for (const separator of ['、', '，', '/', '／', '|', '｜', '；']) {
+    assert.deepEqual(extractPoolWords(`他{填空域}（高兴${separator}难过）地说`), {
+      text:'他{填空域}地说', words:['高兴','难过'], loose:0,
+    });
+  }
+  assert.deepEqual(splitChoiceText('高兴、难过 | 兴奋／平静'), ['高兴、难过','兴奋／平静']);
 });

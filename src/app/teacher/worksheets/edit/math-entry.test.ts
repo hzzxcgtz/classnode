@@ -64,19 +64,15 @@ function jsxAttribute(source: string, component: string, attribute: string): str
   return value;
 }
 
-test('★ Σ 住在题干工具栏里，右边写着「数学公式」（教师第三轮：放回去）', () => {
+test('Σ 保留在题干工具栏，旁边使用精简名称「公式」', () => {
   const editor = body(EDITOR);
   // 阳性对照：剥完之后剩下的仍是这个组件，不是一段空壳（否则下面几句对空串永远绿）。
   assert.ok(editor.length > 500, '剥 import 与注释之后剩下的仍是编辑器组件');
   assert.ok(editor.includes('worksheet-editor-math-glyph'), '工具栏上没有 Σ');
-  // 🔴 教师原话：「就在西格玛符号后面加上『数学公式』四个字就可以了」。
-  //    旁边那个「粘贴题目」也是图标 + 文字 —— 这一条让它俩长得是一类东西。
-  // ⚠️ **只看那个按钮本身**（从 Σ 那个字形到它的 `</button>`）：`数学公式` 四个字在
-  //    同一行的 `aria-label` 里也有一份，查整个文件的话「把按钮上看得见的那四个字删掉」
-  //    照样绿 —— 而那正是教师唯一能看到的那一份。变异检验实测抓出来的假绿。
+  // Only inspect the visible button label, so an aria-label cannot mask missing text.
   const glyphAt = editor.indexOf('worksheet-editor-math-glyph');
   const mathButton = editor.slice(glyphAt, editor.indexOf('</button>', glyphAt));
-  assert.ok(mathButton.includes('数学公式'), 'Σ 右边没有「数学公式」四个字（看得见的那四个）');
+  assert.match(mathButton, /<\/span>\s*公式\s*$/, 'Σ 右边必须显示精简名称「公式」');
   assert.ok(editor.includes('MathInsertDialog'), '弹窗没有挂上去');
   assert.ok(editor.includes('mathOpen'), '没有开合弹窗的状态');
   // ⚠️ 它要落在**「插入题目内容」那一组**里（与粘贴题目 / 填空域 / 图片同一组），

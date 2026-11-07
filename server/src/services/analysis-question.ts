@@ -1,6 +1,7 @@
 import { evaluationRequirements, evaluationImages, hasEvaluation } from './worksheet-evaluation.js';
 import {
   acceptableAnswersFor,
+  conditionalFillAnswerReference,
   answerSlotCount,
   readPairs,
   readStringMap,
@@ -159,7 +160,8 @@ function fillReference(node: QuestionNode): string {
   const count = answerSlotCount(node.data);
   if (count === 0) return '（未提供参考答案）';
   const slots = Array.from({ length: count }, (_, index) => {
-    const answers = acceptableAnswersFor(node.data, index);
+    const conditional = conditionalFillAnswerReference(node.data, index);
+    const answers = conditional.length ? conditional : acceptableAnswersFor(node.data, index);
     return `第${index + 1}空：${answers.length > 0 ? answers.join(' / ') : '（未提供）'}`;
   });
   return slots.join('；');

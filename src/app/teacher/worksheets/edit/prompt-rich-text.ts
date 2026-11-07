@@ -1,6 +1,6 @@
 import { locateInLengths } from '@/lib/text-offsets';
 import { TABLE_MARK_TEXT } from '@/lib/worksheet-table';
-import { blankRuns, isBlankRun, promptRunStyle, type PromptRun } from '@/lib/worksheet-prompt-marks';
+import { blankRuns, promptFrameStyle, isBlankRun, promptRunStyle, type PromptRun } from '@/lib/worksheet-prompt-marks';
 
 /**
  * 所见即所得题干编辑器的**那一层 DOM 原语**（★ 2026-09-26）。
@@ -54,9 +54,40 @@ function modelTextPart(node: Node, raw: string): string {
   return node.parentElement?.closest('[data-caret-stop]') ? raw.replace(/\u200b/g, '') : raw;
 }
 
+export function promptLinksMatch(el: HTMLElement, runs: PromptRun[]): boolean {
+  const expected = runs.filter(run => run.href);
+  const rendered = Array.from(el.querySelectorAll<HTMLElement>('[data-prompt-href]'));
+  return expected.length === rendered.length && rendered.every((span, index) => {
+    const run = expected[index];
+    return span.dataset.promptHref === run.href && promptNodeOffset(el, span) === run.start
+      && promptModelText(span).length === run.end - run.start;
+  });
+}
+
 export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[]): void {
   el.replaceChildren();
+  el.dataset.promptRuns = JSON.stringify(runs);
+  let target: HTMLElement = el;
+  let previousFrame: string | undefined;
+  const frameGap = () => {
+    const stop = caretStop();
+    stop.dataset.frameGap = 'true';
+    return stop;
+  };
   runs.forEach((run) => {
+    const frameKey = run.frame ? `${run.frame}:${run.frameId}` : undefined;
+    if (!frameKey) {
+      if (previousFrame) el.appendChild(frameGap());
+      target = el;
+    }
+    else if (frameKey !== previousFrame) {
+      el.appendChild(frameGap());
+      target = document.createElement('span');
+      const frameStyle = promptFrameStyle(run.frame!);
+      Object.keys(frameStyle).forEach(key => target.style.setProperty(cssPropertyName(key), String(frameStyle[key])));
+      el.appendChild(target);
+    }
+    previousFrame = frameKey;
     const style = promptRunStyle(run);
     if (isBlankRun(run)) {
       // 横线是不可拆开的结构化填空；保留底层文本长度以兼容历史题面和字符偏移。
@@ -71,7 +102,7 @@ export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[])
       span.setAttribute('role', 'button');
       span.setAttribute('tabindex', '0');
       span.setAttribute('aria-label', `设置第 ${blankRuns(runs).findIndex(item => item.blank === run.blank) + 1} 个文字填空`);
-      el.append(caretStop(), span, caretStop());
+      target.append(caretStop(), span, caretStop());
       return;
     }
     const whole = text.slice(run.start, run.end);
@@ -79,7 +110,12 @@ export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[])
     if (markAt < 0) {
       const span = document.createElement('span');
       applyRunStyle(span, style, whole);
-      el.appendChild(span);
+      if (run.href) {
+        span.dataset.promptHref = run.href;
+        span.style.color = '#245990';
+        span.style.textDecoration = 'underline';
+      }
+      target.appendChild(span);
       return;
     }
     // 表格标记保留历史协议，显示成简洁入口，实际表格紧邻题面编辑。
@@ -88,7 +124,7 @@ export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[])
     if (head) {
       const headSpan = document.createElement('span');
       applyRunStyle(headSpan, style, head);
-      el.appendChild(headSpan);
+      target.appendChild(headSpan);
     }
     const chip = document.createElement('span');
     applyRunStyle(chip, style, TABLE_MARK_TEXT);
@@ -96,13 +132,14 @@ export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[])
     chip.contentEditable = 'false';
     chip.setAttribute('data-label', '表格 · 点击编辑');
     chip.setAttribute('data-table-mark', '1');
-    el.append(caretStop(true), chip, caretStop(true));
+    target.append(caretStop(true), chip, caretStop(true));
     if (tail) {
       const tailSpan = document.createElement('span');
       applyRunStyle(tailSpan, style, tail);
-      el.appendChild(tailSpan);
+      target.appendChild(tailSpan);
     }
   });
+  if (previousFrame) el.appendChild(frameGap());
   // pre-wrap 的末尾换行本身没有可见行盒；补一个不入库的文字落点，让光标立即进入新行。
   if (text.endsWith('\n')) {
     const tail = caretStop(); tail.dataset.caretTail = 'true'; el.appendChild(tail);

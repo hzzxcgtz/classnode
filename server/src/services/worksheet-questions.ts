@@ -344,7 +344,7 @@ export function flattenQuestions(content: WorksheetContent): QuestionNode[] {
  * 它们是学生必须看到的题面，剥掉它们会让题目残缺到无法作答。
  */
 export const ANSWER_KEYS = [
-  'correctKeys', 'answers', 'explanation', 'correctOrder', 'pairs', 'placement',
+  'correctKeys', 'answers', 'explanation', 'correctOrder', 'pairs', 'placement', 'conditionalAnswer',
   // 评分标准只供教师与 AI 分析使用，不能随学生版学习单下发。
   'evaluationText', 'evaluationImages', 'rubricText', 'rubricImageUrl', 'analysisFocus', '__analysisContext', 'audioCriteria', 'audioReference',
 ] as const;
@@ -453,7 +453,7 @@ export function grade(node: QuestionNode, value: unknown, points: QuestionPoints
     let score = 0;
     auto.forEach((setting) => {
       const text = texts[setting.index];
-      const accepted = gradableAnswers(data, setting.index);
+      const accepted = gradableAnswers(data, setting.index, texts);
       if (typeof text !== 'string' || accepted.length === 0) return;
       const normalized = normalizeFillText(text);
       if (accepted.some(answer => normalizeFillText(answer) === normalized)) {
@@ -806,6 +806,86 @@ export function acceptableAnswersFor(data: Record<string, unknown>, index: numbe
   return index === 0 ? readAcceptableAnswers(answers) : [];
 }
 
+function fillSettingsEntries(data: Record<string, unknown>): [string, unknown][] {
+  const settings = data.fillBlankSettings;
+  return settings && typeof settings === 'object' && !Array.isArray(settings) ? Object.entries(settings) : [];
+}
+
+function isScoredPoolBlank(setting: unknown): boolean {
+  if (readField(setting, 'mode') !== 'pool') return false;
+  if (readField(setting, 'evaluationVersion') === 1) {
+    return readField(setting, 'evaluationMode') === 'answer' && readField(setting, 'evaluationScored') === true;
+  }
+  const grading = readField(setting, 'gradingMode');
+  return grading !== 'ai' && grading !== 'none';
+}
+
+function conditionalPoolRule(data: Record<string, unknown>, index: number) {
+  const entries = fillSettingsEntries(data);
+  const setting = entries[index]?.[1];
+  const rule = readField(setting, 'conditionalAnswer');
+  if (!isScoredPoolBlank(setting) || rule === undefined) return null;
+  const sourceIndex = entries.findIndex(([id]) => id === readField(rule, 'sourceId'));
+  const source = entries[sourceIndex]?.[1];
+  const cases = readField(rule, 'cases');
+  return {
+    sourceIndex: sourceIndex !== index && isScoredPoolBlank(source) && readField(source, 'conditionalAnswer') === undefined
+      ? sourceIndex : -1,
+    cases: Array.isArray(cases) ? cases : [],
+  };
+}
+
+/** 展示联动规则，不把依赖空误写成「未提供答案」。 */
+export function conditionalFillAnswerReference(data: Record<string, unknown>, index: number): string[] {
+  const rule = conditionalPoolRule(data, index);
+  if (!rule || rule.sourceIndex < 0) return [];
+  return rule.cases.flatMap(item => {
+    const when = readField(item, 'when');
+    const answer = readField(item, 'answer');
+    return typeof when === 'string' && typeof answer === 'string'
+      ? [`第${rule.sourceIndex + 1}空填「${when}」时填「${answer}」`] : [];
+  });
+}
+
+function normalizePoolAnswer(answer: string): string {
+  return normalizeFillText(mathText(splitMath(answer)));
+}
+
+function effectiveFillAnswers(data: Record<string, unknown>, index: number, texts: readonly unknown[]): string[] {
+  const rule = conditionalPoolRule(data, index);
+  if (!rule) return acceptableAnswersFor(data, index);
+  const source = texts[rule.sourceIndex];
+  if (typeof source !== 'string' || !acceptableAnswersFor(data, rule.sourceIndex)
+      .some(answer => normalizePoolAnswer(answer) === normalizeFillText(source))) return [];
+  const matchingCase = rule.cases.find(item => {
+    const when = readField(item, 'when');
+    return typeof when === 'string' && normalizePoolAnswer(when) === normalizeFillText(source);
+  });
+  const answer = readField(matchingCase, 'answer');
+  return typeof answer === 'string' && normalizePoolAnswer(answer) ? [answer] : [];
+}
+
+function validateConditionalPoolRule(data: Record<string, unknown>, index: number, errors: string[]): boolean {
+  const rule = conditionalPoolRule(data, index);
+  if (!rule) return false;
+  const label = `填空题第 ${index + 1} 空`;
+  const sources = new Set(acceptableAnswersFor(data, rule.sourceIndex).map(normalizePoolAnswer));
+  if (rule.sourceIndex < 0 || sources.size === 0) {
+    errors.push(`${label}请选择一个已设置固定答案的共用选词空作为依据`);
+    return true;
+  }
+  const pool = new Set(readStrings(data.fillChoicePool ?? data.choices).map(normalizePoolAnswer).filter(Boolean));
+  const valid = rule.cases.every(item => {
+    const when = readField(item, 'when');
+    const answer = readField(item, 'answer');
+    if (typeof when !== 'string' || typeof answer !== 'string') return false;
+    const key = normalizePoolAnswer(when);
+    return pool.has(key) && pool.has(normalizePoolAnswer(answer)) && sources.delete(key);
+  });
+  if (!valid || sources.size > 0) errors.push(`${label}请为依据空的每个固定答案各设置一个共用选词答案`);
+  return true;
+}
+
 /**
  * **判分侧**的可接受答案 —— 在 `acceptableAnswersFor` 之上**剥掉公式定界符**（裁定 ④）。
  *
@@ -820,8 +900,8 @@ export function acceptableAnswersFor(data: Record<string, unknown>, index: numbe
  * 🔴 剥离走的是**同一个** `mathText(splitMath(...))`（服务端孪生），不是另写一条 ——
  *    显示侧与判分侧是从同一条规则派生出的**两个投影**，谁都不许自己造一份。
  */
-function gradableAnswers(data: Record<string, unknown>, index: number): string[] {
-  return acceptableAnswersFor(data, index).map((answer) => mathText(splitMath(answer)));
+function gradableAnswers(data: Record<string, unknown>, index: number, texts: readonly unknown[] = []): string[] {
+  return effectiveFillAnswers(data, index, texts).map((answer) => mathText(splitMath(answer)));
 }
 
 function fillHitStats(data: Record<string, unknown>, value: unknown): { hit: number; total: number } {
@@ -830,7 +910,7 @@ function fillHitStats(data: Record<string, unknown>, value: unknown): { hit: num
   const texts = Array.isArray(rawTexts) ? rawTexts : [readField(value, 'text')];
   let hit = 0;
   for (let index = 0; index < total; index += 1) {
-    const acceptable = gradableAnswers(data, index);
+    const acceptable = gradableAnswers(data, index, texts);
     const text = texts[index];
     if (typeof text !== 'string' || acceptable.length === 0) continue;
     const normalized = normalizeFillText(text);
@@ -898,7 +978,7 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown, tolerance
     for (let index = 0; index < total; index += 1) {
       // ⚠️ 每一空都要丢掉空白串（`readAcceptableAnswers` 负责），否则「这一空什么都不填」
       // 会因为 `normalizeFillText(' ') === normalizeFillText('')` 而被算成答对。
-      const acceptable = gradableAnswers(data, index);
+      const acceptable = gradableAnswers(data, index, texts);
       const text = texts[index];
       // 这一空没有可接受答案 / 学生没填 / 填的不是字符串 ⇒ **这一空算错**，其余照常给分。
       if (acceptable.length === 0 || typeof text !== 'string') continue;
@@ -941,8 +1021,10 @@ function judgeFillBlank(data: Record<string, unknown>, value: unknown, tolerance
  */
 export function wrongBlankAnswers(node: QuestionNode, value: unknown): Record<number, string> {
   const out: Record<number, string> = {};
+  const texts = readField(value, 'texts');
+  if (!Array.isArray(texts)) return out;
   for (const index of fillBlankWrongIndexes(node, value)) {
-    const acceptable = acceptableAnswersFor(node.data, index);
+    const acceptable = effectiveFillAnswers(node.data, index, texts);
     if (acceptable.length > 0) out[index] = acceptable[0];
   }
   return out;
@@ -1061,7 +1143,7 @@ export function fillBlankWrongIndexes(node: QuestionNode, value: unknown): numbe
   const wrong: number[] = [];
   const total = answerSlotCount(node.data);
   for (let index = 0; index < total; index += 1) {
-    const acceptable = gradableAnswers(node.data, index);
+    const acceptable = gradableAnswers(node.data, index, texts);
     // 🔴 没有答案键的空**不进「答错」**：它没有对错可言。
     //    这一类包含三种：主观空（`gradingMode:'ai'`）、逐空关闭（`'none'`）、以及答案没设的空。
     //    ★ 2026-10-09：这一支从前与下面 `typeof text !== 'string'` **合在一句里**，
@@ -1497,6 +1579,7 @@ function validateFillBlank(node: QuestionNode, errors: string[]): void {
     if (explicit.length > 0) {
       for (let index = 0; index < total; index += 1) {
         if (!fillAudioSlots(node).some(slot => slot.index === index) && explicit[index]?.gradingMode === 'auto'
+            && !validateConditionalPoolRule(node.data, index, errors)
             && !acceptableAnswersFor(node.data, index).some(answer => answer.trim())) {
           // ★ 2026-10-09（教师裁定）：逐空只剩「每空有答案键、都算分」一条路 ⇒
           //    文案里不再点名任何一档（`FILL_GRADING_LABELS` 整张表已删，写「本地评分」
@@ -1509,7 +1592,8 @@ function validateFillBlank(node: QuestionNode, errors: string[]): void {
       return;
     }
     for (let index = 0; index < total; index += 1) {
-      if (!acceptableAnswersFor(node.data, index).some((answer) => answer.trim())) {
+      if (!validateConditionalPoolRule(node.data, index, errors)
+          && !acceptableAnswersFor(node.data, index).some((answer) => answer.trim())) {
         // 同一个毛病不按空数重复说 N 遍（一道 10 个空的题会甩出 10 条一样的错）。
         // ⚠️ 单空那条文案保留（它更简短），多空用逐空那条。
         errors.push(total === 1 ? '填空题至少要有一个可接受的答案' : '填空题每个空至少要有一个可接受的答案');

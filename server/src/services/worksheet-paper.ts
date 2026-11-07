@@ -4,6 +4,7 @@ import {
   PAPER_BLANK_TEXT,
   TABLE_MARK_TEXT,
   acceptableAnswersFor,
+  conditionalFillAnswerReference,
   answerSlotCount,
   readPairs,
   readStringMap,
@@ -271,10 +272,14 @@ function joinAcceptable(answers: readonly string[]): string {
 function blankAnswer(data: Record<string, unknown>): string {
   const total = answerSlotCount(data);
   if (total === 0) return '';
-  if (total === 1) return joinAcceptable(acceptableAnswersFor(data, 0));
+  const reference = (index: number) => {
+    const conditional = conditionalFillAnswerReference(data, index);
+    return joinAcceptable(conditional.length ? conditional : acceptableAnswersFor(data, index));
+  };
+  if (total === 1) return reference(0);
   const parts: string[] = [];
   for (let index = 0; index < total; index += 1) {
-    const text = joinAcceptable(acceptableAnswersFor(data, index));
+    const text = reference(index);
     // 没配答案的空照样占一个号 —— 少了号，后面每一个空的编号都会错位。
     parts.push(`${marker(index)}${text || '—'}`);
   }

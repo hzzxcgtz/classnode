@@ -1,5 +1,7 @@
+import { BlankInput } from './worksheet-blank-input';
+import { IconExternalLink } from '@tabler/icons-react';
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
-import { DEFAULT_PROMPT_STYLE, blankAriaLabel, blankValueStyle, inputWidthCh, isBlankRun, promptTextStyle, type PromptRun } from './worksheet-prompt-marks';
+import { promptFrameStyle, DEFAULT_PROMPT_STYLE, blankAriaLabel, blankValueStyle, inputWidthCh, isBlankRun, normalizePromptLink, promptTextStyle, type PromptRun } from './worksheet-prompt-marks';
 // ★ 2026-09-30：题面里的数学公式（`$x^2$`）。**切分**是纯逻辑（`worksheet-math.ts`，16 条
 // 边界用例钉着），**画**是 `worksheet-math-view.tsx`（全仓唯一一处调 KaTeX 渲染题面公式的
 // 地方 —— 这里不许再调一次）。
@@ -68,6 +70,7 @@ export interface PromptTextProps {
 }
 
 export interface PromptBlankBinding {
+  widthOf?: (index: number) => number | undefined;
   stableColumns?: boolean;
   /** 每个空的当前值（按从左到右）。长度不足时缺的那几格当空串。 */
   values: string[];
@@ -177,9 +180,7 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
    * 判分取的位置**整体错位**，而屏幕上一切正常（本仓最防的那一类）。
    */
   let tableOffset = 0;
-  return (
-    <>
-      {segments.map((run, runIndex) => {
+  const rendered = segments.map((run, runIndex) => {
         const previous = segments[runIndex - 1];
         const adjacentBlank = Boolean(previous && isBlankRun(previous) && isBlankRun(run) && previous.end === run.start);
         if (isBlankRun(run)) {
@@ -196,7 +197,7 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
                 key={run.start}
                 run={run}
                 gapBefore={adjacentBlank}
-                width={`${Math.max(3, run.end - run.start)}ch`}
+                width={blanks.widthOf?.(index) !== undefined ? `${blanks.widthOf(index)}em` : `${Math.max(3, run.end - run.start, inputWidthCh(blanks.values[index] ?? '') + 2)}ch`}
                 value={blanks.values[index] ?? ''}
                 label={`第 ${index + 1} 空`}
                 wrong={blanks.wrongOf?.(index) ?? false}
@@ -224,9 +225,8 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
             //    `color: inherit` ⇒ 禁用态不会用 UA 的灰色盖掉这层暗红。
             const wrong = blanks.wrongOf?.(index) ?? false;
             return (
-              <input
+              <BlankInput
                 key={run.start}
-                type="text"
                 value={blanks.values[index] ?? ''}
                 disabled={blanks.disabled}
                 // 读屏要能说清是哪一格（空与空之间可能隔着好几行题干）。
@@ -248,7 +248,7 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
                   // 用 `inputWidthCh` 算（那一行算术有用例）。
                   // ⚠️ 同时**不小于占位那一段**（`run.end - run.start`）——
                   // 空着的时候要与那串下划线一样宽，否则一填字版面就跳。
-                  width: `${Math.max(Math.max(3, run.end - run.start), inputWidthCh(blanks.values[index] ?? '') + 2)}ch`,
+                  width: blanks.widthOf?.(index) !== undefined ? `${blanks.widthOf(index)}em` : `${Math.max(3, run.end - run.start, inputWidthCh(blanks.values[index] ?? '') + 2)}ch`,
                   marginInlineStart: adjacentBlank ? '0.5em' : undefined,
                 }}
               />
@@ -257,6 +257,27 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
         }
         const chunk = text.slice(run.start, run.end);
         const markAt = chunk.indexOf(TABLE_MARK_TEXT);
+        const href = markAt < 0 ? normalizePromptLink(run.href) : undefined;
+        if (href) {
+          const sameLink = (part: PromptRun) => !isBlankRun(part) && part.href === run.href
+            && part.frame === run.frame && part.frameId === run.frameId
+            && !text.slice(part.start, part.end).includes(TABLE_MARK_TEXT);
+          if (previous && previous.end === run.start && sameLink(previous)) return null;
+          const parts = [run];
+          for (const part of segments.slice(runIndex + 1)) {
+            if (part.start !== parts[parts.length - 1].end || !sameLink(part)) break;
+            parts.push(part);
+          }
+          const name = text.slice(run.start, parts[parts.length - 1].end);
+          return (
+            <a key={run.start} href={href} target="_blank" rel="noopener noreferrer"
+              title="点击在新标签页打开" aria-label={`${name}（在新标签页打开）`}
+              style={{ color: '#245990', textDecoration: 'underline', textUnderlineOffset: '0.16em', overflowWrap: 'anywhere' }}>
+              <IconExternalLink size="1em" aria-hidden="true" style={{ display: 'inline-block', verticalAlign: '-0.14em', marginInlineEnd: '0.25em' }} />
+              {parts.map(part => <span key={part.start} style={{ ...promptTextStyle(part, plain), color: 'inherit' }}>{text.slice(part.start, part.end)}</span>)}
+            </a>
+          );
+        }
         if (markAt < 0) {
           return (
             // ⚠️ `key` 用 `start`：分段是拼满且不重叠的，所以 start 天然唯一。
@@ -287,7 +308,15 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
             {tail ? renderInline(tail, run, plain) : null}
           </Fragment>
         );
-      })}
-    </>
-  );
+      });
+  const groups: ReactNode[] = [];
+  for (let i = 0; i < segments.length;) {
+    const run = segments[i];
+    if (!run.frame) { groups.push(<Fragment key={i}>{rendered[i]}</Fragment>); i++; continue; }
+    let end = i + 1;
+    while (end < segments.length && segments[end].frame === run.frame && segments[end].frameId === run.frameId) end++;
+    groups.push(<span key={i} style={promptFrameStyle(run.frame) as CSSProperties}>{rendered.slice(i, end)}</span>);
+    i = end;
+  }
+  return <>{groups}</>;
 }

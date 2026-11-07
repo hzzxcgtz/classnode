@@ -10,8 +10,8 @@ import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { evaluationImages, evaluationMode, evaluationRequirements, hasEvaluation, type EvaluationMode } from '@/lib/worksheet-evaluation';
 
 /** One editor for question-level and per-blank evaluation; input mode is independent. */
-export function EvaluationSettings({ data, legacyMode, legacyScored, allowAnswer = true, reference, maxScore = 1, scoreLimit = 99, unit = '分', rewardStyle, template, onChange, limit, onTriggerChange, onNotice, onImagesUploaded }: {
-  data: Record<string, unknown>; legacyMode: EvaluationMode; legacyScored: boolean; allowAnswer?: boolean;
+export function EvaluationSettings({ data, legacyMode, legacyScored, allowAnswer = true, allowAi = true, reference, maxScore = 1, scoreLimit = 99, unit = '分', rewardStyle, template, onChange, limit, onTriggerChange, onNotice, onImagesUploaded }: {
+  data: Record<string, unknown>; legacyMode: EvaluationMode; legacyScored: boolean; allowAnswer?: boolean; allowAi?: boolean;
   reference?: unknown; maxScore?: number; scoreLimit?: number; unit?: string; rewardStyle?: RewardStyle; template?: string; onChange: (patch: Record<string, unknown>) => void;
   limit: number; onTriggerChange: (patch: Record<string, unknown>) => void;
   onImagesUploaded: (urls:string[]) => void;
@@ -38,12 +38,13 @@ export function EvaluationSettings({ data, legacyMode, legacyScored, allowAnswer
     } finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
   };
   return <div className="worksheet-evaluation">
-    <div className="worksheet-evaluation-modes" role="group" aria-label="任务用途">
-      {([{key:'answer', label:'练习判分', Icon:IconCheck}, {key:'ai', label:'表达评价', Icon:IconSparkles}, {key:'collect', label:'调查收集', Icon:IconInbox}] as const).filter(item => allowAnswer || item.key !== 'answer').map(({key,label,Icon}) => <button type="button" key={key} aria-pressed={mode===key} className={mode===key?'is-selected':''} onClick={() => {if(key !== mode || !hasEvaluation(data)) { change({evaluationMode:key, evaluationScored:key==='answer' || (key==='ai' && scored), ...(key==='ai' ? {maxScore:1, aiScoringMaxScore:1} : {})}); if(key==='ai') onTriggerChange({studentAiReviewEnabled:true, aiReviewLimit:1}); }}}><Icon size={18}/>{label}</button>)}
+    <div className="worksheet-evaluation-modes purpose-segmented-control" role="group" aria-label="任务用途">
+      {([{key:'answer', label:'练习判分', Icon:IconCheck}, {key:'ai', label:'表达评价', Icon:IconSparkles}, {key:'collect', label:'调查收集', Icon:IconInbox}] as const).filter(item => (allowAnswer || item.key !== 'answer') && (allowAi || item.key !== 'ai')).map(({key,label,Icon}) => <button type="button" key={key} aria-pressed={mode===key} className={mode===key?'is-selected':''} onClick={() => {if(key !== mode || !hasEvaluation(data)) { change({evaluationMode:key, evaluationScored:key==='answer' || (key==='ai' && scored), ...(key==='ai' ? {maxScore:1, aiScoringMaxScore:1} : {})}); if(key==='ai') onTriggerChange({studentAiReviewEnabled:true, aiReviewLimit:1}); }}}><Icon size={18}/>{label}</button>)}
     </div>
     {mode === 'collect' && <p className="worksheet-evaluation-help">只收集作答，不判对错、不计分，也不生成个人 AI 评价。教师仍可发起全班整体分析。</p>}
     {mode === 'answer' && <p className="worksheet-evaluation-help">必须设置标准答案，提交后自动判分，不生成个人 AI 评价。教师仍可发起全班整体分析。</p>}
-    {mode === 'ai' && <>
+    {mode === 'ai' && !allowAi && <p className="worksheet-evaluation-help" role="status">客观题不支持表达评价，请选择练习判分或调查收集。</p>}
+    {mode === 'ai' && allowAi && <>
       <label className="worksheet-evaluation-requirements"><strong>AI 评价要求</strong><span>文字、图片可单独使用，也可共同作为依据。</span><textarea className="input" rows={4} maxLength={12000} value={requirements} onPaste={event=>{const raw=event.clipboardData.getData('text/plain');if(!raw)return;event.preventDefault();const input=event.currentTarget;change({evaluationText:input.value.slice(0,input.selectionStart)+normalizePastedText(raw)+input.value.slice(input.selectionEnd)});}} onChange={event => change({evaluationText:event.target.value})} placeholder="例如：说清观察到的变化，并说明依据。关注表达是否完整，给出一条可操作的建议。计分时请写清给分条件，或上传评分量表。"/></label>
       {template && <button type="button" className="btn btn-secondary" onClick={()=>change({evaluationText:requirements ? `${requirements}\n${template}` : template})}>插入结构要点模板</button>}
       <div className="worksheet-evaluation-images">{images.map((url,index)=><figure key={url}><img src={worksheetAssetUrl(url)} alt={`评价依据 ${index+1}`}/><button type="button" aria-label={`移除评价依据图片 ${index+1}`} onClick={()=>change({evaluationImages:images.filter(item=>item!==url)})}><IconX size={16}/></button></figure>)}
@@ -52,7 +53,7 @@ export function EvaluationSettings({ data, legacyMode, legacyScored, allowAnswer
       </div>
       {error && <p role="alert">{error}</p>}
       <div className="worksheet-evaluation-options">
-        <div className="worksheet-evaluation-option"><label><input type="checkbox" checked={scored} onChange={event=>change({evaluationScored:event.target.checked})}/>计入成绩</label><span>{scored?'AI 按给分条件评分，同时给出建议。':'只给评价与建议，不产生分数。'}</span>{scored && <label className="worksheet-evaluation-number">满分<input className="input" type="number" min={1} max={scoreLimit} value={maxScore} onChange={event=>{const n=Number(event.target.value);if(Number.isInteger(n)&&n>=1&&n<=scoreLimit)change({maxScore:n,aiScoringMaxScore:n});}}/><EditorRewardUnit style={rewardStyle} unit={unit}/></label>}</div>
+        <div className="worksheet-evaluation-option"><label><input type="checkbox" checked={scored} onChange={event=>change({evaluationScored:event.target.checked})}/>计入评分</label><span>{scored?'AI 按给分条件评分，同时给出建议。':'只给评价与建议，不产生分数。'}</span>{scored && <label className="worksheet-evaluation-number">满分<input className="input" type="number" min={1} max={scoreLimit} value={maxScore} onChange={event=>{const n=Number(event.target.value);if(Number.isInteger(n)&&n>=1&&n<=scoreLimit)change({maxScore:n,aiScoringMaxScore:n});}}/><EditorRewardUnit style={rewardStyle} unit={unit}/></label>}</div>
         <div className="worksheet-evaluation-option"><label>提交后自动评价</label><span>同题多个表达空合并评价，失败后可重试。</span><label className="worksheet-evaluation-number">每人评价次数<input className="input" type="number" min={1} max={20} value={limit} onChange={event=>{const n=Number(event.target.value);if(Number.isInteger(n)&&n>=1&&n<=20)onTriggerChange({aiReviewLimit:n});}}/></label></div>
       </div>
       {scored && !requirements.trim() && !images.length && <p className="worksheet-evaluation-validation" role="status">请补充给分条件或上传评分量表，再保存。</p>}

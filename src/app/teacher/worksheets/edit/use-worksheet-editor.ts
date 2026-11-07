@@ -500,6 +500,7 @@ export function useWorksheetEditor({ id, onNotice }: {
   // —— 草稿（只写 localStorage，规格 §3-Y）────────────────────────────
 
   const draftStateRef = useRef({ key: draftKeyFor(id), dirty: false, payload: { title: '', description: '', settings: DEFAULT_SETTINGS, content: createEmptyContent() } });
+  const discardingOnExitRef = useRef(false);
   const draftPayload = useMemo(
     () => ({ title, description, settings, content: history.present }),
     [title, description, settings, history.present],
@@ -510,7 +511,7 @@ export function useWorksheetEditor({ id, onNotice }: {
 
   const writeDraft = useCallback(() => {
     const state = draftStateRef.current;
-    if (!state.dirty) return;
+    if (discardingOnExitRef.current || !state.dirty) return;
     writeLocalStorage(state.key, JSON.stringify({ savedAt: Date.now(), ...state.payload }));
   }, []);
 
@@ -557,9 +558,18 @@ export function useWorksheetEditor({ id, onNotice }: {
   const goBack = useCallback(async () => {
     if (dirtyRef.current) {
       const confirmed = await askConfirmation({
-        title: '带着未保存改动返回？',
-        message: '返回列表后，这些改动不会出现在学习单中，但会留在本机草稿里；下次打开编辑页时可以恢复。',
+        title: '如何处理未保存的改动？',
+        message: '保存草稿后，下次打开编辑页可以恢复。选择不保存并返回，将丢弃未保存的改动和这份学习单的本机草稿。',
         confirmLabel: '保存草稿并返回',
+        alternateAction: {
+          label: '不保存并返回',
+          tone: 'danger',
+          onClick: () => {
+            discardingOnExitRef.current = true;
+            removeLocalStorage(draftStateRef.current.key);
+            router.push('/teacher/worksheets/');
+          },
+        },
       });
       if (!confirmed) return;
       // 先把当前状态落成草稿再说「改动会留在草稿里」—— 否则那句是假的（最多差 10 秒）。

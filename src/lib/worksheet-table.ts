@@ -1,4 +1,4 @@
-import { blankRuns, readPromptRuns, type PromptRun } from './worksheet-prompt-marks.ts';
+import { blankRuns, readPromptRuns, TABLE_MARK_TEXT, type PromptRun } from './worksheet-prompt-marks.ts';
 
 /**
  * 表格填空的**纯逻辑核心**（★ 2026-09-28，教师裁定「按 B 做」＝ 结构化网格）。
@@ -44,7 +44,7 @@ import { blankRuns, readPromptRuns, type PromptRun } from './worksheet-prompt-ma
  * 出现两处就没法说清「哪一处是哪张表」。`tableMarkCount` 就是给那条校验用的，
  * 服务端也会拒（多张表要让 `data.table` 变成按标记 id 索引的 `data.tables`，那是一次迁移）。
  */
-export const TABLE_MARK_TEXT = '{表格域}';
+export { TABLE_MARK_TEXT };
 
 /** 标记在题干里的位置；没有 ⇒ `-1`。**只看第一处**。 */
 export function tableMarkIndex(text: unknown): number {

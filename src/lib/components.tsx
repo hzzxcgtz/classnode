@@ -86,6 +86,7 @@ export interface TeacherConfirmOptions {
   message: string;
   confirmLabel?: string;
   tone?: 'default' | 'danger';
+  alternateAction?: { label: string; onClick: () => void; tone?: 'danger' };
 }
 
 /**
@@ -121,6 +122,14 @@ export function useTeacherConfirm() {
         <div className="teacher-confirm-message">{pending.message}</div>
         <div className="teacher-confirm-actions">
           <button type="button" className="btn btn-secondary" onClick={() => finish(false)}>取消</button>
+          {pending.alternateAction && (
+            <button type="button" className={pending.alternateAction.tone === 'danger' ? 'btn teacher-confirm-discard' : 'btn btn-secondary'} onClick={() => {
+              finish(false);
+              pending.alternateAction?.onClick();
+            }}>
+              {pending.alternateAction.label}
+            </button>
+          )}
           <button type="button" className={pending.tone === 'danger' ? 'btn teacher-danger-button' : 'btn btn-primary'} onClick={() => finish(true)}>
             {pending.confirmLabel ?? '继续'}
           </button>

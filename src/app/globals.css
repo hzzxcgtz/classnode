@@ -1686,9 +1686,21 @@ html, body {
 
 .teacher-confirm-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   padding: 0 22px 20px;
+}
+
+.teacher-confirm-actions .teacher-confirm-discard {
+  border-color: #d8aaa6;
+  background: var(--cn-danger-soft);
+  color: #8b3e38;
+}
+
+.teacher-confirm-actions .teacher-confirm-discard:hover {
+  border-color: var(--cn-danger);
+  background: #f5dfdd;
 }
 
 .teacher-danger-button {
@@ -4803,6 +4815,7 @@ tr:hover td {
    ⚠️ 宽度不在这里 —— 由 JS 按内容算（`inputWidthCh`，那行算术有用例），这里只管最小宽度。 */
 .worksheet-blank-input {
   display: inline-block;
+  margin: 0.2em 0.25em;
   min-width: 3ch;
   padding: 0 2px;
   border: none;
@@ -7497,6 +7510,22 @@ tr:hover td {
   font-size: 0.875rem;
   font-weight: 700;
   cursor: pointer;
+}
+
+.worksheet-editor-tool-group > .worksheet-editor-frame-button {
+  width: 32px;
+  min-width: 32px;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.worksheet-editor-tool-group.is-insert {
+  flex-wrap: wrap;
+}
+
+.worksheet-editor-tool-group.is-insert > button,
+.worksheet-editor-tool-group.is-insert .worksheet-editor-image-upload {
+  white-space: nowrap;
 }
 
 .worksheet-editor-tool-group.is-insert > button,
@@ -11155,7 +11184,7 @@ tr:hover td {
 .worksheet-editor-blank-inspector { position: sticky; top: 18px; min-width: 0; border: 1px solid #d8e3ee; border-radius: 12px; background: #f8fafc; padding: 18px; }
 .worksheet-editor-inspector-head { display: grid; gap: 14px; margin-bottom: 16px; color: #263b50; }
 .worksheet-editor-inspector-head label { display: grid; gap: 7px; color: #64748b; font-size: .8rem; }
-.worksheet-editor-inspector-head select { width: 100%; min-width: 0; }
+.worksheet-editor-inspector-head select { width: 100%; min-width: 0; height: 44px; min-height: 44px; box-sizing: border-box; padding: 10px 12px; font-size: .85rem; }
 .worksheet-editor-inspector-hint { color: #64748b; font-size: .85rem; line-height: 1.8; }
 .worksheet-editor-choice-blank-setup.is-inspector { display: block; }
 .is-inspector .worksheet-editor-fill-mode-card { border: 0; padding: 0; background: transparent; }
@@ -11406,9 +11435,45 @@ tr:hover td {
 
 /* Unified worksheet evaluation: materials first, scoring and invocation independent. */
 .worksheet-evaluation{display:grid;gap:18px;min-width:0}
-.worksheet-evaluation-modes{display:flex;flex-wrap:wrap;gap:8px}
-.worksheet-evaluation-modes button{display:inline-flex;align-items:center;gap:7px;padding:10px 15px;border:1px solid #d4dfeb;border-radius:9px;background:#fff;color:#526780;font-size:14px;font-weight:600}
-.worksheet-evaluation-modes button.is-selected{border-color:#3b628d;color:#2e557f;background:#eaf1f9;box-shadow:inset 0 0 0 1px #3b628d}
+.purpose-segmented-control {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 4px;
+  border-radius: 12px;
+  background: #e8eef5;
+}
+.purpose-segmented-control > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 1 0 auto;
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: .875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color .15s, color .15s, box-shadow .15s;
+}
+.purpose-segmented-control > button.is-selected {
+  color: #263b50;
+  background: #fff;
+  box-shadow: 0 2px 5px rgba(38, 59, 80, .1);
+}
+.purpose-segmented-control > button:hover:not(.is-selected) { color: #304b64; background: rgba(255,255,255,.4); }
+.purpose-segmented-control > button:focus-visible { outline: 2px solid #527aa3; outline-offset: 1px; }
+.purpose-segmented-control > button svg { flex-shrink: 0; }
 .worksheet-evaluation-help{margin:0;color:#6b8098;font-size:13px;line-height:1.7}
 .worksheet-evaluation-requirements{display:grid;gap:8px}.worksheet-evaluation-requirements strong{font-size:15px;color:#304b65}.worksheet-evaluation-requirements>span{font-size:13px;color:#6b8098}
 .worksheet-evaluation-requirements textarea{min-height:116px;resize:vertical;font-weight:400!important;line-height:1.65}
@@ -11423,3 +11488,117 @@ tr:hover td {
 .worksheet-evaluation-options .worksheet-evaluation-number{margin-top:auto;padding-top:4px;min-height:38px;gap:10px}
 .worksheet-evaluation-options input[type="checkbox"]{width:16px;height:16px;accent-color:#3b628e;flex-shrink:0}
 .worksheet-evaluation-options .worksheet-evaluation-number input{width:68px;height:36px;min-height:36px;background:#f8fafc;border-radius:7px}
+
+/* Blank width controls share the inspector's full column, with help on its own line. */
+.worksheet-editor-blank-width {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #e0e8f0;
+}
+.worksheet-editor-blank-width-title {
+  color: #526b84;
+  font-size: .8rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.worksheet-editor-blank-width > .worksheet-editor-mode-tabs {
+  display: grid;
+  width: 100%;
+  box-sizing: border-box;
+  grid-auto-flow: row;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 4px;
+  border-radius: 10px;
+  background: #eaf0f6;
+}
+.worksheet-editor-blank-width > .worksheet-editor-mode-tabs label > span {
+  min-height: 32px;
+  border-radius: 7px;
+}
+.worksheet-editor-blank-width > small {
+  display: block;
+  color: #7b8da0;
+  font-size: .75rem;
+  line-height: 1.6;
+  font-weight: 400;
+}
+.worksheet-editor-blank-width-number {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #526b84;
+  font-size: .8rem;
+}
+.worksheet-editor-blank-width-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #7b8da0;
+}
+.worksheet-editor-blank-width-value > .input {
+  width: 80px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #fff;
+  text-align: center;
+  color: #304b64;
+  font-size: .875rem;
+}
+
+/* Keep answer controls and word-pool actions aligned across the detail panel. */
+.worksheet-editor-fill-answer-editor select.input {
+  height: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-size: .85rem;
+}
+.worksheet-symbol-list,
+.worksheet-editor-field > .worksheet-symbol-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 16px;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+}
+.worksheet-symbol-list > .input {
+  grid-column: 1 / -1;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.worksheet-symbol-list > small {
+  display: block;
+  color: #7b8da0;
+  font-size: .75rem;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.worksheet-symbol-list > .btn {
+  justify-self: end;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: .8rem;
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .worksheet-symbol-list,
+  .worksheet-editor-field > .worksheet-symbol-list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+}
+
+.worksheet-editor-blank-detail-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.worksheet-editor-blank-detail-heading > strong { color: #263b50; font-size: 1rem; font-weight: 700; }
+.worksheet-editor-blank-detail-heading > span { padding: 3px 10px; border-radius: 999px; color: #627b94; background: #eaf0f6; font-size: .75rem; font-weight: 500; }
+.worksheet-settings-curriculum select[aria-invalid='true'] { border-color: #c44949; box-shadow: 0 0 0 2px #c4494914; }
+.worksheet-settings-validation { margin: 0 auto 0 0; color: #b43d3d; font-size: .8rem; line-height: 1.5; }

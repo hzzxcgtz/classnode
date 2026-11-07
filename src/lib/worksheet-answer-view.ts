@@ -1,5 +1,5 @@
 import { readPromptRuns } from './worksheet-prompt-marks.ts';
-import { blankSlots } from './worksheet-fill-modes.ts';
+import { blankSlots, fillSettingsFor } from './worksheet-fill-modes.ts';
 // ⚠️ **相对路径 + `.ts` 后缀**：本文件要被 `node --test` 直接跑（与 `worksheet-table.ts` /
 // `worksheet-drawer-state.ts` 同一条写法）。加一行 `@/…` 的运行时 import 就会让
 // `worksheet-answer-view.test.ts` 整个跑不起来。
@@ -282,16 +282,23 @@ export function answerView(node: WorksheetQuestionNode, value: unknown): AnswerV
 
   if (draft.kind === 'fill') {
     const accepted = readAnswerSets(node.data?.answers);
+    const runs = readPromptRuns(node.data.promptRuns, node.prompt);
+    const slots = blankSlots(node, runs);
+    const settings = fillSettingsFor(node, runs);
     return {
       kind: 'fill',
       // ⚠️ `label` 用**全局空序**（`第 N 空`），与题干/表格里的空按同一顺序数 ——
       // 表格里那些空也在这条序列上（规格 §「空位顺序」：标记前文本 → 表格 → 标记后文本）。
-      blanks: draft.texts.map((text, index) => ({
-        label: `第 ${index + 1} 空`,
-        text,
-        ...(draft.audios?.[blankSlots(node, readPromptRuns(node.data.promptRuns, node.prompt))[index]?.id] ? { audio: draft.audios[blankSlots(node, readPromptRuns(node.data.promptRuns, node.prompt))[index].id] } : {}),
-        accepted: draft.audios?.[blankSlots(node, readPromptRuns(node.data.promptRuns, node.prompt))[index]?.id] ? [] : accepted[index] ?? [],
-      })),
+      blanks: draft.texts.map((text, index) => {
+        const audio = draft.audios?.[slots[index]?.id];
+        const setting = settings[index];
+        const rule = setting?.mode === 'pool' ? setting.conditionalAnswer : undefined;
+        const sourceIndex = rule ? slots.findIndex(slot => slot.id === rule.sourceId) : -1;
+        const references = rule
+          ? sourceIndex < 0 ? [] : rule.cases.map(({ when, answer }) => `第 ${sourceIndex + 1} 空填「${when}」时填「${answer}」`)
+          : accepted[index] ?? [];
+        return { label: `第 ${index + 1} 空`, text, ...(audio ? { audio } : {}), accepted: audio ? [] : references };
+      }),
       texts: draft.texts,
       tableBase: blankLayout(node).tableBase,
       hasTable: Boolean(node.data?.table && typeof node.data.table === 'object'),

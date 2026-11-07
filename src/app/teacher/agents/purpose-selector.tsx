@@ -53,7 +53,7 @@ export function AgentPurposeSelector({ purpose, onChange }: {
         用途 <span style={{ color: 'var(--danger)' }}>*</span>
       </strong>
 
-      <div style={{ display: 'flex', gap: 6 }}>
+      <div className="purpose-segmented-control" role="group" aria-label="智能体用途">
         {PURPOSES.map(option => {
           const selected = purpose === option.value;
           return (
@@ -66,14 +66,7 @@ export function AgentPurposeSelector({ purpose, onChange }: {
               title={`${option.label}：${option.hint}`}
               aria-label={`${option.label}：${option.hint}`}
               onClick={() => onChange(option.value)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-                border: `1px solid ${selected ? 'var(--primary)' : '#cbd5e1'}`,
-                background: selected ? '#f2f5f8' : '#fff',
-                color: selected ? 'var(--primary-dark)' : '#475569',
-                borderRadius: 999, padding: '5px 12px', fontSize: "0.875rem",
-                fontWeight: selected ? 600 : 500, fontFamily: 'inherit',
-              }}
+              className={selected ? 'is-selected' : ''}
             >
               <span aria-hidden="true" style={{ display: 'flex', flexShrink: 0 }}>{option.icon}</span>
               {option.label}

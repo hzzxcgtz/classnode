@@ -34,6 +34,7 @@ import {
   convertBlankMarks,
   inputWidthCh,
   insertBlank,
+  insertPromptLink,
   insertPromptText,
   isPlainRuns,
   normalizePastedText,
@@ -52,6 +53,28 @@ import {
 function run(start: number, end: number, style: Partial<PromptRun> = {}): PromptRun {
   return { start, end, ...DEFAULT_PROMPT_STYLE, blank: '', ...style };
 }
+
+test('题干超链接随分段保存，保留选中文字的格式', () => {
+  const text = '查看资料';
+  const href = 'https://example.com/file.pdf';
+  const result = insertPromptLink([run(0, 2), run(2, 4, { bold: true })], text, 0, 4, text, href);
+  assert.ok(result);
+  assert.equal(result.text, text);
+  assert.equal(isPlainRuns([run(0, 4, { href })]), false);
+  assert.deepEqual(readPromptRuns(JSON.parse(JSON.stringify(result.runs)), text), [
+    run(0, 2, { href }),
+    run(2, 4, { href, bold: true }),
+  ]);
+});
+
+test('题干超链接拒绝脚本地址和覆盖填空、表格标记', () => {
+  const text = '{填空域}{表格域}';
+  const runs = [run(0, 5, { blank: 'a' }), run(5, 10)];
+  const href = 'https://example.com';
+  assert.equal(insertPromptLink(runs, text, 0, 5, '资料', href), null);
+  assert.equal(insertPromptLink(runs, text, 5, 10, '资料', href), null);
+  assert.equal(insertPromptLink(runs, text, 10, 10, '资料', 'javascript:alert(1)'), null);
+});
 
 /** 把分段压成一条可读的串，用来一眼看出「切在哪里」：`0-5|5-8b|8-12`。 */
 function shape(runs: PromptRun[]): string {
@@ -942,4 +965,54 @@ test('🔴 纯文本场景**不写**行内样式（否则会打掉父容器的�
   assert.equal(promptTextStyle(plainRun, true), undefined, '纯文本不该写行内样式');
   // 阳性对照：粗体那一段在题干里仍然要写成 700（否则上面那条可能只是「什么都不写」）。
   assert.equal(promptTextStyle({ ...DEFAULT_PROMPT_STYLE, bold: true }, false)?.fontWeight, 700);
+});
+
+
+test('three frame styles survive saving, rich text splits, and removal', () => {
+  for (const frame of ['label', 'oval', 'content'] as const) {
+    const text = '起因：孔子东游';
+    const framed = setStyleOnRange(readPromptRuns(undefined, text), text, 0, text.length, {frame, frameId:'frame-1'});
+    assert.equal(isPlainRuns(framed), false);
+    const rich = setStyleOnRange(framed, text, 0, 2, {bold:true});
+    const reopened = readPromptRuns(JSON.parse(JSON.stringify(rich)), text);
+    assert.equal(reopened.length, 2);
+    assert.ok(reopened.every(run => run.frame === frame && run.frameId === 'frame-1'));
+    const cleared = setStyleOnRange(reopened, text, 0, text.length, {frame:''});
+    assert.ok(cleared.every(run => !run.frame && !run.frameId));
+    assert.equal(cleared[0].bold, true);
+  }
+});
+
+test('a content frame keeps blank identity and order', () => {
+  const text = '观点________依据________';
+  const initial = [run(0,2), run(2,10,{blank:'a'}), run(10,12), run(12,20,{blank:'b'})];
+  const framed = setStyleOnRange(initial, text, 0, text.length, {frame:'content', frameId:'box'});
+  const reopened = readPromptRuns(JSON.parse(JSON.stringify(framed)), text);
+  assert.deepEqual(blankRuns(reopened).map(run => run.blank), ['a','b']);
+  assert.ok(reopened.every(run => run.frameId === 'box'));
+});
+
+
+test('adjacent cause label and content box remain separate after save and undo', () => {
+  const text = '起因孔子东游，见两小儿辩斗，问其故。';
+  const base = readPromptRuns(undefined,text);
+  const label = setStyleOnRange(base,text,0,2,{frame:'label',frameId:'cause'});
+  const content = setStyleOnRange(label,text,2,text.length,{frame:'content',frameId:'description'});
+  const saved = readPromptRuns(JSON.parse(JSON.stringify(content)),text);
+  assert.equal(saved.length,2);
+  assert.deepEqual(saved.map(run=>[text.slice(run.start,run.end),run.frame]), [['起因','label'],['孔子东游，见两小儿辩斗，问其故。','content']]);
+  assert.notEqual(JSON.stringify(label),JSON.stringify(saved), 'style-only undo must invalidate rendered DOM even if text and links are identical');
+});
+
+
+test('text typed between adjacent frames stays outside after reopening', () => {
+  const before = '一个两个';
+  let runs = setStyleOnRange(readPromptRuns(undefined,before),before,0,2,{frame:'label',frameId:'left'});
+  runs = setStyleOnRange(runs,before,2,4,{frame:'content',frameId:'right'});
+  const after = '一个以及两个';
+  const typed = setStyleOnRange(remapRuns(runs,before,after),after,2,4,{frame:''});
+  const reopened = readPromptRuns(JSON.parse(JSON.stringify(typed)),after);
+  assert.deepEqual(reopened.map(run=>[after.slice(run.start,run.end),run.frame]), [['一个','label'],['以及',undefined],['两个','content']]);
+  assert.equal(reopened[0].frameId,'left');
+  assert.equal(reopened[2].frameId,'right');
 });

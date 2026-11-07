@@ -1,7 +1,7 @@
 'use client';
 
 import { createPortal } from 'react-dom';
-import { IconArrowLeft, IconArrowRight, IconTrash } from '@tabler/icons-react';
+import { IconArrowLeft, IconArrowRight, IconLink, IconTrash } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import {useImageUpload, ImageDropOverlay} from './use-image-upload';
@@ -12,7 +12,9 @@ import {
   blankRuns,
   convertBlankMarks,
   insertBlank,
+  insertPromptLink,
   insertPromptText,
+  normalizePromptLink,
   normalizePastedText,
   isPlainRuns,
   rangeColor,
@@ -32,7 +34,7 @@ import {
 } from '@/lib/worksheet-presentation';
 import { TABLE_MARK_TEXT, tableMarkIndex, createTable, readTableFor, MAX_TABLE_ROWS, MAX_TABLE_COLS } from '@/lib/worksheet-table';
 import { hasPromptBlankSlots, isChoiceQuestion, newBlankId, readBlankAnswers } from './worksheet-editor-core';
-import { caretOffset, placeSelection, renderRunsInto, selectedRange, promptModelText, promptOffsetAtPoint, promptNodeOffset, normalizePromptCaret } from './prompt-rich-text';
+import { caretOffset, placeSelection, renderRunsInto, selectedRange, promptLinksMatch, promptModelText, promptOffsetAtPoint, promptNodeOffset, normalizePromptCaret } from './prompt-rich-text';
 import { fillPromptPatch, atomicPromptDeletion, movePromptBlank, blankStepTarget, promptCaretStep } from '@/lib/worksheet-fill-edit';
 import { blankSlots } from '@/lib/worksheet-fill-modes';
 import { MathInsertDialog } from './math-insert-dialog';
@@ -224,6 +226,13 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
    *只是入口回到了教师习惯的地方。
    */
   const [mathOpen, setMathOpen] = useState(false);
+  const [linkDraft, setLinkDraft] = useState<{
+    from: number;
+    to: number;
+    name: string;
+    address: string;
+    error?: string;
+  } | null>(null);
   const [tablePicker, setTablePicker] = useState(false);
   const [tableHost, setTableHost] = useState<HTMLElement | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
@@ -295,18 +304,19 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
    */
   useEffect(() => {
     const el = editableRef.current;
-    if (!el) return;
-    // 约束 3：文本对得上 = 自己刚敲的那一下的回声 ⇒ **什么都不做**。
+    if (!el || composingRef.current) return;
+    // 链接的插入、修改与撤销可能只改网址，题干文字保持不变。
     // ⚠️ 换题那一下必须**不看文本**（两道题的题干可能一模一样，而格式不同）。
     const syncTableHost = () => {
       const host = el.querySelector<HTMLElement>('[data-table-mark]');
       if (host && tableEditor && host.dataset.tableEditor !== 'true') { host.replaceChildren(); host.dataset.tableEditor = 'true'; }
       setTableHost(current => current === host ? current : host);
     };
-    if (renderedIdRef.current === node.id && promptModelText(el) === node.prompt) { syncTableHost(); return; }
+    const nextRuns = readPromptRunsFor(node);
+    if (renderedIdRef.current === node.id && promptModelText(el) === node.prompt && promptLinksMatch(el, nextRuns) && el.dataset.promptRuns === JSON.stringify(nextRuns)) { syncTableHost(); return; }
     // 约束 4：重建之前先记下光标位置（焦点不在这个框里就不记 —— 那时没有光标）。
     const caret = document.activeElement === el ? caretOffset(el) : null;
-    renderRunsInto(el, node.prompt, readPromptRunsFor(node));
+    renderRunsInto(el, node.prompt, nextRuns);
     renderedIdRef.current = node.id;
     syncTableHost();
     if (caret !== null) placeSelection(el, Math.min(caret, node.prompt.length), Math.min(caret, node.prompt.length));
@@ -362,6 +372,58 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
     supportsBlankSlots ? fillPromptPatch(node, prevRuns, text, nextRuns, readBlankAnswers(node))
       : { promptRuns: isPlainRuns(nextRuns) ? undefined : nextRuns };
 
+  const openLink = () => {
+    const el = editableRef.current;
+    if (!el || composingRef.current) return;
+    const range = selectedRange(el) ?? pendingRangeRef.current;
+    const from = range?.from ?? caretOffset(el) ?? node.prompt.length;
+    const to = range?.to ?? from;
+    const currentRuns = runsRef.current;
+    const linkIndex = currentRuns.findIndex(run => run.href && run.start <= from && from < run.end);
+    if (linkIndex >= 0) {
+      const href = currentRuns[linkIndex].href!;
+      let first = linkIndex;
+      let last = linkIndex;
+      while (currentRuns[first - 1]?.href === href) first--;
+      while (currentRuns[last + 1]?.href === href) last++;
+      if (to <= currentRuns[last].end) {
+        const start = currentRuns[first].start;
+        const end = currentRuns[last].end;
+        setLinkDraft({ from: start, to: end, name: node.prompt.slice(start, end), address: href });
+        return;
+      }
+    }
+    setLinkDraft({ from, to, name: node.prompt.slice(from, to), address: '' });
+  };
+
+  const closeLink = (from: number, to: number) => {
+    setLinkDraft(null);
+    pendingRangeRef.current = null;
+    const el = editableRef.current;
+    if (!el) return;
+    el.focus();
+    placeSelection(el, from, to);
+    refreshToolbar();
+  };
+
+  const saveLink = () => {
+    const el = editableRef.current;
+    if (!el || !linkDraft) return;
+    const { from, to, name, address } = linkDraft;
+    const next = insertPromptLink(runsRef.current, node.prompt, from, to, name, address);
+    if (!next) {
+      const error = !normalizePromptLink(address)
+        ? '请输入以 https:// 或 http:// 开头的有效网址。'
+        : '请输入单行链接名称，并避开填空或表格区域。';
+      setLinkDraft({ ...linkDraft, error });
+      return;
+    }
+    onPromptChange(next.text, promptDataPatch(runsRef.current, next.runs, next.text));
+    renderRunsInto(el, next.text, next.runs);
+    const after = from + name.trim().length;
+    closeLink(after, after);
+  };
+
   /**
    * 敲了字（约束 2 的另一半 + 区间跟着走）。
    *
@@ -376,7 +438,14 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
     const nextText = promptModelText(el);
     if (nextText === node.prompt) return;
     // 区间跟着文字走 + 按文本重新识别填空域（纯逻辑，那半边有用例）。
-    const nextRuns = descriptionOnly ? remapRuns(runsRef.current, node.prompt, nextText) : runsFromText(runsRef.current, node.prompt, nextText);
+    let nextRuns = descriptionOnly ? remapRuns(runsRef.current, node.prompt, nextText) : runsFromText(runsRef.current, node.prompt, nextText);
+    // Text entered at an outside-frame caret stop must stay outside both neighboring frames.
+    for (const gap of Array.from(el.querySelectorAll<HTMLElement>('[data-frame-gap]'))) {
+      const content = promptModelText(gap);
+      if (!content) continue;
+      const start = promptNodeOffset(el, gap);
+      nextRuns = setStyleOnRange(nextRuns, nextText, start, start + content.length, {frame:''});
+    }
     // 文字变了 ⇒ 之前记下的那段选区作废（见 `pendingRangeRef`）。
     pendingRangeRef.current = null;
     onPromptChange(nextText, promptDataPatch(runsRef.current, nextRuns, nextText));
@@ -430,7 +499,10 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
     const from = selected ? selected.from : caret;
     const to = selected ? selected.to : caret;
     const nextText = `${node.prompt.slice(0, from)}\n${node.prompt.slice(to)}`;
-    const nextRuns = remapRuns(runsRef.current, node.prompt, nextText);
+    let nextRuns = remapRuns(runsRef.current, node.prompt, nextText);
+    if (window.getSelection()?.anchorNode?.parentElement?.closest('[data-frame-gap]')) {
+      nextRuns = setStyleOnRange(nextRuns, nextText, from, from + 1, {frame:''});
+    }
     pendingRangeRef.current = null;
     const nextData = promptDataPatch(runsRef.current, nextRuns, nextText);
     onPromptChange(nextText, nextData);
@@ -528,7 +600,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
    * 样式一变，分段的**条数**往往也变了（切开/合并），能保住选区的只有「条数没变」
    * 那一种情形，而那一条快路径是**第二处**能把选区算错的地方。宁可多画一次。
    */
-  const applyToSelection = (patch: Partial<Record<PromptBooleanKey, boolean>> & { color?: string }) => {
+  const applyToSelection = (patch: Partial<Record<PromptBooleanKey, boolean>> & { color?: string; frame?: 'label' | 'oval' | 'content' | ''; frameId?: string }) => {
     const el = editableRef.current;
     if (!el) return;
     // ⚠️ 活的选区优先；没有就用工具栏按下那一刻记下的那一份（颜色那个原生下拉
@@ -544,6 +616,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
     // 🔴 与题干**同一次**提交：分两次 dispatch 会让 ⌘Z 的第一下退到一个什么都没变的
     // 动作上（教师看到屏幕纹丝不动，只能再按一次）。
     onPromptChange(node.prompt, { promptRuns: isPlainRuns(nextRuns) ? undefined : nextRuns });
+    runsRef.current = nextRuns;
     renderRunsInto(el, node.prompt, nextRuns);
     // ⚠️ 先把焦点放回输入框再放选区：从原生下拉回来时焦点在 `<select>` 上，
     // 不放回来的话选区**画不出来**（数据是对的，但教师看不到自己设了哪一段）。
@@ -738,6 +811,14 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
         >
           {heading && <div className="worksheet-editor-prompt-heading">{heading}</div>}
           <div className="worksheet-editor-tool-group" role="group" aria-label="文字样式">
+            {([['label', '圆角标签'], ['oval', '椭圆标题'], ['content', '圆角内容框'], ['', '移除框样式']] as const).map(([frame, label]) => (
+              <button key={frame} type="button" className="worksheet-editor-frame-button" disabled={!toolbar.hasSelection} aria-label={label} title={toolbar.hasSelection ? label : `${label}（请先选中内容）`} onMouseDown={event => event.preventDefault()} onClick={() => applyToSelection({frame, frameId: frame ? `frame-${Date.now()}-${Math.random().toString(36).slice(2)}` : undefined})}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  {frame === 'oval' ? <ellipse cx="12" cy="12" rx="10" ry="7" /> : <rect x="2" y={frame === 'content' ? 5 : 4} width="20" height={frame === 'content' ? 14 : 16} rx="4" fill={frame === 'label' ? 'currentColor' : 'none'} fillOpacity={frame === 'label' ? 0.18 : 1} strokeDasharray={frame === '' ? '3 3' : undefined} />}
+                  {frame === '' ? <path d="m5 3 14 18" /> : <path d={frame === 'content' ? 'M6 10h12M6 14h9' : 'M8 12h8'} />}
+                </svg>
+              </button>
+            ))}
             {BOOLEAN_BUTTONS.map(button => (
               <button
                 key={button.key}
@@ -803,7 +884,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
           <button
             type="button"
             title={pasteTitle}
-            aria-label="粘贴任务"
+            aria-label="粘入"
             onClick={onRequestPaste}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -811,7 +892,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
               <path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2" />
               <path d="M9 12h6M9 16h4" />
             </svg>
-            粘贴任务
+            粘入
           </button>
           )}
           {/* ★ 2026-09-30（教师第三轮）：「还是放回到编辑框的工具栏里边吧，否则觉得怪怪的。
@@ -827,11 +908,15 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
           <button
             type="button"
             title="插入数学公式"
-            aria-label="数学公式"
+            aria-label="公式"
             onMouseDown={(event) => { event.preventDefault(); setMathOpen(true); }}
           >
             <span className="worksheet-editor-math-glyph" aria-hidden="true">Σ</span>
-            数学公式
+            公式
+          </button>
+          <button type="button" title="插入或编辑超链接" aria-haspopup="dialog"
+            onMouseDown={event => event.preventDefault()} onClick={openLink}>
+            <IconLink size={15} aria-hidden="true" /> 链接
           </button>
           {/* 插入时同时创建表格与位置引用，不再让教师先插标记、再单独建表。 */}
           {node.type === 'fill-blank' && Boolean(tableEditor) && !descriptionOnly && (
@@ -854,13 +939,13 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
             <button
               type="button"
               title="在光标处插入填空，或将选中文字转为填空"
-              aria-label="插入填空"
+              aria-label="填空"
               onMouseDown={(event) => {
                 event.preventDefault();
                 insertBlankAtCaret();
               }}
             >
-              <span aria-hidden="true">━</span> 插入填空
+              <span aria-hidden="true">━</span> 填空
             </button>
           )}
           <label className="worksheet-editor-image-upload" title="选择图片，也可将图片文件拖入编辑框">
@@ -982,6 +1067,44 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
           onClose={() => setMathOpen(false)}
           onCopied={message => onNotice(message, 'success')}
         />
+      )}
+      {linkDraft && createPortal(
+        <div className="modal-overlay" onClick={() => closeLink(linkDraft.from, linkDraft.to)}>
+          <form className="worksheet-editor-math-modal teacher-editor-dialog" style={{ width: 'min(460px, 92vw)' }} role="dialog" aria-modal="true"
+            aria-label="超链接" noValidate onClick={event => event.stopPropagation()}
+            onSubmit={event => { event.preventDefault(); saveLink(); }}
+            onKeyDown={event => {
+              if (event.key !== 'Escape') return;
+              event.stopPropagation();
+              closeLink(linkDraft.from, linkDraft.to);
+            }}>
+            <header className="worksheet-editor-math-head">
+              <div><h2>超链接</h2><p>学生点击链接后，会在新标签页打开。</p></div>
+              <button type="button" className="worksheet-editor-math-close" aria-label="关闭"
+                onClick={() => closeLink(linkDraft.from, linkDraft.to)}>✕</button>
+            </header>
+            <div className="worksheet-editor-math-body" style={{ display: 'grid', gap: 12 }}>
+              <label className="worksheet-editor-math-field">
+                <span>链接名称</span>
+                <input className="input" value={linkDraft.name} autoFocus={!linkDraft.name}
+                  placeholder="例如：查看参考资料"
+                  onChange={event => setLinkDraft({ ...linkDraft, name: event.target.value, error: undefined })} />
+              </label>
+              <label className="worksheet-editor-math-field">
+                <span>网址</span>
+                <input className="input" type="url" value={linkDraft.address} autoFocus={Boolean(linkDraft.name)}
+                  placeholder="https://example.com/file.pdf"
+                  onChange={event => setLinkDraft({ ...linkDraft, address: event.target.value, error: undefined })} />
+              </label>
+              {linkDraft.error && <p className="worksheet-editor-math-error" role="alert">{linkDraft.error}</p>}
+            </div>
+            <footer className="worksheet-editor-math-foot">
+              <button type="button" className="btn btn-secondary" onClick={() => closeLink(linkDraft.from, linkDraft.to)}>取消</button>
+              <button type="submit" className="btn btn-primary">确定</button>
+            </footer>
+          </form>
+        </div>,
+        document.body,
       )}
     </div>
     {tableHost && tableEditor && createPortal(<div className="worksheet-editor-table-island" contentEditable={false}>{tableEditor}</div>, tableHost)}

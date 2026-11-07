@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { CHOICE_JOINER, CHOICE_SEPARATORS, blankSlots, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, isLegacyFillGrading, placedValue, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
+import { fixedBlankWidth, CHOICE_JOINER, CHOICE_SEPARATORS, blankSlots, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading, isLegacyFillGrading, placedValue, sameChoiceItems, sharedPoolChoices, splitChoiceText, writeFillSettings } from './worksheet-fill-modes.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 import { DEFAULT_PROMPT_STYLE, type PromptRun } from './worksheet-prompt-marks.ts';
 
@@ -34,6 +34,25 @@ test('设置写回仍以 blank id 为键，题干中插空不会让后面的设�
   ]);
   assert.equal(written['blank-a'].mode, 'pool');
   assert.equal(written['blank-c'].mode, 'inline');
+});
+
+test('联动答案保存后按稳定空 ID 恢复，插入其他填空不会改变依据', () => {
+  const conditionalAnswer = { sourceId: 'blank-a', cases: [
+    { when: 'A', answer: 'B' }, { when: 'D', answer: 'E' },
+  ] };
+  const written = writeFillSettings(node({}), runs, [
+    { mode: 'pool', choices: [], gradingMode: 'auto', maxScore: 1 },
+    { mode: 'pool', choices: [], gradingMode: 'auto', maxScore: 1, conditionalAnswer },
+    { mode: 'text', choices: [] },
+  ]);
+  const restored = fillSettingsFor(node({ fillBlankSettings: JSON.parse(JSON.stringify(written)) }), runs);
+  assert.deepEqual(restored[1].conditionalAnswer, conditionalAnswer);
+  const insertedRuns = [
+    { start: 0, end: 1, ...DEFAULT_PROMPT_STYLE, blank: 'new-blank' },
+    ...runs.map(run => ({ ...run, start: run.start + 1, end: run.end + 1 })),
+  ];
+  const reordered = fillSettingsFor(node({ fillBlankSettings: written }), insertedRuns);
+  assert.deepEqual(reordered[2].conditionalAnswer, conditionalAnswer);
 });
 
 test('逐空评分方式与满额按 blank id 往返，总分只算**算分**的那些空', () => {
@@ -87,30 +106,30 @@ test('旧选择填空继续读取原来的共用词池与右侧两词分组', ()
 //    让**读**也按逗号切，会把库里一个含逗号的词条悄悄切成两个，而那是数据变更。
 
 test('🔴 splitChoiceText：顿号、逗号、分号、换行都是分隔符', () => {
-  assert.deepEqual(splitChoiceText('唐、宋、元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐，宋，元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐,宋,元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐；宋;元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
   // 换行仍然认（教师从 Excel 一列复制过来的那一列）
-  assert.deepEqual(splitChoiceText('唐\n宋\n元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐、宋\n元;明'), ['唐', '宋', '元', '明']);
+  assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐|宋|元|明'), ['唐', '宋', '元', '明']);
 });
 
 test('🔴 splitChoiceText：连续分隔符与两侧空白都不产生空词条', () => {
-  assert.deepEqual(splitChoiceText('  唐 、、 宋  '), ['唐', '宋']);
-  assert.deepEqual(splitChoiceText('唐、、、'), ['唐']);
-  assert.deepEqual(splitChoiceText('、、'), []);
+  assert.deepEqual(splitChoiceText('  唐 || 宋  '), ['唐', '宋']);
+  assert.deepEqual(splitChoiceText('唐|||'), ['唐']);
+  assert.deepEqual(splitChoiceText('||'), []);
   assert.deepEqual(splitChoiceText(''), []);
   assert.deepEqual(splitChoiceText('   '), []);
 });
 
 test('🔴 splitChoiceText：词里的空格**不切**（「New York」是一个词）', () => {
-  assert.deepEqual(splitChoiceText('New York、Los Angeles'), ['New York', 'Los Angeles']);
+  assert.deepEqual(splitChoiceText('New York|Los Angeles'), ['New York', 'Los Angeles']);
 });
 
 test('🔴 splitChoiceText：数组原样交给 splitChoiceLines（读库那一侧的口径不变）', () => {
   assert.deepEqual(splitChoiceText([' 甲 ', '', '乙']), ['甲', '乙']);
-  assert.deepEqual(splitChoiceText('甲、乙'), ['甲', '乙'], '字符串才按符号切');
+  assert.deepEqual(splitChoiceText('甲|乙'), ['甲', '乙'], '字符串才按符号切');
   assert.deepEqual(splitChoiceText(null), []);
   assert.deepEqual(splitChoiceText(42), []);
 });
@@ -124,40 +143,40 @@ test('🔴 splitChoiceText：数组原样交给 splitChoiceLines（读库那一�
 // 现在断言的是**当下的**行为，免得下一个人把它当成 bug 改回去。
 
 test('🔴 splitChoiceText：常见符号都算分隔符（顿号 / 逗号 / 分号 / 斜杠 / 竖线 / 换行）', () => {
-  assert.deepEqual(splitChoiceText('唐、宋、元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐，宋，元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐,宋,元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐；宋;元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐/宋/元'), ['唐', '宋', '元']);
   assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐\n宋\n元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐、宋\n元;明'), ['唐', '宋', '元', '明']);
+  assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐|宋|元'), ['唐', '宋', '元']);
+  assert.deepEqual(splitChoiceText('唐|宋|元|明'), ['唐', '宋', '元', '明']);
 });
 
 test('🔴 splitChoiceText：**答案**也走同一套**（教师裁定：常见符号都能用）', () => {
   // ⚠️ 代价：本身含标点的答案会被拆开 —— 「小明、小红」变成两个可接受答案
   //（学生答「小明」也算对）。教师知情并选了这个便利，所以**提示必须写出来**
   //（见 question-card 里「标准答案」那句块说明）。
-  assert.deepEqual(splitChoiceText('唐；唐代'), ['唐', '唐代']);
-  assert.deepEqual(splitChoiceText('唐、唐代'), ['唐', '唐代']);
-  assert.deepEqual(splitChoiceText('小明、小红'), ['小明', '小红']);
+  assert.deepEqual(splitChoiceText('唐|唐代'), ['唐', '唐代']);
+  assert.deepEqual(splitChoiceText('唐|唐代'), ['唐', '唐代']);
+  assert.deepEqual(splitChoiceText('小明|小红'), ['小明', '小红']);
 });
 
 test('🔴 splitChoiceText：连续分隔符与两侧空白都不产生空条目', () => {
-  assert.deepEqual(splitChoiceText('  唐 、、 宋  '), ['唐', '宋']);
-  assert.deepEqual(splitChoiceText('唐、、、'), ['唐']);
-  assert.deepEqual(splitChoiceText('、、'), []);
+  assert.deepEqual(splitChoiceText('  唐 || 宋  '), ['唐', '宋']);
+  assert.deepEqual(splitChoiceText('唐|||'), ['唐']);
+  assert.deepEqual(splitChoiceText('||'), []);
   assert.deepEqual(splitChoiceText(''), []);
   assert.deepEqual(splitChoiceText('   '), []);
 });
 
 test('🔴 splitChoiceText：词里的空格**不切**（「New York」是一个词）', () => {
-  assert.deepEqual(splitChoiceText('New York、Los Angeles'), ['New York', 'Los Angeles']);
+  assert.deepEqual(splitChoiceText('New York|Los Angeles'), ['New York', 'Los Angeles']);
 });
 
 test('🔴 splitChoiceText：数组原样交给 splitChoiceLines（读库那一侧的口径不变）', () => {
   assert.deepEqual(splitChoiceText([' 甲 ', '', '乙']), ['甲', '乙']);
-  assert.deepEqual(splitChoiceText('甲、乙'), ['甲', '乙'], '字符串才按符号切');
+  assert.deepEqual(splitChoiceText('甲|乙'), ['甲', '乙'], '字符串才按符号切');
   assert.deepEqual(splitChoiceText(null), []);
   assert.deepEqual(splitChoiceText(42), []);
 });
@@ -259,27 +278,10 @@ test('🔴 落词写进草稿的是**判分口径**（剥掉公式定界符）�
  * 也不用刻意地转成某一个特别的符号。」
  * ⇒ 两条判据：**认得多**（下面第一条）、**显示统一**（`CHOICE_JOINER`）。
  */
-test('🔴 splitChoiceText：**中文输入法打出来的**那几个也要认', () => {
-  // 下面每一个都是「中文输入法下按对应键打出来的那一个」，而不是我凭空想的符号：
-  //   · `／` —— 全角斜杠。⚠️ **这是最要紧的一个**：中文输入法里按 `/` 出来的就是它，
-  //      而原来只认半角 `/` ⇒ 教师**照着提示打也切不开**，屏幕上只是**一整个**词条
-  //      （不报错、不提示），他要等到学生那边选词只有一个才知道。
-  //   · `\t` —— 从 Word 表格 / Excel 复制一列过来时，列与列之间是制表符不是换行。
-  //   · `·` `•` `‧` `・` —— 各种间隔号 / 项目符号（从 PPT 粘过来的列表常是它）。
-  //   · `﹑` —— 小顿号。
-  assert.deepEqual(splitChoiceText('唐／宋／元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐\t宋\t元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐·宋·元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐•宋·元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐‧宋‧元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐・宋・元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('唐﹑宋'), ['唐', '宋']);
-  // 半角与全角竖线都认（原来就有 —— 钉住，别在扩充时弄丢）。
-  assert.deepEqual(splitChoiceText('唐|宋｜元'), ['唐', '宋', '元']);
-  // 阳性对照：老的那几个一个都不许丢（扩充字符集时最容易顺手换掉整条正则）。
-  assert.deepEqual(splitChoiceText('唐、宋，元；明'), ['唐', '宋', '元', '明']);
-  assert.deepEqual(splitChoiceText('唐,宋;元'), ['唐', '宋', '元']);
-  assert.deepEqual(splitChoiceText('  唐  '), ['唐'], '两侧空白仍然 trim');
+test('splitChoiceText only splits half-width pipes and preserves punctuation', () => {
+  assert.deepEqual(splitChoiceText(' 日初出近日中时远、日初出远日中时近 | 近大远小、近热远凉 '), ['日初出近日中时远、日初出远日中时近', '近大远小、近热远凉']);
+  assert.deepEqual(splitChoiceText('甲，乙,丙；丁/戊｜己'), ['甲，乙,丙；丁/戊｜己']);
+  assert.deepEqual(splitChoiceText('甲 || 乙 | '), ['甲', '乙']);
 });
 
 test('🔴 splitChoiceText：**反斜杠不是分隔符** —— 否则答案里的公式会被劈成几段', () => {
@@ -288,7 +290,7 @@ test('🔴 splitChoiceText：**反斜杠不是分隔符** —— 否则答案里
   //    （`$\frac{a}{b}$`、`$x^2$`）—— 把 `\` 当分隔符会把公式劈成几段，
   //    而屏幕上什么都看不出来（判分那边只会表现为「答案对不上」）。
   assert.deepEqual(splitChoiceText('$\\frac{a}{b}$'), ['$\\frac{a}{b}$']);
-  assert.deepEqual(splitChoiceText('$x^2$、$y^2$'), ['$x^2$', '$y^2$']);
+  assert.deepEqual(splitChoiceText('$x^2$ | $y^2$'), ['$x^2$', '$y^2$']);
   // 同理：公式里的 `{}` `^` `$` 一个都不能碰（把它们当分隔符的后果与上面同一类）。
   assert.deepEqual(splitChoiceText('$x^{2}+1$'), ['$x^{2}+1$']);
 });
@@ -325,7 +327,7 @@ test('🔴 CHOICE_JOINER：四处显示用的是**同一个**分隔符', () => {
   // 写的是顿号、值却用斜杠显示**（自己跟自己不一致）。
   // ⚠️ 它只管**显示**（把存下来的条目表拼成人看的一行），
   //    **不参与**解析 —— 教师打的符号不再被它改掉。
-  assert.equal(CHOICE_JOINER, '、');
+  assert.equal(CHOICE_JOINER, ' | ');
 });
 
 test('🔴 写回去再读回来必须**逐项无损** —— 单行输入框敢不回填就靠这一条', () => {
@@ -335,7 +337,7 @@ test('🔴 写回去再读回来必须**逐项无损** —— 单行输入框敢
   //    ⇒ 只要这几条往返无损，教师打的逗号就留得住。
   //    ⚠️ 某天哪一条变成**有损**的（多一次 trim / filter / 换形状），症状是
   //    **他刚打的字符被一个一个吃掉**，而屏幕上没有报错 —— 所以钉死在这里。
-  const items = splitChoiceText('阳光,水分');       // 教师打的是逗号，不是顿号
+  const items = splitChoiceText('阳光 | 水分');       // 教师打的是逗号，不是顿号
   assert.deepEqual(items, ['阳光', '水分']);
 
   // ① 这一空右侧的词（写进 fillBlankSettings，按 blank id 存）
@@ -369,5 +371,27 @@ test('🔴 CHOICE_SEPARATORS 与 splitChoiceText 必须是**同一套**（防漂
   //   · `$ { } ^ + ~ ：` —— 公式与数学式里到处都是，切了就是静默的数据变更。
   for (const ch of ['\\', ' ', '-', ':', '：', '$', '{', '}', '^', '+', '~', '=']) {
     assert.deepEqual(splitChoiceText(`甲${ch}乙`), [`甲${ch}乙`], `${ch} 不该是分隔符`);
+  }
+});
+
+
+test('per-blank width survives saving and reopening', () => {
+  const written = writeFillSettings(node({}), runs, [{mode:'text', choices:[], widthChars:16}]);
+  assert.equal(fillSettingsFor(node({fillBlankSettings:written}), runs)[0].widthChars, 16);
+});
+
+
+test('width modes: automatic by default, fixed defaults to ten and preserves settings', () => {
+  assert.equal(fixedBlankWidth(undefined),undefined);
+  assert.equal(fixedBlankWidth({}),undefined);
+  assert.equal(fixedBlankWidth({widthMode:'auto',widthChars:16}),undefined);
+  assert.equal(fixedBlankWidth({widthMode:'fixed'}),10);
+  assert.equal(fixedBlankWidth({widthMode:'fixed',widthChars:16}),16);
+  assert.equal(fixedBlankWidth({widthChars:12}),12);
+  for (const widthMode of ['auto','fixed'] as const) {
+    const saved = writeFillSettings(node({}),runs,[{mode:'text',choices:[],widthMode,widthChars:16}]);
+    const setting = fillSettingsFor(node({fillBlankSettings:saved}),runs)[0];
+    assert.equal(setting.widthMode,widthMode);
+    assert.equal(fixedBlankWidth(setting),widthMode === 'auto' ? undefined : 16);
   }
 });

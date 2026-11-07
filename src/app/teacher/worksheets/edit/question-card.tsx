@@ -452,7 +452,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             <span className="worksheet-editor-question-type"><span className="worksheet-editor-type-glyph">{node.type === 'fill-blank' && fillEditorKind(node) === 'table' ? TABLE_QUESTION_ICON : questionTypeIcon(node.type)}</span>{typeLabel}</span>
           )}
           <span className={`worksheet-editor-grade-status${gradedOn ? ' is-on' : ' is-manual'}`}>
-            {gradingStatus}{gradingStatus.includes('最高') && <EditorRewardUnit style={rewardStyle} unit={pointsUnit} />}
+            {gradingStatus}{gradingStatus.includes('最高') && <>{rewardStyle && rewardStyle !== 'points' && <span aria-hidden="true">×</span>}<EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></>}
           </span>
         </button>
         {/* ⚠️ `stopPropagation`：这一块在折叠时也挂在可点的 `<section>` 里，
@@ -653,7 +653,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
               {/* ⚠️ 徽章里**不写「自动评分」** —— 卡片标题就是它（原来那句
                   `gradingStatus`（「自动评分 · 最高 1 颗星星」）是给**折叠态那一行**用的，
                   那里没有标题，所以不能直接搬过来）。 */}
-              {gradedOn && <span className="worksheet-editor-points-badge">当前任务满分 {explicitFillScoring ? fillTotals.total : maximumPoints} <EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>}
+              {gradedOn && <span className="worksheet-editor-points-badge">当前任务满分 {explicitFillScoring ? fillTotals.total : maximumPoints} {rewardStyle && rewardStyle !== 'points' && <span aria-hidden="true">×</span>}<EditorRewardUnit style={rewardStyle} unit={pointsUnit} /></span>}
             </div>
           </div>
 
@@ -758,7 +758,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
 
         {!isBlankType && <div className="worksheet-editor-block worksheet-editor-analysis-settings">
           <h3 className="drawing-zone-heading"><EditorIcon kind="grading" />任务用途</h3>
-          <EvaluationSettings rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls)} unit={pointsUnit} scoreLimit={100} template={node.type === 'drawing' && readDrawingTool(node) === 'flowchart' ? '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。' : undefined} data={node.data} allowAnswer={isGradedQuestionType(node.type)} legacyMode={aiScoredFor(node) ? 'ai' : gradedOn && isGradedQuestionType(node.type) ? 'answer' : 'collect'} legacyScored={aiScoredFor(node) || gradedOn} reference={node.type === 'short-answer' || node.type === 'drawing' ? node.data.answers : undefined} maxScore={aiScoringMaxScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onNotice={onNotice} onChange={patch => {
+          <EvaluationSettings allowAi={node.type === 'short-answer' || node.type === 'drawing'} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls)} unit={pointsUnit} scoreLimit={100} template={node.type === 'drawing' && readDrawingTool(node) === 'flowchart' ? '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。' : undefined} data={node.data} allowAnswer={isGradedQuestionType(node.type)} legacyMode={aiScoredFor(node) ? 'ai' : gradedOn && isGradedQuestionType(node.type) ? 'answer' : 'collect'} legacyScored={aiScoredFor(node) || gradedOn} reference={node.type === 'short-answer' || node.type === 'drawing' ? node.data.answers : undefined} maxScore={aiScoringMaxScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onNotice={onNotice} onChange={patch => {
             onDataChange({...patch, aiScoringEnabled:patch.evaluationMode === 'ai' && patch.evaluationScored === true});
             onAutoGradeChange(patch.evaluationMode === 'answer');
           }}/>

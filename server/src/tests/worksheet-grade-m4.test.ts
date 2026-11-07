@@ -41,6 +41,10 @@ import {
   QUESTION_TYPES,
   grade,
   resolvePoints,
+  validateQuestion,
+  wrongBlankAnswers,
+  stripAnswers,
+  conditionalFillAnswerReference,
   type GradeResult,
   type GradeState,
   type QuestionNode,
@@ -941,4 +945,36 @@ test('🔴 反面：答案里那个**不成公式**的 `$` 不许被吃掉', () 
   const node = question('fill-blank', { answers: ['这本书 $5'] });
   assertVerdict(node, { format: 'fill/v1', text: '这本书 $5' }, 'correct', P.full);
   assertIncorrect(node, { format: 'fill/v1', text: '这本书 5' });
+});
+
+
+test('共用选词联动：整列可互换，混填按空扣分，规则不可泄露', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+  const normal = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const swapped = ['D', 'E', 'F', 'A', 'B', 'C'];
+  const node = question('fill-blank', {
+    answers: [['A', 'D'], [], [], [], [], []],
+    fillChoicePool: normal,
+    fillBlankSettings: Object.fromEntries(ids.map((id, index) => [id, {
+      mode: 'pool', gradingMode: 'auto', maxScore: 1,
+      ...(index ? { conditionalAnswer: { sourceId: 'a', cases: [
+        { when: 'A', answer: normal[index] }, { when: 'D', answer: swapped[index] },
+      ] } } : {}),
+    }])),
+  });
+  const value = (texts: string[]) => ({ format: 'fill-multi/v1', texts });
+  assert.deepEqual(validateQuestion(node), []);
+  assert.deepEqual(grade(node, value(normal), P), { state: 'correct', score: 6 });
+  assert.deepEqual(grade(node, value(swapped), P), { state: 'correct', score: 6 });
+  const mixed = ['A', 'E', 'C', 'D', 'B', 'F'];
+  assert.deepEqual(grade(node, value(mixed), P), { state: 'partial', score: 4 });
+  assert.deepEqual(wrongBlankAnswers(node, value(mixed)), { 1: 'B', 4: 'E' });
+  assert.deepEqual(conditionalFillAnswerReference(node.data, 1), ['第1空填「A」时填「B」', '第1空填「D」时填「E」']);
+  assert.equal(JSON.stringify(stripAnswers({ schemaVersion: 1, nodes: [node] })).includes('conditionalAnswer'), false);
+  const incomplete = structuredClone(node);
+  const settings = incomplete.data.fillBlankSettings as Record<string, { conditionalAnswer?: { sourceId: string; cases: { when: string; answer: string }[] } }>;
+  settings.b.conditionalAnswer!.cases.pop();
+  assert.ok(validateQuestion(incomplete).some(error => error.includes('每个固定答案')));
+  settings.b.conditionalAnswer!.sourceId = 'c';
+  assert.ok(validateQuestion(incomplete).some(error => error.includes('已设置固定答案')));
 });

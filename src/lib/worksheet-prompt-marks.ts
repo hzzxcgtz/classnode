@@ -38,7 +38,11 @@ import { splitMath } from './worksheet-math.ts';
 
 /** 一段文字的完整样式。**五个字段全都有值** —— 「缺字段 = 默认」那种写法会让
  * 「这个字段没设」与「这个字段设成了默认值」变成两种长得一样的状态。 */
+export type PromptFrame = 'label' | 'oval' | 'content';
+
 export interface PromptTextStyle {
+  frame?: PromptFrame;
+  frameId?: string;
   bold: boolean;
   italic: boolean;
   underline: boolean;
@@ -72,6 +76,7 @@ export interface PromptRun extends PromptTextStyle {
    * 这个说的是「这一段属于谁」。所以它不在 `PromptTextStyle` 上，而在 `PromptRun` 上。
    */
   blank: string;
+  href?: string;
 }
 
 /** 没设过任何格式时的样子。`color` 的默认值与 `.prompt` 的颜色一致。 */
@@ -104,6 +109,8 @@ export type PromptBooleanKey = typeof PROMPT_BOOLEAN_KEYS[number];
 
 /** 一次设置要改的字段。`color` 省略 = 不动颜色（不是「恢复默认色」）。 */
 export interface PromptStylePatch {
+  frame?: PromptFrame | '';
+  frameId?: string;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
@@ -122,6 +129,7 @@ function styleOf(run: PromptRun): PromptTextStyle {
     underline: run.underline,
     emphasis: run.emphasis,
     color: run.color,
+    ...(run.frame ? {frame: run.frame, frameId: run.frameId} : {}),
   };
 }
 
@@ -130,7 +138,7 @@ function sameStyle(a: PromptTextStyle, b: PromptTextStyle): boolean {
     && a.italic === b.italic
     && a.underline === b.underline
     && a.emphasis === b.emphasis
-    && a.color === b.color;
+    && a.color === b.color && a.frame === b.frame && a.frameId === b.frameId;
 }
 
 /**
@@ -139,7 +147,7 @@ function sameStyle(a: PromptTextStyle, b: PromptTextStyle): boolean {
  * **当场消失**，而屏幕上看只是「空短了一点」，直到学生端再也画不出那个框。
  */
 function sameRun(a: PromptRun, b: PromptRun): boolean {
-  return a.blank === b.blank && sameStyle(a, b);
+  return a.blank === b.blank && a.href === b.href && sameStyle(a, b);
 }
 
 /** 这一条分段属于一个填空域吗。 */
@@ -165,6 +173,10 @@ function clampIndex(value: unknown, length: number): number {
 /** 追加一条，**能与上一条合并就合并**（否则退一次格就多出一条，越用越碎）。 */
 function pushRun(out: PromptRun[], next: PromptRun): void {
   if (next.end <= next.start) return;
+  if (next.blank && next.href) {
+    next = { ...next };
+    delete next.href;
+  }
   const last = out[out.length - 1];
   // 🔴🔴 **这里曾经有一条「两条挨着的空 = 一个空」的规则 —— 它是错的，已撤掉。**
   //
@@ -196,6 +208,7 @@ function pushRun(out: PromptRun[], next: PromptRun): void {
 
 function readStyle(item: Record<string, unknown>): PromptTextStyle {
   return {
+    ...(item.frame === 'label' || item.frame === 'oval' || item.frame === 'content' ? {frame:item.frame, frameId:typeof item.frameId === 'string' ? item.frameId : `legacy-${item.start}`} : {}),
     bold: item.bold === true,
     italic: item.italic === true,
     underline: item.underline === true,
@@ -205,13 +218,28 @@ function readStyle(item: Record<string, unknown>): PromptTextStyle {
 }
 
 /** 库里那一条读出来的**完整样子**（样式 + 是不是空）。 */
+export function normalizePromptLink(value: unknown): string | undefined {
+  if (typeof value !== 'string') return;
+  const address = value.trim();
+  if (!/^https?:\/\/[^/]/i.test(address) || /[\s\\]/.test(address)) return;
+  try {
+    const url = new URL(address);
+    if (url.hostname && !url.username && !url.password) return url.href;
+  } catch {
+    return;
+  }
+}
+
 function readRun(item: Record<string, unknown>): Omit<PromptRun, 'start' | 'end'> {
+  const blank = typeof item.blank === 'string' ? item.blank : '';
+  const href = blank ? undefined : normalizePromptLink(item.href);
   return {
     ...readStyle(item),
+    ...(href ? { href } : {}),
     // ⚠️ 只认**非空字符串**：认不出的值（`true` / `1`）一律当**不是空**。
     // 猜成空会让一道普通的题在学生端长出一个输入框 —— 那是「猜」的代价里最响的一种。
     // （`true` 也不再认：标识是**字符串**，改形状之前的库里没有这种值。）
-    blank: typeof item.blank === 'string' ? item.blank : '',
+    blank,
   };
 }
 
@@ -331,6 +359,10 @@ export function setStyleOnRange(
     if (typeof value === 'boolean') clean[key] = value;
   });
   if (patch && typeof patch.color === 'string' && isKnownColor(patch.color)) clean.color = patch.color;
+  if (patch && ['label', 'oval', 'content', ''].includes(patch.frame as string)) {
+    clean.frame = patch.frame || undefined;
+    clean.frameId = patch.frame ? patch.frameId : undefined;
+  }
   if (Object.keys(clean).length === 0) return runs;
 
   const out = rewriteRange(runs, start, end, clean);
@@ -428,6 +460,37 @@ export function insertPromptText(
   return { text: nextText, runs: remapRuns(runs, text, nextText) };
 }
 
+export function insertPromptLink(
+  runs: PromptRun[],
+  text: string,
+  from: number,
+  to: number,
+  label: string,
+  address: string,
+): { text: string; runs: PromptRun[] } | null {
+  const href = normalizePromptLink(address);
+  const name = label.trim();
+  const start = clampIndex(from, text.length);
+  const end = Math.max(start, clampIndex(to, text.length));
+  const touchesRange = (left: number, right: number) => left < end && right > start;
+  if (!href || !name || /[\r\n]/.test(name) || containsPromptMarker(name)) return null;
+  if (runs.some(run => isBlankRun(run) && touchesRange(run.start, run.end))) return null;
+  for (let at = text.indexOf(TABLE_MARK_TEXT); at >= 0; at = text.indexOf(TABLE_MARK_TEXT, at + TABLE_MARK_TEXT.length)) {
+    if (touchesRange(at, at + TABLE_MARK_TEXT.length)) return null;
+  }
+  if (text.slice(start, end) === name) {
+    return { text, runs: rewriteRange(runs, start, end, { href }) };
+  }
+  return {
+    text: text.slice(0, start) + name + text.slice(end),
+    runs: replaceRunRange(runs, start, end, name, href),
+  };
+}
+
+function containsPromptMarker(text: string): boolean {
+  return text.includes(BLANK_MARK_TEXT) || text.includes(TABLE_MARK_TEXT);
+}
+
 export function insertBlank(
   runs: PromptRun[],
   text: string,
@@ -458,6 +521,7 @@ export function insertBlank(
  * 三处说的是同一句话。
  */
 export const BLANK_MARK_TEXT = '{填空域}';
+export const TABLE_MARK_TEXT = '{表格域}';
 
 /** 中间**只有空白**的圆括号（全角 / 半角都认）。⚠️ 横向空白，不含换行。 */
 const EMPTY_PARENS = /[（(][ \t 　]+[）)]/g;
@@ -644,7 +708,7 @@ export function recognizeBlanks(
     if (at < 0) break;
     const end = at + placeholder.length;
     const inherited = previous.get(`${at}:${end}`);
-    next = rewriteRange(next, at, end, { blank: inherited ?? mintId() });
+    next = rewriteRange(next, at, end, { blank: inherited ?? mintId(), href: undefined });
     from = end;
   }
   return next;
@@ -751,6 +815,15 @@ export function remapRuns(runs: PromptRun[], prevText: string, nextText: string)
   const oldTo = prev.length - tail;
   const inserted = next.slice(head, next.length - tail);
 
+  const href = containsPromptMarker(inserted) || inserted.includes('\n')
+    ? undefined
+    : runs.find(run => run.start < from && oldTo < run.end)?.href;
+  return replaceRunRange(runs, from, oldTo, inserted, href);
+}
+
+function replaceRunRange(
+  runs: PromptRun[], from: number, oldTo: number, inserted: string, href?: string,
+): PromptRun[] {
   const out: PromptRun[] = [];
   runs.forEach((item) => {
     const end = Math.min(item.end, from);
@@ -765,14 +838,14 @@ export function remapRuns(runs: PromptRun[], prevText: string, nextText: string)
   //   那个空**不会被切开**。紧贴边界打字则是一个普通的新文字（`blank: ''`）。
   //   ⚠️ 这一条在「只有布尔量」的时候是**做不到**的：那时它与「两个空挨着排」同形。
   const owner = runs.filter(item => isBlankRun(item) && item.start < from && from < item.end)[0];
-  pushRun(out, { start: from, end: from + inserted.length, ...insertedStyle, blank: owner ? owner.blank : '' });
+  pushRun(out, { start: from, end: from + inserted.length, ...insertedStyle, blank: owner ? owner.blank : '', ...(href && !owner ? { href } : {}) });
   const delta = inserted.length - (oldTo - from);
   runs.forEach((item) => {
     const start = Math.max(item.start, oldTo);
     // ⚠️ 这里必须带上**整条**（含 `blank`）：只用 `styleOf` 会把空降级成普通文字。
     if (item.end > start) pushRun(out, { ...item, start: start + delta, end: item.end + delta });
   });
-  return out.length === 0 ? readPromptRuns(undefined, next) : out;
+  return out;
 }
 
 /**
@@ -852,6 +925,7 @@ export function blankAriaLabel(label: string, wrong: boolean): string {
 export function promptRunStyle(run: PromptTextStyle): Record<string, string | number> {
   const style: Record<string, string | number> = {
     color: run.color,
+
     fontWeight: run.bold ? 700 : 400,
     fontStyle: run.italic ? 'italic' : 'normal',
   };
@@ -931,5 +1005,19 @@ export function isPlainRuns(runs: PromptRun[]): boolean {
   if (!Array.isArray(runs)) return true;
   // 🔴 **一个空也不算「没有格式」**：调用方（编辑器）拿它为真时**不写 `promptRuns` 这个键**
   // ⇒ 空与格式一起没。这一条与 `sameRun` 那条是两个不同的入口，都会让空消失。
-  return runs.every(item => !isBlankRun(item) && sameStyle(item, DEFAULT_PROMPT_STYLE));
+  return runs.every(item => !isBlankRun(item) && !item.href && sameStyle(item, DEFAULT_PROMPT_STYLE));
+}
+
+
+/** Shared by the editable canvas and student renderer. */
+export function promptFrameStyle(frame: PromptFrame): Record<string, string | number> {
+  return {
+    display: 'inline-block', boxSizing: 'border-box', maxWidth: '100%',
+    border: '1.5px solid #82a8c7', borderRadius: frame === 'oval' ? '50%' : '0.55em',
+    background: frame === 'label' ? '#e7f1fa' : 'transparent',
+    padding: frame === 'oval' ? '0.3em 1.1em' : '0.2em 0.65em',
+    margin: '0.2em 0.25em', verticalAlign: 'middle',
+    minWidth: frame === 'content' ? '12em' : '0',
+    textAlign: 'center', overflowWrap: 'anywhere',
+  };
 }

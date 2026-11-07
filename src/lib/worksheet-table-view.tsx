@@ -1,6 +1,7 @@
+import { BlankInput } from './worksheet-blank-input';
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
 
-import { blankAriaLabel, blankValueStyle } from './worksheet-prompt-marks.ts';
+import { blankAriaLabel, inputWidthCh, blankValueStyle } from './worksheet-prompt-marks.ts';
 import { BlankSlot } from './worksheet-blank-slot.tsx';
 import { cellLabel, tableColumnCount, coveredTableCells, readTableFor, type WorksheetTable } from './worksheet-table.ts';
 // ★ 2026-09-30：单元格里的字也走题面那**同一个**渲染器 —— 所以单元格里能写公式。
@@ -42,6 +43,7 @@ import { PromptText } from './worksheet-prompt-text.tsx';
 
 /** 表格里那些空的绑定。⚠️ `values` 用**全局**下标（题干里的空排在表格的空之前）。 */
 export interface TableBlankBinding {
+  widthOf?: (index: number) => number | undefined;
   stableColumns?: boolean;
   values: string[];
   renderOf?: (index: number) => ReactNode | undefined;
@@ -145,7 +147,7 @@ export function WorksheetTableView({ table, blanks, fitContainer = false }: Work
                           <BlankSlot
                             run={PLAIN_RUN}
                             align={cell.align}
-                            width="100%"
+                            width={blanks.widthOf?.(globalIndex) !== undefined ? `${blanks.widthOf(globalIndex)}em` : `${Math.max(6, inputWidthCh(blanks.values[globalIndex] ?? '') + 2)}ch`}
                             value={blanks.values[globalIndex] ?? ''}
                             label={label}
                             wrong={wrong}
@@ -159,8 +161,7 @@ export function WorksheetTableView({ table, blanks, fitContainer = false }: Work
                           </BlankSlot>
                         ) : blanks ? (
                           <span style={{ display: 'inline-flex', alignItems: 'center', width: '100%' }}>
-                            <input
-                              type="text"
+                            <BlankInput
                               className="worksheet-blank-input"
                               aria-label={blankAriaLabel(label, wrong)}
                               value={blanks.values[globalIndex] ?? ''}
@@ -169,7 +170,7 @@ export function WorksheetTableView({ table, blanks, fitContainer = false }: Work
                               // 与题干输入、选择填空槽走同一个最终样式：学生填写的内容恒为
                               // 600 字重；答错时再由同一函数叠加暗红色与删除线。
                               style={{
-                                flex: '1 1 auto', minWidth: 0, boxSizing: 'border-box', textAlign:cell.align,
+                                width: blanks.widthOf?.(globalIndex) !== undefined ? `${blanks.widthOf(globalIndex)}em` : `${Math.max(6, inputWidthCh(blanks.values[globalIndex] ?? '') + 2)}ch`, maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', textAlign:cell.align,
                                 ...(blankValueStyle(PLAIN_RUN, wrong) as CSSProperties),
                               }}
                             />

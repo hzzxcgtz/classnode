@@ -9,7 +9,7 @@ import { AudioBody } from './audio-body';
 import { blankSlots } from '@/lib/worksheet-fill-modes';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
-import { fillSettingsFor, placedValue, sharedPoolChoices } from '@/lib/worksheet-fill-modes';
+import { fixedBlankWidth, fillSettingsFor, placedValue, sharedPoolChoices } from '@/lib/worksheet-fill-modes';
 import { usePointerDrag, type DragPoint } from '../use-pointer-drag';
 import { CorrectAnswerNote } from './correct-answer-note';
 import styles from '../worksheet.module.css';
@@ -195,6 +195,7 @@ export function ChoiceBlankAnswer({ node, draft, onChange, disabled, wrongBlankI
   const sharedBlankBinding = {
     stableColumns: settings.some(setting => setting.mode === 'audio'),
     values: draft.texts,
+    widthOf: (index: number) => fixedBlankWidth(settings[index]),
     renderOf: (index: number) => {
       if (settings[index]?.mode !== 'audio') return undefined;
       const slot = blankSlots(node, runs)[index];

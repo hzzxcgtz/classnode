@@ -872,6 +872,10 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
    */
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [curriculumAttempted, setCurriculumAttempted] = useState(false);
+  const gradeRef = useRef<HTMLSelectElement>(null);
+  const subjectRef = useRef<HTMLSelectElement>(null);
+  const curriculumMessage = curriculumAttempted ? worksheetCurriculumError(settings) : null;
   const [addingReviewAgent, setAddingReviewAgent] = useState(false);
   const reviewAgentIds = settings.additionalReviewAgentIds ?? [];
 
@@ -939,7 +943,14 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
   const submit = async () => {
     if (saving) return;
     const curriculumError = worksheetCurriculumError(settings);
-    if (curriculumError) { setSaveError(curriculumError); return; }
+    if (curriculumError) {
+      setCurriculumAttempted(true);
+      setSaveError('');
+      const field = !settings.gradeLevel ? gradeRef.current : subjectRef.current;
+      field?.scrollIntoView({behavior:'smooth', block:'center'});
+      field?.focus({preventScroll:true});
+      return;
+    }
     setSaving(true);
     setSaveError('');
     const message = await onSave();
@@ -1043,21 +1054,21 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
             <div className="worksheet-settings-section-head"><div><strong>适用年级与学科</strong><em>必填，帮助 AI 按年级和学科分析作答。</em></div></div>
             <div className="worksheet-settings-curriculum">
               <label className="worksheet-editor-field"><span>适用年级</span>
-                <select className="input" required aria-label="学习单适用年级" value={settings.gradeLevel ?? ''}
+                <select className="input" required ref={gradeRef} aria-invalid={curriculumAttempted && !settings.gradeLevel} aria-describedby={curriculumMessage ? "worksheet-curriculum-error" : undefined} aria-label="学习单适用年级" value={settings.gradeLevel ?? ''}
                   onChange={event => onSettingsChange({ gradeLevel: event.target.value ? Number(event.target.value) : null })}>
                   <option value="">请选择年级</option>
                   {WORKSHEET_GRADES.map(grade => <option key={grade.value} value={grade.value}>{grade.label}</option>)}
                 </select>
               </label>
               <label className="worksheet-editor-field"><span>学科</span>
-                <select className="input" required aria-label="学习单学科" value={settings.subject ?? ''}
+                <select className="input" required ref={subjectRef} aria-invalid={curriculumAttempted && !settings.subject} aria-describedby={curriculumMessage ? "worksheet-curriculum-error" : undefined} aria-label="学习单学科" value={settings.subject ?? ''}
                   onChange={event => onSettingsChange({ subject: event.target.value || null })}>
                   <option value="">请选择学科</option>
                   {WORKSHEET_SUBJECTS.map(subject => <option key={subject} value={subject}>{subject}</option>)}
                 </select>
               </label>
             </div>
-            <p className="worksheet-settings-help">旧学习单未填写时，请补选年级和学科。</p>
+            {curriculumMessage ? <p id="worksheet-curriculum-error" className="worksheet-settings-error" role="alert">{curriculumMessage}</p> : <p className="worksheet-settings-help">旧学习单未填写时，请补选年级和学科。</p>}
           </section>
           <section className="worksheet-settings-section">
             <div className="worksheet-settings-section-head"><div><strong>作答规则</strong></div></div>
@@ -1350,6 +1361,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
         )}
         <p className="worksheet-settings-help">新建学习单的设置先存本机草稿；完成任务后，请点顶栏「保存」保存整份学习单。</p>
         <div className="worksheet-settings-footer">
+          {curriculumMessage && <p className="worksheet-settings-validation" role="status">{curriculumMessage}</p>}
           <button type="button" className="btn btn-primary" onClick={() => void submit()} disabled={saving}>
             {saving ? '保存中…' : '保存设置'}
           </button>

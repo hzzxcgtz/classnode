@@ -136,3 +136,24 @@ test('左右光标一次跨过完整填空、连续填空和表格标记，不�
   assert.equal(promptCaretStep(text,runs,3,1),6);assert.equal(promptCaretStep(text,runs,3,-1),1);
   assert.equal(promptCaretStep(text,runs,-20,-1),0);assert.equal(promptCaretStep(text,runs,Infinity,1),1);
 });
+
+test('混排段落空与单元格多空：移动、合并及重新保存后答案和评分跟随 ID', async () => {
+  const {setCellContent,cellTextRuns,mergeTableCells,tableBlankIds}=await import('./worksheet-table.ts');
+  const {movePromptBlank}=await import('./worksheet-fill-edit.ts');
+  const {blankSlots}=await import('./worksheet-fill-modes.ts');
+  const {node,runs,table}=fixture();
+  let a=insertBlank([], '第一',2,2,BLANK_MARK_TEXT,'inner-a');
+  a=insertBlank(a.runs,a.text,a.text.length,a.text.length,BLANK_MARK_TEXT,'inner-b');
+  const mixedTable=setCellContent(table,0,0,a.text,a.runs);
+  const mixed={...node,data:{...node.data,table:mixedTable,answers:[['甲空'],['A'],['B'],['表空'],['乙空']],fillBlankSettings:{...(node.data.fillBlankSettings as object),'inner-a':{mode:'text',maxScore:7},'inner-b':{mode:'pool',maxScore:4}}}};
+  assert.deepEqual(blankSlots(mixed,runs).map(slot=>slot.id),['a','inner-a','inner-b','t','b']);
+  const moved=movePromptBlank(a.text,cellTextRuns(mixedTable.rows[0][0]),'inner-a',a.text.length);
+  const next=setCellContent(mixedTable,0,0,moved.text,moved.runs);
+  const merged=mergeTableCells(next,0,0,'right').table;
+  const patch=fillPromptPatch(mixed,runs,mixed.prompt,runs,mixed.data.answers,undefined,merged);
+  assert.deepEqual(patch.answers,[['甲空'],['B'],['A'],['表空'],['乙空']]);
+  assert.equal((patch.fillBlankSettings as Record<string,{maxScore:number}>)['inner-a'].maxScore,7);
+  const saved=JSON.parse(JSON.stringify({...mixed,data:{...mixed.data,...patch,table:merged}}));
+  assert.deepEqual(tableBlankIds(saved.data.table),['inner-b','inner-a','t']);
+  assert.deepEqual(blankSlots(saved,saved.data.promptRuns).map(slot=>slot.id),['a','inner-b','inner-a','t','b']);
+});

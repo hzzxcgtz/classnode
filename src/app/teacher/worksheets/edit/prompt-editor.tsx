@@ -25,6 +25,8 @@ import {
   setStyleOnRange,
   type PromptBooleanKey,
   type PromptRun,
+  type PromptStylePatch,
+  styleAt,
 } from '@/lib/worksheet-prompt-marks';
 import {
   WORKSHEET_TEXT_COLORS,
@@ -32,11 +34,11 @@ import {
   readPromptRunsFor,
   worksheetAssetUrl,
 } from '@/lib/worksheet-presentation';
-import { TABLE_MARK_TEXT, tableMarkIndex, createTable, readTableFor, MAX_TABLE_ROWS, MAX_TABLE_COLS } from '@/lib/worksheet-table';
+import { TABLE_MARK_TEXT, tableMarkIndex, createTable, readTableFor, MAX_TABLE_ROWS, MAX_TABLE_COLS, MAX_TABLE_BLANKS, tableBlankCount, tableBlankIds, cellAtSlot, cellTextRuns, setCellContent, setCellBlank } from '@/lib/worksheet-table';
 import { hasPromptBlankSlots, isChoiceQuestion, newBlankId, readBlankAnswers } from './worksheet-editor-core';
 import { caretOffset, placeSelection, renderRunsInto, selectedRange, promptLinksMatch, promptModelText, promptOffsetAtPoint, promptNodeOffset, normalizePromptCaret } from './prompt-rich-text';
 import { fillPromptPatch, atomicPromptDeletion, movePromptBlank, blankStepTarget, promptCaretStep } from '@/lib/worksheet-fill-edit';
-import { blankSlots } from '@/lib/worksheet-fill-modes';
+import { fixedBlankWidth, fillSettingsFor, blankSlots } from '@/lib/worksheet-fill-modes';
 import { MathInsertDialog } from './math-insert-dialog';
 
 /**
@@ -121,6 +123,9 @@ export interface PromptEditorProps {
 
 /** 工具栏的亮灯状态 —— 由**当前选区**决定，所以必须是 state（选区变了要重画按钮）。 */
 interface ToolbarState {
+  frame?: PromptStylePatch['frame'];
+  frameBorderColor: string;
+  frameFillColor: string;
   hasSelection: boolean;
   bold: boolean;
   italic: boolean;
@@ -131,6 +136,8 @@ interface ToolbarState {
 
 const NO_SELECTION: ToolbarState = {
   hasSelection: false,
+  frameBorderColor: '#82a8c7',
+  frameFillColor: 'transparent',
   bold: false,
   italic: false,
   underline: false,
@@ -183,11 +190,20 @@ const BOOLEAN_BUTTONS: { key: PromptBooleanKey; label: ReactNode; title: string 
   { key: 'bold', label: 'B', title: '加粗' },
   { key: 'italic', label: <i>I</i>, title: '斜体' },
   { key: 'underline', label: <u>U</u>, title: '下划线' },
-  // ⚠️ 这一档**写全名**（教师 2026-09-26 第二次改口：先要「『重』字下面带一个着重号」，
-  // 看到之后说「直接写『着重号』吧，下面不要有点了」）。与另外三个不同，它不是自证的 ——
-  // 「着重号」三个字本身就是说明。
-  { key: 'emphasis', label: <span className="worksheet-editor-emphasis-glyph">着</span>, title: '着重号（字下加点）' },
+  { key: 'emphasis', label: <span className="worksheet-editor-emphasis-glyph">重</span>, title: '着重号（字下加点）' },
 ];
+
+function selectedCellRange(root: HTMLElement | null) {
+  const selection=window.getSelection();
+  const anchor=selection?.anchorNode;
+  const el=(anchor instanceof Element ? anchor : anchor?.parentElement)?.closest<HTMLElement>('.worksheet-editor-cell-text');
+  if(!el || !root?.contains(el))return null;
+  const td=el.closest<HTMLElement>('[data-table-row]');
+  if(!td)return null;
+  const range=selectedRange(el),caret=caretOffset(el);
+  if(!range && caret===null)return null;
+  return {el,row:Number(td.dataset.tableRow),col:Number(td.dataset.tableCol),from:range?.from??caret!,to:range?.to??caret!};
+}
 
 export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRequestPaste, onTableMarkClick, onNotice, onBlankSelect, selectedBlankId, blankInspector, tableEditor, descriptionOnly = false }: PromptEditorProps) {
   const supportsBlankSlots = !descriptionOnly && hasPromptBlankSlots(node.type);
@@ -216,6 +232,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
    * 让人在选的时候就能看到实际颜色」）。要让它看得见，只能自己画。
    */
   const [colorOpen, setColorOpen] = useState(false);
+  const [customColor,setCustomColor]=useState(DEFAULT_PROMPT_STYLE.color);
   /**
    * ★ 2026-09-30：「插入公式」那个弹窗开着没有。
    *
@@ -265,6 +282,10 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
    * 会作用到一段早就不存在的范围上。
    */
   const pendingRangeRef = useRef<{ from: number; to: number } | null>(null);
+  const pendingCellRangeRef=useRef<ReturnType<typeof selectedCellRange>>(null);
+  const colorSelectionRef=useRef<{cell:ReturnType<typeof selectedCellRange>;range:{from:number;to:number}|null}|null>(null);
+  const nodeRef=useRef(node);nodeRef.current=node;
+
 
   /** 按当前选区刷新工具栏的亮灯（没选中 ⇒ 全灭，裁定 ②）。 */
   const refreshToolbar = useCallback(() => {
@@ -279,14 +300,22 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
     // `selectionchange` 随之触发 ⇒ 这里是「没选中」⇒ 工具栏被重置成 `NO_SELECTION`
     // ⇒ 下拉里那个「当前是哪个色」的勾**跳到深灰**，而选区上明明是红的。
     // 有焦点时只认**活的**选区（那时停在框里的光标就是真相，旧的那份已经过期）。
-    const range = selectedRange(el) || (document.activeElement === el ? null : pendingRangeRef.current);
-    const current = runsRef.current;
+    const liveCell=selectedCellRange(el);
+    if(liveCell)pendingCellRangeRef.current=liveCell;
+    else if(document.activeElement===el)pendingCellRangeRef.current=null;
+    const cellRange=liveCell ?? pendingCellRangeRef.current;
+    const cell=cellRange && readTableFor(nodeRef.current)?.rows[cellRange.row]?.[cellRange.col];
+    const range = cellRange ?? selectedRange(el) ?? (document.activeElement === el ? null : pendingRangeRef.current);
+    const current = cell ? cellTextRuns(cell) : runsRef.current;
     if (!range || range.from === range.to || !current) {
       setToolbar(NO_SELECTION);
       return;
     }
     setToolbar({
       hasSelection: true,
+      frame:styleAt(current,range.from).frame,
+      frameBorderColor:styleAt(current,range.from).frameBorderColor ?? '#82a8c7',
+      frameFillColor:styleAt(current,range.from).frameFillColor ?? (styleAt(current,range.from).frame === 'label' ? '#e7f1fa' : 'transparent'),
       bold: rangeHasKey(current, range.from, range.to, 'bold'),
       italic: rangeHasKey(current, range.from, range.to, 'italic'),
       underline: rangeHasKey(current, range.from, range.to, 'underline'),
@@ -600,12 +629,21 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
    * 样式一变，分段的**条数**往往也变了（切开/合并），能保住选区的只有「条数没变」
    * 那一种情形，而那一条快路径是**第二处**能把选区算错的地方。宁可多画一次。
    */
-  const applyToSelection = (patch: Partial<Record<PromptBooleanKey, boolean>> & { color?: string; frame?: 'label' | 'oval' | 'content' | ''; frameId?: string }) => {
+  const applyToSelection = (patch: PromptStylePatch, saved?: NonNullable<typeof colorSelectionRef.current>) => {
     const el = editableRef.current;
     if (!el) return;
+    const target=saved ? saved.cell : selectedCellRange(el) ?? pendingCellRangeRef.current;
+    if(target){
+      const table=readTableFor(node),cell=table?.rows[target.row]?.[target.col];
+      if(!table || !cell || target.to<=target.from)return;
+      const nextRuns=setStyleOnRange(cellTextRuns(cell),cell.text,target.from,target.to,patch);
+      onDataChange({table:setCellContent(table,target.row,target.col,cell.text,nextRuns)});
+      renderRunsInto(target.el,cell.text,nextRuns);target.el.focus();placeSelection(target.el,target.from,target.to);
+      setColorOpen(false);refreshToolbar();return;
+    }
     // ⚠️ 活的选区优先；没有就用工具栏按下那一刻记下的那一份（颜色那个原生下拉
     // 一打开选区就没了）。
-    const range = selectedRange(el) || pendingRangeRef.current;
+    const range = saved ? saved.range : selectedRange(el) || pendingRangeRef.current;
     if (!range) {
       // 裁定 ②：一个字符都没选中 ⇒ 不生效（按钮本来也不亮）。
       setToolbar(NO_SELECTION);
@@ -724,6 +762,17 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
   const insertBlankAtCaret = () => {
     const el = editableRef.current;
     if (!el) return;
+    const target=selectedCellRange(el) ?? pendingCellRangeRef.current;
+    if(target){
+      const table=readTableFor(node),cell=table?.rows[target.row]?.[target.col];
+      if(!table || !cell || tableBlankCount(table)>=MAX_TABLE_BLANKS)return;
+      const id=newBlankId(),cellRuns=cellTextRuns(cell);
+      const next=insertBlank(cellRuns,cell.text,target.from,target.to,FILL_BLANK_TEXT,id);
+      const nextTable=setCellContent(table,target.row,target.col,next.text,next.runs);
+      onDataChange({...fillPromptPatch(node,runsRef.current,node.prompt,runsRef.current,readBlankAnswers(node),{id,answer:cell.text.slice(target.from,target.to)},nextTable),table:nextTable});
+      onBlankSelect?.(id);pendingCellRangeRef.current=null;return;
+    }
+
     const text = node.prompt;
     const range = selectedRange(el) || pendingRangeRef.current;
     const focusedBlank = document.activeElement?.getAttribute('data-blank-id');
@@ -761,9 +810,23 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
     const el = editableRef.current;
     if (!el) return;
     const slots = blankSlots(node, runsRef.current);
+    const settings = fillSettingsFor(node, runsRef.current);
+    const fontSize = getComputedStyle(el).fontSize;
     el.querySelectorAll<HTMLElement>('[data-blank-id]').forEach(blank => {
       const id = blank.dataset.blankId;
       const number = slots.findIndex(slot => slot.id === id) + 1;
+      const width = fixedBlankWidth(settings[number - 1]);
+      if (width !== undefined) {
+        blank.style.setProperty('font-size', fontSize, 'important');
+        blank.style.width = `${width}em`;
+        blank.style.minWidth = '0';
+        blank.style.maxWidth = '100%';
+      } else {
+        blank.style.removeProperty('font-size');
+        blank.style.removeProperty('width');
+        blank.style.removeProperty('min-width');
+        blank.style.removeProperty('max-width');
+      }
       blank.dataset.blankNumber = String(number);
       blank.setAttribute('aria-label', `设置第 ${number} 空`);
       blank.setAttribute('aria-pressed', String(selectedBlankId === id));
@@ -789,6 +852,35 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
   });
 
   const activeTextBlank = blankRuns(runs).find(item => item.blank === selectedBlankId);
+  const table = readTableFor(node);
+  const tableSlot = tableBlankIds(table).indexOf(selectedBlankId ?? '');
+  const tableAt = cellAtSlot(table, tableSlot);
+  const activeCell = tableAt && table?.rows[tableAt.row][tableAt.col];
+  const activeCellBlank = activeCell && !activeCell.blank ? blankRuns(cellTextRuns(activeCell)).find(run=>run.blank===selectedBlankId) : undefined;
+  const activeBlank = Boolean(activeTextBlank || activeCell);
+  const navigationSlots=blankSlots(node,runs);
+  const selectedSlot=navigationSlots.findIndex(slot=>slot.id===selectedBlankId);
+  const selectRelativeBlank=(direction:-1|1)=>{
+    const index=selectedSlot+direction,slot=navigationSlots[index];
+    if(selectedSlot<0 || !slot)return;
+    const root=editableRef.current;
+    const atom=Array.from(root?.querySelectorAll<HTMLElement>('[data-blank-id]') ?? []).find(item=>item.dataset.blankId===slot.id)
+      ?? Array.from(root?.querySelectorAll<HTMLElement>('.worksheet-editor-table-blank-line') ?? []).find(item=>item.getAttribute('aria-label')?.startsWith(`设置第 ${index+1} 空，`));
+    atom?.focus({preventScroll:true});
+    atom?.scrollIntoView({block:'nearest',inline:'nearest'});
+    onBlankSelect?.(slot.id);
+  };
+  const removeCellBlank = () => {
+    if(!tableAt || !table || !activeCell)return;
+    let next = table;
+    if(activeCellBlank){
+      const cellRuns=cellTextRuns(activeCell);
+      const result=removePromptRange(cellRuns,activeCell.text,activeCellBlank.start,activeCellBlank.end);
+      next=setCellContent(table,tableAt.row,tableAt.col,result.text,result.runs);
+    }else next=setCellBlank(table,[],0,tableAt.row,tableAt.col,null).table;
+    onDataChange({...fillPromptPatch(node,runs,node.prompt,runs,readBlankAnswers(node),undefined,next),table:next});
+    onBlankSelect?.('');
+  };
   return (
     <div ref={editorRootRef} className={supportsBlankSlots ? `worksheet-editor-visual-fill${blankInspector ? ' worksheet-editor-text-fill' : ''}` : undefined}>
     <div className="worksheet-editor-visual-content">
@@ -805,20 +897,14 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
           // ⚠️ 捕获阶段：要在**任何**控件把焦点拿走之前量。理由见 `pendingRangeRef`。
           onMouseDownCapture={() => {
             const el = editableRef.current;
+            if(!selectedCellRange(el) && ((pendingCellRangeRef.current && document.activeElement!==el) || colorBoxRef.current?.contains(document.activeElement)))return;
+            pendingCellRangeRef.current=selectedCellRange(el);
             const caret = el ? caretOffset(el) : null;
             pendingRangeRef.current = el ? selectedRange(el) ?? (caret !== null ? { from: caret, to: caret } : null) : null;
           }}
         >
           {heading && <div className="worksheet-editor-prompt-heading">{heading}</div>}
           <div className="worksheet-editor-tool-group" role="group" aria-label="文字样式">
-            {([['label', '圆角标签'], ['oval', '椭圆标题'], ['content', '圆角内容框'], ['', '移除框样式']] as const).map(([frame, label]) => (
-              <button key={frame} type="button" className="worksheet-editor-frame-button" disabled={!toolbar.hasSelection} aria-label={label} title={toolbar.hasSelection ? label : `${label}（请先选中内容）`} onMouseDown={event => event.preventDefault()} onClick={() => applyToSelection({frame, frameId: frame ? `frame-${Date.now()}-${Math.random().toString(36).slice(2)}` : undefined})}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  {frame === 'oval' ? <ellipse cx="12" cy="12" rx="10" ry="7" /> : <rect x="2" y={frame === 'content' ? 5 : 4} width="20" height={frame === 'content' ? 14 : 16} rx="4" fill={frame === 'label' ? 'currentColor' : 'none'} fillOpacity={frame === 'label' ? 0.18 : 1} strokeDasharray={frame === '' ? '3 3' : undefined} />}
-                  {frame === '' ? <path d="m5 3 14 18" /> : <path d={frame === 'content' ? 'M6 10h12M6 14h9' : 'M8 12h8'} />}
-                </svg>
-              </button>
-            ))}
             {BOOLEAN_BUTTONS.map(button => (
               <button
                 key={button.key}
@@ -843,9 +929,10 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
               <button
                 type="button"
                 className="worksheet-editor-color-trigger"
+                onMouseDown={event=>event.preventDefault()}
                 disabled={!toolbar.hasSelection}
-                onClick={() => setColorOpen(open => !open)}
-                aria-haspopup="listbox"
+                onClick={() => {colorSelectionRef.current={cell:pendingCellRangeRef.current,range:pendingRangeRef.current};setCustomColor(toolbar.color);setColorOpen(open => !open);}}
+                aria-haspopup="dialog"
                 aria-expanded={colorOpen}
                 aria-label="任务描述文字颜色"
                 title={toolbar.hasSelection ? '文字颜色' : '请先选中文字'}
@@ -854,7 +941,8 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
                 <b style={{ backgroundColor: toolbar.color }} aria-hidden="true" />
               </button>
               {colorOpen && (
-                <div className="worksheet-editor-color-menu" role="listbox" aria-label="文字颜色">
+                <div className="worksheet-editor-color-menu" role="dialog" aria-label="文字颜色选择">
+                  <div className="worksheet-editor-color-grid" role="listbox" aria-label="文字颜色">
                   {WORKSHEET_TEXT_COLORS.map(color => (
                     <button
                       key={color.value}
@@ -862,14 +950,33 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
                       role="option"
                       aria-selected={toolbar.color === color.value}
                       className={`worksheet-editor-color-option${toolbar.color === color.value ? ' is-active' : ''}`}
-                      onClick={() => applyToSelection({ color: color.value })}
+                      onClick={() => applyToSelection({ color: color.value },colorSelectionRef.current ?? undefined)}
                     >
                       <b style={{ backgroundColor: color.value }} aria-hidden="true" />
                       <span>{color.label}</span>
                     </button>
                   ))}
+                  </div>
+                  <div className="worksheet-editor-custom-color">
+                    <label>自定义颜色<input type="color" aria-label="自定义文字颜色" value={/^#[0-9a-f]{6}$/i.test(customColor) ? customColor : toolbar.color} onChange={event=>{setCustomColor(event.target.value);applyToSelection({color:event.target.value},colorSelectionRef.current ?? undefined);}}/></label>
+                    <div><input type="text" aria-label="文字颜色色值" value={customColor} placeholder="#123456" maxLength={7} spellCheck={false} onChange={event=>setCustomColor(event.target.value)} onKeyDown={event=>{if(event.key==='Enter' && /^#[0-9a-f]{6}$/i.test(customColor)){event.preventDefault();applyToSelection({color:customColor.toLowerCase()},colorSelectionRef.current ?? undefined);}}}/><button type="button" disabled={!/^#[0-9a-f]{6}$/i.test(customColor)} onClick={()=>applyToSelection({color:customColor.toLowerCase()},colorSelectionRef.current ?? undefined)}>应用</button></div>
+                  </div>
                 </div>
               )}
+            </div>
+            <span className="worksheet-editor-format-divider" aria-hidden="true"/>
+            {([['label', '圆角文本框'], ['oval', '椭圆标题'], ['', '移除框样式']] as const).map(([frame, label]) => (
+              <button key={frame} type="button" className="worksheet-editor-frame-button" disabled={!toolbar.hasSelection} aria-label={label} title={toolbar.hasSelection ? label : `${label}（请先选中内容）`} onMouseDown={event => event.preventDefault()} onClick={() => applyToSelection({frame, frameId: frame ? `frame-${Date.now()}-${Math.random().toString(36).slice(2)}` : undefined,...(frame ? {frameBorderColor:toolbar.frameBorderColor,frameFillColor:toolbar.frameFillColor} : {})})}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  {frame === 'oval' ? <ellipse cx="12" cy="12" rx="10" ry="7" /> : <rect x="2" y="4" width="20" height="16" rx="4" fill="none" strokeDasharray={frame === '' ? '3 3' : undefined} />}
+                  {frame === '' ? <path d="m5 3 14 18" /> : <path d="M8 12h8" />}
+                </svg>
+              </button>
+            ))}
+            <div className="worksheet-editor-frame-colors" role="group" aria-label="文本框颜色">
+              <label title="框线颜色">框线<input type="color" aria-label="框线颜色" disabled={!toolbar.hasSelection} value={toolbar.frameBorderColor} onChange={event=>applyToSelection({...(toolbar.frame ? {} : {frame:'label',frameId:`frame-${Date.now()}`,frameFillColor:toolbar.frameFillColor}),frameBorderColor:event.target.value})}/></label>
+              <label title="填充颜色">填充<input type="color" aria-label="填充颜色" disabled={!toolbar.hasSelection} value={toolbar.frameFillColor==='transparent' ? '#ffffff' : toolbar.frameFillColor} onChange={event=>applyToSelection({...(toolbar.frame ? {} : {frame:'label',frameId:`frame-${Date.now()}`,frameBorderColor:toolbar.frameBorderColor}),frameFillColor:event.target.value})}/></label>
+              <button type="button" className="worksheet-editor-frame-no-fill" aria-label="无填充" title="无填充" disabled={!toolbar.hasSelection || !toolbar.frame} aria-pressed={toolbar.frameFillColor==='transparent'} onMouseDown={event=>event.preventDefault()} onClick={()=>applyToSelection({frameFillColor:'transparent'})}><svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="2" width="16" height="16" rx="2" fill="white" stroke="currentColor"/><path d="M3 17 17 3" stroke="#b85b5b" strokeWidth="1.5"/></svg></button>
             </div>
           </div>
           {/* 普通填空与选择填空都需要题干内的结构化空；选择填空少了它就只有词块、没有落点。 */}
@@ -919,20 +1026,20 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
             <IconLink size={15} aria-hidden="true" /> 链接
           </button>
           {/* 插入时同时创建表格与位置引用，不再让教师先插标记、再单独建表。 */}
-          {node.type === 'fill-blank' && Boolean(tableEditor) && !descriptionOnly && (
+          {node.type === 'fill-blank' && !descriptionOnly && (
             <button
               type="button"
               disabled={tableMarkIndex(node.prompt) >= 0}
               title={tableMarkIndex(node.prompt) >= 0
                 ? '已有表格，可直接在任务描述中编辑或调整行列'
                 : '插入表格，选择行列数'}
-              aria-label="插入表格"
+              aria-label="表格"
               onMouseDown={(event) => {
                 event.preventDefault();
                 setTablePicker(value => !value);
               }}
             >
-              <span aria-hidden="true">▦</span> 插入表格
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M12 3v18M3 12h18"/></svg> 表格
             </button>
           )}
           {supportsBlankSlots && (
@@ -961,11 +1068,11 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
           </label>
           </div>
         </div>
-        {supportsBlankSlots && blankRuns(runs).length > 0 && <div className="worksheet-editor-blank-actions" role="group" aria-label="所选填空操作">
-          <strong>{activeTextBlank ? `第 ${blankSlots(node, runs).findIndex(slot => slot.id === activeTextBlank.blank) + 1} 空` : '填空操作'}</strong>
-          <button type="button" title="向前移动填空；也可拖动横线" aria-label="向前移动填空" disabled={!activeTextBlank} onMouseDown={event => event.preventDefault()} onClick={() => { if (activeTextBlank) moveBlank(activeTextBlank.blank, blankStepTarget(node.prompt, runsRef.current, activeTextBlank.blank, -1)); }}><IconArrowLeft size={15}/></button>
-          <button type="button" title="向后移动填空；也可拖动横线" aria-label="向后移动填空" disabled={!activeTextBlank} onMouseDown={event => event.preventDefault()} onClick={() => { if (activeTextBlank) moveBlank(activeTextBlank.blank, blankStepTarget(node.prompt, runsRef.current, activeTextBlank.blank, 1)); }}><IconArrowRight size={15}/></button>
-          <button type="button" title="删除填空" aria-label="删除填空" disabled={!activeTextBlank} onMouseDown={event => event.preventDefault()} onClick={() => { const run = blankRuns(runsRef.current).find(item => item.blank === selectedBlankId); if (run) { deletePromptRange(run.start, run.end); onBlankSelect?.(''); } }}><IconTrash size={15}/></button>
+        {supportsBlankSlots && blankSlots(node,runs).length > 0 && <div className="worksheet-editor-blank-actions" role="group" aria-label="所选填空操作">
+          <strong>{activeBlank ? `第 ${blankSlots(node, runs).findIndex(slot => slot.id === selectedBlankId) + 1} 空` : '填空操作'}</strong>
+          <button type="button" title="选择前一个填空域" aria-label="选择前一个填空域" disabled={selectedSlot<=0} onMouseDown={event=>event.preventDefault()} onClick={()=>selectRelativeBlank(-1)}><IconArrowLeft size={15}/></button>
+          <button type="button" title="选择后一个填空域" aria-label="选择后一个填空域" disabled={selectedSlot<0 || selectedSlot>=navigationSlots.length-1} onMouseDown={event=>event.preventDefault()} onClick={()=>selectRelativeBlank(1)}><IconArrowRight size={15}/></button>
+          <button type="button" title="删除填空" aria-label="删除填空" disabled={!activeBlank} onMouseDown={event => event.preventDefault()} onClick={() => { const run = blankRuns(runsRef.current).find(item => item.blank === selectedBlankId); if (run) { deletePromptRange(run.start, run.end); onBlankSelect?.(''); } else removeCellBlank(); }}><IconTrash size={15}/></button>
         </div>}
         {dropAt !== null && <div className="worksheet-editor-blank-drop-hint" role="status">松开鼠标，将填空移到此处</div>}
         {/*

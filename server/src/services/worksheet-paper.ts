@@ -12,6 +12,7 @@ import {
   resolvePoints,
   toleranceOf,
   tableRowList,
+  tableCellTextFor,
   type QuestionNode,
   type QuestionPoints,
 } from './worksheet-questions.js';
@@ -200,7 +201,7 @@ function tableCells(raw: unknown): PaperTableCell[][] {
       return { text: inlineOf(''), blank: false };
     }
     const cell = entry as Record<string, unknown>;
-    const text = typeof cell.text === 'string' ? cell.text.replace(/[\r\n]+/g, ' ').trim() : '';
+    const text = tableCellTextFor(cell).replace(/[\r\n]+/g,' ').trim();
     const blank = typeof cell.blank === 'string' && cell.blank !== '';
     // ★ 2026-09-30：单元格里也能写公式 ⇒ 文字过 `inlineOf`。
     return { text: inlineOf(text), blank,

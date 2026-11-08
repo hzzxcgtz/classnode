@@ -264,6 +264,7 @@ export function maximumPointsFor(node: WorksheetQuestionNode, fullPoints: number
       return total > 0 ? fillWholeScore(node.data) ?? total : 0;
     }
   }
+  if ((node.type === 'fill-blank' || node.type === 'choice-blank') && fillWholeScore(node.data) !== undefined) return readBlankCount(node) > 0 ? fillWholeScore(node.data)! : 0;
   const perBlank = (node.type === 'fill-blank' || node.type === 'choice-blank')
     && node.data.fillScoring === 'per-blank';
   return perBlank ? fullPoints * readBlankCount(node) : fullPoints;

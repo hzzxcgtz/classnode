@@ -1021,3 +1021,45 @@ test('text typed between adjacent frames stays outside after reopening', () => {
 test('multiline blank auto width measures the longest line', () => {
   assert.equal(inputWidthCh('日初出沧沧凉凉\n及日中则如探汤'),14);
 });
+
+test('框线和填充色保存重开后保留，局部选字改色不会拆成多个框', async () => {
+  const {promptFrameStyle}=await import('./worksheet-prompt-marks.ts');
+  const text='起因说明';
+  let runs=setStyleOnRange(readPromptRuns(undefined,text),text,0,4,{frame:'label',frameId:'box',frameBorderColor:'#C03050',frameFillColor:'#FFF1D6'});
+  runs=setStyleOnRange(runs,text,2,4,{bold:true});
+  runs=setStyleOnRange(runs,text,1,2,{frameFillColor:'#ddecff'});
+  const reopened=readPromptRuns(JSON.parse(JSON.stringify(runs)),text);
+  assert.ok(reopened.every(run=>run.frameId==='box' && run.frameBorderColor==='#c03050' && run.frameFillColor==='#ddecff'));
+  assert.equal(reopened[reopened.length-1].bold,true);
+  assert.equal(promptFrameStyle('label',reopened[0]).border,'1.5px solid #c03050');
+  assert.equal(promptFrameStyle('label',reopened[0]).background,'#ddecff');
+  const transparent=setStyleOnRange(reopened,text,0,4,{frameFillColor:'transparent'});
+  assert.equal(promptFrameStyle('label',transparent[0]).background,'transparent');
+  const cleared=readPromptRuns(setStyleOnRange(transparent,text,0,4,{frame:''}),text);
+  assert.ok(cleared.every(run=>!run.frame && !run.frameBorderColor && !run.frameFillColor));
+});
+
+test('框颜色只接受六位十六进制色或透明，旧框保持原配色', async () => {
+  const {promptFrameStyle}=await import('./worksheet-prompt-marks.ts');
+  const text='标题';
+  const runs=setStyleOnRange(readPromptRuns(undefined,text),text,0,2,{frame:'oval',frameId:'oval'});
+  assert.equal(setStyleOnRange(runs,text,0,2,{frameBorderColor:'url(evil)',frameFillColor:'red;position:fixed'}),runs);
+  assert.equal(promptFrameStyle('label').background,'#e7f1fa');
+  assert.equal(promptFrameStyle('oval').background,'transparent');
+  assert.equal(promptFrameStyle('content').minWidth,'12em');
+  const saved=readPromptRuns([{...runs[0],frameBorderColor:'url(evil)',frameFillColor:'invalid'}],text);
+  assert.equal(saved[0].frameBorderColor,undefined);
+  assert.equal(saved[0].frameFillColor,undefined);
+  const plain=readPromptRuns(undefined,text);
+  assert.equal(setStyleOnRange(plain,text,0,2,{frameFillColor:'transparent'}),plain);
+});
+
+test('自定义文字颜色可保存重开，拒绝将任意 CSS 写入文字样式', () => {
+  const text='自定义色';
+  const original=readPromptRuns(undefined,text);
+  const colored=setStyleOnRange(original,text,0,text.length,{color:'#2468AC'});
+  const saved=readPromptRuns(JSON.parse(JSON.stringify(colored)),text);
+  assert.equal(saved[0].color,'#2468ac');
+  assert.equal(setStyleOnRange(saved,text,0,text.length,{color:'red;position:fixed'}),saved);
+  assert.equal(readPromptRuns([{...saved[0],color:'url(evil)'}],text)[0].color,DEFAULT_PROMPT_STYLE.color);
+});

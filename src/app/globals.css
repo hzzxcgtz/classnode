@@ -11223,7 +11223,7 @@ tr:hover td {
 .worksheet-editor-visual-fill .worksheet-editor-live-table td textarea:focus { outline: none; }
 .worksheet-editor-table-blank-line { position: relative; display: flex; align-items: flex-end; width: 100%; min-height: 54px; padding: 12px; border: 0; border-radius: 4px; background: #eaf3ff; color: #365f8d; cursor: pointer; }
 .worksheet-editor-table-blank-line span { position: absolute; top: 4px; left: 5px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: #365f8d; color: #fff; font-size: 11px; }
-.worksheet-editor-table-blank-line i { width: 100%; border-bottom: 1px solid #527ca8; }
+.worksheet-editor-table-blank-line i { width: 65%; max-width: 100%; border-bottom: 1px solid #527ca8; }
 .worksheet-editor-table-blank-line:focus { outline: 2px solid #365f8d; outline-offset: -2px; }
 .worksheet-editor-live-table-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 5px; }
 @media(max-width: 1050px) { .worksheet-editor-visual-fill { grid-template-columns: minmax(0,1fr); } .worksheet-editor-blank-inspector { position: static; } }
@@ -11660,3 +11660,43 @@ tr:hover td {
 .purpose-segmented-control > button:disabled { opacity: .5; cursor: not-allowed; }
 
 .worksheet-editor-reward-amount { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; vertical-align: middle; }
+
+/* Editor-only guides for borderless table layouts. */
+.worksheet-editor-live-table.is-borderless-layout table td {
+  border: 1px dashed #dce5ee;
+  background: transparent;
+}
+.worksheet-editor-live-table.is-borderless-layout table td.is-active { background: #f1f6fc; }
+.worksheet-editor-live-table.is-borderless-layout table td textarea { background: transparent; }
+
+.worksheet-editor-live-table td .worksheet-table-cell-frame > textarea { display: block; min-height: 32px; padding: 3px; border: 0; background: transparent; resize: vertical; }
+.worksheet-editor-live-table .worksheet-table-cell-frame > .worksheet-editor-table-blank-line { background: transparent; }
+
+.worksheet-editor-cell-text { min-height: 54px; padding: 9px 7px; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; font: inherit; font-size: .88rem; }
+.worksheet-editor-cell-text:empty::before { content: attr(data-placeholder); color: #96a6b7; pointer-events: none; }
+.worksheet-editor-cell-text [data-prompt-frame],
+.worksheet-table-cell-content [data-prompt-frame] { min-width: 0 !important; }
+
+/* 表格工具悬浮在编辑框外，不为工具栏挤占题面宽度。 */
+.worksheet-editor-live-table.is-standalone,
+.worksheet-editor-table-task .worksheet-editor-live-table.is-standalone { padding-right: 0; }
+.worksheet-editor-live-table.is-standalone .worksheet-editor-table-blank-count { right: 0; }
+.worksheet-editor-table-structure-tools.worksheet-editor-table-icon-rail.is-floating-outside { right: auto; z-index: 80; box-sizing: content-box; padding: 6px; border: 1px solid #dbe4ed; border-radius: 9px; background: #fff; box-shadow: 0 4px 16px #16375714; }
+
+.worksheet-editor-frame-colors { display: inline-flex; align-items: center; gap: 5px; padding: 0 7px; border-left: 1px solid #dbe4ed; border-right: 1px solid #dbe4ed; }
+.worksheet-editor-frame-colors > label { display: inline-flex; align-items: center; gap: 4px; margin: 0; color: #62758c; font-size: 11px; white-space: nowrap; }
+.worksheet-editor-frame-colors input[type='color'] { width: 22px; height: 24px; padding: 2px; border: 1px solid #cddbea; border-radius: 5px; background: white; cursor: pointer; }
+.worksheet-editor-frame-colors input:disabled { opacity: .4; cursor: default; }
+.worksheet-editor-frame-colors > .worksheet-editor-frame-no-fill { min-width: 25px; width: 25px; padding: 0; }
+
+.worksheet-editor-color-menu { width: 248px; max-height: min(70vh, 440px); overflow-y: auto; }
+.worksheet-editor-color-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 4px; }
+.worksheet-editor-custom-color { margin-top: 5px; padding: 8px 5px 3px; border-top: 1px solid #dbe4ed; }
+.worksheet-editor-custom-color > label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #52677c; }
+.worksheet-editor-custom-color input[type='color'] { width: 30px; height: 25px; padding: 2px; border: 1px solid #cddbea; border-radius: 5px; background: white; }
+.worksheet-editor-custom-color > div { display: flex; gap: 5px; margin-top: 7px; }
+.worksheet-editor-custom-color input[type='text'] { width: 0; flex: 1; min-width: 0; height: 28px; padding: 4px 6px; border: 1px solid #cddbea; border-radius: 5px; font: inherit; font-size: 12px; }
+.worksheet-editor-custom-color > div > button { width: auto; min-width: 44px; height: 28px; padding: 3px 6px; font-size: 12px; }
+
+
+.worksheet-editor-format-divider { width: 1px; height: 24px; margin: 0 5px; background: #dbe4ed; flex-shrink: 0; }

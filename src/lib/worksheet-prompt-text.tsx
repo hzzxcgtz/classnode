@@ -260,7 +260,7 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
         const href = markAt < 0 ? normalizePromptLink(run.href) : undefined;
         if (href) {
           const sameLink = (part: PromptRun) => !isBlankRun(part) && part.href === run.href
-            && part.frame === run.frame && part.frameId === run.frameId
+            && part.frame === run.frame && part.frameId === run.frameId && part.frameBorderColor === run.frameBorderColor && part.frameFillColor === run.frameFillColor
             && !text.slice(part.start, part.end).includes(TABLE_MARK_TEXT);
           if (previous && previous.end === run.start && sameLink(previous)) return null;
           const parts = [run];
@@ -314,8 +314,8 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
     const run = segments[i];
     if (!run.frame) { groups.push(<Fragment key={i}>{rendered[i]}</Fragment>); i++; continue; }
     let end = i + 1;
-    while (end < segments.length && segments[end].frame === run.frame && segments[end].frameId === run.frameId) end++;
-    groups.push(<span key={i} style={promptFrameStyle(run.frame) as CSSProperties}>{rendered.slice(i, end)}</span>);
+    while (end < segments.length && segments[end].frame === run.frame && segments[end].frameId === run.frameId && segments[end].frameBorderColor === run.frameBorderColor && segments[end].frameFillColor === run.frameFillColor) end++;
+    groups.push(<span key={i} data-prompt-frame={run.frame} style={promptFrameStyle(run.frame,run) as CSSProperties}>{rendered.slice(i, end)}</span>);
     i = end;
   }
   return <>{groups}</>;

@@ -1,9 +1,10 @@
+import { TableCellFrame } from './worksheet-table-frame';
 import { BlankInput } from './worksheet-blank-input';
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
 
 import { blankAriaLabel, inputWidthCh, blankValueStyle } from './worksheet-prompt-marks.ts';
 import { BlankSlot } from './worksheet-blank-slot.tsx';
-import { cellLabel, tableColumnCount, coveredTableCells, readTableFor, type WorksheetTable } from './worksheet-table.ts';
+import { tableCellBlankIds, cellTextRuns, cellLabel, tableColumnCount, coveredTableCells, readTableFor, type WorksheetTable } from './worksheet-table.ts';
 // ★ 2026-09-30：单元格里的字也走题面那**同一个**渲染器 —— 所以单元格里能写公式。
 // 🔴 由此 `worksheet-table-view.tsx` 与 `worksheet-prompt-text.tsx` **互为依赖**
 //    （前者要被后者画进题干，后者要用前者画单元格的字）。这是**有意**的、且是安全的：
@@ -112,7 +113,9 @@ function rowsOf(table: unknown): WorksheetTable['rows'] {
 
 export function WorksheetTableView({ table, blanks, fitContainer = false }: WorksheetTableViewProps) {
   if (!table || typeof table !== 'object' || Array.isArray(table)) return null;
+  const normalized = readTableFor({data:{table}});
   const rows = rowsOf(table);
+  const borderless = normalized?.borderless === true;
   const covered = coveredTableCells(table);
   if (rows.length === 0) return null;
   const headerRow = (table as Record<string, unknown>).headerRow !== false;
@@ -124,20 +127,22 @@ export function WorksheetTableView({ table, blanks, fitContainer = false }: Work
     // ⚠️ 横向滚动：iPad 竖屏放不下一张 5 列的表。**不许**把表格压成挤在一起的字。
     //    `-webkit-overflow-scrolling` 是给老 iPad 的惯性滚动（Safari 15 仍认它）。
     <div style={{ overflowX: fitContainer ? 'visible' : 'auto', minWidth: 0, WebkitOverflowScrolling: 'touch', marginTop: 10 }}>
-      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.95rem', ...(fitContainer ? { tableLayout: 'fixed' as const } : {}), ...(blanks?.stableColumns ? {tableLayout:'fixed' as const,minWidth:tableColumnCount(table)*160} : {}) }}>
-        {blanks?.stableColumns && <colgroup>{Array.from({length:tableColumnCount(table)},(_,index)=><col key={index} style={{width:`${100/tableColumnCount(table)}%`}}/>)}</colgroup>}
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.95rem', ...(fitContainer || borderless ? { tableLayout: 'fixed' as const } : {}), ...(blanks?.stableColumns ? {tableLayout:'fixed' as const,minWidth:tableColumnCount(table)*160} : {}) }}>
+        {(blanks?.stableColumns || normalized?.columnWidths) && <colgroup>{Array.from({length:tableColumnCount(table)},(_,index)=><col key={index} style={{width:`${normalized?.columnWidths?.[index] ?? 100/tableColumnCount(table)}%`}}/>)}</colgroup>}
         <tbody>
           {rows.map((cells, row) => (
             <tr key={row}>
               {cells.map((cell, col) => {
                 if (covered.has(`${row}:${col}`)) return null;
                 const isBlank = cell.blank !== '';
-                if (isBlank) slot += 1;
+                const cellBase=slot+1;
+                slot += tableCellBlankIds(cell).length;
                 const label = cellLabel(row, col);
                 const globalIndex = blanks ? blanks.base + slot : -1;
                 const wrong = isBlank && blanks?.wrongOf ? blanks.wrongOf(globalIndex) : false;
                 return (
-                  <td key={col} rowSpan={cell.rowSpan} colSpan={cell.colSpan} style={{...(headerRow && row === 0 ? HEADER_STYLE : CELL_STYLE), ...(fitContainer ? { minWidth: 0, overflowWrap: 'anywhere' as const, padding: '5px' } : {}), textAlign:cell.align, verticalAlign:cell.verticalAlign ?? 'middle'}}>
+                  <td key={col} rowSpan={cell.rowSpan} colSpan={cell.colSpan} style={{...(headerRow && row === 0 ? HEADER_STYLE : CELL_STYLE), ...(fitContainer ? { minWidth: 0, overflowWrap: 'anywhere' as const, padding: '5px' } : {}), ...(borderless ? {border:'none',background:'transparent'} : {}), textAlign:cell.align ?? 'left', verticalAlign:cell.verticalAlign ?? 'middle'}}>
+                    <TableCellFrame cell={cell}>
                     {isBlank ? (
                       <Fragment>
                         {blanks?.renderOf?.(globalIndex) !== undefined ? blanks.renderOf(globalIndex) : blanks && blanks.drop && blanks.modeOf?.(globalIndex) !== 'input' ? (
@@ -146,7 +151,7 @@ export function WorksheetTableView({ table, blanks, fitContainer = false }: Work
                              ⚠️ 宽度给 `100%`：表格里的槽跟着格子走（题干里那个跟着占位文字走）。 */
                           <BlankSlot
                             run={PLAIN_RUN}
-                            align={cell.align}
+                            align={cell.align ?? 'left'}
                             width={blanks.widthOf?.(globalIndex) !== undefined ? `${blanks.widthOf(globalIndex)}em` : `${Math.max(6, inputWidthCh(blanks.values[globalIndex] ?? '') + 2)}ch`}
                             value={blanks.values[globalIndex] ?? ''}
                             label={label}
@@ -160,7 +165,7 @@ export function WorksheetTableView({ table, blanks, fitContainer = false }: Work
                             {blanks.drop.after?.(globalIndex)}
                           </BlankSlot>
                         ) : blanks ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', width: '100%' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent:cell.align === 'center' ? 'center' : cell.align === 'right' ? 'flex-end' : 'flex-start', width: '100%' }}>
                             <BlankInput
                               className="worksheet-blank-input"
                               aria-label={blankAriaLabel(label, wrong)}
@@ -170,7 +175,7 @@ export function WorksheetTableView({ table, blanks, fitContainer = false }: Work
                               // 与题干输入、选择填空槽走同一个最终样式：学生填写的内容恒为
                               // 600 字重；答错时再由同一函数叠加暗红色与删除线。
                               style={{
-                                width: blanks.widthOf?.(globalIndex) !== undefined ? `${blanks.widthOf(globalIndex)}em` : `${Math.max(6, inputWidthCh(blanks.values[globalIndex] ?? '') + 2)}ch`, maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', textAlign:cell.align,
+                                width: blanks.widthOf?.(globalIndex) !== undefined ? `${blanks.widthOf(globalIndex)}em` : `${Math.max(6, inputWidthCh(blanks.values[globalIndex] ?? '') + 2)}ch`, maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', textAlign:cell.align ?? 'left',
                                 ...(blankValueStyle(PLAIN_RUN, wrong) as CSSProperties),
                               }}
                             />
@@ -193,8 +198,9 @@ export function WorksheetTableView({ table, blanks, fitContainer = false }: Work
                       // 空格子也要占住那一行的高度（否则整行会被压扁）
                       // ★ 2026-09-30：单元格里的字走题面那**同一个**渲染器（`PromptText`），
                       // 所以单元格里能写公式。⚠️ **不传 `runs`** —— 单元格是纯文本。
-                      cell.text === '' ? ' ' : <PromptText text={cell.text} placeholder="" />
+                      cell.text === '' ? ' ' : <span className="worksheet-table-cell-content"><PromptText text={cell.text} runs={cellTextRuns(cell)} placeholder="" blanks={blanks ? {...blanks,values:blanks.values.slice(blanks.base+cellBase),onChange:(index,value)=>blanks.onChange(blanks.base+cellBase+index,value),renderOf:blanks.renderOf ? index=>blanks.renderOf?.(blanks.base+cellBase+index) : undefined,widthOf:blanks.widthOf ? index=>blanks.widthOf?.(blanks.base+cellBase+index) : undefined,wrongOf:blanks.wrongOf ? index=>blanks.wrongOf?.(blanks.base+cellBase+index) ?? false : undefined,modeOf:blanks.modeOf ? index=>blanks.modeOf!(blanks.base+cellBase+index) : undefined,drop:blanks.drop ? {...blanks.drop,idOf:index=>blanks.drop!.idOf(blanks.base+cellBase+index),onPlace:index=>blanks.drop!.onPlace(blanks.base+cellBase+index),after:blanks.drop.after ? index=>blanks.drop!.after?.(blanks.base+cellBase+index) : undefined} : undefined} : undefined}/></span>
                     )}
+                    </TableCellFrame>
                   </td>
                 );
               })}

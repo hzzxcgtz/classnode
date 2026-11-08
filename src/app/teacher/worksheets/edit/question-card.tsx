@@ -13,8 +13,6 @@ import { PromptText } from '@/lib/worksheet-prompt-text';
 // 它单独一个文件是因为里面全是**本机验不了的** DOM 原语（光标 / 选区 / 重建），
 // 混在这张卡片里会把「卡片只负责画控件」这条分工冲掉。
 import { PromptEditor } from './prompt-editor';
-import { fillEditorKind } from '@/lib/worksheet-fill-layout';
-import { TableFillEditor } from './table-fill-editor';
 // ★ 2026-09-27：「粘贴题目」的确认窗（题干 + 选项一起识别）—— 单独一个文件，
 // 因为它是**一次粘贴**的界面，与「画一道题的控件」不是同一件事。
 import { PasteQuestionDialog, type PasteQuestionResult } from './paste-question-dialog';
@@ -70,7 +68,7 @@ import { DrawingSettings } from './bodies/drawing-settings';
 // 重写一遍就是两份真源，而它们漂移的后果是「教师在教师端选的档」与「学生端拿到的输入形态」
 // 不一致，且屏幕上看不出来。
 import { isInkNode } from '@/lib/worksheet-ink';
-import { questionTypeIcon, TABLE_QUESTION_ICON } from '@/lib/worksheet-question-icons';
+import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 // ★ 2026-10-06：判断「这一题的作图工具是不是流程图」只有这一份判据 —— 教师端那个
 // 作图工具选择器（`bodies/drawing-settings.tsx`）与学生端画布读的是同一个函数。
 import { readDrawingTool } from '@/lib/worksheet-drawing';
@@ -243,7 +241,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
   const typeOption = QUESTION_TYPE_OPTIONS.find(option => option.value === node.type);
   const typeLabel = node.type === 'single-choice' || node.type === 'multi-choice'
     ? (isMultipleChoice(node) ? '多选题' : '单选题')
-    : node.type === 'fill-blank' && fillEditorKind(node) === 'table' ? '表格题' : typeOption?.label ?? node.type;
+    : typeOption?.label ?? node.type;
   const promptRuns = readPromptRunsFor(node);
   const promptImage = readPromptImage(node);
 
@@ -360,7 +358,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
   const explicitFillScoring = hasExplicitFillGrading(fillSettings);
   const fillTotals = fillGradingTotals(fillSettings);
   const wholeScore = fillWholeScore(node.data);
-  const fillMaximum = fillTotals.total > 0 ? wholeScore ?? fillTotals.total : 0;
+  const fillMaximum = explicitFillScoring ? (fillTotals.total > 0 ? wholeScore ?? fillTotals.total : 0) : gradedOn ? wholeScore ?? maximumPoints : 0;
+  const wholeSelected = wholeScore !== undefined || (!explicitFillScoring && node.data.fillScoring === 'whole');
   const scoredExpression = fillSettings.some(setting => setting.evaluationVersion === 1 ? setting.evaluationMode === 'ai' && setting.evaluationScored === true : setting.mode === 'audio' && setting.gradingMode === 'ai');
   /**
    * 这一型有没有**整题级**的 AI 评分设置块（开关 + 满额 + 评分标准 + 图片）。
@@ -451,10 +450,10 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           <span className="worksheet-editor-question-index">{focusedMode && node.type === 'drawing' ? `第 ${badgeLabel} 项任务` : badgeLabel}</span>
           {focusedMode ? (
             <span className="worksheet-editor-question-heading-copy">
-              <strong><span className="worksheet-editor-type-glyph">{node.type === 'fill-blank' && fillEditorKind(node) === 'table' ? TABLE_QUESTION_ICON : questionTypeIcon(node.type)}</span>{typeLabel}</strong>
+              <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(node.type)}</span>{typeLabel}</strong>
             </span>
           ) : (
-            <span className="worksheet-editor-question-type"><span className="worksheet-editor-type-glyph">{node.type === 'fill-blank' && fillEditorKind(node) === 'table' ? TABLE_QUESTION_ICON : questionTypeIcon(node.type)}</span>{typeLabel}</span>
+            <span className="worksheet-editor-question-type"><span className="worksheet-editor-type-glyph">{questionTypeIcon(node.type)}</span>{typeLabel}</span>
           )}
           <span className={`worksheet-editor-grade-status${gradedOn ? ' is-on' : ' is-manual'}`}>
             {gradingStatusAmount ? <>{gradingStatusAmount[1]} <EditorRewardAmount style={rewardStyle} unit={pointsUnit} amount={Number(gradingStatusAmount[2])} /></> : gradingStatus}
@@ -537,7 +536,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         </div>
 
         <div className={`worksheet-editor-block${(node.type === 'drawing' || node.type === 'short-answer' || node.type === 'open-ended') ? ' drawing-prompt-block' : ''}`}>
-          {node.type === 'fill-blank' && fillEditorKind(node) === 'table' ? <TableFillEditor node={node} onPromptChange={onPromptChange} onDataChange={onDataChange} onNotice={onNotice} onBlankSelect={setSelectedBlankId} selectedBlankId={selectedBlankId} inspector={<ChoiceBlankSetup section="mode" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId} />} /> : <PromptEditor
+          {<PromptEditor
             heading={<h4><EditorIcon kind="prompt" />任务描述{node.type === 'drawing' && <span className="drawing-required">*</span>}</h4>}
             node={node}
             onPromptChange={onPromptChange}
@@ -548,7 +547,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             onNotice={onNotice}
             onBlankSelect={setSelectedBlankId}
             selectedBlankId={selectedBlankId}
-            tableEditor={node.type === 'fill-blank' && hasTableMark ? <div ref={tableBlockRef}><TableBody node={node} onDataChange={onDataChange} onBlankSelect={setSelectedBlankId} selectedBlankId={selectedBlankId} /></div> : undefined}
+            tableEditor={node.type === 'fill-blank' && hasTableMark ? <div ref={tableBlockRef}><TableBody node={node} onDataChange={onDataChange} onBlankSelect={setSelectedBlankId} selectedBlankId={selectedBlankId} standalone /></div> : undefined}
             blankInspector={isBlankType ? <ChoiceBlankSetup section="mode" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId} /> : undefined}
           />}
         </div>
@@ -647,28 +646,28 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         🔴 这不是纯显隐：服务端 `grade()` 与 AI 评分入口也必须先读 `node.autoGrade`，
         否则教师看到关闭，学生提交后仍会得到分数。
       */}
-      {isBlankType && (explicitFillScoring || Object.values((node.data.fillBlankSettings as Record<string, Record<string, unknown>>) ?? {}).some(hasEvaluation)) && (
+      {isBlankType && (
         <section className="worksheet-editor-question-section is-grading">
           <div className="worksheet-editor-section-head">
             <div>
               <h3><EditorIcon kind="grading" />整题计分</h3>
-              <p>{wholeScore !== undefined ? '参与判分的空全部答对才获得整题奖励，调查收集的空不参与判分。' : '各空分别计分，整题满分为计分空的分值合计。'}</p>
+              <p>{wholeSelected ? '参与判分的空全部答对才获得整题奖励，调查收集的空不参与判分。' : '各空分别计分，整题满分为计分空的分值合计。'}</p>
             </div>
             <div className="worksheet-editor-head-actions">
-              <span className="worksheet-editor-points-badge">{fillTotals.total > 0 ? <>当前任务满分 <EditorRewardAmount style={rewardStyle} unit={pointsUnit} amount={fillMaximum} /></> : '当前任务不计分'}</span>
+              <span className="worksheet-editor-points-badge">{fillMaximum > 0 ? <>当前任务满分 <EditorRewardAmount style={rewardStyle} unit={pointsUnit} amount={fillMaximum} /></> : '当前任务不计分'}</span>
             </div>
           </div>
           <div className="worksheet-editor-block worksheet-editor-whole-fill-scoring">
             <div className="purpose-segmented-control" role="group" aria-label="填空计分方式">
-              <button type="button" aria-pressed={wholeScore === undefined} className={wholeScore === undefined ? 'is-selected' : ''} onClick={() => onDataChange({fillWholeScore:undefined})}>逐空计分</button>
-              <button type="button" disabled={scoredExpression} title={scoredExpression ? '表达评价计分请使用逐空计分' : undefined} aria-pressed={wholeScore !== undefined} className={wholeScore !== undefined ? 'is-selected' : ''} onClick={() => {if(wholeScore === undefined)onDataChange({fillWholeScore:1});}}>整题计分</button>
+              <button type="button" aria-pressed={!wholeSelected} className={!wholeSelected ? 'is-selected' : ''} onClick={() => onDataChange({fillWholeScore:undefined,fillScoring:'per-blank'})}>逐空计分</button>
+              <button type="button" disabled={scoredExpression} title={scoredExpression ? '表达评价计分请使用逐空计分' : undefined} aria-pressed={wholeSelected} className={wholeSelected ? 'is-selected' : ''} onClick={() => {if(wholeScore === undefined)onDataChange({fillWholeScore:1});}}>整题计分</button>
             </div>
-            {wholeScore !== undefined && <label className="worksheet-editor-fill-score-input"><span>{pointsUnit === '分' ? '整题分值' : '整题奖励'}</span><input type="number" min={1} max={99} value={wholeScore} onChange={event => {const score=Number(event.target.value);if(Number.isInteger(score)&&score>=1&&score<=99)onDataChange({fillWholeScore:score});}}/><EditorRewardUnit style={rewardStyle} unit={pointsUnit}/></label>}
+            {wholeSelected && <label className="worksheet-editor-fill-score-input"><span>{pointsUnit === '分' ? '整题分值' : '整题奖励'}</span><input type="number" min={1} max={99} value={wholeScore ?? shownPoints.full} onChange={event => {const score=Number(event.target.value);if(Number.isInteger(score)&&score>=1&&score<=99)onDataChange({fillWholeScore:score});}}/><EditorRewardUnit style={rewardStyle} unit={pointsUnit}/></label>}
           </div>
         </section>
       )}
 
-      {isGradedQuestionType(node.type) && (isBlankType ? !explicitFillScoring && !Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation) : !hasEvaluation(node.data) || node.data.evaluationMode === 'answer') && (
+      {!isBlankType && isGradedQuestionType(node.type) && (isBlankType ? !explicitFillScoring && !Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation) : !hasEvaluation(node.data) || node.data.evaluationMode === 'answer') && (
         <section className={`worksheet-editor-question-section is-grading${gradedOn ? '' : ' is-collection'}`}>
           <div className="worksheet-editor-section-head">
             <div>

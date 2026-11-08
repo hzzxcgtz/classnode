@@ -43,6 +43,8 @@ export type PromptFrame = 'label' | 'oval' | 'content';
 export interface PromptTextStyle {
   frame?: PromptFrame;
   frameId?: string;
+  frameBorderColor?: string;
+  frameFillColor?: string;
   bold: boolean;
   italic: boolean;
   underline: boolean;
@@ -101,6 +103,21 @@ export const WORKSHEET_TEXT_COLORS = [
   { value: '#b91c1c', label: '红色' },
   { value: '#15803d', label: '绿色' },
   { value: '#7e22ce', label: '紫色' },
+  { value: '#111827', label: '黑色' },
+  { value: '#64748b', label: '灰色' },
+  { value: '#c2410c', label: '橙色' },
+  { value: '#a16207', label: '金色' },
+  { value: '#92400e', label: '棕色' },
+  { value: '#be185d', label: '粉色' },
+  { value: '#0e7490', label: '青色' },
+  { value: '#4338ca', label: '靛蓝' },
+  { value: '#93c5fd', label: '浅蓝' },
+  { value: '#fca5a5', label: '浅红' },
+  { value: '#86efac', label: '浅绿' },
+  { value: '#d8b4fe', label: '浅紫' },
+  { value: '#fde047', label: '黄色' },
+  { value: '#cbd5e1', label: '浅灰' },
+  { value: '#ffffff', label: '白色' },
 ] as const;
 
 /** 四个布尔字段的名字。工具栏与归一化都靠它遍历，**别在别处再抄一遍**。 */
@@ -111,6 +128,8 @@ export type PromptBooleanKey = typeof PROMPT_BOOLEAN_KEYS[number];
 export interface PromptStylePatch {
   frame?: PromptFrame | '';
   frameId?: string;
+  frameBorderColor?: string;
+  frameFillColor?: string;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
@@ -119,7 +138,11 @@ export interface PromptStylePatch {
 }
 
 function isKnownColor(value: unknown): boolean {
-  return WORKSHEET_TEXT_COLORS.some(item => item.value === value);
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+function frameColor(value: unknown, fill = false): string | undefined {
+  return typeof value === 'string' && (/^#[0-9a-f]{6}$/i.test(value) || (fill && value === 'transparent')) ? value.toLowerCase() : undefined;
 }
 
 function styleOf(run: PromptRun): PromptTextStyle {
@@ -129,7 +152,7 @@ function styleOf(run: PromptRun): PromptTextStyle {
     underline: run.underline,
     emphasis: run.emphasis,
     color: run.color,
-    ...(run.frame ? {frame: run.frame, frameId: run.frameId} : {}),
+    ...(run.frame ? {frame: run.frame, frameId: run.frameId, ...(run.frameBorderColor ? {frameBorderColor:run.frameBorderColor} : {}), ...(run.frameFillColor ? {frameFillColor:run.frameFillColor} : {})} : {}),
   };
 }
 
@@ -138,7 +161,7 @@ function sameStyle(a: PromptTextStyle, b: PromptTextStyle): boolean {
     && a.italic === b.italic
     && a.underline === b.underline
     && a.emphasis === b.emphasis
-    && a.color === b.color && a.frame === b.frame && a.frameId === b.frameId;
+    && a.color === b.color && a.frame === b.frame && a.frameId === b.frameId && a.frameBorderColor === b.frameBorderColor && a.frameFillColor === b.frameFillColor;
 }
 
 /**
@@ -208,12 +231,12 @@ function pushRun(out: PromptRun[], next: PromptRun): void {
 
 function readStyle(item: Record<string, unknown>): PromptTextStyle {
   return {
-    ...(item.frame === 'label' || item.frame === 'oval' || item.frame === 'content' ? {frame:item.frame, frameId:typeof item.frameId === 'string' ? item.frameId : `legacy-${item.start}`} : {}),
+    ...(item.frame === 'label' || item.frame === 'oval' || item.frame === 'content' ? {frame:item.frame, ...(frameColor(item.frameBorderColor) ? {frameBorderColor:frameColor(item.frameBorderColor)} : {}), ...(frameColor(item.frameFillColor,true) ? {frameFillColor:frameColor(item.frameFillColor,true)} : {}), frameId:typeof item.frameId === 'string' ? item.frameId : `legacy-${item.start}`} : {}),
     bold: item.bold === true,
     italic: item.italic === true,
     underline: item.underline === true,
     emphasis: item.emphasis === true,
-    color: isKnownColor(item.color) ? item.color as string : DEFAULT_PROMPT_STYLE.color,
+    color: isKnownColor(item.color) ? (item.color as string).toLowerCase() : DEFAULT_PROMPT_STYLE.color,
   };
 }
 
@@ -358,14 +381,24 @@ export function setStyleOnRange(
     const value = patch ? patch[key] : undefined;
     if (typeof value === 'boolean') clean[key] = value;
   });
-  if (patch && typeof patch.color === 'string' && isKnownColor(patch.color)) clean.color = patch.color;
+  if (patch && typeof patch.color === 'string' && isKnownColor(patch.color)) clean.color = patch.color.toLowerCase();
   if (patch && ['label', 'oval', 'content', ''].includes(patch.frame as string)) {
     clean.frame = patch.frame || undefined;
     clean.frameId = patch.frame ? patch.frameId : undefined;
+    if (!patch.frame) { clean.frameBorderColor=undefined; clean.frameFillColor=undefined; }
   }
+  if(frameColor(patch?.frameBorderColor))clean.frameBorderColor=frameColor(patch.frameBorderColor);
+  if(frameColor(patch?.frameFillColor,true))clean.frameFillColor=frameColor(patch.frameFillColor,true);
   if (Object.keys(clean).length === 0) return runs;
 
-  const out = rewriteRange(runs, start, end, clean);
+  const coloring=patch?.frameBorderColor!==undefined || patch?.frameFillColor!==undefined;
+  const framed=coloring && patch.frame===undefined ? runs.filter(run=>run.frame && run.start<end && run.end>start) : [];
+  if(coloring && !patch.frame && framed.length===0)return runs;
+  const identities=new Set(framed.map(run=>`${run.frame}:${run.frameId}`));
+  const affected=runs.filter(run=>run.frame && identities.has(`${run.frame}:${run.frameId}`));
+  const affectedFrom=affected.length ? Math.min(start,...affected.map(run=>run.start)) : start;
+  const affectedTo=affected.length ? Math.max(end,...affected.map(run=>run.end)) : end;
+  const out = rewriteRange(runs, affectedFrom, affectedTo, clean);
   return sameRuns(out, runs) ? runs : out;
 }
 
@@ -1012,11 +1045,11 @@ export function isPlainRuns(runs: PromptRun[]): boolean {
 
 
 /** Shared by the editable canvas and student renderer. */
-export function promptFrameStyle(frame: PromptFrame): Record<string, string | number> {
+export function promptFrameStyle(frame: PromptFrame, colors: Pick<PromptTextStyle,'frameBorderColor'|'frameFillColor'> = {}): Record<string, string | number> {
   return {
     display: 'inline-block', boxSizing: 'border-box', maxWidth: '100%',
-    border: '1.5px solid #82a8c7', borderRadius: frame === 'oval' ? '50%' : '0.55em',
-    background: frame === 'label' ? '#e7f1fa' : 'transparent',
+    border: `1.5px solid ${frameColor(colors.frameBorderColor) ?? '#82a8c7'}`, borderRadius: frame === 'oval' ? '50%' : '0.55em',
+    background: frameColor(colors.frameFillColor,true) ?? (frame === 'label' ? '#e7f1fa' : 'transparent'),
     padding: frame === 'oval' ? '0.3em 1.1em' : '0.2em 0.65em',
     margin: '0.2em 0.25em', verticalAlign: 'middle',
     minWidth: frame === 'content' ? '12em' : '0',

@@ -93,7 +93,8 @@ export function BlankSlot({
           transition: 'background-color .16s ease-out, border-color .16s ease-out',
         }}
       >
-        {filled ? value : ' '}
+        {/* 与待选词字号一致，缩小文字时保留外层填空宽度。 */}
+        {filled ? <span style={{fontSize:'.88rem',lineHeight:1.45,textDecoration:'inherit',minWidth:0,maxWidth:'100%'}}>{value}</span> : ' '}
       </span>
       {children}
     </Fragment>

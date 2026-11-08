@@ -34,7 +34,7 @@ test('填空格显示可选中的横线，普通格直接编辑文字', () => {
   assert.ok(body.length > 1000);
   const at = body.indexOf('{item.blank ?');
   assert.ok(at >= 0, '填空与文字由结构化 blank ID 区分');
-  const split = body.indexOf(': <textarea', at);
+  const split = body.indexOf(': <TableCellTextEditor', at);
   const blankBranch = body.slice(at, split);
   assert.ok(blankBranch.includes('worksheet-editor-table-blank-line'));
   assert.ok(blankBranch.includes('aria-label=') && blankBranch.includes('aria-pressed='));

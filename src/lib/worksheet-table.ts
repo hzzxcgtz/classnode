@@ -1,4 +1,4 @@
-import { blankRuns, readPromptRuns, TABLE_MARK_TEXT, type PromptRun } from './worksheet-prompt-marks.ts';
+import { blankRuns, readPromptRuns, remapRuns, setStyleOnRange, TABLE_MARK_TEXT, type PromptFrame, type PromptRun } from './worksheet-prompt-marks.ts';
 
 /**
  * 表格填空的**纯逻辑核心**（★ 2026-09-28，教师裁定「按 B 做」＝ 结构化网格）。
@@ -76,6 +76,8 @@ export const MAX_TABLE_BLANKS = 30;
 export interface WorksheetTableCell {
   text: string;
   blank: string;
+  frame?: PromptFrame;
+  textRuns?: PromptRun[];
   align?: 'left' | 'center' | 'right';
   verticalAlign?: 'top' | 'middle' | 'bottom';
   rowSpan?: number;
@@ -93,6 +95,8 @@ export interface WorksheetTable {
   rows: WorksheetTableCell[][];
   /** 第一行当表头（**只影响外观**：加粗与底色）。 */
   headerRow: boolean;
+  borderless?: boolean;
+  columnWidths?: number[];
 }
 
 /** 造一个空格子。 */
@@ -105,7 +109,9 @@ function readCell(raw: unknown): WorksheetTableCell {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return emptyCell();
   const row = raw as Record<string, unknown>;
   return {
+    ...(row.frame === 'label' || row.frame === 'oval' || row.frame === 'content' ? {frame:row.frame} : {}),
     text: typeof row.text === 'string' ? row.text : '',
+    ...(Array.isArray(row.textRuns) ? {textRuns:readPromptRuns(row.textRuns, typeof row.text === 'string' ? row.text : '')} : {}),
     blank: typeof row.blank === 'string' ? row.blank : '',
     ...(row.align === 'left' || row.align === 'center' || row.align === 'right' ? {align: row.align} : {}),
     ...(row.verticalAlign === 'top' || row.verticalAlign === 'middle' || row.verticalAlign === 'bottom' ? {verticalAlign: row.verticalAlign} : {}),
@@ -124,7 +130,12 @@ function readTable(raw: unknown): WorksheetTable {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { rows: [], headerRow: true };
   const source = raw as Record<string, unknown>;
   const rows = Array.isArray(source.rows) ? source.rows : [];
-  const result = { rows: rows.map((row) => (Array.isArray(row) ? row.map(readCell) : [])), headerRow: source.headerRow !== false };
+  const width = rows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0);
+  const weights = Array.isArray(source.columnWidths) && source.columnWidths.length === width && source.columnWidths.every(value => typeof value === 'number' && Number.isFinite(value) && value > 0) ? source.columnWidths as number[] : undefined;
+  const result: WorksheetTable = { rows: rows.map((row) => (Array.isArray(row) ? row.map(readCell) : [])), headerRow: source.headerRow !== false,
+    ...(source.borderless === true ? {borderless:true} : {}),
+    ...(weights ? {columnWidths:weights.map(value => value / weights.reduce((sum, n) => sum + n, 0) * 100)} : {}),
+  };
   const covered = new Set<string>();
   result.rows.forEach((cells, r) => cells.forEach((cell, c) => {
     const height = cell.rowSpan ?? 1, width = cell.colSpan ?? 1;
@@ -162,7 +173,7 @@ export function tableColumnCount(table: unknown): number {
 /** 表格里有几个空（= 学生要在表格里填几格）。 */
 export function tableBlankCount(table: unknown): number {
   return readTable(table).rows.reduce(
-    (total, row) => total + row.filter((cell) => cell.blank !== '').length,
+    (total, row) => total + row.reduce((count,cell)=>count+tableCellBlankIds(cell).length,0),
     0,
   );
 }
@@ -179,7 +190,7 @@ function blanksBeforeRows(rows: WorksheetTableCell[][], row: number, col: number
     if (r > row) break;
     const cells = rows[r];
     const upto = r === row ? Math.min(col, cells.length) : cells.length;
-    for (let c = 0; c < upto; c += 1) if (cells[c].blank !== '') total += 1;
+    for (let c = 0; c < upto; c += 1) total += tableCellBlankIds(cells[c]).length;
   }
   return total;
 }
@@ -199,7 +210,7 @@ export function blankSlotIndex(table: unknown, row: number, col: number): number
   const rows = readTable(table).rows;
   const cells = rows[row];
   if (!Array.isArray(cells) || col < 0 || col >= cells.length) return -1;
-  if (cells[col].blank === '') return -1;
+  if (tableCellBlankIds(cells[col]).length === 0) return -1;
   return blanksBeforeRows(rows, row, col);
 }
 
@@ -215,7 +226,7 @@ export function setCellText(table: unknown, row: number, col: number, text: stri
   if (!Array.isArray(cells) || !Number.isInteger(col) || col < 0 || col >= cells.length) return current;
   const next = typeof text === 'string' ? text : '';
   if (cells[col].text === next) return current;
-  return withCell(current, row, col, { ...cells[col], text: next });
+  return withCell(current, row, col, { ...cells[col], text: next, ...(cells[col].textRuns || cells[col].frame ? {textRuns:remapRuns(cellTextRuns(cells[col]),cells[col].text,next)} : {}) });
 }
 
 /**
@@ -241,7 +252,7 @@ export function readTableFor(node: { data: Record<string, unknown> }): Worksheet
 export function tableBlankIds(table: unknown): string[] {
   const ids: string[] = [];
   readTable(table).rows.forEach((cells) => {
-    cells.forEach((cell) => { if (cell.blank !== '') ids.push(cell.blank); });
+    cells.forEach((cell) => ids.push(...tableCellBlankIds(cell)));
   });
   return ids;
 }
@@ -254,9 +265,9 @@ export function cellAtSlot(table: unknown, slot: number): { row: number; col: nu
   for (let row = 0; row < rows.length; row += 1) {
     const cells = rows[row];
     for (let col = 0; col < cells.length; col += 1) {
-      if (cells[col].blank === '') continue;
-      if (seen === slot) return { row, col };
-      seen += 1;
+      const count=tableCellBlankIds(cells[col]).length;
+      if (slot >= seen && slot < seen + count) return {row,col};
+      seen += count;
     }
   }
   return null;
@@ -277,11 +288,15 @@ export function blankLabelAt(
   index: number,
 ): string | null {
   if (!Number.isInteger(index) || index < 0) return null;
-  const { textCount } = blankLayout(node);
-  if (index < textCount) return `第 ${index + 1} 空`;
-  const data = node.data && typeof node.data === 'object' ? node.data : {};
-  const inside = cellAtSlot(data.table, index - textCount);
-  return inside ? cellLabel(inside.row, inside.col) : null;
+  const {tableBase,tableCount,total} = blankLayout(node);
+  if(index>=total)return null;
+  if(index<tableBase || index>=tableBase+tableCount)return `第 ${index+1} 空`;
+  const data=node.data&&typeof node.data==='object'?node.data:{};
+  const slot=index-tableBase,inside=cellAtSlot(data.table,slot);
+  if(!inside)return null;
+  const table=readTable(data.table),cell=table.rows[inside.row][inside.col];
+  const suffix=tableCellBlankIds(cell).length>1?` · 第 ${slot-blankSlotIndex(table,inside.row,inside.col)+1} 空`:'';
+  return cellLabel(inside.row,inside.col)+suffix;
 }
 
 /**
@@ -467,7 +482,7 @@ export function removeTableRow(
   if (tableAxisBlocked(current, 'row', at, false)) return { table: current, answers: answers.slice() };
   const slots: number[] = [];
   current.rows[at].forEach((cell, col) => {
-    if (cell.blank !== '') slots.push(base + blankSlotIndex(current, at, col));
+    tableCellBlankIds(cell).forEach((_,index)=>slots.push(base+blankSlotIndex(current,at,col)+index));
   });
   return {
     table: { ...current, rows: current.rows.filter((_, index) => index !== at) },
@@ -491,7 +506,7 @@ export function removeTableColumn(
   const slots: number[] = [];
   current.rows.forEach((cells, row) => {
     const cell = cells[at];
-    if (cell && cell.blank !== '') slots.push(base + blankSlotIndex(current, row, at));
+    if(cell)tableCellBlankIds(cell).forEach((_,index)=>slots.push(base+blankSlotIndex(current,row,at)+index));
   });
   return {
     table: { ...current, rows: current.rows.map((cells) => cells.filter((_, col) => col !== at)) },
@@ -576,11 +591,19 @@ export function mergeTableCells(raw: unknown, row: number, col: number, directio
   const cells: WorksheetTableCell[] = [];
   for (let r = row; r < row + height; r++) for (let c = col; c < col + width; c++) cells.push(table.rows[r][c]);
   const blanks = cells.filter(cell => cell.blank);
-  if (blanks.length > 1) return { table, error: '这些格子有多个填空，请先将多余的填空改为文字格，再合并。' };
+  if (blanks.length && cells.reduce((count,cell)=>count+tableCellBlankIds(cell).length,0) > 1) return { table, error: '这些格子有多个填空，请先将多余的填空改为文字格，再合并。' };
   const text = cells.map(cell => cell.text).filter(Boolean).join('\n');
+  const joinedRuns: PromptRun[] = [];
+  let offset = 0;
+  for (const cell of cells.filter(cell => cell.text)) {
+    if (offset) offset += 1;
+    joinedRuns.push(...cellTextRuns(cell).map(run => ({...run,start:run.start+offset,end:run.end+offset,...(run.frameId ? {frameId:`merged-${offset}-${run.frameId}`} : {})})));
+    offset += cell.text.length;
+  }
+
   const rows = table.rows.map(cells => cells.map(cell => ({ ...cell })));
   for (let r = row; r < row + height; r++) for (let c = col; c < col + width; c++) rows[r][c] = emptyCell();
-  rows[row][col] = { text, blank: blanks[0]?.blank ?? '', ...(first.align ? {align:first.align} : {}), ...(first.verticalAlign ? {verticalAlign:first.verticalAlign} : {}), ...(height > 1 ? {rowSpan: height} : {}), ...(width > 1 ? {colSpan: width} : {}) };
+  rows[row][col] = { text, blank: blanks[0]?.blank ?? '', ...(cells.some(cell => cell.textRuns || cell.frame) ? {textRuns:readPromptRuns(joinedRuns,text)} : {}), ...(first.frame ? {frame:first.frame} : {}), ...(first.align ? {align:first.align} : {}), ...(first.verticalAlign ? {verticalAlign:first.verticalAlign} : {}), ...(height > 1 ? {rowSpan: height} : {}), ...(width > 1 ? {colSpan: width} : {}) };
   return { table: { ...table, rows } };
 }
 
@@ -598,4 +621,38 @@ export function setCellAlignment(raw: unknown, row: number, col: number, patch: 
   if (patch.align==='left' || patch.align==='center' || patch.align==='right') next.align=patch.align;
   if (patch.verticalAlign==='top' || patch.verticalAlign==='middle' || patch.verticalAlign==='bottom') next.verticalAlign=patch.verticalAlign;
   return withCell(table,row,col,next);
+}
+
+
+/** Apply a decorative frame without changing blank identity, text, alignment or spans. */
+export function setCellFrame(raw: unknown, row: number, col: number, frame: PromptFrame | '', range?: {from:number;to:number}): WorksheetTable {
+  const table = readTable(raw);
+  const cell = table.rows[row]?.[col];
+  if (!cell || coveredTableCells(table).has(`${row}:${col}`)) return table;
+  const next = {...cell};
+  if (!cell.blank && cell.text) {
+    const selected = range && range.to > range.from ? range : {from:0,to:cell.text.length};
+    next.textRuns = setStyleOnRange(cellTextRuns(cell),cell.text,selected.from,selected.to,{frame,frameId:`cell-frame-${selected.from}-${selected.to}`});
+    delete next.frame;
+    return withCell(table,row,col,next);
+  }
+  if (frame === 'label' || frame === 'oval' || frame === 'content') next.frame = frame;
+  else delete next.frame;
+  return withCell(table,row,col,next);
+}
+
+
+export function cellTextRuns(cell: WorksheetTableCell): PromptRun[] {
+  const runs = readPromptRuns(cell.textRuns,cell.text);
+  return !cell.textRuns && cell.frame ? setStyleOnRange(runs,cell.text,0,cell.text.length,{frame:cell.frame,frameId:'cell-frame'}) : runs;
+}
+
+
+export function tableCellBlankIds(cell: WorksheetTableCell): string[] {
+  return cell.blank ? [cell.blank] : blankRuns(cellTextRuns(cell)).map(run=>run.blank);
+}
+export function setCellContent(raw: unknown,row:number,col:number,text:string,runs:PromptRun[]):WorksheetTable {
+  const table=readTable(raw),cell=table.rows[row]?.[col];
+  if(!cell || coveredTableCells(table).has(`${row}:${col}`))return table;
+  return withCell(table,row,col,{...cell,text,textRuns:readPromptRuns(runs,text)});
 }

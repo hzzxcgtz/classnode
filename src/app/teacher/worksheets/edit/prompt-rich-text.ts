@@ -75,7 +75,7 @@ export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[])
     return stop;
   };
   runs.forEach((run) => {
-    const frameKey = run.frame ? `${run.frame}:${run.frameId}` : undefined;
+    const frameKey = run.frame ? `${run.frame}:${run.frameId}:${run.frameBorderColor}:${run.frameFillColor}` : undefined;
     if (!frameKey) {
       if (previousFrame) el.appendChild(frameGap());
       target = el;
@@ -83,7 +83,8 @@ export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[])
     else if (frameKey !== previousFrame) {
       el.appendChild(frameGap());
       target = document.createElement('span');
-      const frameStyle = promptFrameStyle(run.frame!);
+      target.dataset.promptFrame = run.frame;
+      const frameStyle = promptFrameStyle(run.frame!,run);
       Object.keys(frameStyle).forEach(key => target.style.setProperty(cssPropertyName(key), String(frameStyle[key])));
       el.appendChild(target);
     }

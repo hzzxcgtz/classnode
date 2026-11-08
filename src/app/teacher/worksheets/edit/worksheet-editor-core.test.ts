@@ -3751,3 +3751,11 @@ test('整题奖励汇总与逐空设置独立，切回逐空恢复原分值', ()
   assert.equal(maximumPointsFor({...base,data:{...base.data,fillWholeScore:4}},1),4);
   assert.equal(maximumPointsFor({...base,data:{...base.data,fillWholeScore:undefined}},1),5);
 });
+
+
+test('旧表格没有逐空设置时，整题独立奖励也只占一份满分', () => {
+  const base = tableOfTwoBlanks('legacy-whole-table');
+  assert.equal(maximumPointsFor(base,3),6);
+  assert.equal(maximumPointsFor({...base,data:{...base.data,fillWholeScore:1}},3),1);
+  assert.equal(maximumPointsFor({...base,data:{...base.data,fillWholeScore:4}},3),4);
+});

@@ -1,7 +1,7 @@
 import type { EvaluationSettings } from './worksheet-evaluation.ts';
 import type { WorksheetQuestionNode } from './types.ts';
 import { blankRuns, type PromptRun } from './worksheet-prompt-marks.ts';
-import { blankLayout, cellAtSlot, cellLabel, tableBlankIds } from './worksheet-table.ts';
+import { blankLayout, cellAtSlot, cellLabel, tableBlankIds, tableCellBlankIds, blankSlotIndex, readTableFor } from './worksheet-table.ts';
 // ★ 2026-09-30：落词要按**判分口径**写进草稿（见 `placedValue`）。
 import { mathText, splitMath } from './worksheet-math.ts';
 
@@ -118,10 +118,12 @@ export function blankSlots(node: WorksheetQuestionNode, runs: PromptRun[]): Blan
   });
   // ② 表格里的空（行优先）—— 插在中间了（★ 2026-09-28：表格域能插在题干中间）
   tableIds.forEach((id, index) => {
-    const at = cellAtSlot(node.data.table, index);
+    const at = cellAtSlot(node.data.table,index);
+    const cell = at && readTableFor(node)?.rows[at.row][at.col];
+    const suffix = at && cell && tableCellBlankIds(cell).length>1 ? ` · 第 ${index-blankSlotIndex(node.data.table,at.row,at.col)+1} 空` : '';
     slots.push({
       id,
-      label: at ? cellLabel(at.row, at.col) : `表格里的第 ${index + 1} 个空`,
+      label: at ? cellLabel(at.row,at.col)+suffix : `表格里的第 ${index + 1} 个空`,
       kind: 'table',
     });
   });

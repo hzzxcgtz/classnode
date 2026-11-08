@@ -471,6 +471,11 @@ export function grade(node: QuestionNode, value: unknown, points: QuestionPoints
     if (whole !== undefined) score = hit === auto.length ? whole : 0;
     return { state: hit === auto.length ? 'correct' : hit > 0 ? 'partial' : 'incorrect', score };
   }
+  if ((node.type === 'fill-blank' || node.type === 'choice-blank') && fillWholeScore(data) !== undefined) {
+    const stats = fillHitStats(data, value);
+    const correct = stats.total > 0 && stats.hit === stats.total;
+    return {state:correct ? 'correct' : stats.hit > 0 ? 'partial' : 'incorrect',score:correct ? fillWholeScore(data)! : 0};
+  }
   if ((node.type === 'fill-blank' || node.type === 'choice-blank')
       && (data.fillScoring === 'per-blank' || data.fillScoring === 'whole')) {
     const stats = fillHitStats(data, value);
@@ -1479,12 +1484,33 @@ export function tableRowList(raw: unknown): unknown[][] {
  * `fillShape`（客户端）也是各写一份，理由写在 `src/lib/types.ts` 的那段注释里
  *（题型注册表与判分**只在服务端**，前端不该再定义一份纯逻辑）。两边靠**用例**对齐。
  */
+/** Ordered blank ranges inside a cell, matching normalized client prompt runs. */
+export function tableInlineBlankRuns(raw: unknown): {start:number;end:number;blank:string}[] {
+  if(!raw || typeof raw !== 'object' || Array.isArray(raw))return [];
+  const cell=raw as Record<string,unknown>;
+  if(typeof cell.blank==='string'&&cell.blank)return [];
+  const text=typeof cell.text==='string'?cell.text:'';
+  const source=Array.isArray(cell.textRuns)?cell.textRuns:[];
+  const runs=source.filter((run):run is Record<string,unknown>=>!!run&&typeof run==='object'&&!Array.isArray(run)).map(run=>({start:typeof run.start==='number'&&Number.isFinite(run.start)?Math.max(0,Math.min(text.length,Math.floor(run.start))):0,end:typeof run.end==='number'&&Number.isFinite(run.end)?Math.max(0,Math.min(text.length,Math.floor(run.end))):0,blank:typeof run.blank==='string'?run.blank:''})).filter(run=>run.end>run.start).sort((a,b)=>a.start-b.start);
+  const out:{start:number;end:number;blank:string}[]=[];
+  let cursor=0;
+  for(const run of runs){const start=Math.max(cursor,run.start);if(run.end<=start)continue;const last=out[out.length-1];if(run.blank){if(last&&last.blank===run.blank&&last.end===start)last.end=run.end;else out.push({...run,start});}cursor=run.end;}
+  return out;
+}
 export function tableBlankCount(raw: unknown): number {
-  return tableRowList(raw).reduce((total, row) => total + row.filter((entry) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
-    const blank = (entry as Record<string, unknown>).blank;
-    return typeof blank === 'string' && blank !== '';
-  }).length, 0);
+  return tableRowList(raw).reduce((count,row)=>count+row.reduce<number>((sum,cell)=>{
+    if(!cell||typeof cell!=='object'||Array.isArray(cell))return sum;
+    const blank=(cell as Record<string,unknown>).blank;
+    return sum+(typeof blank==='string'&&blank?1:tableInlineBlankRuns(cell).length);
+  },0),0);
+}
+
+export function tableCellTextFor(raw: unknown): string {
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))return '';
+  const cell=raw as Record<string,unknown>;
+  let text=typeof cell.text==='string'?cell.text:'';
+  for(const run of tableInlineBlankRuns(cell).slice().reverse())text=text.slice(0,run.start)+PAPER_BLANK_TEXT+text.slice(run.end);
+  return text;
 }
 
 /**
@@ -1499,8 +1525,7 @@ export function tableBlankCount(raw: unknown): number {
 export function tableAsText(raw: unknown): string {
   const rows = tableRowList(raw).map((cells) => cells.map((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return '';
-    const text = (entry as Record<string, unknown>).text;
-    return typeof text === 'string' ? text.replace(/[|]/g, '/').replace(/[\r\n]+/g, ' ').trim() : '';
+    return tableCellTextFor(entry).replace(/[|]/g,'/').replace(/[\r\n]+/g,' ').trim();
   }));
   return rows
     .filter((cells) => cells.some((text) => text !== ''))

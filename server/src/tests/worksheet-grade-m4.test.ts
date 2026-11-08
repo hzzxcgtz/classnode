@@ -1021,3 +1021,34 @@ test('整题独立奖励：全部计分空正确才奖励，收集空不参与�
     assert.equal(grade({...node,data:{...data,fillBlankSettings:Object.fromEntries(Object.entries(data.fillBlankSettings).map(([id,s])=>[id,{...s,gradingMode:'none',evaluationMode:'collect',evaluationScored:false}]))}},value(['','','']),P),null);
   }
 });
+
+
+test('旧表格填空无需先转换逐空用途也能选择整题奖励', () => {
+  const base = {...question('fill-blank', {
+    fillScoring:'per-blank', answers:[['甲'],['乙']],
+    table:{headerRow:false,rows:[[{text:'',blank:'t1'},{text:'',blank:'t2'}]]},
+  }),prompt:'{表格域}'};
+  const all = {format:'fill-multi/v1',texts:['甲','乙']};
+  const partial = {format:'fill-multi/v1',texts:['甲','错']};
+  assert.deepEqual(grade(base,all,P),{state:'correct',score:4});
+  const whole = {...base,data:{...base.data,fillWholeScore:1}};
+  assert.deepEqual(validateQuestion(whole),[]);
+  assert.deepEqual(grade(whole,all,P),{state:'correct',score:1});
+  assert.deepEqual(grade(whole,partial,P),{state:'partial',score:0});
+  assert.deepEqual(grade({...whole,data:{...whole.data,fillWholeScore:undefined}},partial,P),{state:'partial',score:2});
+});
+
+test('统一填空：单元格内多个空按全局答案判分，整题奖励与导出不泄露占位标记', async () => {
+  const {tableBlankCount,tableAsText,tableCellTextFor}=await import('../services/worksheet-questions.js');
+  const text='甲{填空域}乙{填空域}';
+  const cell={text,blank:'',textRuns:[{start:1,end:6,blank:'inner-a'},{start:7,end:12,blank:'inner-b'}]};
+  const data={answers:[['A'],['B'],['C']],table:{headerRow:false,rows:[[cell,{text:'',blank:'legacy'}]]},fillScoring:'per-blank'};
+  const node={...question('fill-blank',data),prompt:'{表格域}'};
+  assert.equal(tableBlankCount(data.table),3);
+  assert.deepEqual(validateQuestion(node),[]);
+  assert.deepEqual(grade(node,{format:'fill-multi/v1',texts:['A','B','C']},P),{state:'correct',score:6});
+  assert.deepEqual(grade({...node,data:{...data,fillWholeScore:1}},{format:'fill-multi/v1',texts:['A','错','C']},P),{state:'partial',score:0});
+  assert.equal(tableCellTextFor(cell).includes('{填空域}'),false);
+  assert.equal(tableAsText(data.table).includes('{填空域}'),false);
+  assert.equal(tableCellTextFor(cell).startsWith('甲'),true);
+});

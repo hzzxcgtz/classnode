@@ -3,6 +3,9 @@ import test from 'node:test';
 
 import { DEFAULT_PROMPT_STYLE, type PromptRun } from './worksheet-prompt-marks.ts';
 import {
+  setCellFrame,
+  cellTextRuns,
+  mergeTableCells,
   MAX_TABLE_BLANKS,
   MAX_TABLE_COLS,
   MAX_TABLE_ROWS,
@@ -537,4 +540,100 @@ test('🔴 setCellBlank：标空 / 取消标空都**不动那一格的文字**',
   // 而改身份的（`b1` → `b2`）也照旧不动文字。
   const reidentified = setCellBlank(marked.table, marked.answers, 0, 1, 1, 'b2');
   assert.equal(reidentified.table.rows[1][1].text, '去图书馆');
+});
+
+
+test('borderless layout preserves blank identities, merges and column weights', () => {
+  let next = 0;
+  const table = createTable(6,4,false);
+  table.borderless = true;
+  table.columnWidths = [12,34,20,34];
+  table.rows[0][1].colSpan = 3;
+  table.rows[2][0].rowSpan = 3;
+  for (const row of [2,3,4]) for (const col of [1,3]) table.rows[row][col].blank = `blank-${++next}`;
+  const reopened = readTableFor({data:{table:JSON.parse(JSON.stringify(table))}})!;
+  assert.equal(reopened.borderless,true);
+  assert.equal(reopened.headerRow,false);
+  assert.deepEqual(reopened.columnWidths,[12,34,20,34]);
+  assert.equal(tableBlankCount(reopened),6);
+  assert.equal(reopened.rows[2][0].rowSpan,3);
+  assert.equal(reopened.rows[0][1].colSpan,3);
+  const edited = setCellText(reopened,0,1,'孔子东游');
+  assert.equal(edited.borderless,true);
+  assert.deepEqual(edited.columnWidths,reopened.columnWidths);
+  const added = insertTableRow(edited,[],0,6).table;
+  assert.equal(added.borderless,true);
+  assert.equal(tableBlankCount(added),6);
+});
+
+
+test('cell frames round-trip without changing text, blank identity, alignment or merged geometry', () => {
+  const original = createTable(2,2,false);
+  original.rows[0][0] = {text:'内容',blank:'frame-blank',align:'right',colSpan:2};
+  for (const frame of ['label','oval','content'] as const) {
+    const framed = setCellFrame(original,0,0,frame);
+    assert.equal(original.rows[0][0].frame,undefined);
+    const saved = readTableFor({data:{table:JSON.parse(JSON.stringify(framed))}})!;
+    assert.deepEqual(saved.rows[0][0],{...original.rows[0][0],frame});
+    assert.equal(setCellText(saved,0,0,'新内容').rows[0][0].frame,frame);
+    assert.deepEqual(setCellFrame(saved,0,0,'').rows[0][0],original.rows[0][0]);
+    assert.equal(setCellFrame(saved,0,1,'oval').rows[0][1].frame,undefined);
+  }
+});
+
+
+test('table text frames cover only selected characters and follow text edits', () => {
+  const original=createTable(1,1,false);
+  original.rows[0][0].text='起因：孔子东游';
+  const framed=setCellFrame(original,0,0,'label',{from:0,to:2});
+  const saved=readTableFor({data:{table:JSON.parse(JSON.stringify(framed))}})!;
+  assert.equal(saved.rows[0][0].frame,undefined);
+  const runs=cellTextRuns(saved.rows[0][0]);
+  assert.equal(runs.length,2);
+  assert.deepEqual(runs.map(run=>[run.start,run.end,run.frame]),[[0,2,'label'],[2,7,undefined]]);
+  const edited=setCellText(saved,0,0,'起因：孔子向东游历');
+  assert.equal(cellTextRuns(edited.rows[0][0])[0].end,2);
+  const cleared=setCellFrame(edited,0,0,'',{from:0,to:2});
+  assert.ok(cellTextRuns(cleared.rows[0][0]).every(run=>!run.frame));
+  assert.equal(cleared.rows[0][0].text,'起因：孔子向东游历');
+});
+
+
+test('merging text cells keeps selected-word frame ranges', () => {
+  let table=createTable(1,2,false);
+  table.rows[0][0].text='起因：孔子东游';
+  table.rows[0][1].text='继续说明';
+  table=setCellFrame(table,0,0,'label',{from:0,to:2});
+  const merged=mergeTableCells(table,0,0,'right').table;
+  const cell=merged.rows[0][0];
+  assert.equal(cell.text,'起因：孔子东游\n继续说明');
+  const framed=cellTextRuns(cell).filter(run=>run.frame);
+  assert.equal(framed.length,1);
+  assert.deepEqual([framed[0].start,framed[0].end],[0,2]);
+});
+
+test('单元格多个内联填空与旧整格填空共存，合并拆分和删除均按阅读顺序保留身份', async () => {
+  const {insertBlank,BLANK_MARK_TEXT}=await import('./worksheet-prompt-marks.ts');
+  const {setCellContent,tableCellBlankIds,splitTableCell}=await import('./worksheet-table.ts');
+  let table=createTable(2,2,false);
+  let content=insertBlank([], '甲乙',1,1,BLANK_MARK_TEXT,'inline-a');
+  content=insertBlank(content.runs,content.text,content.text.length,content.text.length,BLANK_MARK_TEXT,'inline-b');
+  table=setCellContent(table,0,0,content.text,content.runs);
+  table.rows[1][1].blank='legacy';
+  const reopened=readTableFor({data:{table:JSON.parse(JSON.stringify(table))}})!;
+  assert.deepEqual(tableCellBlankIds(reopened.rows[0][0]),['inline-a','inline-b']);
+  assert.deepEqual(tableBlankIds(reopened),['inline-a','inline-b','legacy']);
+  assert.equal(tableBlankCount(reopened),3);
+  assert.deepEqual(cellAtSlot(reopened,1),{row:0,col:0});
+  assert.equal(blankSlotIndex(reopened,1,1),2);
+  const node={prompt:'{表格域}',data:{table:reopened}};
+  assert.equal(blankLabelAt(node,1),'第 1 行第 1 格 · 第 2 空');
+  assert.equal(blankLabelAt(node,3),null);
+  const merged=mergeTableCells(reopened,0,0,'right');
+  assert.equal(merged.error,undefined);
+  assert.deepEqual(tableBlankIds(merged.table),['inline-a','inline-b','legacy']);
+  assert.deepEqual(tableBlankIds(splitTableCell(merged.table,0,0)),['inline-a','inline-b','legacy']);
+  const deleted=removeTableRow(reopened,[['A'],['B'],['C']],0,0);
+  assert.deepEqual(deleted.answers,[['C']]);
+  assert.deepEqual(tableBlankIds(deleted.table),['legacy']);
 });

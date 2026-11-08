@@ -3,7 +3,6 @@
 import { needsWholeFillConversion, convertWholeFillSettings, updateSharedFillEvaluation } from '@/lib/worksheet-evaluation-edit';
 import { EvaluationSettings } from '../evaluation-settings';
 import { hasEvaluation } from '@/lib/worksheet-evaluation';
-import { fillEditorKind } from '@/lib/worksheet-fill-layout';
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from 'react';
 
 import { EditorRewardUnit } from '../editor-reward-unit';
@@ -401,7 +400,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
       {slots.length === 0 ? (
         <div className="worksheet-editor-blank-empty">
           <strong>还没有填空的位置</strong>
-          <span>{fillEditorKind(node) === 'table' ? '选中左侧表格中的格子，点击“设为填空”。' : fillEditorKind(node) === 'mixed' ? '在题面中插入填空，或选中表格格子后设为填空。' : '在左侧放置光标或选中文字，点击“插入填空”。'}</span>
+          <span>在段落或表格单元格中放置光标或选中文字，点击“插入填空”。</span>
         </div>
       ) : (
         <div className="worksheet-editor-fill-mode-list">

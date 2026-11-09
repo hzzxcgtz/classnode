@@ -75,7 +75,7 @@ jobs:
         run: pnpm build:server
       - name: Run server regression shard
         timeout-minutes: 30
-        # Node partitions test files across all four shards; limit Prisma process contention.
+        # Each shard reuses the Prisma binaries prepared above and limits concurrent test files.
         run: node scripts/run-tests.mjs server --test-shard=${{ matrix.shard }}/4 --test-concurrency=2
       - name: Upload regression test logs
         if: always()

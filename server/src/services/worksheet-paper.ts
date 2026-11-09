@@ -23,6 +23,7 @@ import { rubricTextOf } from './analysis-question.js';
 import { aiScoringConfigOf } from './analysis-scoring.js';
 import { TASK_TYPE, flattenAnswerable } from './worksheet-heading.js';
 import { questionTypeNickname } from './question-type-labels.js';
+import { deskReviewSettings, readImageCanvas } from './worksheet-image-canvas.js';
 
 /**
  * 「教师用卷」的**判据层**（★ 2026-09-30，教师）。
@@ -396,6 +397,10 @@ export function paperQuestion(node: QuestionNode, heading: string, fallbackPoint
   if (!collect && !ai.enabled && node.type === 'multi-choice') guidance.push(toleranceOf(node) !== null ? `部分给分条件：只漏选且未选错，漏选不超过 ${toleranceOf(node)} 项。` : node.data.partialCredit === 'allow-missing' ? '部分给分条件：只漏选且未选错。' : '评分规则：全部选对才得分。');
   if (!collect) guidance.push(ai.enabled ? ai.maxScore === 0 ? '评价方式：AI 评价与建议，不计分。' : `评分方式：AI 评分，满分 ${ai.maxScore} 分。` : `分值：完全正确 ${points.full} 分；部分答对 ${points.half} 分。`);
   const images: { url: string; caption: string }[] = [];
+  const canvas = readImageCanvas(node.data.imageCanvas);
+  if (canvas) images.push({ url: canvas.url, caption: '任务底图' });
+  const deskReview = deskReviewSettings(node);
+  if (deskReview) guidance.push(`同桌录音与评星（满星 ${deskReview.maxStars} 颗）${deskReview.instruction ? `：${deskReview.instruction}` : ''}`);
   for (const [key, caption] of [['promptImageUrl', '任务配图'], ['referenceImageUrl', '参考图片'], ['rubricImageUrl', '评分标准图片']]) {
     if (typeof node.data[key] === 'string' && node.data[key]) images.push({ url: node.data[key] as string, caption });
   }
@@ -408,7 +413,7 @@ export function paperQuestion(node: QuestionNode, heading: string, fallbackPoint
     heading,
     // ★ 2026-09-30 教师：「题型使用别名，例如开心填空」——纸上印**别名**（学生端屏幕上
     // 那几个名字），教师念「开心填空」时与学生的屏幕对得上。
-    meta: `${questionTypeNickname(node.type)} · ${collect ? '信息收集，不计分' : `${ai.enabled ? ai.maxScore : points.full} 分`}`,
+    meta: `${canvas ? '整图任务' : questionTypeNickname(node.type)} · ${collect ? '信息收集，不计分' : `${ai.enabled ? ai.maxScore : points.full} 分`}`,
     prompt: promptParts(node),
     body: rendered.body,
     answer: collect ? [] : rendered.answer,

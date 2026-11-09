@@ -1,0 +1,19 @@
+.stage { position: relative; width: 100%; margin: 12px auto 0; }
+.background { display: block; width: 100%; height: auto; border-radius: 10px; }
+.label, .hintButton, .answer { position: absolute; }
+.label, .hintButton, .answer { display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 9px; }
+.label { padding: 4px 8px; color: #1e3e57; background: rgb(255 255 255 / .9); text-align: center; overflow: hidden; overflow-wrap: anywhere; }
+.hintButton, .answer { border: 1px solid #8aaac4; background: rgb(240 247 253 / .96); color: #244c6c; font: inherit; font-weight: 600; padding: 4px 7px; }
+.hintButton span, .answer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hintButton svg, .answer svg { flex: none; }
+.hintDetail { position: absolute; z-index: 2; width: min(100%, 220px); box-sizing: border-box; padding: 10px 12px; margin-top: 4px; border: 1px solid #bed0e0; border-radius: 8px; background: #fff; box-shadow: 0 4px 14px #18324f29; color: #244c6c; overflow-wrap: anywhere; white-space: pre-wrap; }
+.answer { background: rgb(237 250 243 / .96); border-color: #91b8a6; color: #234f43; }
+.answer img { width: min(45%, 180px); max-height: 100%; object-fit: contain; border-radius: 4px; }
+.dialog { width: min(92vw, 720px); max-height: 88vh; margin: auto; box-sizing: border-box; border: 1px solid #b9cad8; border-radius: 14px; padding: 16px; color: #203b52; background: white; overflow: auto; }
+.dialog::backdrop { background: rgb(12 27 45 / .5); }
+.dialogHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.dialogHeader h3 { margin: 0; }
+.deskRating { display: grid; gap: 8px; margin-top: 12px; padding: 11px 12px; border: 1px solid #e3d4b9; border-radius: 9px; background: #fff8e9; color: #745024; }
+.deskRating p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.stars { display: flex; flex-wrap: wrap; gap: 6px; }
+.stars button { padding: 5px; color: #925819; }

@@ -1,3 +1,4 @@
+import type { DeskRating } from './worksheet-image-canvas.ts';
 import { readPromptRuns } from './worksheet-prompt-marks.ts';
 import { blankSlots, fillSettingsFor } from './worksheet-fill-modes.ts';
 // ⚠️ **相对路径 + `.ts` 后缀**：本文件要被 `node --test` 直接跑（与 `worksheet-table.ts` /
@@ -100,7 +101,7 @@ export type AnswerView =
   | { kind: 'none' }
   | { kind: 'text'; text: string }
   | { kind: 'ink'; ink: InkValue | null }
-  | { kind: 'audio'; url: string; durationMs: number }
+  | { kind: 'audio'; url: string; durationMs: number; deskRating?: DeskRating }
   | { kind: 'photo'; url: string }
   | { kind: 'choice'; options: ChoiceOptionView[] }
   | {
@@ -253,7 +254,7 @@ export function answerView(node: WorksheetQuestionNode, value: unknown): AnswerV
     return { kind: 'ink', ink: readInkValue(value) };
   }
 
-  if (draft.kind === 'audio') return draft.url ? { kind: 'audio', url: draft.url, durationMs: draft.durationMs } : { kind: 'none' };
+  if (draft.kind === 'audio') return draft.url ? { kind: 'audio', url: draft.url, durationMs: draft.durationMs, ...(draft.deskRating ? { deskRating: draft.deskRating } : {}) } : { kind: 'none' };
   if (draft.kind === 'photo') {
     return draft.url ? { kind: 'photo', url: draft.url } : { kind: 'none' };
   }

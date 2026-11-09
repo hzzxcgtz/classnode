@@ -81,7 +81,11 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView, transcription
         : <span style={{ fontSize: '0.813rem', color: FAINT }}>读不出这幅画</span>;
 
     case 'audio':
-      return <VoiceAnswerPlayer review transcription={transcription} transcriptionActions={transcriptionActions} src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="语音作答" />;
+      return <>
+        <VoiceAnswerPlayer review transcription={transcription} transcriptionActions={transcriptionActions}
+          src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title={view.deskRating ? '同桌录音' : '语音作答'} />
+        {view.deskRating && <p>本作答学生评价同桌 · {view.deskRating.stars} / {view.deskRating.maxStars} 星</p>}
+      </>;
 
     case 'photo':
       return <AnswerPhoto url={view.url} />;

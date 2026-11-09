@@ -1,3 +1,4 @@
+import { deskReviewSettings, readDeskRating, type DeskRating } from './worksheet-image-canvas.ts';
 import type { WorksheetQuestionNode } from './types';
 import { defaultInkBox, inkFormatOf, isInkColor, isInkNode, isInkShapeKind, isInkTextSize, readInkValue, INK_DEFAULT_TEXT_SIZE, INK_STROKE_COLOR } from './worksheet-ink.ts';
 import type { InkCanvas, InkPoint, InkStroke, InkText, InkValue } from './worksheet-ink.ts';
@@ -122,7 +123,7 @@ export type WorksheetAnswerValue =
   | { format: 'order/v1'; order: string[] }
   | { format: 'match/v1'; links: Array<{ leftId: string; rightId: string }> }
   | { format: 'categorize/v1'; assignment: Record<string, string> }
-  | { format: 'audio/v1'; url: string; durationMs: number }
+  | { format: 'audio/v1'; url: string; durationMs: number; deskRating?: DeskRating }
   | { format: 'photo/v1'; url: string }
   | InkValue;
 
@@ -152,7 +153,7 @@ export type AnswerDraft =
   | { kind: 'order'; order: string[] }
   | { kind: 'match'; links: Array<{ leftId: string; rightId: string }> }
   | { kind: 'categorize'; assignment: Record<string, string> }
-  | { kind: 'audio'; url: string; durationMs: number }
+  | { kind: 'audio'; url: string; durationMs: number; deskRating?: DeskRating }
   | { kind: 'photo'; url: string }
   | {
       kind: 'ink';
@@ -513,7 +514,9 @@ function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): Worksh
   const type = node.type;
   if (isAudioNode(node)) {
     if (draft.kind !== 'audio' || !WORKSHEET_AUDIO_URL.test(draft.url) || !validAudioDuration(draft.durationMs)) return null;
-    return { format: 'audio/v1', url: draft.url, durationMs: draft.durationMs };
+    const deskRating = readDeskRating(draft.deskRating);
+    return { format: 'audio/v1', url: draft.url, durationMs: draft.durationMs,
+      ...(deskRating && deskRating.maxStars === deskReviewSettings(node)?.maxStars ? { deskRating } : {}) };
   }
   if (isPhotoNode(node)) {
     if (draft.kind !== 'photo' || !CHAT_IMAGE_URL.test(draft.url)) return null;
@@ -770,8 +773,9 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
     : draftKindOf(node);
 
   if (kind === 'audio') {
+    const deskRating = readDeskRating(row.deskRating);
     return typeof row.url === 'string' && WORKSHEET_AUDIO_URL.test(row.url) && validAudioDuration(row.durationMs)
-      ? { kind: 'audio', url: row.url, durationMs: row.durationMs } : empty;
+      ? { kind: 'audio', url: row.url, durationMs: row.durationMs, ...(deskRating ? { deskRating } : {}) } : empty;
   }
   if (kind === 'photo') {
     return typeof row.url === 'string' && CHAT_IMAGE_URL.test(row.url)

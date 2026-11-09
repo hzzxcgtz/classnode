@@ -1,3 +1,4 @@
+import { readDeskRating } from './worksheet-image-canvas.js';
 import { readAudioAnswer } from './worksheet-audio.js';
 import { readInkValue, type InkValue } from './ink-path.js';
 import { CHAT_IMAGE_URL } from './worksheet-ink.js';
@@ -116,7 +117,11 @@ const COARSE_LABEL: Record<string, string> = {
  */
 export function answerCell(value: unknown): AnswerCell {
   const audio = readAudioAnswer(value);
-  if (audio) return { kind: 'text', text: `语音作答（${Math.ceil(audio.durationMs / 1000)} 秒），原始录音：${audio.url}（请在课堂资料包中播放）` };
+  if (audio) {
+    const rating = readDeskRating((value as { deskRating?: unknown }).deskRating);
+    const label = rating ? `同桌录音，本作答学生评星 ${rating.stars} / ${rating.maxStars}` : '语音作答';
+    return { kind: 'text', text: `${label}（${Math.ceil(audio.durationMs / 1000)} 秒），原始录音：${audio.url}（请在课堂资料包中播放）` };
+  }
   if (value && typeof value === 'object' && 'audios' in value) {
     const row = value as {texts?:unknown[];audios?:Record<string,unknown>};
     const recordings = Object.values(row.audios ?? {}).map(readAudioAnswer).filter(audio => audio !== null);

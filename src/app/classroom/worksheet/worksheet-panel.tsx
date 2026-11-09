@@ -51,6 +51,8 @@ import { useModuleViewport } from '../shell/use-module-viewport';
 // ★ M4a/D2：作答区**只有一份实现**（`questions/index.tsx` 的分派器 + 6 个作答体）。
 // 教师端的「学生端预览」渲染的是下面这个 `WorksheetQuestionList`，所以它自动用上同一份。
 import { QuestionInput } from './questions';
+import { ImageCanvasTask } from './image-canvas-task';
+import { deskReviewSettings, isExpressionTask, readImageCanvas } from '@/lib/worksheet-image-canvas';
 import { ChoiceBlankAnswer } from './questions/choice-blank-answer';
 import {
   questionDisplayState,
@@ -477,8 +479,11 @@ export function WorksheetQuestionList({
         const currentFeedbackAvailable = !questionReviews.length || questionReviews[0].status === 'succeeded';
         const locked = personalReview ? reviewPending || reviewRemaining === 0 : submitted && !allowResubmit;
         const untouched = raw === undefined || isDraftEmpty(raw);
+        const deskReview = deskReviewSettings(node);
+        const awaitingDeskRating = Boolean(deskReview && (!raw || raw.kind !== 'audio' || raw.deskRating?.maxStars !== deskReview.maxStars));
+        const canvas = isExpressionTask(node.type) ? readImageCanvas(node.data.imageCanvas) : null;
         // 没内容可提交、又还没交过 ⇒ 按钮按不动（点下去必然被服务端 400 拒）。
-        const submitDisabled = Boolean(submitting[node.id]) || reviewPending || (raw?.kind === 'fill' && Boolean(raw.pendingAudio?.length)) || (!submitted && untouched);
+        const submitDisabled = Boolean(submitting[node.id]) || awaitingDeskRating || reviewPending || (raw?.kind === 'fill' && Boolean(raw.pendingAudio?.length)) || (!submitted && untouched);
         // ★ M5a：课堂级锁定也禁用控件（停笔），但它**不**收起提交按钮 ——
         // 裁定 ③ 是「停笔，但还能交卷」。见下面渲染那一段。
         const controlsDisabled = !interactive || locked || classroomLocked;
@@ -602,6 +607,40 @@ export function WorksheetQuestionList({
             </div>
           </span>
         ) : null;
+        /* ★ M4a/D2：作答区**一个分派器**（6 个作答体 + 判断题/单选/多选合成一个）。
+            在这之前这里是三条平铺的 `node.type === …`，而教师端的预览渲染同一个组件
+            —— 再加 6 个题型就是两处各加 6 支，必然漂移（症状：预览里画得出来、
+            学生那里画不出来，**没有任何报错**）。见 `questions/index.tsx` 的文件头。
+            ⚠️ `draft` 而不是 `raw`：渲染用的起点必须是有形状的那一份。 */
+        const input = (onMediaBusyChange?: (busy: boolean) => void) => <QuestionInput
+          onMediaBusyChange={onMediaBusyChange}
+          worksheetId={worksheetId}
+          node={node}
+          draft={draft}
+          onChange={onChange}
+          disabled={controlsDisabled}
+          localOnly={previewOnly}
+          // ★ 2026-09-27（教师）：「选择和判断学生错误后也要与填空一样给出叉叉符号并
+          // 给出正确答案。」服务端只在**判过分、且学生没全对**时才发这串东西
+          //（`wrongChoiceAnswers` 那条窄口）⇒ 还没提交的题这里是空表，
+          // 答错标记一个都不会画（判据在 `wrongSelectedKeys`，有用例）。
+          // ⚠️ 教师端的预览走的是同一个组件、**不传**这个 prop。
+          correctKeys={correctKeysFromPayload(correctBlanks?.[node.id])}
+          // ★ 2026-09-29（教师）：「连线题在批改后，如果错误的话，没有出现错误信息。」
+          //
+          // 🔴 这一行就是那个 bug 的修复，而根因值得记下来：服务端 2026-09-28 就修好了
+          //（`wrongAnswers` 按题型分派，连线题发「《绝句》 → 杜甫」那样一整句话），
+          // 客户端那一半**只给 `ChoiceBlankAnswer` 那条路接了** `correctBlanks`
+          //（`f6b6ab8`）—— 而填空 / 选择填空走的正是那条路，所以它们当场就好了。
+          // **连线题走的是 `QuestionInput` 这条路，而这里从来没接过这个 prop**
+          // ⇒ 学生答错了什么也看不到，全程没有一处报错。
+          //
+          // ⚠️ 上面那个 `correctKeys` 是**另一件东西**（选择/判断的选项 key，由
+          // `correctKeysFromPayload` 从同一份数据里解出来）—— 两者都要传：
+          // 少了上面那个，选择题不标红；少了下面这个，连线题没有正确答案。
+          // 这条接线由 `panel-props-parity.test.ts` 看着（它查「每一个可选 prop 都传了」）。
+          correctBlanks={correctBlanks?.[node.id]}
+        />;
         // ★ 2026-09-25（第二轮终审 F5）：`section` 的 `aria-label` 是**可访问名**，
         // 🔴 **视觉上仍然没有编号与题型文字**（教师裁定）—— 它不进视觉、不影响那条裁定。
         // 加它的理由：去掉那个题号徽章时，顺带把这一题在页面里唯一的身份一起删了 ——
@@ -611,7 +650,7 @@ export function WorksheetQuestionList({
             className={styles.question}
             data-state={state}
             key={node.id}
-            aria-label={`${heading} ${questionTypeLabel(node.type)}`}
+            aria-label={`${heading} ${canvas ? '整图任务' : questionTypeLabel(node.type)}`}
           >
             {interactive && reward && gradeStates?.[node.id] === 'correct' && (rewardBursts?.[node.id] ?? 0) > 0 ? (
               <RewardBurst
@@ -648,10 +687,10 @@ export function WorksheetQuestionList({
                 右边结果条；**题干正文挪到下一行**（原来三样挤一行，题干被夹在中间）。 */}
             <div className={styles.questionLead}>
               {questionIcon}
-              <span className={styles.typeNickname}>{questionTypeNickname(node.type)}</span>
+              <span className={styles.typeNickname}>{canvas ? '整图任务' : questionTypeNickname(node.type)}</span>
               {questionMeta}
             </div>
-            <div className={styles.prompt}>
+            {!canvas && <div className={styles.prompt}>
               {/* ★ 2026-09-27（教师）：「学生页面中，如果是多选题的话，要在题干前面自动加上
                   『多选』这样的提示文字。」
                   🔴 判据是**共享的那一份** `isMultipleChoice`（`@/lib/worksheet-questions`，
@@ -675,44 +714,13 @@ export function WorksheetQuestionList({
                 // 教师看到的就是学生看到的）。没草稿时值是空的、并且 disabled。
                 blanks={node.type === 'fill-blank' ? blankBinding : undefined}
               />
-            </div>
-            {promptImage && (
+            </div>}
+            {!canvas && promptImage && (
               <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="任务配图" />
             )}
 
-            {/* ★ M4a/D2：作答区**一个分派器**（6 个作答体 + 判断题/单选/多选合成一个）。
-                在这之前这里是三条平铺的 `node.type === …`，而教师端的预览渲染同一个组件
-                —— 再加 6 个题型就是两处各加 6 支，必然漂移（症状：预览里画得出来、
-                学生那里画不出来，**没有任何报错**）。见 `questions/index.tsx` 的文件头。
-                ⚠️ `draft` 而不是 `raw`：渲染用的起点必须是有形状的那一份。 */}
-            <QuestionInput
-              worksheetId={worksheetId}
-              node={node}
-              draft={draft}
-              onChange={onChange}
-              disabled={controlsDisabled}
-              localOnly={previewOnly}
-              // ★ 2026-09-27（教师）：「选择和判断学生错误后也要与填空一样给出叉叉符号并
-              // 给出正确答案。」服务端只在**判过分、且学生没全对**时才发这串东西
-              //（`wrongChoiceAnswers` 那条窄口）⇒ 还没提交的题这里是空表，
-              // 答错标记一个都不会画（判据在 `wrongSelectedKeys`，有用例）。
-              // ⚠️ 教师端的预览走的是同一个组件、**不传**这个 prop。
-              correctKeys={correctKeysFromPayload(correctBlanks?.[node.id])}
-              // ★ 2026-09-29（教师）：「连线题在批改后，如果错误的话，没有出现错误信息。」
-              //
-              // 🔴 这一行就是那个 bug 的修复，而根因值得记下来：服务端 2026-09-28 就修好了
-              //（`wrongAnswers` 按题型分派，连线题发「《绝句》 → 杜甫」那样一整句话），
-              // 客户端那一半**只给 `ChoiceBlankAnswer` 那条路接了** `correctBlanks`
-              //（`f6b6ab8`）—— 而填空 / 选择填空走的正是那条路，所以它们当场就好了。
-              // **连线题走的是 `QuestionInput` 这条路，而这里从来没接过这个 prop**
-              // ⇒ 学生答错了什么也看不到，全程没有一处报错。
-              //
-              // ⚠️ 上面那个 `correctKeys` 是**另一件东西**（选择/判断的选项 key，由
-              // `correctKeysFromPayload` 从同一份数据里解出来）—— 两者都要传：
-              // 少了上面那个，选择题不标红；少了下面这个，连线题没有正确答案。
-              // 这条接线由 `panel-props-parity.test.ts` 看着（它查「每一个可选 prop 都传了」）。
-              correctBlanks={correctBlanks?.[node.id]}
-            />
+            {canvas ? <ImageCanvasTask canvas={canvas} title={node.prompt} inputMode={node.inputMode}
+              deskReview={Boolean(deskReview)} draft={draft} disabled={controlsDisabled}>{input}</ImageCanvasTask> : input()}
             </>)}
 
             {interactive && <AiReviewFeedback reason={aiReferenceScore?.comment || (feedbackReady ? latestReview?.reason : null)} advice={studentAdvice || (feedbackReady ? latestReview?.advice : null)} review={latestReview} />}

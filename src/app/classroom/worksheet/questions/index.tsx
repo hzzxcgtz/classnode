@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import { emptyDraftFor, isPhotoNode, isAudioNode } from '@/lib/worksheet-answer-value';
@@ -13,6 +13,8 @@ import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { PaperCameraDialog } from './paper-camera-dialog';
 import { PhotoCropDialog } from './photo-crop-dialog';
 import { AudioBody } from './audio-body';
+import { DeskRatingInput } from '../desk-rating';
+import { deskReviewSettings } from '@/lib/worksheet-image-canvas';
 import { CategorizeBody } from './categorize-body';
 import { ChoiceBody } from './choice-body';
 import { InkBody } from './ink-body';
@@ -47,6 +49,7 @@ import styles from '../worksheet.module.css';
 export interface QuestionInputProps {
   worksheetId?: string;
   localOnly?: boolean;
+  onMediaBusyChange?: (busy: boolean) => void;
   node: WorksheetQuestionNode;
   /**
    * 这一题的输入态。`undefined` = **学生一个指头都还没动过**（面板的 `drafts` 里没有它）。
@@ -78,7 +81,7 @@ export interface QuestionInputProps {
   correctBlanks?: Record<string, string>;
 }
 
-export function QuestionInput({ worksheetId, node, draft, onChange, disabled, correctKeys, correctBlanks, localOnly = false }: QuestionInputProps) {
+export function QuestionInput({ worksheetId, node, draft, onChange, disabled, correctKeys, correctBlanks, localOnly = false, onMediaBusyChange }: QuestionInputProps) {
   /**
    * 这一题的**起点**（形状一定与 `node.type` 同族）。
    *
@@ -109,12 +112,22 @@ export function QuestionInput({ worksheetId, node, draft, onChange, disabled, co
     return null;
   };
 
-  if (isAudioNode(node)) return <AudioBody worksheetId={worksheetId} questionId={node.id} key={node.id} draft={pick('audio') ?? { kind: 'audio', url: '', durationMs: 0 }} onChange={next => onChange?.(node, next)} disabled={disabled} localOnly={localOnly} />;
+  if (isAudioNode(node)) {
+    const audio = pick('audio') ?? { kind: 'audio' as const, url: '', durationMs: 0 };
+    const deskReview = deskReviewSettings(node);
+    return <>
+      <AudioBody worksheetId={worksheetId} questionId={node.id} key={node.id} draft={audio}
+        onChange={next => onChange?.(node, next)} disabled={disabled} localOnly={localOnly} onBusyChange={onMediaBusyChange} />
+      {deskReview && <DeskRatingInput draft={audio} settings={deskReview} disabled={disabled}
+        onChange={deskRating => onChange?.(node, { ...audio, deskRating })} />}
+    </>;
+  }
 
   if (isPhotoNode(node)) {
     return (
       <PhotoBody
         localOnly={localOnly}
+        onBusyChange={onMediaBusyChange}
         draft={pick('photo') ?? { kind: 'photo', url: '' }}
         onChange={(next) => onChange?.(node, next)}
         disabled={disabled}
@@ -219,8 +232,9 @@ export function QuestionInput({ worksheetId, node, draft, onChange, disabled, co
   return <p className={styles.cardNote}>（这项任务的作答形式暂时没法在这里作答）</p>;
 }
 
-function PhotoBody({ draft, onChange, disabled, localOnly }: {
+function PhotoBody({ draft, onChange, disabled, localOnly, onBusyChange }: {
   localOnly: boolean;
+  onBusyChange?: (busy: boolean) => void;
   draft: Extract<AnswerDraft, { kind: 'photo' }>;
   onChange: (next: AnswerDraft) => void;
   disabled: boolean;
@@ -232,6 +246,10 @@ function PhotoBody({ draft, onChange, disabled, localOnly }: {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  useEffect(() => {
+    onBusyChange?.(uploading);
+    return () => onBusyChange?.(false);
+  }, [onBusyChange, uploading]);
 
   const openCamera = () => {
     if (!localOnly && window.isSecureContext && typeof navigator.mediaDevices?.getUserMedia === 'function') {

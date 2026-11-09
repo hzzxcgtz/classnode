@@ -1,4 +1,5 @@
 import { readAudioAnswer } from './worksheet-audio.js';
+import { readDeskRating, readImageCanvas } from './worksheet-image-canvas.js';
 import { createHash } from 'node:crypto';
 import { ARCHIVE_STYLE } from './classroom-archive-style.js';
 import { ARCHIVE_SCRIPT } from './classroom-archive-interaction.js';
@@ -102,6 +103,8 @@ export class ArchiveView {
     if (audio) {
       const target = this.assets.attachment(audio.url);
       readable = target ? `<figure><audio controls preload="none" src="${esc(archiveLink(target))}" aria-label="语音作答"></audio><figcaption>语音作答 · ${Math.ceil(audio.durationMs / 1000)} 秒 · <a href="${esc(archiveLink(target))}" download>下载原始录音</a></figcaption></figure>` : '<p class="notice">语音原文件缺失</p>';
+      const rating = readDeskRating(row.deskRating);
+      if (rating) readable += `<p>本作答学生评价同桌 · ${rating.stars} / ${rating.maxStars} 星</p>`;
     }
     if (['text/v1', 'fill/v1'].includes(String(row.format)) && typeof row.text === 'string') readable = this.text(row.text);
     if (row.format === 'fill-multi/v1') {
@@ -200,7 +203,9 @@ export function buildArchiveBody(data: ClassroomArchiveData, view: ArchiveView, 
     let paper;
     try { paper = paperQuestion(node, title, { full: 1, half: 0 }); }
     catch { view.assets.addWarning(`${title} 的旧格式无法生成排版，完整内容仍保留在任务设置中。`); }
-    return `<div class="reading-block"><p class="reading-label">任务要求</p><div class="question-prompt">${view.text(node.prompt)}</div>${typeof node.data.promptImageUrl === 'string' ? view.image(node.data.promptImageUrl, '任务配图') : ''}${paper?.body.map(line => `<div class="option-line">${view.text(inlineText(line))}</div>`).join('') || ''}${node.autoGrade === false ? '<div class="answer-reference"><strong>作答用途</strong>信息收集，不判对错、不计分。</div>' : `<div class="answer-reference"><strong>参考答案 / 评价依据</strong>${esc(node.type === 'drawing' ? '参考要求及已有作品见下方完整任务记录' : paper?.answerNote || (paper ? inlineText(paper.answer) : '') || '未设置')}</div>`}</div>${detail('查看完整任务要求、答案与设置', Object.fromEntries(Object.entries(node).filter(([k]) => k !== 'children')))}`;
+    const canvas = readImageCanvas(node.data.imageCanvas);
+    const image = canvas ? view.image(canvas.url, '任务底图') : typeof node.data.promptImageUrl === 'string' ? view.image(node.data.promptImageUrl, '任务配图') : '';
+    return `<div class="reading-block"><p class="reading-label">任务要求</p><div class="question-prompt">${view.text(node.prompt)}</div>${image}${paper?.body.map(line => `<div class="option-line">${view.text(inlineText(line))}</div>`).join('') || ''}${node.autoGrade === false ? '<div class="answer-reference"><strong>作答用途</strong>信息收集，不判对错、不计分。</div>' : `<div class="answer-reference"><strong>参考答案 / 评价依据</strong>${esc(node.type === 'drawing' ? '参考要求及已有作品见下方完整任务记录' : paper?.answerNote || (paper ? inlineText(paper.answer) : '') || '未设置')}</div>`}</div>${detail('查看完整任务要求、答案与设置', Object.fromEntries(Object.entries(node).filter(([k]) => k !== 'children')))}`;
   };
   const renderAnswer = (a: Answer, sheetId: string, participantId: string, showTask = false) => {
     const node = nodes.get(`${sheetId}:${a.questionId}`);

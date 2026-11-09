@@ -632,12 +632,12 @@ export function useWorksheetEditor({ id, onNotice }: {
    * 否则进指定的任务 —— 迁移之后顶层的题都在任务里，只看顶层的旧写法会让
    * 教师新加的题永远落在任务外面。
    */
-  const addQuestion = useCallback((questionType: QuestionType, parentId: string | null = null, fillLayout?: FillLayout) => {
+  const addQuestion = useCallback((questionType: QuestionType, parentId: string | null = null, fillLayout?: FillLayout, imageCanvasTemplate = false) => {
     // ★ 2026-09-26（教师裁定）：新题的分值**落成真实数字**，于是框里显示的是数字而不是灰提示。
     // ⚠️ 它取的是**默认档**（1 / 0）：学习单级的那两档已经不再参与判分
     //（教师当天裁定「默认给分不要了，已经在每小题中设置了」），逐题的值就是最终的值。
     dispatch({
-      kind: 'addQuestion', questionType, parentId, fillLayout,
+      kind: 'addQuestion', questionType, parentId, fillLayout, imageCanvasTemplate,
       points: { full: DEFAULT_REWARD_STEP, half: DEFAULT_HALF_STEP },
     });
   }, []);

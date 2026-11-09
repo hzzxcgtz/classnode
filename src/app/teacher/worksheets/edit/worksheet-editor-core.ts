@@ -137,6 +137,7 @@ export type ContentAction =
     kind: 'addQuestion';
     questionType: QuestionType;
     fillLayout?: FillLayout;
+    imageCanvasTemplate?: boolean;
     parentId: string | null;
     /**
      * ★ 2026-09-25（教师裁定）：新题的**分值**直接写成学习单当前那两档
@@ -2736,6 +2737,10 @@ function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetC
   switch (action.kind) {
     case 'addQuestion': {
       const fresh = { ...newQuestion(action.questionType, action.fillLayout), ...(action.points ? { points: action.points } : {}) };
+      if (action.imageCanvasTemplate && action.questionType === 'short-answer') {
+        fresh.prompt = '整图任务';
+        fresh.inputMode = 'photo';
+      }
       if (action.parentId === null) return { ...content, nodes: [...content.nodes, fresh] };
       // ⚠️ 走 `replaceNode`（递归找）而不是只看顶层：父任务在树里的任何一层都找得到。
       // 找不到 ⇒ 原对象返回（不制造空历史）。

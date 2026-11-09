@@ -4,6 +4,8 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { ImageCanvasEditor } from './image-canvas-editor';
+import { deskReviewSettings, isExpressionTask, readImageCanvas } from '@/lib/worksheet-image-canvas';
 import { EvaluationSettings } from './evaluation-settings';
 import { hasEvaluation, aiEvaluationEnabled } from '@/lib/worksheet-evaluation';
 import { EditorRewardAmount, EditorRewardUnit } from './editor-reward-unit';
@@ -329,6 +331,9 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
    * ⚠️ `null` = 这道题没有这个块 —— 判断题的答案（对/错）在容器 B 里，
    * 与填空题的「标准答案」并排，所以它的容器 A 只有题干。
    */
+  const isExpression = isExpressionTask(node.type);
+  const canvas = isExpression ? readImageCanvas(node.data.imageCanvas) : null;
+  const deskReview = deskReviewSettings(node);
   const isBlankType = node.type === 'fill-blank' || node.type === 'choice-blank';
   /** 题干里有表格域标记 ⇒ 出现「表格域作答设置」（判据只有它）。 */
   const hasTableMark = tableMarkIndex(node.prompt) >= 0;
@@ -535,6 +540,11 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           <span>必填</span>
         </div>
 
+        {isExpression && <ImageCanvasEditor key={node.id} node={node} onChange={onDataChange} onModeChange={onInputModeChange} />}
+        {canvas ? <label className="worksheet-editor-field">
+          <span>任务名称（用于看板与读屏）</span>
+          <input className="input" value={node.prompt} onChange={event => onPromptChange(event.target.value, { promptRuns: undefined })} />
+        </label> : (
         <div className={`worksheet-editor-block${(node.type === 'drawing' || node.type === 'short-answer' || node.type === 'open-ended') ? ' drawing-prompt-block' : ''}`}>
           {<PromptEditor
             heading={<h4><EditorIcon kind="prompt" />任务描述{node.type === 'drawing' && <span className="drawing-required">*</span>}</h4>}
@@ -551,6 +561,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             blankInspector={isBlankType ? <ChoiceBlankSetup section="mode" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId} /> : undefined}
           />}
         </div>
+        )}
         {isBlankType && <div className="worksheet-editor-blank-detail-panel" data-blank-settings-for={node.id}>
           <ChoiceBlankSetup onAppendEvaluationImages={onAppendEvaluationImages} section="details" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId}/>
         </div>}
@@ -783,10 +794,30 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
 
         {!isBlankType && <div className="worksheet-editor-block worksheet-editor-analysis-settings">
           <h3 className="drawing-zone-heading"><EditorIcon kind="grading" />任务用途</h3>
-          <EvaluationSettings allowAi={node.type === 'short-answer' || node.type === 'drawing'} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls)} unit={pointsUnit} scoreLimit={100} template={node.type === 'drawing' && readDrawingTool(node) === 'flowchart' ? '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。' : undefined} data={node.data} allowAnswer={isGradedQuestionType(node.type)} legacyMode={aiScoredFor(node) ? 'ai' : gradedOn && isGradedQuestionType(node.type) ? 'answer' : 'collect'} legacyScored={aiScoredFor(node) || gradedOn} reference={node.type === 'short-answer' || node.type === 'drawing' ? node.data.answers : undefined} maxScore={aiScoringMaxScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onNotice={onNotice} onChange={patch => {
+          <EvaluationSettings allowAi={!deskReview && (node.type === 'short-answer' || node.type === 'drawing')} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls)} unit={pointsUnit} scoreLimit={100} template={node.type === 'drawing' && readDrawingTool(node) === 'flowchart' ? '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。' : undefined} data={node.data} allowAnswer={isGradedQuestionType(node.type)} legacyMode={aiScoredFor(node) ? 'ai' : gradedOn && isGradedQuestionType(node.type) ? 'answer' : 'collect'} legacyScored={aiScoredFor(node) || gradedOn} reference={node.type === 'short-answer' || node.type === 'drawing' ? node.data.answers : undefined} maxScore={aiScoringMaxScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onNotice={onNotice} onChange={patch => {
             onDataChange({...patch, aiScoringEnabled:patch.evaluationMode === 'ai' && patch.evaluationScored === true});
             onAutoGradeChange(patch.evaluationMode === 'answer');
           }}/>
+          {isExpression && node.inputMode === 'audio' && <div className="worksheet-evaluation-requirements">
+            <label><strong>同桌录音与评星 </strong>
+              <select className="input" value={deskReview?.maxStars ?? 0} onChange={event => {
+                const maxStars = Number(event.target.value);
+                if (maxStars !== 3 && maxStars !== 5) onDataChange({ deskReview: undefined });
+                else {
+                  onDataChange({ deskReview: { maxStars, instruction: deskReview?.instruction ?? '' },
+                    evaluationVersion: 1, evaluationMode: 'collect', evaluationScored: false,
+                    aiScoringEnabled: false, studentAiReviewEnabled: false });
+                  onAutoGradeChange(false);
+                }
+              }}><option value={0}>关闭</option><option value={3}>三星评价</option><option value={5}>五星评价</option></select>
+            </label>
+            {deskReview && <>
+              <span>学生用自己的 iPad 为身旁的同桌录音、评星，评价随作答一起提交。</span>
+              <label>评星提示<textarea className="input" rows={2} maxLength={600} value={deskReview.instruction}
+                placeholder="例如：听一听，同桌有没有说清楚海底生物的特点？"
+                onChange={event => onDataChange({ deskReview: { ...deskReview, instruction: event.target.value } })} /></label>
+            </>}
+          </div>}
           {(node.type === 'short-answer' || node.type === 'open-ended') && (
             <label className="worksheet-evaluation-requirements">
               <strong>观点提炼要求（选填）</strong>

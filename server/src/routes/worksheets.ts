@@ -7,7 +7,8 @@ import { mayKeepPriorAiGrade, removedEvaluationScore } from '../services/workshe
 import { hasEvaluation, evaluationImages, evaluationRequirements, countsEvaluation } from '../services/worksheet-evaluation.js';
 import { findFillAudioValueError, fillAudioSlots } from '../services/worksheet-fill-audio.js';
 import { answerGradeWithFillAudio } from '../services/analysis-scoring.js';
-import { findAudioValueError } from '../services/worksheet-audio.js';
+import { findAudioValueError, readAudioAnswer } from '../services/worksheet-audio.js';
+import { deskReviewSettings, isExpressionTask, readDeskRating, readImageCanvas } from '../services/worksheet-image-canvas.js';
 import { normalizeWorksheetCurriculum, worksheetCurriculumError, worksheetCurriculumContext } from '../services/worksheet-curriculum.js';
 import { ANALYSIS_PROMPT_VERSION, CLASS_REPORT_WRITING_GUIDE } from '../services/analysis-teaching-policy.js';
 import { individualReviewSettings, reviewConfigurationKey, classAnalysisConfigurationKey, worksheetReviewAgentIds } from '../services/individual-review.js';
@@ -405,6 +406,21 @@ function normalizeNode(
   const data = (node.data && typeof node.data === 'object' && !Array.isArray(node.data))
     ? { ...node.data as Record<string, unknown> }
     : {};
+  if (!isExpressionTask(type)) delete data.imageCanvas;
+  else if (data.imageCanvas !== undefined) {
+    const canvas = readImageCanvas(data.imageCanvas);
+    if (!canvas) errors.push(`${label}：整图排版无效，请检查底图和控件位置`);
+    else data.imageCanvas = canvas;
+  }
+  const deskReview = deskReviewSettings({ type, inputMode: typeof node.inputMode === 'string' ? node.inputMode : undefined, data });
+  if (deskReview) {
+    data.deskReview = { ...deskReview, instruction: deskReview.instruction.trim() };
+    data.evaluationVersion = 1;
+    data.evaluationMode = 'collect';
+    data.evaluationScored = false;
+    data.aiScoringEnabled = false;
+    data.studentAiReviewEnabled = false;
+  } else delete data.deskReview;
   if (legacyOpen && !hasEvaluation(data)) {
     for (const key of ['answers', 'referenceAnswer', 'correctKeys', 'correctOrder', 'pairs', 'placement', 'rubricText', 'rubricImageUrl', 'aiScoringCriteria', 'aiScoringEnabled', 'aiScoringMaxScore', 'studentAiReviewEnabled', 'aiReviewLimit']) delete data[key];
     data.aiScoringEnabled = false;
@@ -2418,6 +2434,7 @@ interface StudentWorksheetContext {
   prisma: PrismaClient;
   classroomId: string;
   participantId: string;
+  individualStudent: boolean;
   /** ★ M5a：这间课堂此刻是否锁定了作答（判据在 `requireOwnWorksheet` 里取）。 */
   answersLocked: boolean;
   /**
@@ -2445,6 +2462,8 @@ async function requireOwnWorksheet(req: Request, res: Response, database?: Prism
     where: { id: student.studentId },
     select: {
       id: true,
+      type: true,
+      studentId: true,
       classroomId: true,
       groupId: true,
       blacklisted: true,
@@ -2496,6 +2515,7 @@ async function requireOwnWorksheet(req: Request, res: Response, database?: Prism
     prisma,
     classroomId: participant.classroomId,
     participantId: participant.id,
+    individualStudent: participant.type === 'student' && participant.studentId !== null,
     answersLocked: participant.classroom.answersLocked,
     worksheetOpen: participant.classroom.worksheetOpen,
     worksheet,
@@ -3339,6 +3359,17 @@ router.put('/:id/answers', worksheetMutation(async (req, res, database) => {
     if (audioError) return res.status(400).json({ error: audioError });
     if (body.value && typeof body.value === 'object' && (body.value as { format?: string }).format === 'audio/v1'
       && node.type !== 'short-answer' && node.type !== 'open-ended') return res.status(400).json({ error: '语音作答仅适用于表达题' });
+    const deskReview = deskReviewSettings(node);
+    const rawAudio = body.value as { deskRating?: unknown } | null;
+    if (deskReview && !ctx.individualStudent) return res.status(403).json({ error: '请用个人身份完成同桌录音与评星' });
+    if (rawAudio?.deskRating !== undefined) {
+      const rating = readDeskRating(rawAudio.deskRating);
+      const audio = readAudioAnswer(body.value);
+      if (!rating || rating.maxStars !== deskReview?.maxStars || !audio) {
+        return res.status(400).json({ error: '评星无效，请按当前任务的星级重新评价' });
+      }
+      body.value = { ...audio, deskRating: rating };
+    }
     const photoError = findPhotoValueError(body.value);
     if (photoError) return res.status(400).json({ error: photoError });
 
@@ -3529,6 +3560,15 @@ router.post('/:id/answers/submit', worksheetMutation(async (req, res, database) 
       select: { id: true, responseId: true, value: true, isCorrect: true, gradeState: true, score: true },
     });
     if (!answer) return res.status(400).json({ error: '请先作答再提交当前任务' });
+    const deskReview = deskReviewSettings(node);
+    if (deskReview) {
+      if (!ctx.individualStudent) return res.status(403).json({ error: '请用个人身份完成同桌录音与评星' });
+      const rating = readDeskRating((answer.value as { deskRating?: unknown } | null)?.deskRating);
+      if (!readAudioAnswer(answer.value) || !rating || rating.maxStars !== deskReview.maxStars) {
+        return res.status(409).json({ error: '请先录下同桌的回答，再按当前任务要求评星', code: 'desk-rating-required' });
+      }
+    }
+
     const reviewSettings = individualReviewSettings(node);
     const requestId = typeof body.requestId === 'string' && /^[a-zA-Z0-9_-]{8,100}$/.test(body.requestId) ? body.requestId : crypto.randomUUID();
     const duplicate = await ctx.prisma.worksheetAnswerReview.findUnique({ where: { requestId } });

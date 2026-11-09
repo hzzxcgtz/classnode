@@ -389,6 +389,7 @@ fn stop_server(app: &AppHandle) -> Result<(), String> {
     if IS_STARTING.load(Ordering::Acquire) { return Err("服务仍在启动，请稍后再停止".to_string()); }
     if let Some(info) = app.state::<ServerState>().0.lock().unwrap().take() {
         let mut child = info.child;
+        #[cfg(unix)]
         let pid = child.id();
 
         let _ = child.kill();

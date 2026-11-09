@@ -322,7 +322,7 @@ test('🔴 全屏时整块头部（含模块筛选那一段）都不显示', () 
   assert.equal(headerLayout(BASE).showsHeader, true);
 });
 
-test('🔴 模块筛选只在跟随模式显示（指定模式下全班是同一个模块，按模块筛只剩全中/全不中）', () => {
+test('模块人数只在跟随模式下提供筛选入口', () => {
   assert.equal(headerLayout({ ...BASE, boardMode: 'follow' }).showsModuleFilter, true);
   assert.equal(headerLayout({ ...BASE, boardMode: 'assign' }).showsModuleFilter, false);
 });

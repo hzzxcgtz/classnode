@@ -470,14 +470,7 @@ function SegmentedButton({ label, hint, selected, onSelect }: {
 }
 
 /**
- * 模块筛选行里的一个胶囊（原「此刻各模块人数」里的一个计数块）。
- *
- * P2.3 修正把这一行从**纯信息**变成**筛选器**：原来顶部那张卡里显示的是同一批数字，
- * 两处并存会让人以为是冗余，所以只留一处 —— 留下的这处必须能点，于是计数块本身
- * 改成了按钮（用户 2026-09-23：「另加一组」，不是替换已有的状态筛选）。
- *
- * `muted` 保留原义：**不是三件套**的（首页 / 未知），以及**尚未支持**的学习单
- * —— 它们与真正能用的模块不是一个分量，同样的着色会让人以为它们也一样能用。
+ * 看板计数。传入 onSelect 时作为筛选按钮，否则仅显示统计。
  */
 function ModuleCountChip({ label, value, unit, hint, muted = false, tone = 'default', selected, onSelect }: {
   label: string;
@@ -494,16 +487,18 @@ function ModuleCountChip({ label, value, unit, hint, muted = false, tone = 'defa
    * 否则一行里两种长相，教师会以为它们是两类东西。
    */
   tone?: 'default' | 'attention';
-  selected: boolean;
-  onSelect: () => void;
+  selected?: boolean;
+  onSelect?: () => void;
 }) {
+  const Chip = onSelect ? 'button' : 'span';
   const idleColor = muted ? 'var(--text-muted)' : tone === 'attention' ? '#934e4e' : '#475569';
   const numberColor = muted ? '#cbd5e1' : tone === 'attention' ? '#934e4e' : 'var(--primary-dark)';
   return (
-    <button type="button" aria-pressed={selected} title={hint} onClick={onSelect}
+    <Chip type={onSelect ? 'button' : undefined} aria-pressed={onSelect ? selected : undefined} title={hint} onClick={onSelect}
       style={{
         display: 'inline-flex', alignItems: 'baseline', gap: 5, whiteSpace: 'nowrap',
-        minHeight: 30, padding: '3px 8px', borderRadius: 8, cursor: 'pointer',
+        minHeight: 30, padding: '3px 8px', borderRadius: 8, boxSizing: 'border-box',
+        cursor: onSelect ? 'pointer' : undefined,
         border: `1px solid ${selected ? 'var(--primary)' : tone === 'attention' ? '#fecaca' : '#e2e8f0'}`,
         background: selected ? 'var(--primary)' : tone === 'attention' ? '#f8eeee' : 'white',
         color: selected ? 'white' : idleColor,
@@ -516,7 +511,7 @@ function ModuleCountChip({ label, value, unit, hint, muted = false, tone = 'defa
           {unit}
         </span>
       )}
-    </button>
+    </Chip>
   );
 }
 
@@ -2073,15 +2068,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
   // 与 `moduleDistribution` 同一处：两者必须同源，否则量词与数字会各说各的。
   const moduleCountUnitSuffix = moduleCountUnit(classroom.groupLoginMode === 'member' ? 'standard' : classroom.mode);
 
-  /**
-   * 模块筛选的**生效值**。
-   *
-   * 🔴 只在「跟随」模式下生效：固定模式下全班的格子都是教师选的那一个模块
-   * （`resolveTileModule` 直接返回 `assignModule`），按模块筛就只剩「全中」与「全不中」
-   * 两种结果 —— 那种筛选器对教师毫无用处，却会让人以为它坏了。所以固定模式下这一行
-   * 不渲染（见下面筛选行的 JSX），筛选值也**不生效**而不是偷偷清空 state：
-   * 切回跟随时教师原来挑的那一项还在。
-   */
+  // 固定模式只显示模块统计。保留筛选选项，切回跟随时恢复生效。
   const effectiveModuleFilter: StudentModuleFilter = boardMode === 'follow' ? studentModuleFilter : 'all';
 
   /**
@@ -2843,12 +2830,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 **参与者**，右段数的是**此刻在线**的人。一条竖线把两段分开，右段带段标签 ——
                 没有它们，`三个模块 + 离线 + 全部` 这三条永远凑不齐（差的那一个正是在首页 /
                 位置未定的人），而屏幕上原先没有任何东西说明这件事。 */}
-            {header.showsModuleFilter && (
-              <span aria-hidden="true" style={{ width: 1, alignSelf: 'stretch', minHeight: 22, background: '#e2e8f0', margin: '0 4px' }} />
-            )}
+            <span aria-hidden="true" style={{ width: 1, alignSelf: 'stretch', minHeight: 22, background: '#e2e8f0', margin: '0 4px' }} />
             {/* ── 右段：此刻在线。分母 = **在线**的参与者（不是全部）。 ──
-                ⚠️ 仍然**只在跟随模式下渲染**：固定模式全班都是同一个模块，按模块筛只剩
-                「全中 / 全不中」两种结果，那种筛选器只会让人以为它坏了（见 `effectiveModuleFilter`）。
+                跟随模式可点选筛选。固定模式保留实时统计，数字仍按学生实际所在模块计算。
                 🔴 单位是**参与者数**：`moduleDistribution` 逐 `students` 计数，而 `students`
                 的每一行是一个参与者 —— **分组 / 高级模式下参与者就是组**（规格 §1.2），
                 所以那些模式下这几个数字是**组数**，量词由 `moduleCountUnit(mode)` 给。
@@ -2862,29 +2846,20 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
                 （那两格的状态学生筛不出来，格子阵里照旧看得见）。
                 ★ 2026-09-29：它们的**计数**现在由紧跟其后的 `unplaced` 那一句兜住 ——
                 它只回答「还差的那几个在哪」，仍然**不是一个筛选项**。要真正加回来就是这里两行。 */}
-            {header.showsModuleFilter && (
-              <>
-                {/* 段标签 = **把分母写在段首**。三个模块格是它的一个划分（不含首页 / 未定，
-                    那部分由紧跟着的 `unplaced` 那句话兜住）。 */}
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                  此刻在线 <span style={{ color: 'var(--primary-dark)' }}>{onlineParticipants}</span> {moduleCountUnitSuffix}
-                </span>
-                <ModuleCountChip label={MODULE_ID_LABELS.worksheet} value={moduleDistribution.worksheet} unit={moduleCountUnitSuffix}
-                  selected={studentModuleFilter === 'worksheet'}
-                  onSelect={() => { setStudentModuleFilter('worksheet'); setStudentBoardFilter('all'); }} />
-                <ModuleCountChip label={MODULE_ID_LABELS.explore} value={moduleDistribution.explore} unit={moduleCountUnitSuffix}
-                  selected={studentModuleFilter === 'explore'}
-                  onSelect={() => { setStudentModuleFilter('explore'); setStudentBoardFilter('all'); }} />
-                <ModuleCountChip label={MODULE_ID_LABELS.companion} value={moduleDistribution.companion} unit={moduleCountUnitSuffix}
-                  selected={studentModuleFilter === 'companion'}
-                  onSelect={() => { setStudentModuleFilter('companion'); setStudentBoardFilter('all'); }} />
-                {/* 让这一行**对得上账**的那半句：`0` 时不出现（那时三个模块相加就等于在线）。
-                    ⚠️ 它是**灰字不是按钮** —— 一个点下去只看「在首页和不知道在哪的人」的
-                    筛选器没有用处（那正是 2026-09-25 圈掉那两格的理由）。 */}
-                {unplaced && (
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>· {unplaced}</span>
-                )}
-              </>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+              此刻在线 <span style={{ color: 'var(--primary-dark)' }}>{onlineParticipants}</span> {moduleCountUnitSuffix}
+            </span>
+            {(['worksheet', 'explore', 'companion'] as const).map((moduleId) => (
+              <ModuleCountChip key={moduleId} label={MODULE_ID_LABELS[moduleId]} value={moduleDistribution[moduleId]}
+                unit={moduleCountUnitSuffix}
+                selected={header.showsModuleFilter && studentModuleFilter === moduleId}
+                onSelect={header.showsModuleFilter ? () => {
+                  setStudentModuleFilter(moduleId);
+                  setStudentBoardFilter('all');
+                } : undefined} />
+            ))}
+            {unplaced && (
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>· {unplaced}</span>
             )}
           </div>
 

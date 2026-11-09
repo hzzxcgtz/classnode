@@ -15,7 +15,7 @@ import { BlankDistribution, OrderDistribution } from './question-type-distributi
 import { QuestionContentPreview, QuestionTypeBadge } from './question-content-preview';
 import { OptionDistribution } from './question-option-distribution';
 import { useWorksheetAnalysis } from './analysis-panel';
-import { CollectionResults, isCollectionQuestion } from './collection-results';
+import { CollectionResults, isCollectionQuestion, isExpressionQuestion } from './collection-results';
 import { QuestionAnalysisSection } from './question-analysis-section';
 
 /**
@@ -292,11 +292,6 @@ export function QuestionStatsOverlay({
         <div className={styles.body}>
           {!node && <div style={{ color: FAINT, fontSize: '0.813rem' }}>这项任务的内容还没加载到。</div>}
 
-          {collection && node && stats && rows && <CollectionResults key={`${worksheetId}:${questionId}`} node={node} stats={stats} unit={unit}
-            rows={rows} analysisState={analysisState} onOpenStudent={onOpenStudent} renderMatrix={(data) => data.kind === 'match'
-              ? <Matrix rowLabel="左栏" colLabel="右栏" rows={data.left} cols={data.right} cells={data.cells} />
-              : <Matrix rowLabel="条目" colLabel="框" rows={data.items} cols={data.zones} cells={data.cells} />} />}
-
           {stats && !collection && (
             <>
 
@@ -361,6 +356,14 @@ export function QuestionStatsOverlay({
                 </div>
               </Section>
             </>
+          )}
+
+          {node && stats && rows && (collection || isExpressionQuestion(node)) && (
+            <CollectionResults key={`${worksheetId}:${questionId}`} node={node} stats={stats} unit={unit}
+              cloudOnly={!collection} rows={rows} analysisState={analysisState} onOpenStudent={onOpenStudent}
+              renderMatrix={(data) => data.kind === 'match'
+                ? <Matrix rowLabel="左栏" colLabel="右栏" rows={data.left} cols={data.right} cells={data.cells} />
+                : <Matrix rowLabel="条目" colLabel="框" rows={data.items} cols={data.zones} cells={data.cells} />} />
           )}
 
           {/* AI 分析复用统一结果面板，在本题统计下原地展开。 */}

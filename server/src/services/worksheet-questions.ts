@@ -351,8 +351,9 @@ export function flattenQuestions(content: WorksheetContent): QuestionNode[] {
  */
 export const ANSWER_KEYS = [
   'correctKeys', 'answers', 'explanation', 'correctOrder', 'pairs', 'placement', 'conditionalAnswer',
-  // 评分标准只供教师与 AI 分析使用，不能随学生版学习单下发。
+  // 评价与分析要求只供教师与 AI 使用，不能随学生版学习单下发。
   'evaluationText', 'evaluationImages', 'rubricText', 'rubricImageUrl', 'analysisFocus', '__analysisContext', 'audioCriteria', 'audioReference',
+  'wordCloudRequirements',
 ] as const;
 
 /**

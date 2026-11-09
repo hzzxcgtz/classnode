@@ -25,7 +25,9 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Prisma, PrismaClient } from '@prisma/client';
 import express from 'express';
+import sharp from 'sharp';
 import { worksheetRoutes } from '../routes/worksheets.js';
+import { resolveLocalPath, type proxyAnalysisRequest } from '../services/ai-proxy.js';
 // ★ 2026-10-07：下面那条「本地有结论的行不许被 AI 盖掉」要**自己证明前置条件**
 //（本地判分对那道题真的有结论）—— 否则用例是空的。
 import { grade, type QuestionNode } from '../services/worksheet-questions.js';
@@ -86,10 +88,11 @@ async function startFakeCoze(answer: string): Promise<{ base: string; close: () 
   return { base: `http://127.0.0.1:${port}`, close: () => server.close(), hits, messages, setAnswer: (next: string) => { current = next; } };
 }
 
-async function withServer(prisma: PrismaClient) {
+async function withServer(prisma: PrismaClient, analysisProxy?: typeof proxyAnalysisRequest) {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
   app.set('prisma', prisma);
+  if (analysisProxy) app.set('analysisProxy', analysisProxy);
   app.use('/api/worksheets', worksheetRoutes);
   app.use('/api/system', systemRoutes);
   const server = createServer(app);
@@ -186,6 +189,58 @@ async function makeAgent(p: PrismaClient, platform: string, apiUrl: string | nul
     data: { name: '分析助手', platform, apiKey: 'fake-key', botId: 'bot-1', apiUrl, enabled: true, purpose: 'analysis' },
   });
 }
+
+test('表达题从手写和照片作答生成观点云，切换输入方式后仍纳入历史文字作答', async (t) => {
+  const { prisma, dir } = await openTempDb();
+  const oldDataDir = process.env.CLASSNODE_DATA_DIR;
+  process.env.CLASSNODE_DATA_DIR = dir;
+  t.after(async () => {
+    if (oldDataDir === undefined) delete process.env.CLASSNODE_DATA_DIR;
+    else process.env.CLASSNODE_DATA_DIR = oldDataDir;
+    await prisma.$disconnect();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const agent = await makeAgent(prisma, 'coze', null);
+  const node = { id: 'q3', type: 'short-answer', prompt: '说说发现', inputMode: 'handwriting', data: {}, children: [] };
+  const cloudRequirements = '提炼 5～7 个关键词或短语，关注颜色变深';
+  const { worksheet, classroom, participants } = await seed(prisma, { analysisAgentId: agent.id, node, roster: TWO_STUDENTS });
+  const report = '两份作答都提到颜色变深。<classnode-feedback>' + JSON.stringify({
+    groups: [], students: [], wordCloud: [{ phrase: '颜色变深', students: [ZHANG, LI] }],
+  }) + '</classnode-feedback>';
+  const srv = await withServer(prisma, async (_agent, message, images) => {
+    if (message.includes('本批作答拼图')) {
+      assert.ok(images.length > 0);
+      assert.match(message, /明确表达的具体观点/);
+      return { success: true, content: `${ZHANG} 提到颜色变深。` };
+    }
+    assert.match(message, /wordCloud/);
+    if (images.length === 0) {
+      assert.ok(message.includes(`${ZHANG} 提到颜色变深。`));
+      assert.match(message, /原有文字观察：颜色变深/);
+      assert.ok(message.includes(cloudRequirements));
+      assert.doesNotMatch(message, /默认优先保留 4–6 条/);
+    } else {
+      assert.match(message, /默认优先保留 4–6 条/);
+    }
+    return { success: true, content: report };
+  });
+  t.after(() => srv.close());
+  const assertCloud = async () => {
+    const run = await generateAndRun(srv, worksheet.id, classroom.id);
+    assert.equal(run.status, 200, await run.clone().text());
+    assert.deepEqual((await run.json()).feedback.wordCloud, [{ phrase: '颜色变深', studentIds: participants }]);
+  };
+  await assertCloud();
+
+  const photo = '/uploads/chat/chat-123e4567-e89b-42d3-a456-426614174000.png';
+  const file = resolveLocalPath(photo);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  await sharp({ create: { width: 32, height: 32, channels: 3, background: '#233344' } }).png().toFile(file);
+  await prisma.worksheet.update({ where: { id: worksheet.id }, data: { content: { schemaVersion: 1, nodes: [{ ...node, inputMode: 'photo', data: { wordCloudRequirements: cloudRequirements } }] } } });
+  await prisma.worksheetAnswer.updateMany({ where: { response: { participantId: participants[0] } }, data: { value: { format: 'photo/v1', url: photo } } });
+  await prisma.worksheetAnswer.updateMany({ where: { response: { participantId: participants[1] } }, data: { value: { format: 'text/v1', text: '原有文字观察：颜色变深' } } });
+  await assertCloud();
+});
 
 test('🔴 成功路径：写回 narrative/agentId/model，且**一个载荷字段都不动**', async (t) => {
   const db = await openTempDb();

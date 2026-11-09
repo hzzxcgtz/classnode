@@ -77,6 +77,7 @@
 
   // ========== Smooth Scroll for Anchors ==========
   document.addEventListener("click", function (e) {
+    if (document.body.classList.contains("guide-page")) return;
     var link = e.target.closest('a[href^="#"]');
     if (!link) return;
     var href = link.getAttribute("href");

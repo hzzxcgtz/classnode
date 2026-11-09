@@ -787,6 +787,20 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             onDataChange({...patch, aiScoringEnabled:patch.evaluationMode === 'ai' && patch.evaluationScored === true});
             onAutoGradeChange(patch.evaluationMode === 'answer');
           }}/>
+          {(node.type === 'short-answer' || node.type === 'open-ended') && (
+            <label className="worksheet-evaluation-requirements">
+              <strong>观点提炼要求（选填）</strong>
+              <span>可填写关注方向、条数和呈现形式，仅用于生成班级观点云。</span>
+              <textarea
+                className="input"
+                rows={3}
+                maxLength={1200}
+                value={typeof node.data.wordCloudRequirements === 'string' ? node.data.wordCloudRequirements : ''}
+                onChange={event => onDataChange({ wordCloudRequirements: event.target.value })}
+                placeholder="例如：从学生作答中提炼 5～7 个关键词或短语，关注学无止境、实事求是、善于观察等方向。"
+              />
+            </label>
+          )}
         </div>}
 
       {/*

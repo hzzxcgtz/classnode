@@ -179,11 +179,8 @@ export interface HeaderLayout {
    */
   showsHeader: boolean;
   /**
-   * 模块筛选那一段显不显示。
-   *
-   * 🔴 只在**跟随**模式：指定模式下全班的格子都是教师选的那一个模块
-   * （`resolveTileModule` 直接返回 `assignModule`），按模块筛就只剩「全中」与「全不中」
-   * 两种结果 —— 那种筛选器对教师毫无用处，却会让人以为它坏了。
+   * 模块人数是否显示为可点击的筛选按钮。
+   * 跟随模式可筛选，固定模式显示实际在线分布。
    */
   showsModuleFilter: boolean;
 }

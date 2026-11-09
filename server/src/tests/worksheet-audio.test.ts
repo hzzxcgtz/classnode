@@ -76,8 +76,20 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
   const uploaded = await import('../routes/upload.js');
   app.use('/api/upload', uploaded.default);
   app.use('/api/worksheets', worksheetAccessGate, worksheetRoutes);
-  let analyzedAudio: unknown;
-  app.set('analysisProxy', async (_agent: unknown, message: string, _images: unknown, _signal: unknown, audio: unknown) => { if (Array.isArray(audio) && audio.length) { analyzedAudio = audio; assert.match(message, /按音频附件对应表关联学生/); } return { success: true, content: '学生说明了观察过程。' }; });
+  let analyzedAudio: Array<{ url: string; label: string }> = [];
+  app.set('analysisProxy', async (_agent: unknown, message: string, _images: unknown, _signal: unknown, audio: typeof analyzedAudio) => {
+    if (audio.length) {
+      analyzedAudio = audio;
+      assert.match(message, /按音频附件对应表关联学生/);
+      assert.match(message, /明确表达的具体观点/);
+      return { success: true, content: audio.map(clip => `${clip.label} 提到颜色变深。`).join('\n') };
+    }
+    assert.match(message, /wordCloud/);
+    for (const clip of analyzedAudio) assert.ok(message.includes(`${clip.label} 提到颜色变深`));
+    return { success: true, content: '学生说明了观察过程。<classnode-feedback>'+JSON.stringify({
+      groups: [], students: [], wordCloud: [{ phrase: '颜色变深', students: analyzedAudio.map(clip => clip.label) }],
+    })+'</classnode-feedback>' };
+  });
   const server = createServer(app); await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise<void>(resolve => server.close(() => resolve())));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -101,10 +113,23 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
   assert.equal((await call('POST', `/${sheet.id}/answers/submit`, { questionId: 'q' }, token)).status, 200);
   const restored = await (await call('GET', `/${sheet.id}/answers`, undefined, token)).json();
   assert.deepEqual(restored.rows[0].value, value); assert.equal(restored.rows[0].status, 'submitted');
+  const peer = await db.classroomStudent.create({ data: { classroomId: room.id, type: 'student' } });
+  const peerToken = createStudentToken(room.id, peer.id);
+  const peerUpload = await fetch(`${base}/api/upload/worksheet-audio`, { method: 'POST', headers: { Authorization: `Bearer ${peerToken}` }, body: form });
+  assert.equal(peerUpload.status, 200);
+  const peerValue = { ...audioValue, url: (await peerUpload.json()).url };
+  assert.equal((await call('PUT', `/${sheet.id}/answers`, { questionId: 'q', value: peerValue }, peerToken)).status, 200);
+  assert.equal((await call('POST', `/${sheet.id}/answers/submit`, { questionId: 'q' }, peerToken)).status, 200);
   assert.equal((await call('POST', `/${sheet.id}/analysis/q?classroomId=${room.id}`)).status, 200);
   const analysis = await call('POST', `/${sheet.id}/analysis/q/run?classroomId=${room.id}`);
-  assert.equal(analysis.status, 200, await analysis.text());
-  assert.ok(Array.isArray(analyzedAudio)); assert.equal(analyzedAudio[0].url, upload.url);
+  assert.equal(analysis.status, 200, await analysis.clone().text());
+  assert.deepEqual(new Set(analyzedAudio.map(clip => clip.url)), new Set([value.url, peerValue.url]));
+  const cloud = (await analysis.json()).feedback.wordCloud;
+  assert.equal(cloud.length, 1);
+  assert.equal(cloud[0].phrase, '颜色变深');
+  assert.deepEqual(new Set(cloud[0].studentIds), new Set([student.id, peer.id]));
+  const persisted = await (await call('GET', `/${sheet.id}/analysis/q?classroomId=${room.id}`)).json();
+  assert.deepEqual(persisted.feedback.wordCloud, cloud);
   assert.equal((await call('PUT', `/${sheet.id}/answers`, { questionId: 'q', value: { ...value, url: 'https://elsewhere/audio.ogg' } }, token)).status, 400);
   await db.worksheet.update({ where: { id: sheet.id }, data: { content: { schemaVersion: 1, nodes: [{ id: 'q', type: 'short-answer', inputMode: 'audio', prompt: '说说发现', data: { aiScoringEnabled: true, studentAiReviewEnabled: true, aiScoringMaxScore: 10, rubricText: '说清楚观察到的变化' }, children: [] }] } } });
   let releaseBusy!: () => void;
@@ -146,12 +171,12 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
     assert.equal(images.length, 0);
     if (summaryAudioCalls === 1) {
       assert.match(message, /按音频附件对应表关联学生/);
-      assert.equal(clips.length, 1);
-      assert.equal((clips[0] as { url: string }).url, upload.url);
+      assert.deepEqual(new Set(clips.map(clip => (clip as { url: string }).url)), new Set([value.url, peerValue.url]));
       return { success: true, content: '学生说明了观察到的变化。' };
     }
     assert.deepEqual(clips, []);
     assert.match(message, /学生说明了观察到的变化/);
+    assert.match(message, /wordCloud/);
     return { success: true, content: '### 主要表现\n学生说明了变化，建议补充过程。' };
   });
   const summary = await call('POST', `/${sheet.id}/analysis/q/run?classroomId=${room.id}&analysisOnly=true`);

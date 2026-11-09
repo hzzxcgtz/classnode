@@ -36,6 +36,10 @@ export function isCollectionQuestion(node: WorksheetQuestionNode): boolean {
 type View = 'distribution' | 'cloud' | 'answers';
 const VIEW_LABELS: Record<View, string> = { distribution: '作答分布', cloud: '观点云', answers: '原答' };
 
+export function isExpressionQuestion(node: WorksheetQuestionNode): boolean {
+  return node.type === 'short-answer' || node.type === 'open-ended';
+}
+
 function Bars({ bars, total, unit }: { bars: Array<Bar & { steps?: string[] }>; total: number; unit: string }) {
   return <ul className={styles.bars}>{bars.map(({ label, count, steps }, index) => {
     const rate = total ? Math.round(count / total * 100) : 0;
@@ -52,7 +56,7 @@ function Bars({ bars, total, unit }: { bars: Array<Bar & { steps?: string[] }>; 
   })}</ul>;
 }
 
-export function CollectionResults({ node, stats, rows, unit, analysisState, onOpenStudent, renderMatrix }: {
+export function CollectionResults({ node, stats, rows, unit, analysisState, onOpenStudent, renderMatrix, cloudOnly = false }: {
   node: WorksheetQuestionNode;
   stats: QuestionStats;
   rows: ReadonlyArray<StatsRow | undefined>;
@@ -60,6 +64,7 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
   analysisState: WorksheetAnalysisState;
   onOpenStudent?: (id: string) => void;
   renderMatrix: (data: Extract<QuestionDistribution, { kind: 'match' | 'categorize' }>) => ReactNode;
+  cloudOnly?: boolean;
 }) {
   const submitted = useMemo(() => rows.filter((row): row is StatsRow => row?.status === 'submitted'), [rows]);
   const hasText = useMemo(() => submitted.some(row => {
@@ -74,9 +79,9 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
     .slice(0, 10), [phrases]);
   const distribution = stats.distribution;
   const views: View[] = [];
-  if (distribution && !['text', 'ink'].includes(distribution.kind)) views.push('distribution');
-  if (distribution?.kind === 'text' || hasText || phrases?.length) views.push('cloud');
-  if (distribution?.kind !== 'text') views.push('answers');
+  if (!cloudOnly && distribution && !['text', 'ink'].includes(distribution.kind)) views.push('distribution');
+  if (cloudOnly || isExpressionQuestion(node) || distribution?.kind === 'text' || hasText || phrases?.length) views.push('cloud');
+  if (!cloudOnly && distribution?.kind !== 'text') views.push('answers');
   const [selected, setSelected] = useState<View | null>(null);
   const [projecting, setProjecting] = useState(false);
   const [fontScale, setFontScale] = useState(100);
@@ -98,7 +103,7 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
       }}><IconDeviceDesktop size={16} aria-hidden="true" />{presentation ? '退出投屏' : '投屏展示'}</button>;
 
     return <>
-      {!presentation && <header className={boardStyles.analysisResultHeader} data-tone="feedback">
+      {!presentation && !cloudOnly && <header className={boardStyles.analysisResultHeader} data-tone="feedback">
         <div className={boardStyles.analysisIdentity}>
           <h3 className={boardStyles.analysisResultTitle}>
             <IconChartBar size={22} aria-hidden="true" />课堂反馈看板
@@ -181,7 +186,7 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
 
   return <section className={styles.board}>
     {!projecting && renderContent(false)}
-    <dialog ref={dialog} className={styles.projection} data-view={view} aria-label="信息收集结果投屏" onKeyDown={event => {
+    <dialog ref={dialog} className={styles.projection} data-view={view} aria-label={view === 'cloud' ? '观点云投屏' : '信息收集结果投屏'} onKeyDown={event => {
         if (event.key === 'Escape') event.stopPropagation();
       }} onClose={() => {
         setProjecting(false);

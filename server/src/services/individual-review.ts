@@ -1,4 +1,5 @@
 import { aiScoringConfigOf } from './analysis-scoring.js';
+import { wordCloudRequirementsOf } from './analysis-feedback.js';
 import { aiEvaluationEnabled } from './worksheet-evaluation.js';
 import type { PrismaClient } from '@prisma/client';
 import type { QuestionNode } from './worksheet-questions.js';
@@ -12,9 +13,9 @@ export function individualReviewSettings(node: QuestionNode) {
   };
 }
 
-/** Quota changes unlock editing without invalidating an already running evaluation. */
+/** Quota and class-only settings do not invalidate an individual evaluation. */
 export function reviewConfigurationKey(node: QuestionNode): string {
-  const { aiReviewLimit: _limit, studentAiReviewEnabled: _automatic, ...data } = node.data;
+  const { aiReviewLimit: _limit, studentAiReviewEnabled: _automatic, wordCloudRequirements: _cloud, ...data } = node.data;
 
   const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)])) : value;
@@ -28,8 +29,7 @@ export async function recoverInterruptedReviews(prisma: PrismaClient) {
 
 /** Class analysis may continue across a student-review switch, but not a rubric change. */
 export function classAnalysisConfigurationKey(node: QuestionNode): string {
-  const { studentAiReviewEnabled: _automatic, ...data } = node.data;
-  return reviewConfigurationKey({ ...node, data });
+  return JSON.stringify([reviewConfigurationKey(node), wordCloudRequirementsOf(node)]);
 }
 
 

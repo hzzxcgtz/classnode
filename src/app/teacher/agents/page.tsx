@@ -162,7 +162,7 @@ export default function AgentsPage() {
           后者是「你告诉过我，而现在快了」。所以文案分开、颜色也分开。 */}
       {(expiringTokens.length > 0 || unsetTokens.length > 0) && (
         <div role="status" style={{
-          display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap',
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
           padding: '12px 16px', borderRadius: 10, marginBottom: 16,
           background: expiringTokens.length > 0 ? '#faf4eb' : '#f8fafc',
           border: `1px solid ${expiringTokens.length > 0 ? '#fde68a' : '#e2e8f0'}`,
@@ -170,7 +170,7 @@ export default function AgentsPage() {
           fontSize: '0.813rem', lineHeight: 1.7,
         }}>
           <span aria-hidden="true" style={{ fontSize: '1rem' }}>{expiringTokens.length > 0 ? '⚠️' : 'ℹ️'}</span>
-          <span style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             {expiringTokens.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <strong>扣子访问令牌快到期了</strong>
@@ -189,7 +189,7 @@ export default function AgentsPage() {
                 填了我们才能提前提醒你。
               </div>
             )}
-          </span>
+          </div>
           <button type="button" className="btn btn-secondary" style={{ fontSize: "0.875rem", padding: '4px 12px', flexShrink: 0 }} onClick={() => setShowTokens(true)}>
             去处理
           </button>

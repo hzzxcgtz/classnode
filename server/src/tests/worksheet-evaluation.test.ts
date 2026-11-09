@@ -74,7 +74,7 @@ test('真实HTTP提交：文字与图片共同传给AI，反馈成功计次数�
  await db.classroomWorksheet.create({data:{classroomId:room.id,worksheetId:sheet.id}});
  const app=express();app.use(express.json());app.set('prisma',db);let calls=0;
  app.set('analysisProxy',async(_agent:unknown,message:string,images:Buffer[])=>{
-  calls++;assert.match(message,/说清观察与依据/);assert.match(message,/AI 评价要求/);assert.match(message,/只给具体评价与建议/);assert.match(message,/我看到了颜色变化/);assert.equal(images.length,1);assert.deepEqual(images[0],bytes);
+  calls++;assert.match(message,/说清观察与依据/);assert.match(message,/AI 评价要求/);assert.match(message,/只给具体评价与建议/);assert.match(message,/我看到了颜色变化/);assert.doesNotMatch(message,/提炼 5～7 个关键词/);assert.equal(images.length,1);assert.deepEqual(images[0],bytes);
   await db.worksheetAnswer.updateMany({data:{score:7,gradeState:'partial',isCorrect:false}}); // A stale grade present when AI returns must also be removed.
   const label=message.match(/请给下面这些学生评分：([^。]+)/)?.[1]?.split('、')[0];assert.ok(label);
   return {success:true,content:`<classnode-scores>${JSON.stringify({scores:[{student:label,score:null,reason:'你描述了颜色变化。',advice:'再说说变化前后的区别。'}]})}</classnode-scores>`};
@@ -96,6 +96,13 @@ test('真实HTTP提交：文字与图片共同传给AI，反馈成功计次数�
  assert.equal((await call('POST','/answers/submit',{questionId:'q',requestId:'feedback_again'})).status,409);assert.equal(calls,1);
  let cookie='';createTeacherSession({setHeader:(_name:string,value:string)=>{cookie=value.split(';')[0];}} as never);
  const teacherSave=(next:QuestionNode)=>fetch(base,{method:'PUT',headers:{'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify({content:{schemaVersion:1,nodes:[next]}})});
+ const invalidCloud=await teacherSave({...node,data:{...node.data,wordCloudRequirements:'字'.repeat(1201)}});
+ assert.equal(invalidCloud.status,400);
+ assert.match(await invalidCloud.text(),/观点提炼要求须为 1200 字以内/);
+ const withCloud={...node,data:{...node.data,wordCloudRequirements:'提炼 5～7 个关键词，关注观察变化'}};
+ const savedCloud=await teacherSave(withCloud);
+ assert.equal(savedCloud.status,200,await savedCloud.clone().text());
+ assert.equal((await savedCloud.json()).content.nodes[0].data.wordCloudRequirements,withCloud.data.wordCloudRequirements);
  const supplement=()=>fetch(base+`/analysis/q/run?classroomId=${room.id}&only=${person.id}&supplement=true`,{method:'POST',headers:{Cookie:cookie}});
  assert.equal((await supplement()).status,200);assert.equal(calls,1,'仅反馈任务已有有效评价，不因null分数重评');
  await db.worksheetAnswerReview.update({where:{id:first.reviewId},data:{status:'failed',reason:null,advice:null}});
@@ -106,17 +113,25 @@ test('真实HTTP提交：文字与图片共同传给AI，反馈成功计次数�
  const teacherPost=(suffix:string)=>fetch(base+suffix,{method:'POST',headers:{Cookie:cookie}});
  await teacherPost(`/analysis/q?classroomId=${room.id}`);
  app.set('analysisProxy',async(_agent:unknown,message:string,images:Buffer[],_signal:unknown,audio:unknown[])=>{
-  summaryCalls++;assert.match(message,/个人评价结果汇总/);assert.match(message,/你描述了颜色变化/);assert.equal(images.length,0);assert.deepEqual(audio,[]);
-  return {success:true,content:'### 主要表现\n已有评价显示能描述变化，建议补充前后过程。<classnode-feedback>{"groups":[],"students":[]}</classnode-feedback>'};
+  summaryCalls++;assert.match(message,/个人评价结果汇总/);assert.match(message,/你描述了颜色变化/);assert.ok(message.includes(withCloud.data.wordCloudRequirements));assert.equal(images.length,0);assert.deepEqual(audio,[]);
+  return {success:true,content:'### 主要表现\n已有评价显示能描述变化，建议补充前后过程。<classnode-feedback>{"groups":[],"students":[],"wordCloud":[]}</classnode-feedback>'};
  });
  const summaryResult=await teacherPost(`/analysis/q/run?classroomId=${room.id}&analysisOnly=true`);
  assert.equal(summaryResult.status,200,await summaryResult.clone().text());assert.equal(summaryCalls,1);
  assert.match((await summaryResult.json()).narrative,/纳入有效评价 1 人/);
+ const savedSummary=(await fetch(base+`/analysis/q?classroomId=${room.id}`,{headers:{Cookie:cookie}}));
+ assert.equal(savedSummary.status,200);
+ const currentSummary=await savedSummary.json();
+ assert.deepEqual(currentSummary.feedback.wordCloud,[]);
+ assert.equal(currentSummary.stale,false);
  assert.equal((await db.worksheetAnswerReview.findUniqueOrThrow({where:{id:teacherReview.id}})).advice,'再说说变化前后的区别。');
  const savedReport=(await db.worksheetQuestionAnalysis.findFirstOrThrow()).narrative;
  app.set('analysisProxy',async()=>{await db.worksheetAnswerReview.update({where:{id:teacherReview.id},data:{advice:'分析期间评价发生变化'}});return {success:true,content:'不能覆盖的旧汇总'};});
  assert.equal((await teacherPost(`/analysis/q/run?classroomId=${room.id}&analysisOnly=true`)).status,409);
  assert.equal((await db.worksheetQuestionAnalysis.findFirstOrThrow()).narrative,savedReport);
+ assert.equal((await teacherSave({...withCloud,data:{...withCloud.data,wordCloudRequirements:''}})).status,200);
+ const staleSummary=await fetch(base+`/analysis/q?classroomId=${room.id}`,{headers:{Cookie:cookie}});
+ assert.equal((await staleSummary.json()).stale,true,'清空观点要求后旧报告标为待更新');
  app.set('analysisProxy',personalProxy);
  const firstHistory=await db.worksheetAnswerReview.findFirstOrThrow();
  await db.worksheetAnswerReview.create({data:{answerId:firstHistory.answerId,requestId:'historical_scored_review',generation:firstHistory.generation,value:firstHistory.value as Prisma.InputJsonValue,question:firstHistory.question as Prisma.InputJsonValue,status:'succeeded',source:'teacher',score:9,maxScore:10,unit:'分',reason:'原评分依据',advice:'原建议'}});

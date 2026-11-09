@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { platformColors } from "@/lib/constants";
@@ -13,6 +13,20 @@ import { classroomMaterialsInUse } from "@/lib/classroom-material";
 import type { Socket } from "socket.io-client";
 
 const SOCKET_URL = getApiBaseUrl();
+
+const classroomMetaBadgeStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  minHeight: 26,
+  padding: "3px 9px",
+  borderRadius: 8,
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  verticalAlign: "middle",
+  lineHeight: "16px",
+  boxSizing: "border-box",
+};
 
 export default function TeacherDashboard() {
   const router = useRouter();
@@ -542,20 +556,10 @@ export default function TeacherDashboard() {
                       return (
                         <span
                           style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 5,
-                            minHeight: 26,
-                            padding: "3px 9px",
-                            borderRadius: 8,
+                            ...classroomMetaBadgeStyle,
                             border: `1px solid ${cfg.border}`,
-                            fontSize: "0.75rem",
-                            fontWeight: 600,
-                            verticalAlign: "middle",
-                            lineHeight: "16px",
                             background: cfg.bg,
                             color: cfg.color,
-                            boxSizing: "border-box",
                           }}
                         >
                           {cfg.icon}
@@ -568,24 +572,16 @@ export default function TeacherDashboard() {
                       title="点击复制互动码"
                       aria-label={`复制互动码 ${cr.code}`}
                       style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        minHeight: 26,
-                        padding: "3px 9px",
-                        borderRadius: 8,
+                        ...classroomMetaBadgeStyle,
                         background: "#f8fafc",
                         color: "#475569",
-                        fontSize: "0.875rem",
-                        fontWeight: 600,
                         border: "1px solid var(--card-border)",
                         cursor: "pointer",
-                        boxSizing: "border-box",
                       }}
                     >
                       <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>互动码</span>
                       <strong style={{ color: "#0f766e", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "0.75rem", letterSpacing: "0.04em" }}>{cr.code}</strong>
-                      <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0f766e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0f766e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     </button>
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>

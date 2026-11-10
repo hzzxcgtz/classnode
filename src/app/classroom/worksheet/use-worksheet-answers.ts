@@ -82,7 +82,7 @@ export type WorksheetScore = number | null;
 
 /** 一次 `PUT` 的结果。`status: null` = 网络错误（连状态码都没有）⇒ 暂时失败。 */
 type SaveOutcome =
-  | { ok: true }
+  | { ok: true; stillSubmitted: boolean }
   | { ok: false; status: number | null; error: string | null; code: string | null };
 
 export interface UseWorksheetAnswersOptions {
@@ -449,8 +449,8 @@ export function useWorksheetAnswers({
         headers: { 'Content-Type': 'application/json', ...getStudentSessionAuthorization() },
         body: JSON.stringify(body),
       });
-      if (res.ok) return { ok: true };
       const payload = await res.json().catch(() => null);
+      if (res.ok) return { ok: true, stillSubmitted: payload?.status === 'submitted' };
       const message = payload && typeof payload.error === 'string' && payload.error ? payload.error : null;
       // ★ M5a：服务端那句 409 带一个机器可读的 `code`（`answers-locked`）。
       // 🔴 一定要读它：靠状态码分不出「锁定」与「本题不许重交」（两者都是 409），
@@ -516,7 +516,12 @@ export function useWorksheetAnswers({
           sessionExpiredRef.current = false;
           lastSentRef.current[next.questionId] = next.value;
           commitQueue(dropQueueItem(pendingRef.current, next));
-          if (next.value !== null) {
+          if (outcome.stillSubmitted) {
+            setStatuses((prev) => (prev[next.questionId] === 'submitted' ? prev : { ...prev, [next.questionId]: 'submitted' }));
+          } else if (next.value !== null) {
+            if (questionsRef.current.some(node => node.id === next.questionId && node.type === 'image-canvas')) {
+              delete submissionRequests.current[next.questionId];
+            }
             // 服务端在 `PUT` 里把这一行拨回 `draft`（`allowResubmit` 为假且已提交时
             // 它根本不会走到这里 —— 那种情况是 409，走下面那条分支）。
             setStatuses((prev) => (prev[next.questionId] === 'submitted' ? { ...prev, [next.questionId]: 'draft' } : prev));

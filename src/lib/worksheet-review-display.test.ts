@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatReviewText, formatReviewAdvice, reviewDurationLabel, reviewSourceLabel } from './worksheet-review-display.ts';
+import { canvasReviewSections, formatReviewText, formatReviewAdvice, reviewDurationLabel, reviewSourceLabel } from './worksheet-review-display.ts';
+
+test('图文评价按保存时的作答区顺序配对评价和建议，保留没有建议的区域', () => {
+  const reason = '作答区 1 · ① 观察\n说明了现象。\n\n作答区 3 · ② 画图\n比例合适。';
+  const advice = '作答区 3 · ② 画图\n标出数值。';
+  assert.deepEqual(canvasReviewSections(reason, advice, ['observation', 'stars', 'drawing']), [
+    { key: 'region-1', id: 'observation', title: '作答区 1 · ① 观察', reason: '说明了现象。', advice: undefined },
+    { key: 'region-3', id: 'drawing', title: '作答区 3 · ② 画图', reason: '比例合适。', advice: '标出数值。' },
+  ]);
+  assert.deepEqual(canvasReviewSections('旧版整题评价', advice, ['observation']), []);
+});
 test('分号串联的编号建议分行，正文和已有换行保持不变', () => {
   assert.equal(formatReviewAdvice('1. 补细节； 2. 写动作；3. 写心情'), '1. 补细节\n2. 写动作\n3. 写心情');
   assert.equal(formatReviewAdvice('长宽比为1.5；注意单位。\n另一点'), '长宽比为1.5；注意单位。\n另一点');

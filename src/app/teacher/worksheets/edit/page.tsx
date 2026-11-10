@@ -1156,7 +1156,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
                 <div className="grid gap-3 border-t border-slate-200 pt-3">
                   <div>
                     <strong className="text-sm">负载均衡 · {1 + reviewAgentIds.length}/3</strong>
-                    <p className="worksheet-settings-help">多个智能体分担个人评价。请使用不同扣子账号，并保持模型与评价设置一致。</p>
+                    <p className="worksheet-settings-help">多个智能体分担个人评价和全班分析批次。建议使用不同扣子账号，并保持模型与评价设置一致。</p>
                   </div>
                   {[...reviewAgentIds, ...(addingReviewAgent && reviewAgentIds.length < 2 ? [''] : [])].map((id, index) => {
                     const label = `分担评价的智能体 ${index + 2}`;

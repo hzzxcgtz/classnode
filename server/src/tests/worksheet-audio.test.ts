@@ -78,14 +78,10 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
   app.use('/api/worksheets', worksheetAccessGate, worksheetRoutes);
   let analyzedAudio: Array<{ url: string; label: string }> = [];
   app.set('analysisProxy', async (_agent: unknown, message: string, _images: unknown, _signal: unknown, audio: typeof analyzedAudio) => {
-    if (audio.length) {
-      analyzedAudio = audio;
-      assert.match(message, /按音频附件对应表关联学生/);
-      assert.match(message, /明确表达的具体观点/);
-      return { success: true, content: audio.map(clip => `${clip.label} 提到颜色变深。`).join('\n') };
-    }
+    analyzedAudio = audio;
+    assert.match(message, /按音频附件对应表关联学生/);
     assert.match(message, /wordCloud/);
-    for (const clip of analyzedAudio) assert.ok(message.includes(`${clip.label} 提到颜色变深`));
+    assert.match(message, /依据可辨认的学生作答/);
     return { success: true, content: '学生说明了观察过程。<classnode-feedback>'+JSON.stringify({
       groups: [], students: [], wordCloud: [{ phrase: '颜色变深', students: analyzedAudio.map(clip => clip.label) }],
     })+'</classnode-feedback>' };
@@ -169,19 +165,14 @@ test('audio answer end-to-end: configure, upload, save, submit, restore and anal
   app.set('analysisProxy', async (_agent: unknown, message: string, images: Buffer[], _signal: unknown, clips: unknown[]) => {
     summaryAudioCalls++;
     assert.equal(images.length, 0);
-    if (summaryAudioCalls === 1) {
-      assert.match(message, /按音频附件对应表关联学生/);
-      assert.deepEqual(new Set(clips.map(clip => (clip as { url: string }).url)), new Set([value.url, peerValue.url]));
-      return { success: true, content: '学生说明了观察到的变化。' };
-    }
-    assert.deepEqual(clips, []);
-    assert.match(message, /学生说明了观察到的变化/);
+    assert.match(message, /按音频附件对应表关联学生/);
+    assert.deepEqual(new Set(clips.map(clip => (clip as { url: string }).url)), new Set([value.url, peerValue.url]));
     assert.match(message, /wordCloud/);
     return { success: true, content: '### 主要表现\n学生说明了变化，建议补充过程。' };
   });
   const summary = await call('POST', `/${sheet.id}/analysis/q/run?classroomId=${room.id}&analysisOnly=true`);
   assert.equal(summary.status, 200, await summary.clone().text());
-  assert.equal(summaryAudioCalls, 2);
+  assert.equal(summaryAudioCalls, 1, '只有一批原始语音时一次调用直接生成报告');
   assert.match((await summary.json()).narrative, /学生说明了变化/);
   assert.equal((await db.worksheetAnswerReview.findUniqueOrThrow({where:{id:personal.reviewId}})).score, 2);
   app.set('analysisProxy', personalAudioProxy);

@@ -2,6 +2,7 @@
 // ⚠️ 必须是 `import type`：`worksheet-reward.ts` 要能被 `node --test` 直接跑，
 // 而类型在 Node 的类型擦除里整段消失，所以这条 import 不会把它拖进任何运行期依赖。
 import type { RewardStyle } from './worksheet-reward';
+import type { AnalysisBatchProgress } from '../../server/src/services/analysis-operation';
 
 export interface InitStatus {
   initialized: boolean;
@@ -572,8 +573,14 @@ export interface WorksheetAnalysisSection {
 }
 
 export interface WorksheetAnalysisPayload {
+  batchProgress?: AnalysisBatchProgress[];
+  batchRunStartedAt?: number;
+  rawClassAnalysis?: boolean;
   sectioned?: boolean;
+  canvasSectionOnly?: boolean;
+  canvasStudentReviews?: Array<{ id: string; studentId: string; reason: string | null; advice: string | null; regionIds?: string[] }>;
   sectionAnalysis?: WorksheetAnalysisSection[];
+  sectionProgress?: Array<Omit<WorksheetAnalysisSection, 'students'>>;
   /** 只有主观题允许清除 AI 评分，客观题的直接打分必须保留。 */
   canClearAiScores?: boolean;
   /** 正在进行个人 AI 评价的参与者。保留上次有效评分，直到新评价完成。 */

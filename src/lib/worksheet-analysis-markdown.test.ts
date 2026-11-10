@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeWorksheetAnalysisMarkdown } from './worksheet-analysis-markdown.ts';
+import { canvasClassReportMarkdown, normalizeWorksheetAnalysisMarkdown } from './worksheet-analysis-markdown.ts';
+
+test('图文题分区报告按固定顺序显示三项，缺失项有提示', () => {
+  assert.equal(
+    canvasClassReportMarkdown('**后续建议：**\n对照柱形图。\n\n## 核心结论\n多数学生读对了数据。'),
+    '### 核心结论\n\n多数学生读对了数据。\n\n### 典型表现与作答依据\n\n本次未返回此项内容。\n\n### 后续建议\n\n对照柱形图。',
+  );
+});
 
 test('修正结束标记前带空格的加粗文本', () => {
   assert.equal(

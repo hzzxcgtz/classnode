@@ -853,24 +853,10 @@
   .corner, .studentRowHead { width: 150px; min-width: 150px; max-width: 150px; }
 }
 
-.questionNavRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 8px; margin-bottom: 4px; padding: 8px 10px; border: 1px solid transparent; border-radius: 10px; }
-.questionNavRow .questionNavSelect { margin-bottom: 0; border: 0; }
-.questionNavAnalysis { display: flex; grid-column: 2; grid-row: 1; justify-content: flex-end; }
-.questionNavAnalysis .analysisButton { min-height: 27px; padding: 4px 9px; font-size: 0.875rem; border-radius: 6px; }
-
-.questionNavAnalysis .analysisButton[data-state='ready'] { color: #466c5b; border-color: #cdded4; background: #f4f8f5; }
-.questionNavAnalysis .analysisButton:focus { outline: 2px solid #7996b1; outline-offset: 2px; }
-
-.questionNavRow .questionNavSelect { grid-column: 1; grid-row: 1; min-width: 0; }
-.questionNavRow .questionNavMeta { grid-column: 1 / -1; grid-row: 2; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px 12px; text-align: left; }
-
-/* 题目按钮本身覆盖整张卡片；分析按钮作为同级独立入口。 */
-.questionNavRow { position: relative; display: block; padding: 0; }
-.questionNavRow .questionNavSelect { display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 8px 10px; border-radius: inherit; }
-.questionNavRow[data-analysis='true'] .questionNavTitle { padding-right: 0; min-height: 0; }
-.questionNavRow .questionNavAnalysis { position: static; padding: 0 10px 8px; justify-content: flex-end; }
-.questionNavRow .questionNavAnalysis .analysisButton { min-height: 24px; padding: 3px 7px; font-size: .75rem; line-height: 1.2; white-space: nowrap; }
-.questionNavRow .questionNavAnalysis .analysisSpinner { width: 11px; height: 11px; }
+/* 一个按钮覆盖任务卡片的标题、统计和状态。 */
+.questionNavRow { display: flex; flex-direction: column; align-items: stretch; gap: 5px; margin-bottom: 4px; padding: 8px 10px; }
+.questionNavRow .questionNavMeta { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px 12px; text-align: left; }
+.questionNavAnalysis { display: flex; justify-content: flex-end; }
 .questionNavSelect:focus-visible { outline: 2px solid #7996b1; outline-offset: -2px; }
 
 /* 学生横向排列，题目行与左侧选择卡片使用相同的视觉语言。 */

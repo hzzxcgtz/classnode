@@ -1,7 +1,7 @@
 'use client';
 
-import { formatReviewText } from '@/lib/worksheet-review-display';
-import { IconFileSearch } from '@tabler/icons-react';
+import { canvasReviewSections, formatReviewText } from '@/lib/worksheet-review-display';
+import { IconChevronDown, IconFileSearch } from '@tabler/icons-react';
 import { ReviewPreviewButton } from './review-preview';
 import { StudentLecturePreview } from './student-lecture-preview';
 import { TeacherPendingText } from '@/components/teacher-pending-text';
@@ -18,6 +18,7 @@ import { activeWorksheetAnalysisTask, startWorksheetAnalysisTask, stopWorksheetA
 import { worksheetAnalysisProgressLabel } from '@/lib/worksheet-analysis-progress';
 import { localizeLegacyLabels } from '@/lib/worksheet-analysis-cells';
 import { AnalysisReport } from './analysis-report';
+import { canvasClassReportMarkdown } from '@/lib/worksheet-analysis-markdown';
 import { scoreParticipantMeta, sortAnalysisScores } from '@/lib/worksheet-analysis-score-display';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { pointsUnitLabel, REWARD_STYLE_OPTIONS } from '@/lib/worksheet-reward';
@@ -27,6 +28,7 @@ import { worksheetAnalysisActions } from '@/lib/worksheet-analysis-actions';
 
 export type AnalysisOperation = 'analyzing' | null;
 export type AnalysisRunStage = 'preparing' | 'sending' | 'analyzing' | 'finalizing' | null;
+type ReviewRegion = { id: string; title: string; reviewId: string; reason?: string; advice?: string };
 
 /**
  * 「AI 分析」的**取数 + 呈现**，抽成统一结果面板（★ 2026-09-28，规格 §6.2）。
@@ -51,6 +53,7 @@ export interface WorksheetAnalysisState {
   activeAction?: AnalysisAction | null;
   runStage: AnalysisRunStage;
   runElapsedSeconds: number;
+  batchClockMs?: number;
   runMessage?: string | null;
   stopping?: boolean;
   clearing?: boolean;
@@ -91,12 +94,21 @@ export function useWorksheetAnalysis(
   const [operation, setOperation] = useState<AnalysisOperation>(null);
   const [runStage, setRunStage] = useState<AnalysisRunStage>(null);
   const [runElapsedSeconds, setRunElapsedSeconds] = useState(0);
+  const [batchClockMs, setBatchClockMs] = useState<number>();
   const [runMessage, setRunMessage] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sheetFailed, setSheetFailed] = useState(false);
   const busy = operation !== null;
+  const showingBatches = Boolean(payload?.batchProgress?.length);
+  useEffect(() => {
+    if (!showingBatches) return;
+    const tick = () => setBatchClockMs(Date.now());
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [showingBatches]);
   const [taskRevision, setTaskRevision] = useState(0);
   useEffect(() => {
     const started = () => setTaskRevision(value => value + 1);
@@ -122,7 +134,7 @@ export function useWorksheetAnalysis(
           const refreshed = await api.getWorksheetAnalysis(classroomId, worksheetId, questionId);
           if (alive) setPayload(refreshed);
         } catch {
-          if (alive) setPayload((prev) => (prev ? { ...prev, ...out } : prev));
+          if (alive) setPayload((prev) => (prev ? { ...prev, ...out, batchProgress: undefined } : prev));
         }
       })
       .catch(async (e: unknown) => {
@@ -193,12 +205,19 @@ export function useWorksheetAnalysis(
         }).catch(() => { /* Keep the current result during a temporary disconnect. */ });
       }, 150);
     };
-    const stopReview = on('worksheet-analysis-updated', data => { if (data.worksheetId === worksheetId) refresh(); });
+    const stopReview = on('worksheet-analysis-updated', data => {
+      if (data.worksheetId === worksheetId && (!data.sectionProgressQuestionId || data.sectionProgressQuestionId === questionId)) refresh();
+    });
+    const stopBatches = on('worksheet-analysis-batches', data => {
+      if (data.classroomId === classroomId && data.worksheetId === worksheetId && data.questionId === questionId) {
+        setPayload(previous => previous && { ...previous, batchProgress: data.batches, batchRunStartedAt: data.startedAt });
+      }
+    });
     const stopAnswer = on('worksheet-answer-updated', data => { if (data.classroomId === classroomId && data.questionId === questionId) refresh(); });
-    const fallback = poll ? window.setInterval(refresh, 10000) : undefined;
+    const fallback = poll || operation === 'analyzing' ? window.setInterval(refresh, 10000) : undefined;
     window.addEventListener('focus', refresh);
-    return () => { alive = false; clearTimeout(timer); clearInterval(fallback); stopReview(); stopAnswer(); window.removeEventListener('focus', refresh); };
-  }, [enabled, on, classroomId, worksheetId, questionId, poll]);
+    return () => { alive = false; clearTimeout(timer); clearInterval(fallback); stopReview(); stopBatches(); stopAnswer(); window.removeEventListener('focus', refresh); };
+  }, [enabled, on, classroomId, worksheetId, questionId, poll, operation]);
 
   const run = useCallback(async (only?: string[], regrade = false, incremental = false, analysisOnly = false) => {
     if (ownedRun.current) return;
@@ -209,6 +228,7 @@ export function useWorksheetAnalysis(
     setRunElapsedSeconds(0);
     setRunMessage(null);
     setError(null);
+    if (!incremental && !only?.length) setPayload(previous => previous ? { ...previous, sectionProgress: undefined, batchProgress: undefined } : previous);
     try {
       const task = startWorksheetAnalysisTask({
         classroomId, worksheetId, questionId, regrade, incremental, analysisOnly,
@@ -221,7 +241,7 @@ export function useWorksheetAnalysis(
       try {
         setPayload(await api.getWorksheetAnalysis(classroomId, worksheetId, questionId));
       } catch {
-        setPayload((prev) => (prev ? { ...prev, ...out } : prev));
+        setPayload((prev) => (prev ? { ...prev, ...out, batchProgress: undefined } : prev));
       }
       // 让“结果已返回”这一阶段能被人看见；不影响请求本身，也不伪造网络进度。
       await new Promise<void>((resolve) => window.setTimeout(resolve, 450));
@@ -255,7 +275,7 @@ export function useWorksheetAnalysis(
   };
 
   return {
-    payload, loading, busy, operation, activeAction, runStage, runElapsedSeconds, runMessage,
+    payload, loading, busy, operation, activeAction, runStage, runElapsedSeconds, batchClockMs, runMessage,
     error, sheetFailed, stopping, clearing, stop, clear,
     markSheetFailed: useCallback(() => setSheetFailed(true), []),
     run,
@@ -271,7 +291,7 @@ export function AnalysisBanners({ state }: { state: WorksheetAnalysisState }) {
       {/* 「算完之后又有人交了」—— 服务端算的，必须显眼。否则教师会把一份不完整的名单当成当前的。 */}
       {!state.busy && state.payload?.stale && state.payload.narrative && (
         <div style={{ padding: '8px 18px', background: '#edf5ff', borderBottom: '1px solid #d7e5f4', color: '#315f8c', fontSize: '0.82rem', flex: '0 0 auto' }}>
-          作答或分析依据有更新，重新生成班级分析后即可纳入总结。
+          {state.payload.canvasSectionOnly ? '作答或分析依据有更新，可重新生成各作答区的分析。' : '作答或分析依据有更新，重新生成班级分析后即可纳入总结。'}
         </div>
       )}
       {state.error && (
@@ -314,7 +334,22 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 }) {
   const { payload, loading, sheetFailed } = state;
   const sheets = payload?.sheetLayouts ?? [];
-  const generatingReport = state.busy && state.activeAction !== 'incremental';
+  const batchProgress = payload?.batchProgress ?? [];
+  const summaryOnly = payload?.aiScoring.enabled && !payload.rawClassAnalysis;
+  const sectionProgress = payload?.sectionProgress ?? [];
+  const generatingReport = batchProgress.length > 0 || (state.busy && state.activeAction !== 'incremental');
+  const classSections = sectionProgress.length ? sectionProgress : generatingReport ? [] : payload?.sectionAnalysis ?? [];
+  const showClassReport = classSections.length > 0 || Boolean(payload?.narrative && !generatingReport);
+  const maxScore = payload?.canvasSectionOnly ? 0 : payload?.perStudent?.maxScore ?? 0;
+  const scoreUnit = payload?.perStudent?.unit;
+  const reviewTitle = maxScore > 0 ? '全班 AI 评分明细' : '全班 AI 评价明细';
+  const scoreRows = payload?.perStudent?.scores ?? [];
+  const pendingIds = payload?.pendingReviewIds ?? [];
+  const canvasReviews = payload?.canvasStudentReviews ?? [];
+  const reviewRows = payload?.canvasSectionOnly
+    ? canvasReviews.map(({ studentId, reason, advice }) => ({ studentId, score: null, reason: reason ?? '', advice: advice ?? '' }))
+    : [...scoreRows, ...pendingIds.filter(id => !scoreRows.some(row => row.studentId === id))
+      .map(studentId => ({ studentId, score: null, reason: '', advice: '' }))];
   const pendingMessage = state.runMessage || (state.activeAction === 'incremental'
     ? '正在补评未评学生，请稍等…'
     : `正在${worksheetAnalysisActions(payload).primaryLabel}，请稍等…`);
@@ -322,10 +357,13 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
   const [initialMode,setInitialMode]=useState<'answer'|'review'>('answer');
   const [taskStudent, setTaskStudent] = useState<string | null>(null);
+  const [taskRegion, setTaskRegion] = useState<ReviewRegion>();
+  const canvasReview = canvasReviews.find(row => row.studentId === taskStudent);
   const taskOpener = useRef<HTMLElement | null>(null);
   const taskOpenerGroup = useRef<string | null>(null);
-  const openTask = (participantId: string, mode: 'answer'|'review' = 'answer') => {
+  const openTask = (participantId: string, mode: 'answer'|'review' = 'answer', region?: ReviewRegion) => {
     setInitialMode(mode);
+    setTaskRegion(region);
     taskOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     taskOpenerGroup.current = taskOpener.current?.getAttribute('data-student-group') ?? null;
     setSelectedStudent(participantId); setTaskStudent(participantId);
@@ -367,11 +405,14 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
 
   return (
     <div className={`${styles.body} ${compact ? styles.compactBody : ''}`}>
-      {taskStudent && payload && <StudentLecturePreview initialMode={initialMode} key={`${classroomId}:${worksheetId}:${questionId}:${taskStudent}`}
+      {taskStudent && payload && <StudentLecturePreview initialMode={initialMode} key={`${classroomId}:${worksheetId}:${questionId}:${taskStudent}:${taskRegion?.id ?? ''}`}
         classroomId={classroomId} worksheetId={worksheetId} questionId={questionId} participantId={taskStudent}
         studentName={payload.participantNames?.[taskStudent] ?? nameOf?.(taskStudent) ?? '学生'}
-        reason={payload.perStudent?.scores.find(row => row.studentId === taskStudent)?.reason}
-        advice={payload.perStudent?.scores.find(row => row.studentId === taskStudent)?.advice || payload.feedback?.students.find(row => row.studentId === taskStudent)?.advice}
+        reviewRegion={taskRegion}
+        reason={taskRegion ? taskRegion.reason : canvasReview ? canvasReview.reason : payload.perStudent?.scores.find(row => row.studentId === taskStudent)?.reason}
+        advice={taskRegion ? taskRegion.advice : canvasReview ? canvasReview.advice : payload.perStudent?.scores.find(row => row.studentId === taskStudent)?.advice || payload.feedback?.students.find(row => row.studentId === taskStudent)?.advice}
+        reviewAnnotationId={taskRegion ? `${classroomId}:${worksheetId}:${taskStudent}:${questionId}:${taskRegion.reviewId}:${taskRegion.id}`
+          : canvasReview ? `${classroomId}:${worksheetId}:${taskStudent}:${questionId}:${canvasReview.id}` : undefined}
         score={payload.perStudent?.scores.find(row => row.studentId === taskStudent)?.score}
         maxScore={payload.perStudent?.maxScore} unit={payload.perStudent?.unit}
         onClose={closeTask} />}
@@ -380,6 +421,8 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
       {!loading && payload && payload.covered === 0 && (
         <div className={styles.emptyResult}><strong>等待学生提交作品</strong><span>学生提交后，作答统计和 AI 评价会自动显示在这里。</span></div>
       )}
+
+      {batchProgress.length > 0 && <AnalysisBatchStatus batches={batchProgress} now={state.batchClockMs ?? Date.now()} />}
 
       {!loading && !state.busy && payload && payload.covered > 0 && payload.aiScoring.enabled && (() => {
         const scored = completedReviewIds(payload);
@@ -396,15 +439,15 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
         </div>;
       })()}
 
-      {!loading && payload?.perStudent && (payload.perStudent.scores.length > 0 || !!payload.pendingReviewIds?.length) && (
-        <details className={styles.scoreCard} aria-label="全班 AI 评分明细" key={`${classroomId}:${worksheetId}:${questionId}`}>
+      {!loading && payload && reviewRows.length > 0 && (
+        <details className={styles.scoreCard} aria-label={reviewTitle} key={`${classroomId}:${worksheetId}:${questionId}`}>
           <summary className={styles.scoreHeader}>
             <div className={styles.scoreHeaderTitle}>
               <svg className={styles.scoreTableIcon} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <rect x="3" y="4" width="18" height="16" rx="2" />
                 <path d="M3 9h18M3 14h18M9 9v11" />
               </svg>
-              <strong>全班 AI 评分明细</strong>
+              <strong>{reviewTitle}</strong>
             </div>
             <div className={styles.scoreHeaderActions}>
               <span className={styles.scoreToggleClosed}>展开明细</span>
@@ -413,105 +456,140 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
             </div>
           </summary>
           <div className={styles.scoreList}>
-            {sortAnalysisScores([...payload.perStudent.scores, ...(payload.pendingReviewIds ?? []).filter(id => !payload.perStudent!.scores.some(row => row.studentId === id)).map(studentId => ({ studentId, score: null, reason: '', advice: '' }))], payload.entries).map((item) => (
-              <div className={`${styles.scoreRow} ${selectedStudent === item.studentId ? styles.scoreRowSelected : ''}`} key={item.studentId}
-                tabIndex={0} role="group" aria-label={`${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '学生'}的评分`}
-                onClick={() => setSelectedStudent(item.studentId)}
-                onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setSelectedStudent(item.studentId); } }}>
-                <span className={styles.scoreName}>
-                  {payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '未命名学生'}
-                  {(() => {
-                    const meta = scoreParticipantMeta(payload.entries, item.studentId);
-                    return <span className={styles.scoreCell}>
-                      {meta.number && `#${meta.number}`}
-                    </span>;
-                  })()}
-                  {payload.pendingReviewIds?.includes(item.studentId) && <span className={styles.reviewPending} role="status"><TeacherPendingText>AI 正在评价…</TeacherPendingText></span>}
-                </span>
-                {!payload.pendingReviewIds?.includes(item.studentId) && <strong className={styles.scoreValue}>
-                  {(() => {
-                    if (item.score === null) return payload.perStudent!.maxScore === 0 ? '评价完成' : '暂无法评分';
-                    if (item.score === 0) return null;
-                    const unit = payload.perStudent!.unit;
-                    const reward = REWARD_STYLE_OPTIONS.find(option => option.value !== 'points' && pointsUnitLabel(option.value) === unit);
-                    if (!reward || !Number.isInteger(item.score)) return `${item.score} / ${payload.perStudent!.maxScore} ${unit}`;
-                    return <span className={styles.scoreRewards} role="img" aria-label={`${item.score} ${unit}，满额 ${payload.perStudent!.maxScore}`} title={`${item.score} / ${payload.perStudent!.maxScore} ${unit}`}>
-                      {Array.from({ length: item.score }, (_, index) => <RewardIcon key={index} kind={reward.value} size={22} />)}
-                    </span>;
-                  })()}
-                </strong>}
-                {!payload.pendingReviewIds?.includes(item.studentId) && <div className={styles.scoreReason}>
-                  <div className={styles.scoreReasonHeading}>
-                    <span>{formatReviewText(item.reason || '智能体未补充简短评价')}</span>
-                    <div className={styles.scoreReviewActions}>
-                    <button type="button" className={styles.answerShortcut}
-                      onClick={() => openTask(item.studentId)} title="放大讲评学生作答" aria-label={`查看${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '这位学生'}的本题作答`}>
-                      <IconFileSearch size={18} stroke={1.7} aria-hidden="true"/>
-                    </button>
-                    <ReviewPreviewButton openExternally={()=>openTask(item.studentId,'review')} annotationId={`${classroomId}:${worksheetId}:${questionId}:${item.studentId}`} title={`${payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '学生'} · AI 评价与建议`} reason={item.reason} advice={item.advice || payload.feedback?.students.find(row=>row.studentId===item.studentId)?.advice} score={item.score} maxScore={payload.perStudent!.maxScore} unit={payload.perStudent!.unit}/>
+            {sortAnalysisScores(reviewRows, payload.entries).map(item => {
+              const name = payload.participantNames?.[item.studentId] ?? nameOf?.(item.studentId) ?? '未命名学生';
+              const pending = pendingIds.includes(item.studentId);
+              const advice = item.advice || (!payload.canvasSectionOnly ? payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice : null);
+              const { number } = scoreParticipantMeta(payload.entries, item.studentId);
+              const review = canvasReviews.find(row => row.studentId === item.studentId);
+              const areas = review ? canvasReviewSections(item.reason, item.advice, review.regionIds ?? []) : [];
+              return (
+                <div className={`${styles.scoreRow} ${selectedStudent === item.studentId ? styles.scoreRowSelected : ''}`} key={item.studentId} data-areas={areas.length > 0 || undefined}
+                  tabIndex={0} role="group" aria-label={`${name}的${maxScore > 0 ? '评分' : '评价'}`}
+                  onClick={() => setSelectedStudent(item.studentId)}
+                  onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setSelectedStudent(item.studentId); } }}>
+                  <span className={styles.scoreName}>
+                    {name}
+                    <span className={styles.scoreCell}>{number && `#${number}`}</span>
+                    {pending && <span className={styles.reviewPending} role="status"><TeacherPendingText>AI 正在评价…</TeacherPendingText></span>}
+                  </span>
+                  {!pending && <strong className={styles.scoreValue}>
+                    {(() => {
+                      if (item.score === null) return maxScore === 0 ? '评价完成' : '暂无法评分';
+                      if (item.score === 0) return null;
+                      const reward = REWARD_STYLE_OPTIONS.find(option => option.value !== 'points' && pointsUnitLabel(option.value) === scoreUnit);
+                      if (!reward || !Number.isInteger(item.score)) return `${item.score} / ${maxScore} ${scoreUnit}`;
+                      return <span className={styles.scoreRewards} role="img" aria-label={`${item.score} ${scoreUnit}，满额 ${maxScore}`} title={`${item.score} / ${maxScore} ${scoreUnit}`}>
+                        {Array.from({ length: item.score }, (_, index) => <RewardIcon key={index} kind={reward.value} size={22} />)}
+                      </span>;
+                    })()}
+                  </strong>}
+                  {!pending && review && areas.length > 0 ? <div className={styles.reviewAreas}>
+                    {areas.map(area => {
+                      const region = area.id ? { ...area, id: area.id, reviewId: review.id } : undefined;
+                      return <div key={area.key} className={styles.reviewArea}>
+                        <details>
+                          <summary><IconChevronDown size={16} aria-hidden="true" />{area.title}</summary>
+                          <div className={styles.reviewAreaBody}>
+                            {area.reason && <p>{formatReviewText(area.reason)}</p>}
+                            {area.advice && <div className={styles.scoreAdvice}><strong>支点博士的建议</strong><p>{formatReviewText(area.advice)}</p></div>}
+                          </div>
+                        </details>
+                        <div className={styles.reviewAreaActions}>
+                          {region && <button type="button" className={styles.answerShortcut} onClick={() => openTask(item.studentId, 'answer', region)}
+                            title="放大讲评本区作答" aria-label={`查看${name}的${area.title}作答`}><IconFileSearch size={18} stroke={1.7} aria-hidden="true" /></button>}
+                          <ReviewPreviewButton openExternally={region ? () => openTask(item.studentId, 'review', region) : undefined}
+                            annotationId={`${review.id}:${area.key}`} title={`${name} · ${area.title}`} studentName={name} sectionTitle={area.title} reason={area.reason} advice={area.advice} />
+                        </div>
+                      </div>;
+                    })}
+                  </div> : !pending && <div className={styles.scoreReason}>
+                    <div className={styles.scoreReasonHeading}>
+                      <span>{formatReviewText(item.reason || '智能体未补充简短评价')}</span>
+                      <div className={styles.scoreReviewActions}>
+                        <button type="button" className={styles.answerShortcut}
+                          onClick={() => openTask(item.studentId)} title="放大讲评学生作答" aria-label={`查看${name}的本题作答`}>
+                          <IconFileSearch size={18} stroke={1.7} aria-hidden="true" />
+                        </button>
+                        <ReviewPreviewButton openExternally={() => openTask(item.studentId, 'review')} annotationId={`${classroomId}:${worksheetId}:${questionId}:${item.studentId}`} title={`${name} · AI 评价与建议`} reason={item.reason} advice={advice} score={item.score} maxScore={maxScore} unit={scoreUnit} />
+                      </div>
                     </div>
-                  </div>
-                  {(item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice) && (
-                    <div className={styles.scoreAdvice}>
-                      <strong className={styles.scoreAdviceHeading}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.9.6-1.5 1.5-1.5 2.5h-4c0-1-.6-1.9-1.5-2.5Z" />
-                        </svg>
-                        支点博士的建议
-                      </strong>
-                      <p>{formatReviewText(item.advice || payload.feedback?.students.find(row => row.studentId === item.studentId)?.advice || '')}</p>
-                    </div>
-                  )}
-                </div>}
-              </div>
-            ))}
+                    {advice && (
+                      <div className={styles.scoreAdvice}>
+                        <strong className={styles.scoreAdviceHeading}>
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.9.6-1.5 1.5-1.5 2.5h-4c0-1-.6-1.9-1.5-2.5Z" />
+                          </svg>
+                          支点博士的建议
+                        </strong>
+                        <p>{formatReviewText(advice)}</p>
+                      </div>
+                    )}
+                  </div>}
+                </div>
+              );
+            })}
           </div>
         </details>
       )}
 
-      {!loading && payload && payload.covered > 0 && payload.narrative && !generatingReport && (
+      {!loading && payload && payload.covered > 0 && showClassReport && (
         <section className={styles.resultCard} aria-label="全班分析结果">
-          <h3 className={styles.reportTitle}>全班分析</h3>
-          <AnalysisReport onOpenStudent={openTask} className={styles.resultText} payload={payload} text={localize(payload.narrative) ?? ''} />
-          {Boolean(payload.sectionAnalysis?.length) && <h4 className={styles.reportSectionsTitle}>按作答区查看</h4>}
-          {payload.sectionAnalysis?.map(section => <details key={section.id} className={styles.analysisSection}>
-            <summary>{section.title}<span>{section.mode === 'ai' ? '表达评价' : section.mode === 'answer' ? '练习判分' : '只收集'}</span></summary>
-            <Markdown className={styles.resultText} allowImages={false}>{section.findings}</Markdown>
-            <div className={styles.analysisSectionStudents}>
-              {section.students.map(student => <details key={student.studentId}>
-                <summary>{payload.participantNames?.[student.studentId] ?? '学生'}{student.correct === null ? '' : student.correct ? ' · 正确' : ' · 待订正'}</summary>
-                {student.value == null ? <p>本区没有已提交作答。</p> : <>
-                  <AnswerViewBody node={{ id: questionId, type: 'short-answer', prompt: section.title, inputMode: 'keyboard', data: {}, children: [] }}
-                    value={student.value} transcription={false} neutral />
-                  {section.mode === 'ai' && <p>{student.feedback ?? '本次未取得这位学生的分区反馈。'}</p>}
-                </>}
+          {payload.canvasSectionOnly ? (
+            classSections.length ? <>
+              {!sectionProgress.length && payload.narrative && <p className={styles.analysisCoverage}>{localize(payload.narrative)?.replace(/^>\s*/, '')}</p>}
+              {classSections.map(section => <details open key={section.id} className={styles.answerArea}>
+                <summary className={styles.answerAreaTitle}><IconChevronDown size={18} aria-hidden="true" />{section.title}</summary>
+                <AnalysisReport onOpenStudent={openTask} className={styles.resultText} payload={payload}
+                  text={canvasClassReportMarkdown(localize(section.findings) ?? '')} />
               </details>)}
-            </div>
-          </details>)}
+            </> : <p className={styles.analysisNotice}>这份分析使用旧版格式。点击「更新全班分析」可查看每个作答区的报告。</p>
+          ) : <>
+            <AnalysisReport onOpenStudent={openTask} className={styles.resultText} payload={payload} text={localize(payload.narrative) ?? ''} />
+            {Boolean(payload.sectionAnalysis?.length) && <h4 className={styles.reportSectionsTitle}>按作答区查看</h4>}
+            {payload.sectionAnalysis?.map(section => <section key={section.id} className={styles.sectionProgressCard}>
+              <h4>{section.title}</h4>
+              <Markdown className={styles.resultText} allowImages={false}>{localize(section.findings) ?? ''}</Markdown>
+              {section.students.length > 0 && <details className={styles.analysisSection}>
+                <summary>查看本区作答详情</summary>
+                <div className={styles.analysisSectionStudents}>
+                  {section.students.map(student => <details key={student.studentId}>
+                    <summary>{payload.participantNames?.[student.studentId] ?? '学生'}{student.correct === null ? '' : student.correct ? ' · 正确' : ' · 待订正'}</summary>
+                    {student.value == null ? <p>本区没有已提交作答。</p> : <>
+                      <AnswerViewBody node={{ id: questionId, type: 'short-answer', prompt: section.title, inputMode: 'keyboard', data: {}, children: [] }}
+                        value={student.value} transcription={false} neutral />
+                      {section.mode === 'ai' && <p>{student.feedback ?? '本次未取得这位学生的分区反馈。'}</p>}
+                    </>}
+                  </details>)}
+                </div>
+              </details>}
+            </section>)}
+          </>}
         </section>
       )}
 
-      {state.busy && <div className={`${styles.analysisNotice} ${styles.reportPending}`} role="status">
+      {state.busy && !batchProgress.length && <div className={`${styles.analysisNotice} ${styles.reportPending}`} role="status">
         <span className={styles.reportPendingDots} aria-hidden="true"><i /><i /><i /></span>
         <TeacherPendingText>{pendingMessage}</TeacherPendingText>
       </div>}
 
-      {!loading && !state.busy && payload && payload.covered > 0 && !payload.narrative && (
-        <div className={styles.analysisNotice}>{payload.perStudent?.scores.length ? '学生个人评价已更新。需要了解全班情况时，可生成全班分析。' : '已收到学生作品。可生成全班分析，查看整体情况。'}</div>
+      {!loading && !state.busy && payload && payload.covered > 0 && !payload.narrative && !sectionProgress.length && !batchProgress.length && (
+        <div className={styles.analysisNotice}>{(scoreRows.length || canvasReviews.length) ? '学生个人评价已更新。需要了解全班情况时，可生成全班分析。' : '已收到学生作品。可生成全班分析，查看整体情况。'}</div>
       )}
 
       {!loading && payload && payload.covered > 0 && (
         <>
           <button type="button" className={styles.detailsToggle}
             aria-expanded={showDetails} onClick={() => setShowDetails((value) => !value)}>
-            {payload.aiScoring.enabled ? (showDetails ? '收起汇总方式' : '查看汇总方式') : (showDetails ? '收起发送数据' : '查看发送数据')}
+            {summaryOnly ? (showDetails ? '收起汇总方式' : '查看汇总方式') : (showDetails ? '收起发送数据' : '查看发送数据')}
             <span aria-hidden="true">{showDetails ? '⌃' : '⌄'}</span>
           </button>
 
           {showDetails && (
             <section className={styles.detailsPanel} aria-label="发送给 AI 的数据">
-              <div className={styles.detailsHeading}>{payload.aiScoring.enabled ? '班级分析数据来源' : '发送给 AI 的数据'}</div>
-              {payload.aiScoring.enabled ? <div className={styles.notice}>使用本题评价要求、当前有效的逐生评价与建议、作答依据进行文字汇总，不重复发送原始图片或录音。发送时会核对作答和评价规则；历史记录缺少详细依据时会说明局限，未取得有效评价的学生不纳入结论。查看原始作答请进入学生详情。</div> : <>
+              <div className={styles.detailsHeading}>{summaryOnly ? '班级分析数据来源' : '发送给 AI 的数据'}</div>
+              {summaryOnly ? <div className={styles.notice}>使用本题评价要求和已提交的作答生成班级分析。查看原始作答请进入学生详情。</div> : <>
+              {payload.rawClassAnalysis && <div className={styles.notice}>已提交的原始作答按批发送，包括文字、图片、笔迹和录音。下方内容用于预览作答和对应名单。</div>}
               {payload.payloadKind === 'mixed' && (
                 <div className={styles.notice}>当前任务同时包含文字与笔迹作答，以下文档和联系表分别呈现两部分数据。</div>
               )}
@@ -560,6 +638,42 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
       )}
     </div>
   );
+}
+
+function compactElapsed(milliseconds: number) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function AnalysisBatchStatus({ batches, now }: { batches: NonNullable<WorksheetAnalysisPayload['batchProgress']>; now: number }) {
+  const groups = new Map<string, typeof batches>();
+  for (const batch of batches) {
+    const group = groups.get(batch.sectionId) ?? [];
+    group.push(batch);
+    groups.set(batch.sectionId, group);
+  }
+  const phases = { queued: '排队', preparing: '准备', sending: '发送中', analyzing: '分析中', completed: '已返回', failed: '失败' };
+  return <section className={styles.batchProgress} aria-label="AI 分析批次进度">
+    <header><strong>批次进度</strong></header>
+    {[...groups].map(([id, group]) => <div key={id} className={styles.batchProgressGroup}>
+      {group[0].title !== '本题' && <strong>{group[0].title}</strong>}
+      <ul>
+        {group.sort((a, b) => (a.index || Infinity) - (b.index || Infinity)).map(batch => {
+          const agent = batch.agentName ? `${batch.accountLabel ?? '账号未标注'} / ${batch.agentName}` : '';
+          return <li key={batch.index}>
+            <span>{batch.index ? `${batch.index}/${batch.total} 批 · ${batch.responses} 份` : '汇总'}</span>
+            <span className={styles.batchPhase} data-phase={batch.phase}>{phases[batch.phase]}
+              {batch.startedAt !== undefined && <span className={styles.batchTime} title="本批耗时">
+                {compactElapsed((batch.finishedAt ?? now) - batch.startedAt)}
+              </span>}
+            </span>
+            {agent && <span className={styles.batchAgent} title={agent}>{agent}</span>}
+            {batch.error && <small>{batch.error}</small>}
+          </li>;
+        })}
+      </ul>
+    </div>)}
+  </section>;
 }
 
 function AnalysisActionIcon({ action, pending = false, supplement = false }: { action: AnalysisAction; pending?: boolean; supplement?: boolean }) {
@@ -632,7 +746,9 @@ function StudentScoreClearDialog({ payload, selected, onSelect, clearing, error,
 
 /** 结果窗底部：查看结果后可以直接重新分析，不再出现发送内容确认步骤。 */
 export function AnalysisActions({ state, compact = false }: { state: WorksheetAnalysisState; compact?: boolean }) {
-  const { payload, busy, operation, activeAction, runStage, runElapsedSeconds } = state;
+  const { payload, operation, activeAction, runStage, runElapsedSeconds } = state;
+  const batchProgress = payload?.batchProgress ?? [];
+  const busy = state.busy || batchProgress.length > 0;
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [selectionError, setSelectionError] = useState<string | null>(null);
@@ -675,8 +791,17 @@ export function AnalysisActions({ state, compact = false }: { state: WorksheetAn
   };
   const actions = worksheetAnalysisActions(payload, busy ? activeAction ?? 'analysis' : null);
   if (payload?.covered === 0 && !busy) return null;
-  const labelFor = (action: AnalysisAction, label: string) => operation === 'analyzing' && runStage && (activeAction ?? 'analysis') === action
-    ? worksheetAnalysisProgressLabel(runStage, runElapsedSeconds) : label;
+  const labelFor = (action: AnalysisAction, label: string) => {
+    if (action === 'analysis' && batchProgress.length) {
+      const batches = batchProgress.filter(batch => batch.index > 0);
+      const returned = batches.filter(batch => batch.phase === 'completed').length;
+      const elapsed = payload?.batchRunStartedAt === undefined ? runElapsedSeconds * 1000
+        : (state.batchClockMs ?? Date.now()) - payload.batchRunStartedAt;
+      return `已返回 ${returned}/${batches.length} 批 · 用时 ${compactElapsed(elapsed)}`;
+    }
+    return operation === 'analyzing' && runStage && (activeAction ?? 'analysis') === action
+      ? worksheetAnalysisProgressLabel(runStage, runElapsedSeconds) : label;
+  };
 
   return (
     <div className={`${styles.actions} ${compact ? styles.compactActions : ''}`} aria-busy={state.clearing || undefined}>

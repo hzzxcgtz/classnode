@@ -580,6 +580,9 @@ export const api = {
     request<WorksheetUsage>(`/api/worksheets/${id}/usage`),
   // 详情。列表页不用它（列表项没有 `content` 也不需要），留给编辑器（C2）。
   getWorksheet: (id: string) => request<WorksheetDetail>(`/api/worksheets/${id}`),
+  getWorksheetReview: (classroomId: string, worksheetId: string, participantId: string, reviewId: string) =>
+    request<{ reviews: Array<{ id: string; questionId: string; value: unknown }> }>(
+      `/api/worksheets/${encodeURIComponent(worksheetId)}/reviews?${new URLSearchParams({ classroomId, participantId, reviewId })}`),
   // ★ M7a：分析载荷。⚠️ **这三条仍然零外发**；紧接着的 `runWorksheetAnalysis`（M7b）
   // 才是外发的那一条 —— 出口只有一处（服务端的 `proxyAnalysisRequest`）。
   /**

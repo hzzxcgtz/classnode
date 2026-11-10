@@ -1217,6 +1217,7 @@ export async function proxyAnalysisRequest(
   images: Buffer[],
   signal?: AbortSignal,
   audioAnswers: Array<{ url: string; label: string }> = [],
+  onAnalyzing?: () => void,
 ): Promise<{ success: boolean; content?: string; error?: string }> {
   if (images.length > 0 && agent.platform !== 'coze') {
     return {
@@ -1263,6 +1264,8 @@ export async function proxyAnalysisRequest(
     // 这里给一个**中性常量**：分析是班级级的、没有「那个学生」，而把学生的名字发过去
     // 正是本项目匿名化要防的事。每次调用都会 `chats.create` 出一个**新会话**
     // （不传 `conversationId`）⇒ 两次分析之间不会串上下文。
+    signal?.throwIfAborted();
+    onAnalyzing?.();
     if (audioAnswers.length) {
       const timeoutSignal = AbortSignal.timeout(ANALYSIS_POLL_TIMEOUT_SECONDS * 1000);
       const streamSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;

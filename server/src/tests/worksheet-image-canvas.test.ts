@@ -150,13 +150,19 @@ test('整图任务可保存并投影给学生，同桌录音评星随实名作�
   assert.deepEqual((await (await call('GET', root + '/answers', undefined, token)).json()).rows[0].value, complete);
 
   const calls: string[] = [];
+  let finishFirstArea!: () => void;
+  const firstArea = new Promise<void>(resolve => { finishFirstArea = resolve; });
   app.set('analysisProxy', async (_agent: unknown, message: string, images: Buffer[], _signal: unknown, clips: Array<{ url: string; label: string }>) => {
     calls.push(message);
+    assert.match(message, /当前仅处理「作答区/);
+    assert.match(message, /### 核心结论[\s\S]*### 典型表现与作答依据[\s\S]*### 后续建议/);
+    assert.doesNotMatch(message, /返回每位学生|classnode-feedback/);
     if (message.includes('当前仅处理「作答区 1')) {
       assert.match(message, /录音标准：说清观察依据/);
       assert.doesNotMatch(message, /照片标准/);
       assert.equal(images.length, 1, '只附教师底图');
       assert.deepEqual(clips, [{ url: second.url, label: '示例学生#01' }]);
+      await firstArea;
       return { success: true, content: '录音中的观察。<classnode-feedback>{"students":[{"student":"示例学生#01","advice":"补充具体观察"},{"student":"名单外#99","advice":"不得关联"}]}</classnode-feedback>' };
     }
     if (message.includes('当前仅处理「作答区 2')) {
@@ -165,30 +171,51 @@ test('整图任务可保存并投影给学生，同桌录音评星随实名作�
       assert.equal(images.length, 2, '底图和作答照片拼图');
       return { success: true, content: '照片中能辨认景物特点。<classnode-feedback>{"students":[{"student":"示例学生#01","advice":"照片表现具体"}]}</classnode-feedback>' };
     }
-    if (message.includes('当前仅处理')) return { success: true, content: '其余区域只整理内容。' };
-    assert.match(message, /录音中的观察/);
-    assert.match(message, /照片中能辨认景物特点/);
-    assert.match(message, /作答区 1 .+的 AI 评价要求：录音标准：说清观察依据/);
-    assert.match(message, /典型表现与作答依据/);
-    assert.match(message, /classnode-feedback/);
-    return { success: true, content: '建议把景物特点转成具体的口头说明。' };
+    return { success: true, content: '其余区域只整理内容。' };
   });
   const query = `?classroomId=${room.id}`;
   const preview = await call('POST', root + '/analysis/q' + query);
   assert.equal(preview.status, 200, await preview.clone().text());
-  assert.equal((await preview.json()).sectioned, true);
+  const analysisPreview = await preview.json();
+  assert.equal(analysisPreview.sectioned, true);
+  assert.equal(analysisPreview.canvasSectionOnly, true);
+  assert.equal(analysisPreview.canvasStudentReviews[0].id, mixedReview.reviewId);
+  assert.match(analysisPreview.canvasStudentReviews[0].reason, /能够描述海里的景物/);
+  assert.deepEqual(analysisPreview.canvasStudentReviews[0].regionIds, ['answer', 'photo', 'note', 'ink']);
+  const reviewPath = root + '/reviews' + query + `&participantId=${user.id}&reviewId=${mixedReview.reviewId}`;
+  const exactReview = await (await call('GET', reviewPath)).json();
+  assert.deepEqual(exactReview.reviews.map((review: { id: string; value: unknown }) => [review.id, review.value]), [[mixedReview.reviewId, complete]]);
+  assert.equal((await call('GET', reviewPath, undefined, token)).status, 403);
+  assert.equal((await call('GET', root + '/analysis/q' + query, undefined, token)).status, 403);
   assert.equal((await call('POST', root + '/analysis/q/run' + query, undefined, token)).status, 403);
-  const report = await call('POST', root + '/analysis/q/run' + query + '&analysisOnly=true');
+  const pendingReport = call('POST', root + '/analysis/q/run' + query + '&analysisOnly=true');
+  try {
+    let progress: { title: string; findings: string }[] = [];
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const interim = await (await call('GET', root + '/analysis/q' + query)).json();
+      progress = interim.sectionProgress ?? [];
+      if (progress.some(area => area.findings.includes('照片中能辨认景物特点'))) break;
+      await delay(50);
+    }
+    assert.ok(progress.some(area => area.findings.includes('照片中能辨认景物特点')), '第二区先完成，第一块仍等待时应已可以查看');
+    assert.ok(progress.every(area => !area.title.startsWith('作答区 1')));
+  } finally {
+    finishFirstArea();
+  }
+  const report = await pendingReport;
   assert.equal(report.status, 200, await report.clone().text());
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 4);
   const result = await report.json();
-  assert.match(result.narrative, /整题总结/);
-  assert.deepEqual(result.sectionAnalysis.map((area: { students: Array<{ studentId: string; feedback: string | null }> }) => area.students.map(row => [row.studentId, row.feedback])),
-    [[[user.id, '补充具体观察']], [[user.id, '照片表现具体']], [[user.id, null]], [[user.id, null]]]);
-  assert.deepEqual(result.sectionAnalysis[0].students[0].value, second);
+  assert.match(result.narrative, /^> 已提交/);
+  assert.doesNotMatch(result.narrative, /整题总结/);
+  assert.equal(result.sectionAnalysis.length, 4);
+  assert.ok(result.sectionAnalysis.every((area: { students: unknown[] }) => area.students.length === 0));
+  assert.doesNotMatch(JSON.stringify(result.sectionAnalysis), /补充具体观察|照片表现具体/);
   const loaded = await (await call('GET', root + '/analysis/q' + query)).json();
   assert.equal(loaded.stale, false);
+  assert.equal(loaded.sectionProgress, undefined);
   assert.deepEqual(loaded.sectionAnalysis, result.sectionAnalysis);
+  assert.deepEqual(loaded.canvasStudentReviews, analysisPreview.canvasStudentReviews);
   const studentView = await (await call('GET', root + '/student-view', undefined, token)).json();
   assert.ok(!JSON.stringify(studentView).includes('canvasEvaluation'));
   assert.ok(!JSON.stringify(studentView).includes('补充具体观察'));
@@ -328,6 +355,7 @@ test('整图任务可保存并投影给学生，同桌录音评星随实名作�
   const ratedSubmission = await submitMatching();
   assert.equal(ratedSubmission.status, 200);
   assert.equal((await ratedSubmission.json()).reviewStatus, 'submitted');
+  assert.equal((await submitMatching()).status, 409);
   const savedRating = await db.worksheetAnswer.findUniqueOrThrow({ where: { id: matching.id } });
   assert.deepEqual(savedRating.value, mixed(ratedParts));
   assert.equal(savedRating.score, null);
@@ -358,6 +386,8 @@ test('整图任务可保存并投影给学生，同桌录音评星随实名作�
   assert.ok(!JSON.stringify(reviewProjection).includes(rubricImage));
 
   const individualCalls: string[] = [];
+  let finishPhoto!: () => void;
+  const pendingPhoto = new Promise<void>(resolve => { finishPhoto = resolve; });
   app.set('analysisProxy', async (_agent: unknown, message: string, images: Buffer[], _signal: unknown, clips: Array<{ url: string }>) => {
     individualCalls.push(message);
     assert.doesNotMatch(message, /客观控件不能发起个人评价|配对正确|3 \/ 4 星/);
@@ -365,7 +395,10 @@ test('整图任务可保存并投影给学生，同桌录音评星随实名作�
       assert.match(message, /看到了珊瑚与海龟/);
       assert.equal(images.length, 1);
     }
-    if (message.includes('照片标准')) assert.equal(images.length, 3, '底图、评价依据和学生照片');
+    if (message.includes('照片标准')) {
+      assert.equal(images.length, 3, '底图、评价依据和学生照片');
+      await pendingPhoto;
+    }
     if (message.includes('手写标准')) assert.equal(images.length, 2);
     if (message.includes('录音标准')) assert.equal(clips[0].url, audio.url);
     return { success: true, content: '说清了观察对象。<classnode-feedback>{"students":[{"student":"示例学生#01","advice":"可以再补一个细节。"}]}</classnode-feedback>' };
@@ -375,12 +408,26 @@ test('整图任务可保存并投影给学生，同桌录音评星随实名作�
   assert.equal((await submitMatching()).status, 409);
   assert.equal(individualCalls.length, 0);
   assert.equal((await saveMatching(reviewParts)).status, 200);
-  const submitEntire = () => call('POST', root + '/answers/submit', { questionId: 'matching', requestId: 'review-entire-task' }, token);
+  const submitEntire = (requestId = 'review-entire-task') => call('POST', root + '/answers/submit', { questionId: 'matching', requestId }, token);
   const wholeSubmission = await submitEntire();
   assert.equal(wholeSubmission.status, 200, await wholeSubmission.clone().text());
   const { reviewId, reviewStatus } = await wholeSubmission.json();
   assert.equal(reviewStatus, 'pending');
   assert.equal((await (await submitEntire()).json()).reviewId, reviewId);
+  try {
+    let partial: { status: string; reason: string | null } | undefined;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const { reviews } = await (await call('GET', root + '/answers/reviews', undefined, token)).json();
+      partial = reviews.find((review: { id: string }) => review.id === reviewId);
+      if (partial?.reason?.includes('观察录音')) break;
+      await delay(50);
+    }
+    assert.equal(partial?.status, 'pending');
+    assert.match(partial?.reason ?? '', /观察录音/);
+    assert.doesNotMatch(partial?.reason ?? '', /作品照片/);
+  } finally {
+    finishPhoto();
+  }
   const four = await waitForReview(reviewId);
   assert.equal(four.status, 'succeeded', four.error ?? undefined);
   assert.equal(four.score, null);
@@ -394,4 +441,67 @@ test('整图任务可保存并投影给学生，同桌录音评星随实名作�
   const studentReviews = await (await call('GET', root + '/answers/reviews', undefined, token)).json();
   assert.equal(studentReviews.reviews[0].reason, four.reason);
   assert.equal(studentReviews.reviews[0].advice, four.advice);
+
+  const repeatedSave = await saveMatching(reviewParts);
+  assert.equal(repeatedSave.status, 200);
+  assert.equal((await repeatedSave.json()).status, 'submitted');
+  assert.equal((await submitEntire('review-duplicate-task')).status, 409);
+  assert.equal((await (await submitEntire()).json()).reviewId, reviewId);
+  assert.equal(individualCalls.length, 4);
+
+  const changedSave = await saveMatching({ ...reviewParts, caption: { ...caption, text: `${caption.text}，还看到了鱼群。` } });
+  assert.equal(changedSave.status, 200);
+  assert.equal((await changedSave.json()).status, 'draft');
+  const changedSubmission = await submitEntire('review-revised-task');
+  assert.equal(changedSubmission.status, 200, await changedSubmission.clone().text());
+  const revised = await waitForReview((await changedSubmission.json()).reviewId);
+  assert.equal(revised.status, 'succeeded', revised.error ?? undefined);
+  assert.equal(individualCalls.length, 8);
+  assert.ok(individualCalls.some(message => message.includes('还看到了鱼群')));
+
+  // Multiple batches of a single region must overlap and finish before that region is published.
+  for (let index = 0; index < 5; index++) {
+    const otherStudent = await db.student.create({ data: { classId: klass.id, name: `录音学生${index + 1}`, studentNo: String(index + 2) } });
+    const participant = await db.classroomStudent.create({ data: { classroomId: room.id, studentId: otherStudent.id, type: 'student' } });
+    const response = await db.worksheetResponse.create({ data: { classroomId: room.id, worksheetId: sheet.id, participantId: participant.id } });
+    await db.worksheetAnswer.create({ data: { responseId: response.id, questionId: 'matching', status: 'submitted',
+      value: { format: 'image-canvas/v1', answers: { recording: audio } } } });
+  }
+  const areaBatchSizes: number[] = [];
+  let releaseAreaBatches!: () => void;
+  const areaBatchesHeld = new Promise<void>(resolve => { releaseAreaBatches = resolve; });
+  let areaSummaries = 0;
+  app.set('analysisProxy', async (_agent: unknown, message: string, _images: Buffer[], _signal: unknown, clips: Array<{ url: string }>) => {
+    if (/整理「作答区 \d+ · 观察录音」/.test(message)) {
+      areaSummaries++;
+      assert.match(message, /录音批次 1[\s\S]*录音批次 2/);
+      return { success: true, content: '录音区汇总结果。' };
+    }
+    if (/当前仅处理「作答区 \d+ · 观察录音」/.test(message)) {
+      const index = /第 (\d+) \/ 2 批/.exec(message)?.[1];
+      assert.ok(index);
+      assert.ok(clips.every(clip => clip.url === audio.url));
+      areaBatchSizes.push(clips.length);
+      await areaBatchesHeld;
+      return { success: true, content: `录音批次 ${index}` };
+    }
+    return { success: true, content: '该区的全班观察。' };
+  });
+  const matchingAnalysis = root + '/analysis/matching';
+  assert.equal((await call('POST', matchingAnalysis + query)).status, 200);
+  const matchingReport = call('POST', matchingAnalysis + '/run' + query + '&analysisOnly=true');
+  try {
+    for (let attempt = 0; attempt < 100 && areaBatchSizes.length < 2; attempt++) await delay(25);
+    assert.deepEqual(areaBatchSizes.sort(), [1, 5]);
+    assert.equal(areaSummaries, 0);
+    const inProgress = await (await call('GET', matchingAnalysis + query)).json();
+    assert.ok(!inProgress.sectionProgress?.some((section: { id: string }) => section.id === 'recording'));
+  } finally {
+    releaseAreaBatches();
+  }
+  const matchingReportResponse = await matchingReport;
+  assert.equal(matchingReportResponse.status, 200, await matchingReportResponse.clone().text());
+  assert.equal(areaSummaries, 1);
+  const { sectionAnalysis } = await matchingReportResponse.json();
+  assert.equal(sectionAnalysis.find((section: { id: string }) => section.id === 'recording').findings, '录音区汇总结果。');
 });

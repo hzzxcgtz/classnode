@@ -15,6 +15,7 @@ import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
  * 那一条本机永远验不了，已写进验收清单。
  */
 import { test } from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -28,6 +29,7 @@ import express from 'express';
 import sharp from 'sharp';
 import { worksheetRoutes } from '../routes/worksheets.js';
 import { resolveLocalPath, type proxyAnalysisRequest } from '../services/ai-proxy.js';
+import { encrypt } from '../services/crypto.js';
 // ★ 2026-10-07：下面那条「本地有结论的行不许被 AI 盖掉」要**自己证明前置条件**
 //（本地判分对那道题真的有结论）—— 否则用例是空的。
 import { grade, type QuestionNode } from '../services/worksheet-questions.js';
@@ -214,16 +216,10 @@ test('表达题从手写和照片作答生成观点云，切换输入方式后�
       assert.doesNotMatch(message, /wordCloud|观点提炼要求/);
       return { success: true, content: report };
     }
-    if (message.includes('本批作答拼图')) {
-      assert.ok(images.length > 0);
-      assert.match(message, /明确表达的具体观点/);
-      return { success: true, content: `${ZHANG} 提到颜色变深。` };
-    }
     assert.match(message, /wordCloud/);
-    if (images.length === 0) {
-      assert.ok(message.includes(`${ZHANG} 提到颜色变深。`));
+    if (message.includes(cloudRequirements)) {
+      assert.equal(images.length, 1, '一批即可直接发送原始照片和文字');
       assert.match(message, /原有文字观察：颜色变深/);
-      assert.ok(message.includes(cloudRequirements));
       assert.ok(message.includes(reportPreference));
       assert.match(message, /教师在本题 AI 评价要求中明确指定全班分析/);
       assert.match(message, /classnode-feedback/);
@@ -1124,4 +1120,102 @@ test('只更新全班分析：自动评价开关回传，模型返回的评分�
   assert.equal(fake.messages.length, 1, '已交作品可直接纳入班级分析');
   assert.doesNotMatch(fake.messages[0], /<classnode-scores>/);
   assert.deepEqual(await gradeOf(p, response.id), before);
+});
+
+test('全班分析并发发送原始图像、录音与文字，支持单智能体或多智能体，汇总等待全部批次', async t => {
+  const { prisma, dir } = await openTempDb();
+  const previousRoot = process.env.CLASSNODE_DATA_DIR;
+  process.env.CLASSNODE_DATA_DIR = dir;
+  t.after(async () => {
+    if (previousRoot === undefined) delete process.env.CLASSNODE_DATA_DIR;
+    else process.env.CLASSNODE_DATA_DIR = previousRoot;
+    await prisma.$disconnect();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const firstAgent = await makeAgent(prisma, 'coze', null);
+  const credential = await prisma.platformToken.create({ data: { platform: 'coze', label: '课堂扣子账号', token: encrypt(firstAgent.apiKey) } });
+  await prisma.agent.update({ where: { id: firstAgent.id }, data: { credentialId: credential.id } });
+  const secondAgent = await prisma.agent.create({ data: {
+    name: '第二智能体', platform: 'coze', apiKey: firstAgent.apiKey, botId: 'bot-2', enabled: true, purpose: 'analysis',
+  } });
+  const node = { id: 'q3', type: 'short-answer', inputMode: 'photo', prompt: '说说你的观察', data: {}, children: [] };
+  const { worksheet, classroom, participants } = await seed(prisma, { node, analysisAgentId: firstAgent.id,
+    roster: Array.from({ length: 9 }, (_, index) => ({ name: `学生${index + 1}`, studentNo: String(index + 1) })) });
+  const photo = '/uploads/chat/chat-11111111-1111-4111-8111-111111111111.png';
+  const audio = '/uploads/chat/chat-22222222-2222-4222-8222-222222222222.ogg';
+  const photoPath = resolveLocalPath(photo);
+  fs.mkdirSync(path.dirname(photoPath), { recursive: true });
+  const original = await sharp({ create: { width: 24, height: 35, channels: 3, background: '#2468ac' } }).png().toBuffer();
+  fs.writeFileSync(photoPath, original);
+  await Promise.all(participants.map((participantId, index) => prisma.worksheetAnswer.updateMany({
+    where: { response: { participantId } },
+    data: { value: index === 0 ? { format: 'text/v1', text: '原始文字观察' } : index === 1
+      ? { format: 'audio/v1', url: audio, durationMs: 1000 } : { format: 'photo/v1', url: photo } },
+  })));
+  const calls: Array<{ botId?: string; images: Buffer[]; audio: string[]; prompt: string; onAnalyzing?: () => void }> = [];
+  let release: () => void = () => {};
+  let hold = Promise.resolve();
+  let releaseSummary: () => void = () => {};
+  let holdSummary = Promise.resolve();
+  let summaries = 0;
+  const srv = await withServer(prisma, async (agent, prompt, images, _signal, clips, onAnalyzing) => {
+    if (prompt.includes('依据下列各批观察')) {
+      onAnalyzing?.();
+      summaries++;
+      assert.match(prompt, /批次依据 1[\s\S]*批次依据 2/);
+      await holdSummary;
+      return { success: true, content: '### 核心结论\n汇总后的班级观察。' };
+    }
+    const batch = /第 (\d+) \/ 2 批/.exec(prompt);
+    assert.ok(batch, prompt);
+    calls.push({ botId: agent.botId, images, audio: clips?.map(clip => clip.url) ?? [], prompt, onAnalyzing });
+    await hold;
+    return { success: true, content: `批次依据 ${batch[1]}` };
+  });
+  t.after(() => srv.close());
+  const snapshot = payloadUrl(srv.base, worksheet.id, 'q3', classroom.id);
+  const run = `${runUrl(srv.base, worksheet.id, 'q3', classroom.id)}&analysisOnly=true`;
+  for (const multi of [false, true]) {
+    if (multi) await prisma.worksheet.update({ where: { id: worksheet.id },
+      data: { settings: { analysisAgentId: firstAgent.id, additionalReviewAgentIds: [secondAgent.id] } } });
+    assert.equal((await fetch(snapshot, { method: 'POST' })).status, 200);
+    calls.length = 0;
+    hold = new Promise<void>(resolve => { release = resolve; });
+    holdSummary = new Promise<void>(resolve => { releaseSummary = resolve; });
+    const running = fetch(run, { method: 'POST' });
+    try {
+      for (let attempt = 0; attempt < 100 && calls.length < 2; attempt++) await delay(25);
+      assert.equal(calls.length, 2, '两批均在对方返回前开始');
+      assert.equal(summaries, Number(multi), '等待所有批次返回后才汇总');
+      assert.deepEqual(new Set(calls.map(call => call.botId)), new Set(multi ? ['bot-1', 'bot-2'] : ['bot-1']));
+      assert.equal(calls.flatMap(call => call.images).length, 7);
+      assert.ok(calls.flatMap(call => call.images).every(image => image.equals(original)));
+      assert.deepEqual(calls.flatMap(call => call.audio), [audio]);
+      assert.ok(calls.some(call => call.prompt.includes('原始文字观察')));
+      const progress = async () => (await (await fetch(snapshot)).json()).batchProgress
+        .map((batch: { phase: string; index: number }) => [batch.index, batch.phase]);
+      assert.deepEqual(await progress(), [[1, 'sending'], [2, 'sending']]);
+      const sending = await (await fetch(snapshot)).json();
+      assert.ok(sending.batchProgress.every((batch: { startedAt: number; finishedAt?: number }) => batch.startedAt >= sending.batchRunStartedAt && batch.finishedAt === undefined));
+      assert.deepEqual(new Set(sending.batchProgress.map((batch: { accountLabel?: string }) => batch.accountLabel)),
+        new Set(multi ? ['课堂扣子账号', undefined] : ['课堂扣子账号']));
+      assert.doesNotMatch(JSON.stringify(sending.batchProgress), /fake-key/);
+      calls.forEach(call => call.onAnalyzing?.());
+      assert.deepEqual(await progress(), [[1, 'analyzing'], [2, 'analyzing']]);
+      release();
+      for (let attempt = 0; attempt < 100 && summaries === Number(multi); attempt++) await delay(25);
+      assert.equal(summaries, Number(multi) + 1);
+      const finishing = await (await fetch(snapshot)).json();
+      const completedBatches = finishing.batchProgress.filter((batch: { index: number }) => batch.index > 0);
+      assert.ok(completedBatches.every((batch: { phase: string; startedAt: number; finishedAt: number }) =>
+        batch.phase === 'completed' && batch.finishedAt >= batch.startedAt));
+    } finally {
+      release();
+      releaseSummary();
+    }
+    const response = await running;
+    assert.equal(response.status, 200, await response.clone().text());
+    assert.match((await response.json()).narrative, /汇总后的班级观察/);
+    assert.equal((await (await fetch(snapshot)).json()).batchProgress, undefined);
+  }
 });

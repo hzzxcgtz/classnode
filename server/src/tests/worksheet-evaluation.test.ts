@@ -117,15 +117,20 @@ test('真实HTTP提交：文字与图片共同传给AI，反馈成功计次数�
  const teacherPost=(suffix:string)=>fetch(base+suffix,{method:'POST',headers:{Cookie:cookie}});
  await teacherPost(`/analysis/q?classroomId=${room.id}`);
  app.set('analysisProxy',async(_agent:unknown,message:string,images:Buffer[],_signal:unknown,audio:unknown[])=>{
-  summaryCalls++;assert.match(message,/个人评价结果汇总/);assert.match(message,/你描述了颜色变化/);assert.ok(message.includes(withCloud.data.wordCloudRequirements));assert.equal(images.length,0);assert.deepEqual(audio,[]);
+  summaryCalls++;
+  assert.match(message, /我看到了颜色变化/);
+  assert.doesNotMatch(message, /你描述了颜色变化/);
+  assert.ok(message.includes(withCloud.data.wordCloudRequirements));
+  assert.deepEqual(images, [bytes]);
+  assert.deepEqual(audio, []);
   assert.ok(message.includes(reportPreference));
   assert.match(message, /个人反馈的格式要求不用于班级正文/);
   assert.match(message, /典型表现与作答依据/);
-  return {success:true,content:'### 主要表现\n已有评价显示能描述变化，建议补充前后过程。<classnode-feedback>{"groups":[],"students":[],"wordCloud":[]}</classnode-feedback>'};
+  return {success:true,content:'### 主要表现\n原始作答描述了颜色变化，建议补充前后过程。<classnode-feedback>{"groups":[],"students":[],"wordCloud":[]}</classnode-feedback>'};
  });
  const summaryResult=await teacherPost(`/analysis/q/run?classroomId=${room.id}&analysisOnly=true`);
  assert.equal(summaryResult.status,200,await summaryResult.clone().text());assert.equal(summaryCalls,1);
- assert.match((await summaryResult.json()).narrative,/纳入有效评价 1 人/);
+ assert.match((await summaryResult.json()).narrative,/已提交 1 份作答，本次纳入 1 份/);
  const savedSummary=(await fetch(base+`/analysis/q?classroomId=${room.id}`,{headers:{Cookie:cookie}}));
  assert.equal(savedSummary.status,200);
  const currentSummary=await savedSummary.json();
@@ -133,9 +138,10 @@ test('真实HTTP提交：文字与图片共同传给AI，反馈成功计次数�
  assert.equal(currentSummary.stale,false);
  assert.equal((await db.worksheetAnswerReview.findUniqueOrThrow({where:{id:teacherReview.id}})).advice,'再说说变化前后的区别。');
  const savedReport=(await db.worksheetQuestionAnalysis.findFirstOrThrow()).narrative;
- app.set('analysisProxy',async()=>{await db.worksheetAnswerReview.update({where:{id:teacherReview.id},data:{advice:'分析期间评价发生变化'}});return {success:true,content:'不能覆盖的旧汇总'};});
+ app.set('analysisProxy',async()=>{await db.worksheet.update({where:{id:sheet.id},data:{title:'分析期间任务上下文发生变化'}});return {success:true,content:'不能覆盖的旧汇总'};});
  assert.equal((await teacherPost(`/analysis/q/run?classroomId=${room.id}&analysisOnly=true`)).status,409);
  assert.equal((await db.worksheetQuestionAnalysis.findFirstOrThrow()).narrative,savedReport);
+ await db.worksheet.update({where:{id:sheet.id},data:{title:sheet.title}});
  assert.equal((await teacherSave({...withCloud,data:{...withCloud.data,wordCloudRequirements:''}})).status,200);
  const staleSummary=await fetch(base+`/analysis/q?classroomId=${room.id}`,{headers:{Cookie:cookie}});
  assert.equal((await staleSummary.json()).stale,true,'清空观点要求后旧报告标为待更新');

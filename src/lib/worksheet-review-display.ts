@@ -37,3 +37,27 @@ export function reviewDurationLabel(milliseconds: number | null | undefined): st
 export function reviewSourceLabel(source: string): string {
   return source === 'teacher' ? '教师主动评分' : '学生自主评分';
 }
+/** Split the headings written by the review service before formatting numbered prose. */
+export function feedbackSections(text: string) {
+  const headings = [...text.matchAll(/^(第 (\d+) 空(?:（[^\n]*?）)?)：|^(作答区 (\d+) · [^\n]+)\n/gm)];
+  if (headings[0]?.index !== 0) return [];
+  return headings.map((match, index) => ({
+    key: match[2] ? `blank-${match[2]}` : `region-${match[4]}`,
+    title: match[1] ?? match[3],
+    text: text.slice(match.index + match[0].length, headings[index + 1]?.index).trim(),
+  }));
+}
+
+export function canvasReviewSections(reason: string, advice: string, regionIds: readonly string[]) {
+  const assessments = feedbackSections(reason);
+  const suggestions = feedbackSections(advice);
+  if ((reason && !assessments.length) || (advice && !suggestions.length)) return [];
+  const keys = [...new Set([...assessments, ...suggestions].map(section => section.key))];
+  if (keys.some(key => !key.startsWith('region-'))) return [];
+  return keys.sort((a, b) => Number(a.slice(7)) - Number(b.slice(7))).map(key => {
+    const assessment = assessments.find(section => section.key === key);
+    const suggestion = suggestions.find(section => section.key === key);
+    return { key, id: regionIds[Number(key.slice(7)) - 1], title: (assessment ?? suggestion)!.title,
+      reason: assessment?.text, advice: suggestion?.text };
+  });
+}

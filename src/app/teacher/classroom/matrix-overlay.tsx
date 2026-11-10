@@ -296,9 +296,9 @@ export function MatrixOverlay({
                       const active = selectedQuestionTarget?.worksheetId === item.worksheetId
                         && selectedQuestionTarget.questionId === item.questionId;
                       return (
-                        <div key={item.questionId} className={styles.questionNavRow} data-active={active} data-analysis={item.analysisAvailable}>
-                          <button type="button" className={styles.questionNavSelect}
-                            onClick={() => openQuestion(item.worksheetId, item.questionId)}>
+                        <button key={item.questionId} type="button" className={`${styles.questionNavRow} ${styles.questionNavSelect}`}
+                          data-active={active} aria-current={active ? 'true' : undefined}
+                          onClick={() => openQuestion(item.worksheetId, item.questionId)}>
                             <span className={styles.questionNavTitle}>
                               <strong title={item.title}>{item.title}</strong>
                             </span>
@@ -309,12 +309,11 @@ export function MatrixOverlay({
                                 {item.aggregate.graded > 0 ? `${item.aggregate.accuracy}%` : '待判分'}
                               </strong>}
                             </span>
-                          </button>
-                          {item.analysisAvailable && <div className={styles.questionNavAnalysis}>
-                            <AnalysisStatus classroomId={classroomId} worksheetId={item.worksheetId}
-                              row={item} analyzed={worksheet.analyzedQuestionIds.includes(item.questionId)} />
-                          </div>}
-                        </div>
+                            {item.analysisAvailable && <span className={styles.questionNavAnalysis}>
+                              <AnalysisStatus classroomId={classroomId} worksheetId={item.worksheetId}
+                                row={item} analyzed={worksheet.analyzedQuestionIds.includes(item.questionId)} />
+                            </span>}
+                        </button>
                       );
                     })}
                   </section>

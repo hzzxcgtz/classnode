@@ -156,7 +156,7 @@ export function resetWorksheetClearBusForTest(): void {
 }
 
 /** 分析保存通知经已加入学生房间的会话连接转发；面板只重新读取反馈。 */
-type AnalysisUpdated = { worksheetId: string };
+type AnalysisUpdated = { worksheetId: string; reviewProgress?: true };
 const analysisListeners = new Set<(event: AnalysisUpdated) => void>();
 export function publishWorksheetAnalysisUpdated(event: AnalysisUpdated) {
   if (typeof event?.worksheetId !== 'string' || !event.worksheetId) return;

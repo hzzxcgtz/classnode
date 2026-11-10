@@ -24,7 +24,8 @@ export function QuestionAnalysisSection({ classroomId, worksheetId, questionId, 
     ? Math.max(1, Math.round(durationMs / 1000)) : null;
   const duration = seconds === null ? '耗时未记录' : seconds < 60
     ? `耗时 ${seconds} 秒` : `耗时 ${Math.floor(seconds / 60)} 分${seconds % 60 ? ` ${seconds % 60} 秒` : ''}`;
-  const status = ready
+  const partialCount = state.payload?.sectionProgress?.length ?? 0;
+  const status = partialCount ? `本次已完成 ${partialCount} 个作答区` : ready
     ? `${timestamp ? `上次分析：${timestamp}` : '分析时间未记录'} · ${duration}` : '尚未进行 AI 分析';
 
   useEffect(() => {

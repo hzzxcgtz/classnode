@@ -40,7 +40,7 @@ export function normalizeWorksheetAnalysisMarkdown(source: string): string {
     .split('\n')
     .map((line) => {
       const trimmed = line.trimEnd();
-      const title = trimmed.replace(/^\s*(?:>\s*)?(?:#{1,6}\s+)?(?:\*\*)?/, '').replace(/(?:\*\*)?[：:]?$/, '').trim();
+      const title = trimmed.replace(/^\s*(?:>\s*)?(?:#{1,6}\s+)?(?:\*\*)?/, '').replace(/(?:\*\*|[：:])+$/, '').trim();
       return REPORT_HEADINGS.has(title) ? `### ${title}` : trimmed;
     })
     .join('\n')
@@ -55,4 +55,18 @@ export function normalizeWorksheetAnalysisMarkdown(source: string): string {
     .replace(/(?<=\S)\*\*(?=[“‘"'«「『])/g, ' **')
     .replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n')
     .trim();
+}
+
+/** Keep the three class-report slots visible even if the model omits a heading. */
+export function canvasClassReportMarkdown(source: string): string {
+  const text = normalizeWorksheetAnalysisMarkdown(source);
+  const titles = ['核心结论', '典型表现与作答依据', '后续建议'];
+  const headings = [...text.matchAll(/^### (核心结论|典型表现与作答依据|后续建议)[ \t]*$/gm)];
+  const sections = new Map<string, string>();
+  for (const [index, heading] of headings.entries()) {
+    const body = text.slice(heading.index + heading[0].length, headings[index + 1]?.index).trim();
+    if (body) sections.set(heading[1], body);
+  }
+  if (!headings.length && text) sections.set(titles[0], text);
+  return titles.map(title => `### ${title}\n\n${sections.get(title) ?? '本次未返回此项内容。'}`).join('\n\n');
 }

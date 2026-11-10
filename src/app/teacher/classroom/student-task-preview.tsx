@@ -12,11 +12,13 @@ import { ClassroomImagePreview } from './image-preview';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { TaskAnnotationSurface } from './task-annotation-surface';
 import { answerView } from '@/lib/worksheet-answer-view';
+import { readCanvasAnswers } from '@/lib/worksheet-image-canvas';
 import styles from './student-task-preview.module.css';
 
-export function StudentTaskPreview({ classroomId, worksheetId, questionId, participantId, studentName, onClose, onSwitchToReview, viewTabs, visible = true, answerSnapshot }: {
+export function StudentTaskPreview({ classroomId, worksheetId, questionId, participantId, studentName, onClose, onSwitchToReview, viewTabs, visible = true, answerSnapshot, reviewRegion }: {
   classroomId: string; worksheetId: string; questionId: string; participantId: string; studentName: string;
   answerSnapshot?: { node: WorksheetQuestionNode; value: unknown };
+  reviewRegion?: { id: string; title: string; reviewId: string };
   viewTabs?:ReactNode; visible?: boolean; onSwitchToReview?:()=>void; score?: number | null; maxScore?: number; unit?: string; reason?: string | null; advice?: string | null; onClose: () => void;
 }) {
   const [data, setData] = useState<{ node: WorksheetQuestionNode; answer?: Pick<WorksheetBoardAnswerRow, 'value'> } | null>(null);
@@ -31,6 +33,18 @@ export function StudentTaskPreview({ classroomId, worksheetId, questionId, parti
       setData({ node: answerSnapshot.node, answer: { value: answerSnapshot.value } });
       return;
     }
+    if (reviewRegion) {
+      void api.getWorksheetReview(classroomId, worksheetId, participantId, reviewRegion.reviewId).then(({ reviews }) => {
+        if (cancelled) return;
+        const review = reviews.find(row => row.id === reviewRegion.reviewId && row.questionId === questionId);
+        if (!review) throw new Error('这份评价对应的作答已无法读取。');
+        const parts = readCanvasAnswers(review.value);
+        const value = parts ? Object.hasOwn(parts, reviewRegion.id) ? parts[reviewRegion.id] : null : review.value;
+        const node: WorksheetQuestionNode = { id: questionId, type: 'short-answer', prompt: reviewRegion.title, inputMode: 'keyboard', data: {}, children: [] };
+        setData({ node, answer: { value } });
+      }).catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : '暂时无法读取作答，请重试。'); });
+      return () => { cancelled = true; };
+    }
     void Promise.all([api.getWorksheet(worksheetId), api.getWorksheetBoard(classroomId)]).then(([sheet, board]) => {
       if (cancelled) return;
       const node = flattenQuestions(sheet.content.nodes).find(row => row.id === questionId);
@@ -39,11 +53,11 @@ export function StudentTaskPreview({ classroomId, worksheetId, questionId, parti
       setData({ node, answer: participant?.answerRows.find(row => row.questionId === questionId) });
     }).catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : '暂时无法读取作答，请重试。'); });
     return () => { cancelled = true; };
-  }, [classroomId, worksheetId, questionId, participantId, retry, answerSnapshot]);
+  }, [classroomId, worksheetId, questionId, participantId, retry, answerSnapshot, reviewRegion]);
   const view = data ? answerView(data.node,data.answer?.value) : null;
   const kind = view?.kind;
-  if (view?.kind === 'photo') return <ClassroomImagePreview studentName={studentName} viewTabs={viewTabs} visible={visible} allowAnnotations src={worksheetAssetUrl(view.url)} quickAction={!viewTabs&&onSwitchToReview&&<button onClick={onSwitchToReview}>查看评价</button>} onClose={onClose}/>;
-  return <><FullscreenPreview viewTabs={viewTabs} visible={visible} switchAnimation slideFrom="left" quickAction={!viewTabs&&onSwitchToReview&&<button onClick={onSwitchToReview}>查看评价</button>} floatingControls title={`${studentName} · 本题作答`} heading={<LectureHeading studentName={studentName} mode="answer"/>} onClose={onClose} controls={<>
+  if (view?.kind === 'photo') return <ClassroomImagePreview studentName={studentName} sectionTitle={reviewRegion?.title} viewTabs={viewTabs} visible={visible} allowAnnotations src={worksheetAssetUrl(view.url)} quickAction={!viewTabs&&onSwitchToReview&&<button onClick={onSwitchToReview}>查看评价</button>} onClose={onClose}/>;
+  return <><FullscreenPreview viewTabs={viewTabs} visible={visible} switchAnimation slideFrom="left" quickAction={!viewTabs&&onSwitchToReview&&<button onClick={onSwitchToReview}>查看评价</button>} floatingControls title={`${studentName} · ${reviewRegion?.title ?? '本题作答'}`} heading={<LectureHeading studentName={studentName} sectionTitle={reviewRegion?.title} mode="answer"/>} onClose={onClose} controls={<>
       {kind !== 'photo' && kind !== 'ink' && <div className={styles.fontControls}><button disabled={active||fontSize<=14} onClick={()=>setFontSize(value=>value-2)} aria-label="缩小作答文字">A−</button><output>{fontSize}px</output><button disabled={active||fontSize>=48} onClick={()=>setFontSize(value=>value+2)} aria-label="放大作答文字">A＋</button></div>}
       <button className={styles.annotationAction} disabled={!data} onClick={()=>setActive(value=>!value)}>{active?<IconCheck size={19} aria-hidden="true"/>:<IconPencil size={19} aria-hidden="true"/>}<span>{active?'结束批注':'开始批注'}</span></button>
     </>}>
@@ -54,7 +68,7 @@ export function StudentTaskPreview({ classroomId, worksheetId, questionId, parti
             <div className={`${styles.layout} ${styles.answerOnly}`}>
               <section className={styles.answer}>
                 <div className={styles.answerContent} data-photo={answerView(data.node,data.answer?.value).kind === 'photo'}>
-                  <TaskAnnotationSurface target={JSON.stringify(['task-answer',worksheetId,questionId,participantId,data.answer?.value])} active={active} standaloneTools textSize={fontSize} onFoundMarks={()=>setActive(true)} onRestore={setFontSize}><div className={styles.lectureBody}><div className={styles.lectureAnswer} data-kind={kind}><AnswerViewBody node={data.node} value={data.answer?.value} transcriptionActions={false}/></div></div></TaskAnnotationSurface>
+                  <TaskAnnotationSurface target={JSON.stringify(['task-answer',worksheetId,questionId,participantId,data.answer?.value,...(reviewRegion ? [reviewRegion.id] : [])])} active={active} standaloneTools textSize={fontSize} onFoundMarks={()=>setActive(true)} onRestore={setFontSize}><div className={styles.lectureBody}><div className={styles.lectureAnswer} data-kind={kind}><AnswerViewBody node={data.node} value={data.answer?.value} transcriptionActions={false}/></div></div></TaskAnnotationSurface>
                 </div>
               </section>
 

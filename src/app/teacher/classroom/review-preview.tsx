@@ -20,19 +20,19 @@ function ReviewSpeechControl({mode}: {mode:'reason'|'advice'}) {
 }
 
 export interface ReviewPreviewProps {
-  studentName?: string; title?: string; reason?: string | null; advice?: string | null; score?: number | null; maxScore?: number; unit?: string; note?: string; annotationId?: string;
+  studentName?: string; sectionTitle?: string; title?: string; reason?: string | null; advice?: string | null; score?: number | null; maxScore?: number; unit?: string; note?: string; annotationId?: string;
 }
 export function ReviewPreviewButton(props: ReviewPreviewProps & {onOpen?:()=>void; openExternally?:()=>void}) {
  const [open,setOpen]=useState(false);
  if(!props.reason&&!props.advice)return null;
- return <><button type="button" className={styles.expand} aria-label="放大讲评AI评价与建议" title="放大讲评 AI 评价与建议" onClick={()=>{props.onOpen?.();if(props.openExternally)props.openExternally();else setOpen(true);}}><IconMessageSearch size={18} stroke={1.7} aria-hidden="true"/></button>{open&&<ReviewFullscreen {...props} onClose={()=>setOpen(false)}/>}</>;
+ return <><button type="button" className={styles.expand} aria-label={props.sectionTitle ? `放大讲评 ${props.sectionTitle} 的评价与建议` : '放大讲评AI评价与建议'} title="放大讲评 AI 评价与建议" onClick={()=>{props.onOpen?.();if(props.openExternally)props.openExternally();else setOpen(true);}}><IconMessageSearch size={18} stroke={1.7} aria-hidden="true"/></button>{open&&<ReviewFullscreen {...props} onClose={()=>setOpen(false)}/>}</>;
 }
-export function ReviewFullscreen({title='AI 评价与建议',studentName,reason,advice,score,maxScore,unit,note,annotationId,onClose,onSwitch,viewTabs,visible = true}:ReviewPreviewProps & {viewTabs?:ReactNode;visible?:boolean;onClose:()=>void;onSwitch?:()=>void}) {
+export function ReviewFullscreen({title='AI 评价与建议',studentName,sectionTitle,reason,advice,score,maxScore,unit,note,annotationId,onClose,onSwitch,viewTabs,visible = true}:ReviewPreviewProps & {viewTabs?:ReactNode;visible?:boolean;onClose:()=>void;onSwitch?:()=>void}) {
  const [fontSize,setFontSize]=useState(24);
  const speech=useReviewSpeech(reason??'',advice??'',visible,annotationId??title);
   const reward = REWARD_STYLE_OPTIONS.find(option => option.value !== 'points' && pointsUnitLabel(option.value) === unit);
   const showRewardIcons = !!reward && score !== null && score !== undefined && Number.isInteger(score) && maxScore !== undefined && Number.isInteger(maxScore) && maxScore > 0 && maxScore <= 20;
-  return <ReviewSpeechContext.Provider value={speech}><FullscreenPreview viewTabs={viewTabs} visible={visible} switchAnimation floatingControls compactControls allowAnnotations textSize={fontSize} annotationKey={JSON.stringify(['review', annotationId, title, reason, advice, score, maxScore, unit, note])} title={title} heading={studentName ? <LectureHeading studentName={studentName} mode="review"/> : undefined} onClose={onClose} quickAction={!viewTabs&&onSwitch&&<button onClick={onSwitch}>查看作答</button>} controls={<>
+  return <ReviewSpeechContext.Provider value={speech}><FullscreenPreview viewTabs={viewTabs} visible={visible} switchAnimation floatingControls compactControls allowAnnotations textSize={fontSize} annotationKey={JSON.stringify(['review', annotationId, title, reason, advice, score, maxScore, unit, note])} title={title} heading={studentName ? <LectureHeading studentName={studentName} sectionTitle={sectionTitle} mode="review"/> : undefined} onClose={onClose} quickAction={!viewTabs&&onSwitch&&<button onClick={onSwitch}>查看作答</button>} controls={<>
       <div className={styles.fontTools}>
       <button type="button" onClick={() => setFontSize(size => Math.max(18, size - 2))} disabled={fontSize <= 18} aria-label="缩小评价文字">A−</button>
       <output aria-label="当前文字大小">{fontSize}<small>px</small></output>

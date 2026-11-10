@@ -509,7 +509,7 @@ export function WorksheetQuestionList({
         const submitDisabled = Boolean(submitting[node.id]) || pendingCanvas[node.id] || awaitingDeskRating || (composite && completeRegions < widgets.length) || reviewPending || (raw?.kind === 'fill' && Boolean(raw.pendingAudio?.length)) || (!submitted && untouched);
         // ★ M5a：课堂级锁定也禁用控件（停笔），但它**不**收起提交按钮 ——
         // 裁定 ③ 是「停笔，但还能交卷」。见下面渲染那一段。
-        const controlsDisabled = !interactive || locked || classroomLocked;
+        const controlsDisabled = !interactive || locked || classroomLocked || (canvasTask && Boolean(submitting[node.id]));
         const promptRuns = readPromptRunsFor(node);
         // 填空题的空 ↔ 作答草稿的绑定（见 `PromptText` 的 `blanks`）。
         const fillDraft = draft && draft.kind === 'fill' ? draft : null;
@@ -776,7 +776,7 @@ export function WorksheetQuestionList({
                     {reviewPending ? <ReviewThinking key={`${pendingReview!.id}-${pendingReview!.phase}`} queued={reviewQueued} /> : <span>还可评价 <strong>{reviewRemaining}</strong> 次</span>}
                   </div>}
 
-                  {(!personalReview || reviewRemaining > 0 || reviewPending) && !(submitted && canRetryLatest) && <div className={styles.submitRow}>
+                  {(!personalReview || reviewRemaining > 0 || reviewPending) && !(submitted && (canvasTask || canRetryLatest)) && <div className={styles.submitRow}>
                     <button
                       type="button"
                       className={`${styles.submitButton}${submitted ? ` ${styles.submitButtonResubmit}` : ''}`}
@@ -800,8 +800,14 @@ export function WorksheetQuestionList({
                   </div>}
                 </>
             )}
-            {canvasTask && submitted && feedbackReady && latestReview &&
-              <AiReviewFeedback reason={latestReview.reason} advice={latestReview.advice} review={latestReview} />}
+            {canvasTask && submitted && (interactive || reviewOnly) && (() => {
+              const partial = pendingReview ?? (!showReviewHistory ? latestFailedReview : null);
+              if (partial?.reason) return <div>
+                <p className={styles.cardNote}>{reviewPending ? '以下作答区已完成评价，其余还在处理中。' : '以下作答区已完成评价，可重新获取整题评价。'}</p>
+                <AiReviewFeedback reason={partial.reason} advice={partial.advice} />
+              </div>;
+              return feedbackReady && latestReview && <AiReviewFeedback reason={latestReview.reason} advice={latestReview.advice} review={latestReview} />;
+            })()}
           </section>
           );
           })}
@@ -1024,27 +1030,37 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
     if (!worksheetId) return;
     let cancelled = false;
     let revision = 0;
+    let reviewRevision = 0;
+    const fetchData = async (path: string) => {
+      const response = await fetch(`${getApiBaseUrl()}/api/worksheets/${encodeURIComponent(worksheetId)}/${path}`, {
+        credentials: 'include', headers: getStudentSessionAuthorization(),
+      });
+      return response.ok ? response.json() : null;
+    };
+    const refreshReviews = async () => {
+      const current = ++reviewRevision;
+      try {
+        const history = await fetchData('answers/reviews');
+        if (!cancelled && current === reviewRevision && history) setReviews(history.reviews ?? []);
+      } catch { /* 暂时保留已有评价。 */ }
+    };
     const refresh = async () => {
       const current = ++revision;
+      void refreshReviews();
       try {
-        const res = await fetch(`${getApiBaseUrl()}/api/worksheets/${encodeURIComponent(worksheetId)}/answers`, { credentials: 'include', headers: getStudentSessionAuthorization() });
-        if (!res.ok) return;
-        const data = await res.json();
-        const configRes = await fetch(`${getApiBaseUrl()}/api/worksheets/${encodeURIComponent(worksheetId)}/student-view`, { credentials: 'include', headers: getStudentSessionAuthorization() });
-        const config = configRes.ok ? await configRes.json() : null;
-        if (cancelled || current !== revision) return;
-        const history = await fetch(`${getApiBaseUrl()}/api/worksheets/${encodeURIComponent(worksheetId)}/answers/reviews`, { credentials: 'include', headers: getStudentSessionAuthorization() });
-        if (!cancelled && current === revision) {
-          setReviewedAnswers(Array.isArray(data.rows) ? data.rows : []);
-          if (history.ok) { const result = await history.json(); if (!cancelled && current === revision) setReviews(result.reviews ?? []); }
-        }
-        if (cancelled || current !== revision) return;
+        const [data, config] = await Promise.all([fetchData('answers'), fetchData('student-view')]);
+        if (cancelled || current !== revision || !data) return;
+        setReviewedAnswers(Array.isArray(data.rows) ? data.rows : []);
         setLoad(previous => previous.kind === 'ready' && previous.worksheet.id === worksheetId
           ? { ...previous, worksheet: { ...previous.worksheet, ...(config ? (() => { const groups = studentVisibleGroups(config.content?.nodes ?? []); return { groups, questions: groups.flatMap(group => group.items.map(item => item.node)), allowResubmit: config.settings?.allowResubmit !== false, reward: resolveRewardScale(config.settings), rewardFullFallback: resolveWorksheetFullStep(config.settings), answerMode: normalizeAnswerMode(config.settings?.answerMode), openQuestions: normalizeOpenQuestions(config.openQuestions) }; })() : {}), aiReferenceScores: parseAiReferenceScores(data), aiAdvice: parseAiAdvice(data) } }
           : previous);
       } catch { /* 保留已有反馈，稍后重新取得焦点时重试。 */ }
     };
-    const unsubscribe = subscribeWorksheetAnalysisUpdated(event => { if (event.worksheetId === worksheetId) void refresh(); });
+    const unsubscribe = subscribeWorksheetAnalysisUpdated(event => {
+      if (event.worksheetId !== worksheetId) return;
+      if (event.reviewProgress) void refreshReviews();
+      else void refresh();
+    });
     const visible = () => { if (document.visibilityState === 'visible') void refresh(); };
     const timer = window.setInterval(() => { if (active && document.visibilityState === 'visible') void refresh(); }, 5000);
     const submitted = (event: Event) => { if ((event as CustomEvent).detail?.worksheetId === worksheetId) void refresh(); };

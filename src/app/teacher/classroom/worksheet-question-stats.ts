@@ -2,6 +2,7 @@
 // 与 `worksheet-tile-state.ts` / `worksheet-drawer-state.ts` 同一条写法。
 import {
   draftFromValue,
+  isDraftEmpty,
   readCategorizeItems,
   readCategorizeZones,
   readMatchLeft,
@@ -13,7 +14,10 @@ import {
   type WorksheetEntry,
 } from '../../../lib/worksheet-questions.ts';
 import { readPairs, readPlacement } from '../../../lib/worksheet-answer-view.ts';
+import { readInkValue, type InkValue } from '../../../lib/worksheet-ink.ts';
 import { isGradedType, rowVerdict } from './worksheet-drawer-state.ts';
+import type { WorksheetQuestionNode } from '../../../lib/types.ts';
+import { CANVAS_STAR_LABEL, canvasAnswerMode, canvasAnswerWidgets, canvasResponseKey, readCanvasAnswers } from '../../../lib/worksheet-image-canvas.ts';
 
 /**
  * 「按题统计与分析」的**判据层** —— 纯函数，不碰 React / DOM / 网络。
@@ -115,6 +119,79 @@ export interface StatsRow {
   createdAt: string | null;
   savedAt: string | null;
   saveCount: number | null;
+}
+
+const CANVAS_REGION_LABELS = {
+  keyboard: '文字输入', handwriting: '手写或绘图', photo: '拍照上传', audio: '语音录入',
+  'peer-audio': '录音与评星', 'region-match': '拖拽配对', 'star-rating': CANVAS_STAR_LABEL,
+} as const;
+
+const TEXT_LENGTH_LABELS = ['空', '1–10 字', '11–30 字', '31–60 字', '60 字以上'];
+const AUDIO_LENGTH_LABELS = ['10 秒以内', '超过 10 至 30 秒', '超过 30 秒'];
+
+function textLengthBucket(text: string): string {
+  const length = text.trim().length;
+  return TEXT_LENGTH_LABELS[length === 0 ? 0 : length <= 10 ? 1 : length <= 30 ? 2 : length <= 60 ? 3 : 4];
+}
+
+type CanvasSample = { kind: 'photo'; url: string } | { kind: 'ink'; ink: InkValue };
+
+export function canvasRegionStats(node: WorksheetQuestionNode, rows: ReadonlyArray<StatsRow | undefined>) {
+  if (node.type !== 'image-canvas') return [];
+  const widgets = canvasAnswerWidgets(node);
+  const submissions = rows.filter((row): row is StatsRow => row?.status === 'submitted').map(({ value }) => ({
+    draft: draftFromValue(node, value),
+    parts: readCanvasAnswers(value),
+    value,
+  }));
+  return widgets.map(widget => {
+    const id = canvasResponseKey(widget);
+    const mode = canvasAnswerMode(node, widget);
+    const counts = new Map<string, number>();
+    const ratings = new Map<number, Map<string, number>>();
+    const samples: CanvasSample[] = [];
+    const distributions: Array<{ title: string; bars: Bar[]; total: number }> = [];
+    let answered = 0;
+    for (const { draft, parts, value } of submissions) {
+      const part = draft.kind === 'image-canvas' ? draft.answers[id] : widgets.length === 1 ? draft : undefined;
+      if (!part || isDraftEmpty(part)) continue;
+      answered++;
+      if (part.kind === 'text') bump(counts, textLengthBucket(part.text));
+      if (part.kind === 'audio') {
+        const ms = part.durationMs;
+        bump(counts, AUDIO_LENGTH_LABELS[ms <= 10_000 ? 0 : ms <= 30_000 ? 1 : 2]);
+      }
+      if (part.kind === 'canvas-match') bump(counts, part.correct ? '配对正确' : '配对错误');
+      const rating = part.kind === 'canvas-stars' ? part : part.kind === 'audio' ? part.deskRating : undefined;
+      if (rating) {
+        const stars = ratings.get(rating.maxStars) ?? new Map<string, number>();
+        bump(stars, `${rating.stars} 星`);
+        ratings.set(rating.maxStars, stars);
+      }
+      if (samples.length >= 2) continue;
+      if (part.kind === 'photo') samples.push({ kind: 'photo', url: part.url });
+      if (part.kind === 'ink') {
+        const ink = readInkValue(parts ? parts[id] : value);
+        if (ink) samples.push({ kind: 'ink', ink });
+      }
+    }
+    function addDistribution(title: string, labels: readonly string[], frequencies: Map<string, number>) {
+      const bars = labels.map(label => ({ label, count: frequencies.get(label) ?? 0 }));
+      const total = bars.reduce((sum, bar) => sum + bar.count, 0);
+      if (total) distributions.push({ title, bars, total });
+    }
+    if (mode === 'keyboard') addDistribution('字数分布', TEXT_LENGTH_LABELS.slice(1), counts);
+    if (mode === 'audio' || mode === 'peer-audio') addDistribution('录音时长', AUDIO_LENGTH_LABELS, counts);
+    if (mode === 'region-match') addDistribution('配对结果', ['配对正确', '配对错误'], counts);
+    for (const [maxStars, stars] of [...ratings].sort(([a], [b]) => a - b)) {
+      addDistribution(`评星分布（满星 ${maxStars}）`, Array.from({ length: maxStars }, (_, i) => `${i + 1} 星`), stars);
+    }
+    return {
+      id, title: widget.matchConfig?.text.trim() || widget.label.trim() || CANVAS_REGION_LABELS[mode],
+      mode: CANVAS_REGION_LABELS[mode], answered, missing: submissions.length - answered,
+      distributions, samples,
+    };
+  });
 }
 
 /** 条目表的文本查表；查不到退回 id（与呈现层同一条纪律）。 */
@@ -392,13 +469,10 @@ function buildDistribution(
     for (const row of submittedRows) {
       const draft = draftFromValue(node, row.value);
       if (draft.kind !== 'text') continue;
-      const length = draft.text.trim().length;
-      const bucket = length === 0 ? '空' : length <= 10 ? '1–10 字' : length <= 30 ? '11–30 字' : length <= 60 ? '31–60 字' : '60 字以上';
-      bump(buckets, bucket);
+      bump(buckets, textLengthBucket(draft.text));
     }
     // ⚠️ 按**档位的自然顺序**排，不按人数降序 —— 字数分布读的是形状。
-    const order = ['空', '1–10 字', '11–30 字', '31–60 字', '60 字以上'];
-    return { kind: 'text', lengths: order.map((label) => ({ label, count: buckets.get(label) ?? 0 })) };
+    return { kind: 'text', lengths: TEXT_LENGTH_LABELS.map((label) => ({ label, count: buckets.get(label) ?? 0 })) };
   }
   if (kinds.size === 1 && kinds.has('ink')) {
     return { kind: 'ink', drawn: submittedRows.length };

@@ -405,8 +405,7 @@
 /* 悬停定位与最近讲评学生：颜色之外保留左侧标记。 */
 @media (hover: hover) { .scoreRow:hover { background: #f5f9fd; } }
 .scoreRow:focus-within { background: #f5f9fd; }
-.scoreRow.scoreRowSelected { background: #f8eee0; box-shadow: inset 3px 0 #b99a72; }
-.scoreRow.scoreRowSelected .scoreAdvice { background: #fff8ee; }
+.scoreRow.scoreRowSelected { background: #f0f5fa; box-shadow: inset 3px 0 #6388af; }
 .scoreRow { cursor: pointer; }
 .scoreRow:focus, .scoreRow:focus-visible { outline: none; }
 
@@ -417,5 +416,76 @@
 .analysisSectionStudents > details { background: #f3f7fb; border-radius: 7px; padding: 7px 10px; }
 .analysisSectionStudents p { white-space: pre-wrap; }
 
-.reportTitle { margin: 0 0 10px; color: #263d55; font-size: 1.08rem; }
 .reportSectionsTitle { margin: 18px 0 8px; color: #344e67; font-size: .95rem; }
+.analysisCoverage { margin: 14px 0 10px; color: #526a83; font-size: .875rem; }
+.answerArea { margin: 10px 0; }
+.answerAreaTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 12px;
+  border-inline-start: 3px solid #668bb2;
+  border-radius: 5px;
+  background: #edf4fa;
+  color: #263d55;
+  font-size: 1.06rem;
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  list-style: none;
+}
+.answerAreaTitle::-webkit-details-marker, .reviewArea summary::-webkit-details-marker { display: none; }
+.answerAreaTitle svg, .reviewArea summary svg { flex: none; transform: rotate(-90deg); }
+.answerArea[open] > summary svg, .reviewArea details[open] > summary svg { transform: none; }
+.answerAreaTitle + .resultText, .compactBody .answerAreaTitle + .resultText { margin-top: 8px; }
+
+.scoreRow[data-areas] { align-items: start; grid-template-columns: minmax(95px, .7fr) auto minmax(0, 3fr); }
+.scoreRow[data-areas] > .scoreName, .scoreRow[data-areas] > .scoreValue { padding-top: 9px; }
+.reviewAreas { min-width: 0; display: grid; gap: 7px; }
+.reviewArea { position: relative; border: 1px solid #dbe7f1; border-radius: 8px; background: #fff; }
+.reviewArea summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 7px 76px 7px 10px;
+  color: #344e67;
+  background: #f5f8fc;
+  border-radius: 7px;
+  font-weight: 650;
+  list-style: none;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.reviewArea details[open] > summary { border-radius: 7px 7px 0 0; }
+.reviewAreaActions { display: flex; align-items: center; gap: 5px; position: absolute; top: 6px; right: 8px; }
+.reviewAreaActions button { width: 28px; height: 28px; }
+.reviewAreaBody { border-top: 1px solid #dbe7f1; padding: 9px 12px 12px; color: #344e67; line-height: 1.65; }
+.reviewAreaBody > p { margin: 0; white-space: pre-wrap; }
+.reviewAreaBody .scoreAdvice { margin-top: 10px; background: #edf4fa; }
+@media (max-width: 640px) {
+  .scoreRow[data-areas] { grid-template-columns: 1fr auto; }
+  .reviewAreas { grid-column: 1 / -1; }
+}
+
+.sectionProgressCard { border: 1px solid #d8e3ef; border-radius: 10px; padding: 12px; margin: 10px 0; }
+.sectionProgressCard h4 { margin: 0; color: #344e67; font-size: .95rem; }
+.sectionProgressCard .resultText { margin-top: 8px; }
+
+.batchProgress { margin: 12px 0; padding: 14px 16px; border: 1px solid #d8e3ef; border-radius: 10px; background: #f5f8fc; font-size: .875rem; }
+.batchProgressGroup { margin-top: 7px; padding-top: 7px; border-top: 1px solid #d8e3ef; }
+.batchProgress ul { margin: 4px 0 0; padding: 0; list-style: none; }
+.batchProgress li { display: grid; grid-template-columns: 8em 8em minmax(0, 1fr); gap: 4px 12px; padding: 3px 0; }
+.batchPhase { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.batchTime { font-variant-numeric: tabular-nums; color: #526a83; }
+.batchAgent { color: #526a83; overflow-wrap: anywhere; }
+.batchProgress li small { grid-column: 1 / -1; }
+.batchProgress li [data-phase="sending"], .batchProgress li [data-phase="analyzing"] { color: #295b8c; font-weight: 600; }
+.batchProgress li [data-phase="completed"] { color: #326a4a; }
+.batchProgress li [data-phase="failed"], .batchProgress li small { color: #a13e37; }
+@media (max-width: 580px) {
+  .batchProgress li { grid-template-columns: minmax(0, 1fr) 8em; }
+  .batchAgent { grid-column: 1 / -1; }
+}

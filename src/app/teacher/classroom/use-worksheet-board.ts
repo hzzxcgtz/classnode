@@ -222,7 +222,7 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
       timer = setTimeout(refresh, 100);
     };
     const stop = on('worksheet-analysis-updated', data => {
-      if (worksheetIdsRef.current.includes(data.worksheetId)) scheduleRefresh();
+      if (!data.sectionProgressQuestionId && worksheetIdsRef.current.includes(data.worksheetId)) scheduleRefresh();
     });
     const changed = (event: Event) => {
       if ((event as CustomEvent<{ classroomId: string }>).detail?.classroomId === classroomId) scheduleRefresh();

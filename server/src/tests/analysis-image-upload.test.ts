@@ -33,3 +33,11 @@ test('encoding failure retains the supplied buffer', async () => {
   const png = Buffer.from('invalid image');
   assert.deepEqual(await prepareAnalysisImageUpload(png), { buffer: png, extension: 'png' });
 });
+
+test('原始 WebP 和 JPEG 使用与实际上传内容相符的类型', async () => {
+  const image = () => sharp({ create: { width: 16, height: 16, channels: 3, background: 'white' } });
+  for (const input of [await image().webp().toBuffer(), await image().jpeg({ quality: 20 }).toBuffer()]) {
+    const result = await prepareAnalysisImageUpload(input);
+    assert.equal((await sharp(result.buffer).metadata()).format, result.extension === 'jpg' ? 'jpeg' : result.extension);
+  }
+});

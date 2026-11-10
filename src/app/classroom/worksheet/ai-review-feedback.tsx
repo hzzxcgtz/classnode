@@ -2,20 +2,10 @@ import type { ReactNode } from 'react';
 import { ReviewBuddyHeading } from '@/components/review-buddy-heading';
 import { ReviewRewardText } from '@/components/review-reward-text';
 
-import { formatReviewText, formatReviewAdvice } from '@/lib/worksheet-review-display';
+import { feedbackSections, formatReviewText, formatReviewAdvice } from '@/lib/worksheet-review-display';
 import type { AnswerReview } from './review-history';
 import { ReviewTiming } from './review-timing';
 import styles from './worksheet.module.css';
-
-function feedbackSections(text: string) {
-  const headings = [...text.matchAll(/^(第 (\d+) 空(?:（[^\n]*?）)?)：|^(作答区 (\d+) · [^\n]+)\n/gm)];
-  if (headings[0]?.index !== 0) return [];
-  return headings.map((match, index) => ({
-    key: match[2] ? `blank-${match[2]}` : `region-${match[4]}`,
-    title: match[1] ?? match[3],
-    text: text.slice(match.index + match[0].length, headings[index + 1]?.index).trim(),
-  }));
-}
 
 /** 所有题型共用评价与建议的呈现，逐空反馈保留原有换行。 */
 export function AiReviewFeedback({ reason, advice, review, actions }: { reason?: string | null; advice?: string | null; review?: AnswerReview; actions?: ReactNode }) {

@@ -1,7 +1,7 @@
 // 判分三态的取值域只有一份，在 `types.ts`（服务端的 `GradeState` 与它逐字相同）。
 // ⚠️ `import type` —— 这一行在运行期**整段消失**（本文件是**纯类型**文件，一个字节的
 // 运行时代码都没有；加一条真 import 会让它从「类型声明」变成有副作用的模块）。
-import type { WorksheetGradeState } from './types';
+import type { WorksheetAnalysisPayload, WorksheetGradeState } from './types';
 
 export interface ServerToClientEvents {
   'image-orientation-updated': (data: { url: string; version: string }) => void;
@@ -42,7 +42,8 @@ export interface ServerToClientEvents {
    * 空载荷会让客户端要么整份重拉、要么显示过期的一屏。
    */
   'worksheet-open-changed': (data: { worksheetId: string; questionIds: string[] }) => void;
-  'worksheet-analysis-updated': (data: { worksheetId: string }) => void;
+  'worksheet-analysis-updated': (data: { worksheetId: string; reviewProgress?: true; sectionProgressQuestionId?: string }) => void;
+  'worksheet-analysis-batches': (data: { classroomId: string; worksheetId: string; questionId: string; batches: NonNullable<WorksheetAnalysisPayload['batchProgress']>; startedAt?: number }) => void;
   'allow-stop-changed': (data: { allow: boolean }) => void;
   // ★ 2026-09-25：只禁提问（与 `classroom-paused` 那个整节课暂停是两件事）。
   'allow-ask-changed': (data: { allow: boolean }) => void;

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import { DEFAULT_PROMPT_STYLE } from '../../../lib/worksheet-prompt-marks.ts';
-import { questionStats, showsAgentAnalysis, type StatsRow } from './worksheet-question-stats.ts';
+import { canvasRegionStats, questionStats, showsAgentAnalysis, type StatsRow } from './worksheet-question-stats.ts';
 
 /**
  * 「按题统计与分析」的判据（规格 `specs/2026-09-28-按题统计与分析.md`）。
@@ -357,4 +357,47 @@ test('排序完整命中人数按每份作答统计，不把全班命中的位�
   const n = node('order', {items:[{id:'a',text:'甲'},{id:'b',text:'乙'}],correctOrder:['a','b']});
   const stats = questionStats(n, [row({value:{format:'order/v1',order:['a','b']}}),row({value:{format:'order/v1',order:['b','a']}})]);
   assert.ok(stats.insights.some(item=>item.text==='2 人里，有 1 人每一处都排在答案的位置上。'));
+});
+
+
+test('图文题按区统计已提交的内容，草稿和空作答不计入分布', () => {
+  const image = '/uploads/chat/chat-22222222-2222-4222-8222-222222222222.png';
+  const widget = { kind: 'answer', x: 4, y: 4, width: 30, height: 12 };
+  const layout = node('image-canvas', { imageCanvas: {
+    url: image, width: 640, height: 480,
+    widgets: [
+      { ...widget, id: 'note', mode: 'keyboard', label: '写发现' },
+      { ...widget, id: 'star', mode: 'star-rating', maxStars: 3 },
+      { ...widget, id: 'voice', mode: 'audio' },
+      { ...widget, id: 'peer', mode: 'peer-audio' },
+      { ...widget, id: 'picture', mode: 'photo' },
+      { ...widget, id: 'ink', mode: 'handwriting' },
+      { ...widget, id: 'target', mode: 'region-match', matchConfig: { id: 'word', text: '小船' } },
+    ],
+  } });
+  const text = { format: 'text/v1', text: '观察到了变化。' };
+  const stars = { format: 'canvas-stars/v1', stars: 2, maxStars: 3 };
+  const audio = { format: 'audio/v1', url: image.replace('.png', '.ogg'), durationMs: 10_001 };
+  const photo = { format: 'photo/v1', url: image };
+  const ink = { format: 'ink/v1', canvas: { w: 320, h: 160 }, strokes: [{ color: '#1f2937', width: 0.016, points: [[0.5, 0.5]] }] };
+  const match = { format: 'canvas-match/v1', targetId: 'target', targetNumber: 1, correct: false, feedback: '再试一次' };
+  const canvasRow = (answers: Record<string, unknown>, status = 'submitted') => row({ status, value: { format: 'image-canvas/v1', answers } });
+  const results = canvasRegionStats(layout, [
+    canvasRow({ note: text, star: stars, voice: audio, peer: { ...audio, deskRating: { stars: 1, maxStars: 3 } }, picture: photo, ink, word: match }),
+    canvasRow({ note: { ...text, text: ' ' }, peer: audio, picture: photo }),
+    canvasRow({ picture: photo }),
+    canvasRow({ note: text, star: stars, voice: audio, ink, word: match }, 'draft'),
+    undefined,
+  ]);
+  const [note, star, voice, peer, picture, drawing, pairing] = results;
+  assert.deepEqual(results.map(({ id, answered, missing }) => [id, answered, missing]), [
+    ['note', 1, 2], ['star', 1, 2], ['voice', 1, 2], ['peer', 2, 1], ['picture', 3, 0], ['ink', 1, 2], ['word', 1, 2],
+  ]);
+  assert.deepEqual(note.distributions[0].bars.map(bar => bar.count), [1, 0, 0, 0]);
+  assert.deepEqual(star.distributions[0].bars.map(bar => bar.count), [0, 1, 0]);
+  assert.deepEqual(voice.distributions[0].bars.map(bar => bar.count), [0, 1, 0]);
+  assert.deepEqual(peer.distributions.map(({ title, total }) => [title, total]), [['录音时长', 2], ['评星分布（满星 3）', 1]]);
+  assert.deepEqual(picture.samples, [{ kind: 'photo', url: image }, { kind: 'photo', url: image }]);
+  assert.equal(drawing.samples[0]?.kind, 'ink');
+  assert.deepEqual(pairing.distributions[0].bars, [{ label: '配对正确', count: 0 }, { label: '配对错误', count: 1 }]);
 });

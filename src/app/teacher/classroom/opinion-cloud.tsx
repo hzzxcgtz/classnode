@@ -148,10 +148,13 @@ export function OpinionCloud({ phrases, presentation, fontScale, showCounts, lay
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size | null>(null);
-  const words = useMemo(() => phrases.map(({ phrase, studentIds }) => ({
+  // Polling returns new arrays for the same report. Keep the layout inputs stable
+  // until the visible words or their counts actually change.
+  const wordSnapshot = JSON.stringify(phrases.map(({ phrase, studentIds }) => ({
     text: showCounts ? `${phrase}\u2002${String(studentIds.length).replace(/\d/g, digit => superscriptDigits[Number(digit)])}` : phrase,
     value: studentIds.length,
-  })), [phrases, showCounts]);
+  })));
+  const words = useMemo(() => JSON.parse(wordSnapshot) as Word[], [wordSnapshot]);
   const [highlight, setHighlight] = useState<string | null>(null);
   const selection = onSelectPhrase ? selectedPhrase : highlight;
   const selectedWord = words[phrases.findIndex(item => item.phrase === selection)]?.text ?? null;
@@ -159,7 +162,7 @@ export function OpinionCloud({ phrases, presentation, fontScale, showCounts, lay
     const phrase = phrases[words.findIndex(item => item.text === word)]?.phrase ?? null;
     (onSelectPhrase ?? setHighlight)(phrase);
   }, [onSelectPhrase, phrases, words]);
-  const layoutKey = JSON.stringify([size, fontScale, layoutSeed, words]);
+  const layoutKey = JSON.stringify([size, fontScale, layoutSeed, wordSnapshot]);
 
   useEffect(() => {
     const element = host.current;

@@ -100,6 +100,7 @@ export interface InkCanvasProps {
   strokes: readonly InkStroke[];
   /** 画布下面那句提示语（`inkHint(node)`）。 */
   hint: string;
+  inlineLabel?: string;
   /** 一笔结束 / 撤销 / 清空时调一次。`box` 是**这一刻量出来的**框。 */
   onChange: (next: { box: InkCanvasBox; strokes: InkStroke[]; texts?: InkText[] }) => void;
   disabled: boolean;
@@ -206,7 +207,7 @@ interface LiveStroke {
   connectionTarget?: InkConnectionAnchor | null;
 }
 
-export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disabled, tool, width, color, selected, onSelect, backgroundUrl = null, snapStep = 0, enableShapeText = false, snapConnections = false }: InkCanvasProps) {
+export function InkCanvas({ box, strokes, texts, textSize, hint, inlineLabel, onChange, disabled, tool, width, color, selected, onSelect, backgroundUrl = null, snapStep = 0, enableShapeText = false, snapConnections = false }: InkCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   /** 已经收笔的笔画。`pointerup` 那一刻必须读到**当下**的值（state 是异步的）——
    *  与 `use-pointer-drag.ts:99-100` 的 `hoverRef` 同一条理由。 */
@@ -774,7 +775,7 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
   const limitReason = inkLimitReason(strokes) ?? blockedReason;
 
   return (
-    <div className={styles.inkFrame}>
+    <div className={styles.inkFrame} data-inline={Boolean(inlineLabel)}>
       {backgroundUrl ? (
         <div
           className={styles.inkBackdrop}
@@ -818,9 +819,10 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
       <canvas
         ref={canvasRef}
         className={styles.inkCanvas}
+        aria-label={inlineLabel}
         // 高 = `box.h`（`defaultInkBox` 那两个数是**界面上看得见的**），宽由 CSS 给 100%。
         style={{
-          background: backgroundUrl ? 'transparent' : '#fff',
+          background: backgroundUrl || inlineLabel ? 'transparent' : '#fff',
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -835,7 +837,7 @@ export function InkCanvas({ box, strokes, texts, textSize, hint, onChange, disab
           反复去点那两个按钮。
           ⚠️ 定稿态**不另加一句解释**：教师明确删掉了原来那句
           （「这道题已经完成，老师设置为不能再修改」），而状态本身在结果栏里已经读得出来。 */}
-      {!disabled && <p className={styles.inkHint}>{hint}</p>}
+      {!disabled && !inlineLabel && <p className={styles.inkHint}>{hint}</p>}
       {/* 🔴 上限提示：到上限时它**在屏幕上等着**，不是等到学生再戳一次才出现。
           文案由 A1 的 `inkLimitReason` 给（带上限数字与两条出路）。 */}
       {limitReason ? (

@@ -137,7 +137,6 @@ export type ContentAction =
     kind: 'addQuestion';
     questionType: QuestionType;
     fillLayout?: FillLayout;
-    imageCanvasTemplate?: boolean;
     parentId: string | null;
     /**
      * ★ 2026-09-25（教师裁定）：新题的**分值**直接写成学习单当前那两档
@@ -438,7 +437,7 @@ export function newQuestion(type: QuestionType, fillLayout: FillLayout = 'text')
   const question: WorksheetQuestionNode = {
     id: `q_${randomIdSuffix()}`,
     type,
-    prompt: '',
+    prompt: type === 'image-canvas' ? '图文题' : '',
     // ★ M4b：绘图题**恒为手写**（它的作答值格式由题型决定，与这一格无关 —— 见
     // `src/lib/worksheet-ink.ts` 的 `inkFormatOf`，它是**题型优先**的）。
     // 其余题型不动：规格 §3-V 那条「第一批的题恒为 keyboard」继续成立，
@@ -2737,10 +2736,6 @@ function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetC
   switch (action.kind) {
     case 'addQuestion': {
       const fresh = { ...newQuestion(action.questionType, action.fillLayout), ...(action.points ? { points: action.points } : {}) };
-      if (action.imageCanvasTemplate && action.questionType === 'short-answer') {
-        fresh.prompt = '整图任务';
-        fresh.inputMode = 'photo';
-      }
       if (action.parentId === null) return { ...content, nodes: [...content.nodes, fresh] };
       // ⚠️ 走 `replaceNode`（递归找）而不是只看顶层：父任务在树里的任何一层都找得到。
       // 找不到 ⇒ 原对象返回（不制造空历史）。
@@ -2813,11 +2808,9 @@ function applyEdit(content: WorksheetContent, action: ContentAction): WorksheetC
       // `ContentAction` 上各写了一遍，这里是它的第四个使用者。
       // ⚠️ 助手是既有的 `replaceNode(content, id, fn)`（**不是** `mapNode` —— 那个名字不存在），
       // 形状逐字照 `updatePoints` 那一支。
-      return replaceNode(content, action.id, (node) => (
-        // 同值 ⇒ 返回原对象：否则「重新点一次已经选中的那一档」也会占掉一格撤销栈，
-        // 教师按撤销时屏幕纹丝不动，只能再按一次。
+      return replaceNode(content, action.id, node =>
         node.inputMode === action.inputMode ? node : { ...node, inputMode: action.inputMode }
-      ));
+      );
 
     case 'updateAutoGrade':
       // 与其余四条编辑动作走**同一条路**（进撤销栈、同值去重）。

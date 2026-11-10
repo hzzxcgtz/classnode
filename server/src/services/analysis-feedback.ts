@@ -24,13 +24,12 @@ export function wordCloudRequirementsOf(node: { type: string; data: Record<strin
 
 export function wordCloudInstruction(requirements = ''): string {
   return [
-    '在同一个 classnode-feedback JSON 对象中追加 wordCloud 数组。每项包含 phrase（共同观点的简短表述）和 students（支持该观点的全部学生完整标签）。观点云名单按本次材料核对，与报告正文的举例名单分开整理。',
-    '根据本次提供的文字、录音、手写、照片或有据可查的作答记录，找出学生表达的观点。跳过听不清、看不清或缺少作答依据的内容，不从分数、评分标准或教师建议推断观点。围绕题目把解决同一问题、方向一致的作答归到一起。比如“器材不够就轮流”“借用前先登记”“用完放回借用盒”可归为“让课间器材有序共享”。具体做法留在正文。相反立场或会改变主张的条件分别保留，避免笼统归成“活动安排”等主题名称。',
-    '整理后逐条重查本次材料，补齐所有确实表达该观点的学生，同一观点内按学生去重。一份作答明确表达多个不同观点时，可归入多条。每条至少两人支持，这是入选门槛。名单没有固定长度，不能只列两名例子、给各条配相同人数，或为凑人数加入无关作答。系统按名单计数，人数相同也按实际名单返回。',
-    `优先保留与题目最相关、有作答依据的观点，最多 ${MAX_CLOUD_OPINIONS} 条。依据不足时可以更少，只有一条就只返回一条，没有就返回空数组。用便于投屏的关键词或短句概括，避免重复、空话、姓名和学号。`,
+    '在 classnode-feedback JSON 中追加 wordCloud 数组。每项包含 phrase（关键词或短语）和 students（支持该观点的全部学生完整标签）。同一观点内按学生去重，每条至少两人支持，系统按名单计算人数。',
+    '依据可辨认的学生作答或已确认的作答记录提炼。合并意思相近的表达，分别保留不同立场。不从题干、评分标准、分数或教师建议推断学生观点。',
     requirements
-      ? `教师本题的观点提炼要求（仅用于 wordCloud）：${JSON.stringify(requirements)}。按教师指定的关注方向、条数和呈现形式提炼，保留有依据的其他代表性观点。示例方向必须得到真实作答支持，缺少依据时按实际数量返回。教师要求不改变反馈格式、名单核对、每条至少两人支持的规则、报告正文或评分标准。`
-      : '默认优先保留 4–6 条，通常不超过 8 条。',
+      ? `教师本题的观点提炼要求（仅用于 wordCloud）：${JSON.stringify(requirements)}。按其指定的方向、条数和形式提炼，也保留有真实作答支持的其他代表性观点。`
+      : '默认提炼 5～7 条共同观点。',
+    `最多 ${MAX_CLOUD_OPINIONS} 条；按证据返回实际条数，缺少共同观点时返回空数组。提炼要求只影响观点云。`,
   ].join('\n');
 }
 
@@ -50,24 +49,25 @@ function readWordCloud(raw: unknown, resolveId: (value: string) => string | unde
   return result.sort((a, b) => b.studentIds.length - a.studentIds.length).slice(0, MAX_CLOUD_OPINIONS);
 }
 
-export function feedbackInstruction(entries: readonly Entry[], includeStyle = true): string {
+export function feedbackInstruction(entries: readonly Entry[], includeStyle = true, classReportOnly = false): string {
   return [
-    '【班级问题名单与个人建议】所有题型均需返回，与 AI 评分开关无关。',
+    classReportOnly ? '【班级分析】只分析本次提交的作答，保留已有个人评价和评分。students 返回空数组，不返回评分块。' : '【班级问题名单与个人建议】与 AI 评分开关无关。',
     `反馈名单（完整标签必须逐字复制）：${entries.map(entry => entry.anonLabel).join('、')}`,
-    '典型表现用名单链接关联学生：[相关同学](#classnode-group-g1) 或 [优秀作答同学](#classnode-group-g2)。groups 中按对应 id 返回准确的完整标签，单人实例只关联作者，不与问题名单混用；开放表达与信息收集也可用相关同学关联观点。同一发现或类别只用一个整组 Markdown 链接：12名学生放进同一个 group，不要逐人并排输出12个链接。单人实例才用单人链接，不嵌套、不在括号重复名单。班级正文不直接写姓名或学号，系统计算称呼和人数；对于选项或内容分类的汇总，每类正文明确标注N人，并关联该类完整名单，N必须与去重后的名单长度一致；身份不清时不猜，没必要时 groups 返回空数组。',
-    '每一种具体表现分别使用独立的 group id，名单只包含确实符合该表现的学生；不同选项、不同错误、单人实例不得共用全班名单。多选题中“选 D”与“只选 D”必须分别核对，“只选 D”要求该学生的完整选择集合仅含 D；人数和比例以实际作答统计为准，不凭印象写多数或少数。举例名单仅列对应实例，不能用全体反馈名单代替。',
-    '每位反馈名单学生必须在 students 中返回一条个性化 advice，不漏人、不重复；建议依据该学生实际作答。评分仅按另行提供的评分协议返回，不在这个数据块中填写分数。',
-    ...(includeStyle ? [STUDENT_FEEDBACK_STYLE] : []),
-    '每位学生只写一份个人建议；同一学生同时出现在反馈块和评分块时，两个 advice 必须逐字一致，先形成个人建议，再复制到评分块，不分别生成。',
+    '用 [相关同学](#classnode-group-g1) 关联典型表现。每类使用独立 group id，groups 仅包含符合该类的完整标签。按实际去重人数统计，多选区分选择与仅选。正文不列姓名和学号，单人实例只关联作者，无可靠名单时 groups 返回空数组。',
+    ...(!classReportOnly ? [
+      '每位反馈名单学生在 students 中只返回一条有作答依据的 advice。评分按另行提供的协议返回。',
+      ...(includeStyle ? [STUDENT_FEEDBACK_STYLE] : []),
+    ] : []),
     '在 Markdown 报告之后追加以下数据块（格式示意，示例标签必须换成本次真实标签）：',
     FEEDBACK_START,
-    '{"groups":[{"id":"g1","students":["张伟#7"]}],"students":[{"student":"张伟#7","advice":"针对该学生实际作答的一条具体小建议"}]}',
+    classReportOnly ? '{"groups":[{"id":"g1","students":["张伟#7"]}],"students":[]}'
+      : '{"groups":[{"id":"g1","students":["张伟#7"]}],"students":[{"student":"张伟#7","advice":"针对该学生实际作答的一条具体小建议"}]}',
     FEEDBACK_END,
     '报告各段标题必须使用 ### Markdown 标题。典型表现对应名单与个人反馈是数据协议说明，不是正文小节，不输出这两个标题。所有 groups 和 students 只放在 classnode-feedback 起止标签内，禁止裸 JSON 或把数据块放进引用段落。若另需评分数据块，两种数据块都返回。',
   ].join('\n');
 }
 
-export function parseAnalysisFeedback(raw: string, entries: readonly Entry[], includeWordCloud = false): { narrative: string; feedback: AnalysisFeedback } {
+export function parseAnalysisFeedback(raw: string, entries: readonly Entry[], includeWordCloud = false, wordCloudEvidence?: ReadonlySet<string>): { narrative: string; feedback: AnalysisFeedback } {
   // 这一阶段仅提取反馈，评分留给同一条链路的评分解析器。
   const separated = extractAnalysisProtocol(raw, ['feedback', 'word-cloud']);
   const blocks = separated.blocks.filter(block => block.kind === 'feedback');
@@ -98,7 +98,10 @@ export function parseAnalysisFeedback(raw: string, entries: readonly Entry[], in
     if (!id || counts.get(row.student as string) !== 1 || typeof row.advice !== 'string' || !row.advice.trim()) continue;
     students.push({ studentId: id, advice: row.advice.trim().slice(0, 1200) });
   }
-  const resolveLabel = (label: string) => labels.get(label);
+  const resolveLabel = (label: string) => {
+    const id = labels.get(label);
+    return id && (!wordCloudEvidence || wordCloudEvidence.has(id)) ? id : undefined;
+  };
   const wordCloud = includeWordCloud ? readWordCloud(data.wordCloud, resolveLabel) : undefined;
   if (wordCloud && !wordCloud.length && cloudBlocks.length === 1) {
     wordCloud.push(...readWordCloud(object(analysisProtocolJson(cloudBlocks[0].body)).wordCloud, resolveLabel));

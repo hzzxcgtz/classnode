@@ -2,6 +2,7 @@
 import { aiEvaluationEnabled } from '@/lib/worksheet-evaluation';
 import { TeacherPendingText } from '@/components/teacher-pending-text';
 import { TeacherReviewHistory } from './answer-review-history';
+import { StudentWorksheetViewerButton } from './student-worksheet-viewer';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WorksheetBoard, WorksheetQuestionNode, WorksheetSettings } from '@/lib/types';
@@ -183,6 +184,13 @@ export function WorksheetDrawer({
             </div>
             {header.hint && <div className={styles.headerHint}>{header.hint}</div>}
           </div>
+          {board && participantHeader && nodesByWorksheet[participantHeader.worksheet.id] && (
+            <StudentWorksheetViewerButton key={`${entry.token}:${participantHeader.participant.participantId}`}
+              className={styles.headerWorksheetButton} classroomId={board.classroomId}
+              worksheetId={participantHeader.worksheet.id} title={participantHeader.worksheet.title}
+              participant={participantHeader.participant} nodes={nodesByWorksheet[participantHeader.worksheet.id]}
+              settings={settingsByWorksheet[participantHeader.worksheet.id]} liveDraft={liveDrafts[participantHeader.participant.participantId]} />
+          )}
           <button type="button" className={styles.headerButton} onClick={onClose}>关闭</button>
         </div>
 
@@ -218,7 +226,7 @@ export function WorksheetDrawer({
               onOpenParticipant={(participantId) => push({ kind: 'participant', participantId })} />
           )}
           {board && current.kind === 'participant' && (
-            <ParticipantAnswers key={entry.token} board={board} participantId={current.participantId} focusQuestionId={current.questionId}
+            <ParticipantAnswers key={entry.token} board={board} participantId={current.participantId} focusQuestionId={current.questionId} fullViewInDrawerHeader
               nodesByWorksheet={nodesByWorksheet} settingsByWorksheet={settingsByWorksheet}
               liveDrafts={liveDrafts}
               reviewBusy={reviewBusy} onReview={onReview} onClearQuestion={onClearQuestion} />
@@ -537,7 +545,7 @@ export function QuestionAnswers({
 
 export function ParticipantAnswers({
   board, participantId, nodesByWorksheet, settingsByWorksheet, liveDrafts, reviewBusy, onReview, onClearQuestion,
-  focusQuestionId = null,
+  focusQuestionId = null, fullViewInDrawerHeader = false,
 }: {
   board: WorksheetBoard;
   participantId: string;
@@ -550,6 +558,7 @@ export function ParticipantAnswers({
   onClearQuestion: (worksheetId: string, participantId: string, questionId: string) => void;
   /** 从总览矩阵的交叉格进入时，直接展开对应题目。 */
   focusQuestionId?: string | null;
+  fullViewInDrawerHeader?: boolean;
 }) {
   // 未操作时沿用默认展开题；手动选择后只保留一道，null 表示全部收起。
   // 按参与者与入口题隔离选择，后台刷新不重置教师的展开状态。
@@ -669,7 +678,11 @@ export function ParticipantAnswers({
             data-active={filter === value}
             onClick={() => setFilter(value)}>{label}</button>
         ))}
-        <span className={styles.filterHint}>展开任务可查看学生原始作答</span>
+        {fullViewInDrawerHeader ? <span className={styles.filterHint}>展开任务可查看学生原始作答</span> : (
+          <StudentWorksheetViewerButton className={styles.filterWorksheetButton} classroomId={board.classroomId}
+            worksheetId={worksheet.id} title={worksheet.title} participant={participant}
+            nodes={nodes} settings={settings} liveDraft={liveDrafts[participant.participantId]} />
+        )}
       </div>
 
       {taskGroups.size === 0 && (
@@ -720,7 +733,7 @@ export function ParticipantAnswers({
                           </div>
                         )}
                         <div className={styles.answerPanel}>
-                          {(aiEvaluationEnabled(node) || node.type === 'short-answer' || node.type === 'drawing' || answerView(node, row?.value).kind === 'fill') ? <TeacherReviewHistory key={`${participantId}:${node.id}`} classroomId={board.classroomId} worksheetId={worksheet.id} participantId={participantId} studentName={participant.name} node={node} value={row?.value}><AnswerViewBody node={node} value={row?.value} transcription={false} /></TeacherReviewHistory> : <><span className={styles.answerLabel}>学生作答与答案对照</span><AnswerViewBody node={node} value={row?.value} transcription={false} /></>}
+                          {(aiEvaluationEnabled(node) || node.type === 'short-answer' || node.type === 'drawing' || node.type === 'image-canvas' || answerView(node, row?.value).kind === 'fill') ? <TeacherReviewHistory key={`${participantId}:${node.id}`} classroomId={board.classroomId} worksheetId={worksheet.id} participantId={participantId} studentName={participant.name} node={node} value={row?.value}><AnswerViewBody node={node} value={row?.value} transcription={false} /></TeacherReviewHistory> : <><span className={styles.answerLabel}>学生作答与答案对照</span><AnswerViewBody node={node} value={row?.value} transcription={false} /></>}
                         </div>
                         {outcome.canReview && (
                           <div className={styles.actionRow}>

@@ -207,7 +207,12 @@ test('表达题从手写和照片作答生成观点云，切换输入方式后�
   const report = '两份作答都提到颜色变深。<classnode-feedback>' + JSON.stringify({
     groups: [], students: [], wordCloud: [{ phrase: '颜色变深', students: [ZHANG, LI] }],
   }) + '</classnode-feedback>';
+  let collection = false;
   const srv = await withServer(prisma, async (_agent, message, images) => {
+    if (collection) {
+      assert.doesNotMatch(message, /wordCloud|观点提炼要求/);
+      return { success: true, content: report };
+    }
     if (message.includes('本批作答拼图')) {
       assert.ok(images.length > 0);
       assert.match(message, /明确表达的具体观点/);
@@ -218,9 +223,9 @@ test('表达题从手写和照片作答生成观点云，切换输入方式后�
       assert.ok(message.includes(`${ZHANG} 提到颜色变深。`));
       assert.match(message, /原有文字观察：颜色变深/);
       assert.ok(message.includes(cloudRequirements));
-      assert.doesNotMatch(message, /默认优先保留 4–6 条/);
+      assert.doesNotMatch(message, /默认提炼 5～7 条/);
     } else {
-      assert.match(message, /默认优先保留 4–6 条/);
+      assert.match(message, /默认提炼 5～7 条/);
     }
     return { success: true, content: report };
   });
@@ -240,6 +245,15 @@ test('表达题从手写和照片作答生成观点云，切换输入方式后�
   await prisma.worksheetAnswer.updateMany({ where: { response: { participantId: participants[0] } }, data: { value: { format: 'photo/v1', url: photo } } });
   await prisma.worksheetAnswer.updateMany({ where: { response: { participantId: participants[1] } }, data: { value: { format: 'text/v1', text: '原有文字观察：颜色变深' } } });
   await assertCloud();
+
+  collection = true;
+  await prisma.worksheet.update({ where: { id: worksheet.id }, data: { content: { schemaVersion: 1, nodes: [
+    { ...node, type: 'fill-blank', inputMode: 'keyboard', autoGrade: false, data: { wordCloudRequirements: cloudRequirements } },
+  ] } } });
+  await prisma.worksheetAnswer.updateMany({ where: { questionId: 'q3' }, data: { value: { format: 'fill-multi/v1', texts: ['颜色变深'] } } });
+  const run = await generateAndRun(srv, worksheet.id, classroom.id);
+  assert.equal(run.status, 200, await run.clone().text());
+  assert.equal((await run.json()).feedback.wordCloud, undefined);
 });
 
 test('🔴 成功路径：写回 narrative/agentId/model，且**一个载荷字段都不动**', async (t) => {
@@ -1080,7 +1094,7 @@ test('首次仅补评：保存评分，但不生成全班总结或分析时间',
 
 test('只更新全班分析：自动评价开关回传，模型返回的评分不能给未评分作品写分', async (t) => {
   const db = await openTempDb();
-  const fake = await startFakeCoze(`整体分析已更新。<classnode-scores>${JSON.stringify({ scores: [{ student: ZHANG, score: 8, reason: '思路清楚', advice: '补一个分支' }] })}</classnode-scores>`);
+  const fake = await startFakeCoze(`整体分析已更新。<classnode-scores>${JSON.stringify({ scores: [{ student: ZHANG, score: 8, reason: '思路清楚', advice: '补一个分支' }] })}</classnode-scores><classnode-feedback>${JSON.stringify({ groups: [], students: [{ student: ZHANG, advice: '错误的个人建议' }] })}</classnode-feedback>`);
   t.after(async () => { fake.close(); await db.prisma.$disconnect(); fs.rmSync(db.dir, { recursive: true, force: true }); });
   const p = db.prisma;
   const agent = await makeAgent(p, 'coze', fake.base);
@@ -1092,10 +1106,18 @@ test('只更新全班分析：自动评价开关回传，模型返回的评分�
   const payload = await fetch(payloadUrl(srv.base, worksheet.id, 'q3', classroom.id), { method: 'POST' });
   assert.equal((await payload.json()).studentAiReviewEnabled, true);
   const response = await p.worksheetResponse.findFirstOrThrow({ where: { classroomId: classroom.id } });
+  await p.worksheetQuestionAnalysis.updateMany({
+    where: { classroomId: classroom.id, worksheetId: worksheet.id, questionId: 'q3' },
+    data: { narrative: `旧报告<classnode-feedback>${JSON.stringify({ groups: [], students: [{ student: ZHANG, advice: '已有个人建议' }] })}</classnode-feedback>` },
+  });
   const before = await gradeOf(p, response.id);
   const run = await fetch(`${runUrl(srv.base, worksheet.id, 'q3', classroom.id)}&analysisOnly=true`, { method: 'POST' });
-  assert.equal(run.status, 409, await run.clone().text());
-  assert.match((await run.json()).error, /没有.*有效个人评价/);
-  assert.equal(fake.hits.length,0,'没有有效评价时不外发原始作品或编造报告');
+  assert.equal(run.status, 200, await run.clone().text());
+  const result = await run.json();
+  assert.match(result.narrative, /本次纳入 1 份/);
+  assert.match(result.narrative, /整体分析已更新/);
+  assert.deepEqual(result.feedback.students.map((row: { advice: string }) => row.advice), ['已有个人建议']);
+  assert.equal(fake.messages.length, 1, '已交作品可直接纳入班级分析');
+  assert.doesNotMatch(fake.messages[0], /<classnode-scores>/);
   assert.deepEqual(await gradeOf(p, response.id), before);
 });

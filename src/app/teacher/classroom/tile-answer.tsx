@@ -105,6 +105,11 @@ function TilePhoto({ url }: { url: string }) {
 function renderCompact(view: AnswerView, node: WorksheetQuestionNode): React.ReactNode {
   switch (view.kind) {
     // 未作答：一句短的。**不画空框** —— 空框与「他写了但读不出来」长得一样。
+    case 'image-canvas':
+      return <>{view.regions.map(region => <div key={region.id}>
+        <Line>{region.label}</Line>
+        {renderCompact(region.view, node)}
+      </div>)}</>;
     case 'none':
       return <Line color={FAINT}>{isAudioNode(node) ? '尚未收到录音' : '还没开始写'}</Line>;
 

@@ -840,3 +840,40 @@ test('availableChoices：空表 / 坏值不抛', () => {
   assert.deepEqual(availableChoices(undefined as unknown as string[], []), []);
   assert.deepEqual(availableChoices(['a'], undefined as unknown as string[]), ['a']);
 });
+
+test('图文拖拽配对用独立词语标识保存和还原，错误配对仍算一次作答', () => {
+  const matching = node('image-canvas', { imageCanvas: {
+    url: '/uploads/chat/chat-1.png', width: 800, height: 600,
+    widgets: [
+      { id: 'zone-a', kind: 'answer', mode: 'region-match', x: 10, y: 10, width: 20, height: 20 },
+      { id: 'zone-b', kind: 'answer', mode: 'region-match', x: 50, y: 10, width: 20, height: 20 },
+      { id: 'note', kind: 'answer', mode: 'keyboard', x: 10, y: 70, width: 60, height: 15 },
+    ],
+    matchChoices: [{ id: 'word-x', text: '珊瑚' }, { id: 'word-y', text: '海龟' }],
+  } });
+  const result = { targetId: 'zone-b', targetNumber: 2, correct: false, feedback: '再观察形状' };
+  const draft: AnswerDraft = { kind: 'image-canvas', answers: {
+    'word-x': { kind: 'canvas-match', ...result },
+    note: { kind: 'text', text: '海龟有壳' },
+  } };
+  assert.equal(isDraftEmpty(draft.answers['word-x']), false);
+  const value = buildAnswerValue(matching, draft);
+  assert.deepEqual(value, { format: 'image-canvas/v1', answers: {
+    'word-x': { format: 'canvas-match/v1', ...result },
+    note: { format: 'text/v1', text: '海龟有壳' },
+  } });
+  assert.deepEqual(draftFromValue(matching, value), draft);
+});
+
+test('图文同桌评星可独立保存和还原，星数上限变更后需要重新评价', () => {
+  const layout = (maxStars: number) => node('image-canvas', { imageCanvas: {
+    url: '/uploads/chat/chat-1.png', width: 800, height: 600,
+    widgets: [{ id: 'stars', kind: 'answer', mode: 'star-rating', maxStars, x: 10, y: 10, width: 40, height: 20 }],
+  } });
+  const draft: AnswerDraft = { kind: 'image-canvas', answers: { stars: { kind: 'canvas-stars', stars: 3, maxStars: 4 } } };
+  const saved = buildAnswerValue(layout(4), draft);
+  assert.deepEqual(saved, { format: 'image-canvas/v1', answers: { stars: { format: 'canvas-stars/v1', stars: 3, maxStars: 4 } } });
+  assert.deepEqual(draftFromValue(layout(4), saved), draft);
+  assert.deepEqual(draftFromValue(layout(5), saved), { kind: 'image-canvas', answers: {} });
+  assert.equal(buildAnswerValue(layout(5), draft), null);
+});

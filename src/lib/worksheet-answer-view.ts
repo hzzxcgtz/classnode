@@ -1,3 +1,4 @@
+import { canvasAnswerEntries } from './worksheet-image-canvas.ts';
 import type { DeskRating } from './worksheet-image-canvas.ts';
 import { readPromptRuns } from './worksheet-prompt-marks.ts';
 import { blankSlots, fillSettingsFor } from './worksheet-fill-modes.ts';
@@ -97,6 +98,7 @@ export interface CategorizeItemView {
 }
 
 export type AnswerView =
+  | { kind: 'image-canvas'; regions: Array<{ id: string; label: string; view: AnswerView }> }
   /** 没有可显示的东西（未作答 / 读不出来的值）。 */
   | { kind: 'none' }
   | { kind: 'text'; text: string }
@@ -243,6 +245,11 @@ export function matchLineGeometry(
  * 只有**读不出形状**时（老值 / 手改过的行）才按 `node.type` 给一个空模型。
  */
 export function answerView(node: WorksheetQuestionNode, value: unknown): AnswerView {
+  const entries = canvasAnswerEntries(node, value);
+  if (entries) return entries.length ? {
+    kind: 'image-canvas',
+    regions: entries.map(entry => ({ ...entry, view: answerView({ ...node, type: 'short-answer', data: {} }, entry.value) })),
+  } : { kind: 'none' };
   const draft = draftFromValue(node, value);
 
   // ⚠️ 「未作答」的判据是 `isDraftEmpty`（与提交那一侧**同一个函数**）：它知道

@@ -13,7 +13,7 @@ test('图片上传与文字要求同时显示，可以多张上传与单张移�
  assert.match(editor,/api.uploadWorksheetImage/);assert.match(editor,/type="file" multiple/);
  assert.match(editor,/onImagesUploaded\(urls\)/);
  assert.ok(!editor.includes('latest.current'),'上传不能直接回写旧设置');
- assert.match(editor,/evaluationImages:images.filter/);assert.match(editor,/文字、图片可单独使用，也可共同作为依据/);
+ assert.match(editor,/evaluationImages:\s*images\.filter/);assert.match(editor,/文字、图片可单独使用，也可共同作为依据/);
 });
 test('表达评价提交后自动进行，无需分数也能得到建议',()=>{
  assert.match(editor,/计入评分/);assert.match(editor,/提交后自动评价/);

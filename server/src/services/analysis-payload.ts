@@ -2,6 +2,8 @@ import { readFillAudios, fillAudioSlots } from './worksheet-fill-audio.js';
 import { readAudioAnswer } from './worksheet-audio.js';
 import { INK_DEFAULT_TEXT_SIZE, INK_STROKE_COLOR, isInkColor, isInkFormat, isInkShapeKind, isInkTextSize, type InkValue } from './ink-path.js';
 import { CHAT_IMAGE_URL } from './worksheet-ink.js';
+import { canvasAnswerWidgets, readCanvasAnswers } from './worksheet-image-canvas.js';
+import { answerSlotCount } from './worksheet-questions.js';
 import { analysisAnswerText } from './analysis-question.js';
 import type { QuestionNode } from './worksheet-questions.js';
 
@@ -92,6 +94,7 @@ export interface AnalyzeEntry {
   durationMs?: number;
   fillAudios?: Array<{ url: string; durationMs: number; index: number }>;
   gradeState?: 'correct' | 'partial' | 'incorrect' | null;
+  sectionValue?: unknown;
   // 🔴 **这里刻意没有 `displayName`。**
   // 原先有，而它**只写不读**：标签由 `payloadLabels` 从**名册**派生（★ 2026-10-07 起；
   // 在那之前是按 `studentId` 的序派生的伪名），真名一次都没从这个字段显示过（独立审查 M3）。
@@ -272,10 +275,19 @@ export function selectAnalyzeEntries(
   // 参与者名单仍然要 —— 它挡的是「库里有一行谁的名单里都没有的作答」（脏数据）。
   const known = new Set(participants.map((p) => p.participantId));
   const out: AnalyzeEntry[] = [];
+  const sectionValues = new Map<string, unknown>();
+  const captureSections = question && (question.type === 'image-canvas' ||
+    ((question.type === 'fill-blank' || question.type === 'choice-blank') && answerSlotCount(question.data) > 1));
   for (const answer of answers) {
     if (answer.questionId !== questionId) continue;
     if (answer.status !== 'submitted') continue;
     if (!known.has(answer.participantId)) continue;
+    if (captureSections) sectionValues.set(answer.participantId, answer.value);
+    if (question?.type === 'image-canvas') {
+      const count = Object.keys(readCanvasAnswers(answer.value) ?? {}).length || Number(Boolean(answer.value && canvasAnswerWidgets(question).some(widget => !widget.mode)));
+      out.push({ studentId: answer.participantId, kind: 'text', text: `已提交 ${count} 个作答区`, gradeState: null });
+      continue;
+    }
     if (question && fillAudioSlots(question).length) {
       const audios = readFillAudios(question, answer.value);
       const row = answer.value && typeof answer.value === 'object' ? answer.value as Record<string, unknown> : {};
@@ -323,6 +335,7 @@ export function selectAnalyzeEntries(
   if (question?.type === 'open-ended' || (question?.autoGrade === false && question.type !== 'short-answer' && question.type !== 'drawing')) {
     for (const entry of out) entry.gradeState = null;
   }
+  for (const entry of out) if (sectionValues.has(entry.studentId)) entry.sectionValue = sectionValues.get(entry.studentId);
   return out.sort((a, b) => (a.studentId < b.studentId ? -1 : a.studentId > b.studentId ? 1 : 0));
 }
 
@@ -830,6 +843,7 @@ export function entriesToAggregate(entries: AnalyzeEntry[]): Array<Record<string
     photoUrl: entry.photoUrl ?? null,
     ...(entry.kind === 'audio' ? { audioUrl: entry.audioUrl, durationMs: entry.durationMs } : {}),
     ...(entry.fillAudios ? { fillAudios: entry.fillAudios } : {}),
+    ...(entry.sectionValue !== undefined ? { sectionValue: entry.sectionValue } : {}),
     gradeState: entry.gradeState ?? null,
   }));
 }
@@ -855,6 +869,7 @@ export function entriesFromAggregate(raw: unknown): AnalyzeEntry[] {
         studentId: row.studentId, kind: 'text',
         text: typeof row.text === 'string' ? row.text : '',
         ...(Array.isArray(row.fillAudios) ? {fillAudios: row.fillAudios.filter(audio => audio && Number.isInteger(audio.index) && audio.index >= 0 && readAudioAnswer({format:'audio/v1',url:audio.url,durationMs:audio.durationMs}))} : {}),
+        ...(Object.hasOwn(row, 'sectionValue') ? { sectionValue: row.sectionValue } : {}),
         gradeState,
       });
       continue;
@@ -878,7 +893,8 @@ export function entriesFromAggregate(raw: unknown): AnalyzeEntry[] {
         : { studentId: row.studentId, kind: 'unknown', gradeState });
       continue;
     }
-    out.push({ studentId: row.studentId, kind: 'unknown', gradeState });
+    out.push({ studentId: row.studentId, kind: 'unknown', gradeState,
+      ...(Object.hasOwn(row, 'sectionValue') ? { sectionValue: row.sectionValue } : {}) });
   }
   return out;
 }

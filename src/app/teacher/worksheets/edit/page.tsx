@@ -717,9 +717,9 @@ function WorksheetEditorBody() {
 
       {pickerFor && (
         <AddQuestionPicker
-          onPick={(questionType, fillLayout, imageCanvasTemplate) => {
+          onPick={(questionType, fillLayout) => {
             pendingNewQuestionIds.current = new Set(blocks.flatMap(block => block.questions.map(row => row.node.id)));
-            editor.addQuestion(questionType, pickerFor.parentId, fillLayout, imageCanvasTemplate);
+            editor.addQuestion(questionType, pickerFor.parentId, fillLayout);
             setPickerFor(null);
           }}
           onClose={() => setPickerFor(null)}
@@ -782,7 +782,7 @@ function DraftBanner({ draft, onAccept, onDiscard }: {
 
 /** 题型选择（规格 §6.2：「加题 = 点底部『＋ 添加题目』，弹出题型选择后追加到末尾」）。 */
 function AddQuestionPicker({ onPick, onClose }: {
-  onPick: (questionType: QuestionType, fillLayout?: FillLayout, imageCanvasTemplate?: boolean) => void;
+  onPick: (questionType: QuestionType, fillLayout?: FillLayout) => void;
   onClose: () => void;
 }) {
   const choices: Array<(typeof QUESTION_TYPE_OPTIONS)[number] & { fillLayout?: FillLayout }> = [];
@@ -802,13 +802,6 @@ function AddQuestionPicker({ onPick, onClose }: {
             指的是键盘 / 手写 / 拍照，两处撞词（教师在这里选的是**题型**）。 */}
         <p className="worksheet-editor-dialog-note">选择作答形式。添加后可从左侧抓住拖动把手调整顺序。</p>
         <div className="worksheet-editor-type-list">
-          <button type="button" className="worksheet-editor-type-option" onClick={() => onPick('short-answer', undefined, true)}>
-            <span className="worksheet-editor-type-option-icon">{questionTypeIcon('short-answer')}</span>
-            <span className="worksheet-editor-type-option-copy">
-              <span className="worksheet-editor-type-option-label">整图任务</span>
-              <span className="worksheet-editor-type-option-hint">上传排好版的底图，把作答区和提示拖到想要的位置。</span>
-            </span>
-          </button>
           {choices.map(option => (
             <button key={`${option.value}-${option.fillLayout ?? 'default'}`} type="button" className="worksheet-editor-type-option" onClick={() => onPick(option.value, option.fillLayout)}>
               <span className="worksheet-editor-type-option-icon">{questionTypeIcon(option.value)}</span>

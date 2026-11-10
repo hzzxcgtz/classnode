@@ -200,6 +200,12 @@ interface AnswerShapeSample {
 }
 
 const ANSWER_KEY_AUDIT: Record<QuestionType, AnswerShapeSample[]> = {
+  'image-canvas': [{
+    label: '图文题作答区保留位置并剥离评价标准',
+    data: { imageCanvas: { widgets: [{ id: 'a', canvasEvaluation: { mode: 'ai', criteria: '口头解释依据' }, matchConfig: { id: 'word-1', text: '珊瑚' } }] } },
+    answerKeys: ['canvasEvaluation', 'matchConfig'], safeKeys: ['imageCanvas'],
+    afterStrip: { imageCanvas: { widgets: [{ id: 'a' }] } },
+  }],
   'open-ended': [{ label: '开放题（无答案键）', data: {}, answerKeys: [], safeKeys: [], afterStrip: {} }],
   // ★ 2026-09-25：**空数组 = 这一格的答案**，不是漏填 ——
   //    这张表审计的是「题型 × 作答值的形状」，而**任务根本没有作答值**

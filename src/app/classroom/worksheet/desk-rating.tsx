@@ -2,7 +2,7 @@
 
 import { IconStar, IconStarFilled } from '@tabler/icons-react';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
-import type { DeskRating } from '@/lib/worksheet-image-canvas';
+import { CANVAS_STAR_LABEL, type DeskRating } from '@/lib/worksheet-image-canvas';
 import styles from './worksheet.module.css';
 import canvasStyles from './image-canvas-task.module.css';
 
@@ -15,8 +15,8 @@ export function DeskRatingInput({ draft, settings, disabled, onChange }: {
   const { deskRating } = draft;
   const scale = disabled && deskRating ? deskRating.maxStars : settings.maxStars;
   const stars = deskRating?.maxStars === scale ? deskRating.stars : 0;
-  return <section className={canvasStyles.deskRating} aria-label="同桌评星">
-    <strong>同桌评星</strong>
+  return <section className={canvasStyles.deskRating} aria-label={CANVAS_STAR_LABEL}>
+    <strong>{CANVAS_STAR_LABEL}</strong>
     {settings.instruction && <p>{settings.instruction}</p>}
     {!draft.url ? <p>请用这台 iPad 给身旁的同桌录一段，再为这段录音评星。</p> : <>
       <div className={canvasStyles.stars} role="group" aria-label="选择星级">

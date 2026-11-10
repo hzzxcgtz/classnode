@@ -1,3 +1,4 @@
+import { canvasAutoReviewIds, canvasMatchChoices, readImageCanvas } from './worksheet-image-canvas.js';
 import { aiEvaluationEnabled, hasEvaluation, countsEvaluation } from './worksheet-evaluation.js';
 import { fillAudioSlots } from './worksheet-fill-audio.js';
 /** 学习单的题型注册表。**纯函数，全部在服务端** —— 本项目不引入前端测试框架（规格 §11）。 */
@@ -29,7 +30,7 @@ import { isInkFormat } from './worksheet-ink.js';
  * 同一个校验器（`correctKeys` 恰好一个），差别只在单选多一条 `options.length >= 2`。
  */
 export const QUESTION_TYPES = [
-  'single-choice', 'true-false', 'multi-choice', 'fill-blank', 'short-answer', 'open-ended',
+  'single-choice', 'true-false', 'multi-choice', 'fill-blank', 'short-answer', 'open-ended', 'image-canvas',
   'order', 'match', 'categorize',
   // ★ M4b：绘图题。**不判分**（`graded: false`）—— 学生画图，教师人眼看。
   // 🔴 它同时收口一个真实存在过的窗口：前端 A2 已把 `drawing` 加进
@@ -353,7 +354,7 @@ export const ANSWER_KEYS = [
   'correctKeys', 'answers', 'explanation', 'correctOrder', 'pairs', 'placement', 'conditionalAnswer',
   // 评价与分析要求只供教师与 AI 使用，不能随学生版学习单下发。
   'evaluationText', 'evaluationImages', 'rubricText', 'rubricImageUrl', 'analysisFocus', '__analysisContext', 'audioCriteria', 'audioReference',
-  'wordCloudRequirements',
+  'wordCloudRequirements', 'canvasEvaluation', 'matchConfig',
 ] as const;
 
 /**
@@ -390,11 +391,15 @@ export function stripAnswers(content: WorksheetContent): WorksheetContent {
     }
     return out;
   };
-  const stripNode = (node: QuestionNode): QuestionNode => ({
-    ...node,
-    data: stripValue(node.data) as Record<string, unknown>,
-    children: (node.children ?? []).map(stripNode),
-  });
+  const stripNode = (node: QuestionNode): QuestionNode => {
+    const canvas = readImageCanvas(node.data.imageCanvas);
+    const data = canvas?.widgets.some(widget => widget.mode === 'region-match')
+      ? { ...node.data, imageCanvas: { ...canvas, matchChoices: canvasMatchChoices(canvas) } }
+      : node.data;
+    const studentData = stripValue(data) as Record<string, unknown>;
+    if (node.type === 'image-canvas') studentData.studentAiReviewEnabled = canvasAutoReviewIds(node).length > 0;
+    return { ...node, data: studentData, children: (node.children ?? []).map(stripNode) };
+  };
   return { ...content, nodes: (content.nodes ?? []).map(stripNode) };
 }
 
@@ -459,11 +464,7 @@ export function grade(node: QuestionNode, value: unknown, points: QuestionPoints
     let hit = 0;
     let score = 0;
     auto.forEach((setting) => {
-      const text = texts[setting.index];
-      const accepted = gradableAnswers(data, setting.index, texts);
-      if (typeof text !== 'string' || accepted.length === 0) return;
-      const normalized = normalizeFillText(fillDisplayText(data, setting.index, text));
-      if (accepted.some(answer => normalizeFillText(answer) === normalized)) {
+      if (fillBlankMatches(data, setting.index, texts)) {
         hit += 1;
         score += setting.maxScore;
       }
@@ -926,17 +927,25 @@ function gradableAnswers(data: Record<string, unknown>, index: number, texts: re
   return effectiveFillAnswers(data, index, texts).map((answer) => fillDisplayText(data, index, mathText(splitMath(answer))));
 }
 
+export function fillBlankMatches(data: Record<string, unknown>, index: number, texts: readonly unknown[]): boolean | null {
+  const acceptable = gradableAnswers(data, index, texts);
+  const text = texts[index];
+  if (typeof text !== 'string' || !text.trim() || !acceptable.length) return null;
+  const normalized = normalizeFillText(fillDisplayText(data, index, text));
+  return acceptable.some(answer => normalizeFillText(answer) === normalized);
+}
+
+export function fillTextForAnalysis(data: Record<string, unknown>, index: number, text: string): string {
+  return fillDisplayText(data, index, text);
+}
+
 function fillHitStats(data: Record<string, unknown>, value: unknown): { hit: number; total: number } {
   const total = answerSlotCount(data);
   const rawTexts = readField(value, 'texts');
   const texts = Array.isArray(rawTexts) ? rawTexts : [readField(value, 'text')];
   let hit = 0;
   for (let index = 0; index < total; index += 1) {
-    const acceptable = gradableAnswers(data, index, texts);
-    const text = texts[index];
-    if (typeof text !== 'string' || acceptable.length === 0) continue;
-    const normalized = normalizeFillText(fillDisplayText(data, index, text));
-    if (acceptable.some(answer => normalizeFillText(answer) === normalized)) hit += 1;
+    if (fillBlankMatches(data, index, texts)) hit += 1;
   }
   return { hit, total };
 }
@@ -1319,6 +1328,7 @@ const JUDGES: Record<QuestionType, (data: Record<string, unknown>, value: unknow
   // ⇒ 共用一支，不另写（先例：判断题与单选）。
   'choice-blank': judgeFillBlank,
   'short-answer': () => null,
+  'image-canvas': () => null,
   'open-ended': () => null,
   order: judgeOrder,
   match: judgeMatch,
@@ -1787,6 +1797,24 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
  * 对象字面量里引用自己会踩 TDZ，而写两份必然漂移。
  */
   'open-ended': () => {},
+  'image-canvas': (node, errors) => {
+    const canvas = readImageCanvas(node.data.imageCanvas);
+    if (!canvas) errors.push('请上传有效的图文题底图');
+    else if (!canvas.widgets.some(widget => widget.kind === 'answer')) errors.push('请至少添加一个作答区');
+    else {
+      const usedIds = new Set(canvas.widgets.map(widget => widget.id));
+      canvas.widgets.filter(widget => widget.kind === 'answer').forEach((widget, index) => {
+        if (widget.mode === 'region-match') {
+          if (!widget.matchConfig?.text.trim()) errors.push(`作答区 ${index + 1}：请填写配对词语`);
+          else if (usedIds.has(widget.matchConfig.id)) errors.push(`作答区 ${index + 1}：配对词语标识重复`);
+          else usedIds.add(widget.matchConfig.id);
+        }
+        if (widget.canvasEvaluation?.mode === 'ai' && !widget.canvasEvaluation.criteria.trim()) {
+          errors.push(`作答区 ${index + 1}：请填写本区评价标准`);
+        }
+      });
+    }
+  },
   'short-answer': () => {
     // 主观题**只有题干**要校验，而题干在上面的 `validateQuestion` 里已经查过 —— 所以
     // 这一支是空的。⚠️ 它**必须存在**：「主观题不校验别的」本身就是一个必须被明确作出的

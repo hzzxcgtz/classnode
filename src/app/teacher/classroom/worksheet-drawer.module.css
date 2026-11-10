@@ -650,3 +650,6 @@
 /* Keep long answer content within the drawer rather than creating an outer scrollbar. */
 .participantRoot, .analysisRoot, .taskSection, .questionDetail, .answerPanel { min-width: 0; max-width: 100%; }
 .answerPanel { overflow-wrap: anywhere; }
+
+.headerWorksheetButton { margin-right: 8px; }
+.filterWorksheetButton { margin-left: auto; }

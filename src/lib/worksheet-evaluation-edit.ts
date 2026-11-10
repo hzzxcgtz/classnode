@@ -3,23 +3,9 @@ import { evaluationImages, evaluationRequirements, hasEvaluation } from './works
 import { blankSlots, fillSettingsFor, hasExplicitFillGrading, writeFillSettings, type FillBlankSetting } from './worksheet-fill-modes.ts';
 import { readPromptRuns } from './worksheet-prompt-marks.ts';
 
-/** Share only the rubric. Input modes, scoring switches and per-blank maxima stay independent. */
-export function updateSharedFillEvaluation(settings: FillBlankSetting[], index: number, patch: Record<string, unknown>): FillBlankSetting[] {
-  const before = settings[index];
-  if (!before) return settings;
-  const updated = {...before,...patch} as FillBlankSetting;
-  if (updated.evaluationMode !== 'ai') return settings.map((item,at) => at === index ? updated : item);
-  const source = before.evaluationMode !== 'ai'
-    ? settings.find((item,at) => at !== index && hasEvaluation(item as unknown as Record<string,unknown>) && item.evaluationMode === 'ai') ?? updated
-    : updated;
-  const shared = {
-    evaluationText:evaluationRequirements(source as unknown as Record<string,unknown>),
-    evaluationImages:evaluationImages(source as unknown as Record<string,unknown>),
-  };
-  return settings.map((item,at) => {
-    const next = at === index ? updated : item;
-    return hasEvaluation(next as unknown as Record<string,unknown>) && next.evaluationMode === 'ai' ? {...next,...shared} : next;
-  });
+/** A blank owns its rubric, score and input mode. */
+export function updateFillEvaluation(settings: FillBlankSetting[], index: number, patch: Record<string, unknown>): FillBlankSetting[] {
+  return settings.map((item, at) => at === index ? { ...item, ...patch } : item);
 }
 
 /** Preserve whole-question grading until the teacher explicitly converts it. */
@@ -43,7 +29,7 @@ export function appendQuestionEvaluationImages(node: WorksheetQuestionNode, urls
   const slots = blankSlots(node,runs), at = slots.findIndex(slot=>slot.id === blankId);
   if (at < 0) return node; // Deleted blanks must never be recreated by an upload completing late.
   const settings = fillSettingsFor(node,runs);
-  const next = updateSharedFillEvaluation(settings,at,append(settings[at] as unknown as Record<string,unknown>,true));
+  const next = updateFillEvaluation(settings,at,append(settings[at] as unknown as Record<string,unknown>,true));
   return {...node,data:{...node.data,fillBlankSettings:writeFillSettings(node,runs,next)}};
 }
 

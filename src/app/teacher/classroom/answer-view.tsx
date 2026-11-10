@@ -67,6 +67,13 @@ export function AnswerViewBody({ node, value, transcription = true, transcriptio
 
 function renderView(node: WorksheetQuestionNode, view: AnswerView, transcription: boolean, transcriptionActions: boolean, neutral: boolean) {
   switch (view.kind) {
+    case 'image-canvas':
+      return <div style={{ display: 'grid', gap: 12 }}>
+        {view.regions.map(region => <section key={region.id}>
+          <strong>{region.label}</strong>
+          {renderView(node, region.view, transcription, transcriptionActions, neutral)}
+        </section>)}
+      </div>;
     case 'none':
       return <Empty />;
 

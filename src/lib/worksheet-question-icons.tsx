@@ -76,6 +76,9 @@ export const QUESTION_TYPE_ICONS: Record<QuestionType, ReactNode> = {
   'short-answer': (
     <Glyph><path d="M5 7h14" /><path d="M5 12h14" /><path d="M5 17h8" /></Glyph>
   ),
+  'image-canvas': (
+    <Glyph><rect x="4" y="4" width="16" height="16" rx="3" /><circle cx="9" cy="9" r="1.5" /><path d="M5 17l5-5 3 3 3-3 4 4" /></Glyph>
+  ),
   'open-ended': (
     <Glyph><path d="M5 4h14v12H9l-4 4z" /><path d="M10 8a2 2 0 0 1 4 0c0 1.5-2 1.5-2 3" /><path d="M12 13h.01" /></Glyph>
   ),

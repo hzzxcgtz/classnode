@@ -83,15 +83,15 @@ function valueOf(type: string): unknown {
 test('阳性对照：夹具本身要立得住（可判分题判出分、主观题及旧开放题不判分）', () => {
   assert.ok(ANSWERABLE_TYPES.length > 2, '题型表里不止两个题型，否则本用例空转');
   const graded = ANSWERABLE_TYPES.filter((t) => grade(nodeOf(t), valueOf(t), DEFAULT_POINTS) !== null);
-  assert.equal(graded.length, ANSWERABLE_TYPES.length - 3,
+  assert.equal(graded.length, ANSWERABLE_TYPES.length - 4,
     `夹具应当让「除主观题及旧开放题之外」全部判出分，实际判出分的：${graded.join(', ')}`);
   // 主观题及旧开放题必须恰好回 null（夹具的答案值不是 ink，所以 drawing 走的是「题型」那一格闸）
-  for (const t of ['short-answer', 'drawing', 'open-ended']) {
+  for (const t of ['short-answer', 'drawing', 'open-ended', 'image-canvas']) {
     assert.equal(grade(nodeOf(t), valueOf(t), DEFAULT_POINTS), null, `${t} 不该判分`);
   }
 });
 
-test('★ 可作答题型全部支持智能体分析，只有 task 容器不进入', () => {
+test('★ 可作答题型支持智能体分析，任务容器除外', () => {
   assert.deepEqual([...ANALYZABLE_TYPES].sort(), [...ANSWERABLE_TYPES].sort());
   for (const type of ANSWERABLE_TYPES) assert.equal(isAnalyzableType(type), true, `${type} 应支持分析`);
   assert.equal(isAnalyzableType('task'), false, '任务容器没有作答值');

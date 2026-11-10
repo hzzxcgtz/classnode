@@ -20,6 +20,26 @@
 .compactProgress { width: clamp(60px, 8vw, 110px); min-width: 60px; min-height: 26px; margin: 0; accent-color: #3d7560; cursor: pointer; }
 .compactProgress:focus-visible { outline: 2px solid #729e8a; outline-offset: 2px; }
 .compactTime { font-size: 11px; }
+.stackedTimeline { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1 1 0; min-width: 0; justify-items: center; }
+.stackedTimeline .compactTime { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 10px; line-height: 1; }
+.stackedTimeline .compactProgress {
+  appearance: none; -webkit-appearance: none; display: block; width: 100%; min-width: 0; height: 20px;
+  min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent;
+  --voice-progress-track: linear-gradient(to right, #3d7560 var(--played, 0%), #bbcec3 var(--played, 0%));
+}
+.stackedTimeline .compactProgress::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 4px; background: var(--voice-progress-track);
+}
+.stackedTimeline .compactProgress::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px;
+  border: 1px solid #3d7560; border-radius: 50%; background: #fff;
+}
+.stackedTimeline .compactProgress::-moz-range-track {
+  height: 4px; border-radius: 4px; background: var(--voice-progress-track);
+}
+.stackedTimeline .compactProgress::-moz-range-thumb {
+  width: 10px; height: 10px; border: 1px solid #3d7560; border-radius: 50%; background: #fff;
+}
 /* Teacher drawers: fit the answer column, including narrow table cells. */
 .player.review { width: 100%; max-width: 360px; min-width: 0; padding: 7px 9px; gap: 8px; border-radius: 8px; background: #f1f7f4; border-color: #d7e5dd; }
 .review .play { width: 30px; height: 30px; min-width: 30px; min-height: 30px; }

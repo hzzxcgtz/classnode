@@ -1,3 +1,4 @@
+import { canvasAnswerEntries } from './worksheet-image-canvas.js';
 import { Document, Packer, Paragraph } from 'docx';
 import type { ClassroomArchiveData } from './classroom-archive-data.js';
 import { flattenAnswerable } from './worksheet-heading.js';
@@ -33,6 +34,14 @@ export async function buildWorksheetRecordDocx(data: ClassroomArchiveData): Prom
     wordMeta('题号与随附教师参考学习单一致。以下保留学生作答及已有评价；小组记录为共同作答。', { spacing: { after: 180 } }),
   ];
   const writeAnswer = async (value: unknown, node?: QuestionNode) => {
+    const regions = canvasAnswerEntries(node, value);
+    if (regions) {
+      for (const region of regions) {
+        blocks.push(wordMeta(region.label, { keepNext: true }));
+        await writeAnswer(region.value);
+      }
+      return;
+    }
     const readable = studentAnswerText(value, node);
     if (readable !== null) { blocks.push(wordParagraph(readable)); return; }
     const cell = answerCell(value);

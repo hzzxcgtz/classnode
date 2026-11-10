@@ -290,3 +290,9 @@
   font-size: .8em;
   font-variant-numeric: tabular-nums;
 }
+
+.cloudFallback button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+.cloudFallback button[aria-pressed="true"] { text-decoration: underline; text-underline-offset: 4px; }
+.cloudEvidence { padding: 14px; border: 1px solid #d7e4ef; border-radius: 10px; background: #f6f9fc; }
+.cloudEvidence > h4 { margin: 0 0 10px; color: #344e67; }
+.cloudEvidence > p { margin: 0; color: #506b84; }

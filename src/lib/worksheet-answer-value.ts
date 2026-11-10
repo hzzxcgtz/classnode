@@ -1,4 +1,4 @@
-import { deskReviewSettings, readDeskRating, type DeskRating } from './worksheet-image-canvas.ts';
+import { canvasAnswerFormatMatches, canvasMatchChoices, canvasAnswerMode, canvasAnswerWidgets, canvasRegionNode, deskReviewSettings, readCanvasAnswers, readCanvasMatch, readCanvasStarRating, readDeskRating, readImageCanvas, usesCanvasAnswers, type DeskRating, type CanvasMatchResult, type CanvasStarRating } from './worksheet-image-canvas.ts';
 import type { WorksheetQuestionNode } from './types';
 import { defaultInkBox, inkFormatOf, isInkColor, isInkNode, isInkShapeKind, isInkTextSize, readInkValue, INK_DEFAULT_TEXT_SIZE, INK_STROKE_COLOR } from './worksheet-ink.ts';
 import type { InkCanvas, InkPoint, InkStroke, InkText, InkValue } from './worksheet-ink.ts';
@@ -116,6 +116,9 @@ import { blankLayout } from './worksheet-table.ts';
  * 做整行精确匹配，**全部零命中**。
  */
 export type WorksheetAnswerValue =
+  | CanvasStarRating
+  | CanvasMatchResult
+  | { format: 'image-canvas/v1'; answers: Record<string, WorksheetAnswerValue> }
   | { format: 'choice/v1'; selected: string[] }
   | { format: 'fill/v1'; text: string }
   | { format: 'fill-multi/v1'; texts: string[]; audios?: Record<string, { format: 'audio/v1'; url: string; durationMs: number }> }
@@ -147,6 +150,9 @@ export type WorksheetAnswerValue =
  * 换掉之后教师抽屉里那幅图的宽高比与学生画的那一版不同，而两边都「看起来正常」。
  */
 export type AnswerDraft =
+  | ({ kind: 'canvas-stars' } & Omit<CanvasStarRating, 'format'>)
+  | ({ kind: 'canvas-match' } & Omit<CanvasMatchResult, 'format'>)
+  | { kind: 'image-canvas'; answers: Record<string, AnswerDraft> }
   | { kind: 'choice'; selected: string[] }
   | { kind: 'fill'; texts: string[]; pendingAudio?: string[]; audios?: Record<string, { format: 'audio/v1'; url: string; durationMs: number }> }
   | { kind: 'text'; text: string }
@@ -433,6 +439,7 @@ function draftKindOf(node: WorksheetQuestionNode): AnswerDraft['kind'] | null {
  * 屏幕上也不会因此多出任何控件。
  */
 export function emptyDraftFor(node: WorksheetQuestionNode): AnswerDraft {
+  if (usesCanvasAnswers(node)) return { kind: 'image-canvas', answers: {} };
   const kind = draftKindOf(node);
   if (kind === 'audio') return { kind: 'audio', url: '', durationMs: 0 };
   if (kind === 'photo') return { kind: 'photo', url: '' };
@@ -495,6 +502,9 @@ export function inkDraftHasContent(draft: InkAnswerDraft): boolean {
 }
 
 export function isDraftEmpty(draft: AnswerDraft): boolean {
+  if (draft.kind === 'canvas-match') return false;
+  if (draft.kind === 'canvas-stars') return !readCanvasStarRating({ ...draft, format: 'canvas-stars/v1' });
+  if (draft.kind === 'image-canvas') return Object.values(draft.answers).every(isDraftEmpty);
   if (draft.kind === 'choice') return draft.selected.length === 0;
   if (draft.kind === 'fill') return Boolean(draft.pendingAudio?.length) || (!draft.texts.some((text) => text.trim() !== '') && !Object.values(draft.audios ?? {}).some(audio => WORKSHEET_AUDIO_URL.test(audio.url) && validAudioDuration(audio.durationMs)));
   // ★ M4b：判据是「有没有内容」（笔画 / 文字 / 第三方文档），定义在 `inkDraftHasContent` 一处。
@@ -511,6 +521,28 @@ export function isDraftEmpty(draft: AnswerDraft): boolean {
 
 /** 输入态 → 作答值。`null` = 「这一题没有内容可提交」（面板据此把按钮按死）。 */
 function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): WorksheetAnswerValue | null {
+  if (draft.kind === 'image-canvas') {
+    const answers: Record<string, WorksheetAnswerValue> = {};
+    const canvas = readImageCanvas(node.data.imageCanvas);
+    for (const choice of canvas ? canvasMatchChoices(canvas) : []) {
+      const part = draft.answers[choice.id];
+      const result = part?.kind === 'canvas-match' && readCanvasMatch({ ...part, format: 'canvas-match/v1' });
+      if (result) answers[choice.id] = result;
+    }
+    for (const widget of canvasAnswerWidgets(node)) {
+      if (widget.mode === 'region-match') continue;
+      const part = draft.answers[widget.id];
+      const value = widget.mode === 'star-rating'
+        ? part?.kind === 'canvas-stars' && part.maxStars === widget.maxStars && readCanvasStarRating({ ...part, format: 'canvas-stars/v1' })
+        : part && valueFromDraft(canvasRegionNode(node, widget), part);
+      if (value) answers[widget.id] = value;
+    }
+    return Object.keys(answers).length ? { format: 'image-canvas/v1', answers } : null;
+  }
+  if (node.type === 'image-canvas') {
+    const widget = canvasAnswerWidgets(node)[0];
+    return widget ? valueFromDraft(canvasRegionNode(node, widget), draft) : null;
+  }
   const type = node.type;
   if (isAudioNode(node)) {
     if (draft.kind !== 'audio' || !WORKSHEET_AUDIO_URL.test(draft.url) || !validAudioDuration(draft.durationMs)) return null;
@@ -708,6 +740,33 @@ function reconcileWithNode(node: WorksheetQuestionNode, draft: AnswerDraft): Ans
  * **不抛**。它是渲染路径上的东西，一次 TypeError 会让整个面板白屏。
  */
 export function draftFromValue(node: WorksheetQuestionNode, value: unknown): AnswerDraft {
+  const widgets = canvasAnswerWidgets(node);
+  if (usesCanvasAnswers(node)) {
+    const parts = readCanvasAnswers(value);
+    const answers: Record<string, AnswerDraft> = {};
+    const canvas = readImageCanvas(node.data.imageCanvas);
+    for (const choice of canvas ? canvasMatchChoices(canvas) : []) {
+      const result = parts && readCanvasMatch(parts[choice.id]);
+      if (result) {
+        const { format: _, ...answer } = result;
+        answers[choice.id] = { kind: 'canvas-match', ...answer };
+      }
+    }
+    for (const widget of widgets) {
+      if (widget.mode === 'region-match') continue;
+      const part = parts ? parts[widget.id] : widget.mode ? null : value;
+      if (widget.mode === 'star-rating') {
+        const rating = readCanvasStarRating(part);
+        if (rating?.maxStars === widget.maxStars && rating) answers[widget.id] = { kind: 'canvas-stars', stars: rating.stars, maxStars: rating.maxStars };
+      } else if (canvasAnswerFormatMatches(canvasAnswerMode(node, widget), part)) {
+        answers[widget.id] = draftFromValue(canvasRegionNode(node, widget), part);
+      }
+    }
+    return { kind: 'image-canvas', answers };
+  }
+  const parts = readCanvasAnswers(value);
+  if (parts && widgets.length === 1) value = parts[widgets[0].id];
+  if (node.type === 'image-canvas' && widgets.length === 1) return draftFromValue(canvasRegionNode(node, widgets[0]), value);
   const empty = emptyDraftFor(node);
   if (!value || typeof value !== 'object' || Array.isArray(value)) return empty;
   const row = value as Record<string, unknown>;

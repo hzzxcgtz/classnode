@@ -1,5 +1,5 @@
 import { readAudioAnswer } from './worksheet-audio.js';
-import { readDeskRating, readImageCanvas } from './worksheet-image-canvas.js';
+import { canvasAnswerEntries, readDeskRating, readImageCanvas } from './worksheet-image-canvas.js';
 import { createHash } from 'node:crypto';
 import { ARCHIVE_STYLE } from './classroom-archive-style.js';
 import { ARCHIVE_SCRIPT } from './classroom-archive-interaction.js';
@@ -92,6 +92,8 @@ export class ArchiveView {
   }
   answer(value: unknown, question?: QuestionNode, includeSource = true): string {
     if (value === null || value === undefined) return '<p class="muted">未保存内容或内容已清空</p>';
+    const regions = canvasAnswerEntries(question, value);
+    if (regions) return regions.map(region => `<section><strong>${esc(region.label)}</strong>${this.answer(region.value, undefined, false)}</section>`).join('');
     const row = rec(value); const data = rec(question?.data);
     const entries = (raw: unknown) => new Map(list(raw).map(v => [String(rec(v).id ?? rec(v).key ?? ''), String(rec(v).text ?? '')]));
     const names = (values: unknown, options: unknown, showKey = false) => {

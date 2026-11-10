@@ -381,6 +381,10 @@ test('🔴 每个题型在抽屉里都「有话说」—— 没有哪个题型�
       node: node({ id: 's10', type: 'choice-blank' }),
       value: { format: 'fill-multi/v1', texts: ['阳光', '水分'] },
     },
+    'image-canvas': {
+      node: node({ id: 's11', type: 'image-canvas' }),
+      value: { format: 'image-canvas/v1', answers: { note: { format: 'text/v1', text: '推荐珊瑚' } } },
+    },
     drawing: {
       node: node({ id: 's9', type: 'drawing', inputMode: 'handwriting' }),
       value: {
@@ -731,6 +735,7 @@ const EXPECTED_GRADED: Record<QuestionType, boolean> = {
   // ★ 2026-09-26：选择填空**判分**（与填空题共用判分器）。
   'choice-blank': true,
   'short-answer': false,
+  'image-canvas': false,
   'open-ended': false,
   // ★ M4b：`drawing: false` **是有意的决定，不是补测试** —— 手写 / 绘图不参与自动判分
   // （规格 §12 裁定 3）。这一格决定了看板抽屉里画不画 ✓/½/✗。

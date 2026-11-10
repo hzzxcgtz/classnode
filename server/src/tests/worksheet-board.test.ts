@@ -299,7 +299,7 @@ test('安全：响应里**不存在 ANSWER_KEYS 中的任何一个键**，且不
   const worksheet = await seedWorksheet(db.prisma, '光合作用学习单');
   await db.prisma.worksheet.update({
     where: {id:worksheet.id},
-    data: {content: {...SAMPLE_CONTENT, nodes:SAMPLE_CONTENT.nodes.map(node => node.id !== 'q_2' ? node : {
+    data: {content: {...SAMPLE_CONTENT, nodes:[...SAMPLE_CONTENT.nodes.map(node => node.id !== 'q_2' ? node : {
       ...node, prompt:'水的化学式是____，分子组成是____',
       // Conditional answers are nested secrets too: exercise real saved rules in both read paths.
       data: {
@@ -313,7 +313,15 @@ test('安全：响应里**不存在 ANSWER_KEYS 中的任何一个键**，且不
         },
         explanation: '两个氢一个氧',
       },
-    })}},
+    }), {
+      id: 'canvas-fixture', type: 'image-canvas', prompt: '图文示例', inputMode: 'keyboard', children: [],
+      data: { imageCanvas: { url: '/uploads/chat/chat-1.png', width: 100, height: 100, widgets: [
+        { id: 'canvas-note', kind: 'answer', mode: 'keyboard', x: 10, y: 10, width: 40, height: 20,
+          canvasEvaluation: { mode: 'ai', criteria: '图文题教师专用评价要求' } },
+        { id: 'region-1', kind: 'answer', mode: 'region-match', x: 55, y: 10, width: 40, height: 20,
+          matchConfig: { id: 'word-1', text: '珊瑚', correct: '答对', incorrect: '再看看' } },
+      ] } },
+    }]}},
   });
   const classroom = await db.prisma.classroom.create({ data: { code: '9002', title: '安全课堂', mode: 'standard' } });
   await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });

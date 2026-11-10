@@ -563,7 +563,17 @@ export interface WorksheetAnalysisFeedback {
   missing: string[];
 }
 
+export interface WorksheetAnalysisSection {
+  id: string;
+  title: string;
+  mode: 'answer' | 'ai' | 'collect';
+  findings: string;
+  students: Array<{ studentId: string; value: unknown; correct: boolean | null; feedback: string | null }>;
+}
+
 export interface WorksheetAnalysisPayload {
+  sectioned?: boolean;
+  sectionAnalysis?: WorksheetAnalysisSection[];
   /** 只有主观题允许清除 AI 评分，客观题的直接打分必须保留。 */
   canClearAiScores?: boolean;
   /** 正在进行个人 AI 评价的参与者。保留上次有效评分，直到新评价完成。 */

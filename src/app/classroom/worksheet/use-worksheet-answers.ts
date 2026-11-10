@@ -168,6 +168,7 @@ correctBlanks: Record<string, Record<string, string>>;
   offline: boolean;
   /** 有改动在防抖窗口里、或有请求在途、或队列非空。 */
   saving: boolean;
+  getGeneration: (questionId: string) => string;
   setDraft: (node: WorksheetQuestionNode, draft: AnswerDraft) => void;
   submit: (node: WorksheetQuestionNode) => Promise<void>;
 }
@@ -838,6 +839,7 @@ export function useWorksheetAnswers({
     offline,
     saving: debouncing || pendingCount > 0,
     setDraft,
+    getGeneration: (questionId: string) => generationFor(generationRef.current, questionId),
     submit,
   };
 }

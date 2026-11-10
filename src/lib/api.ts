@@ -370,6 +370,9 @@ export const api = {
   },
   getImageOrientation: (url: string) => request<{ url: string; version: string }>(`/api/upload/image-orientation?url=${encodeURIComponent(url)}`, { cache: 'no-store' }),
   saveImageOrientation: (url: string, degrees: number, version: string) => request<{ url: string; version: string }>('/api/upload/image-orientation', { method: 'POST', body: JSON.stringify({ url, degrees, version }) }),
+  checkWorksheetMatch: (worksheetId: string, questionId: string, choiceId: string, targetId: string | null, generation: string, signal: AbortSignal) =>
+    request<import('./worksheet-image-canvas').CanvasMatchResult | import('./worksheet-image-canvas').CanvasMatchMiss>(`/api/worksheets/${encodeURIComponent(worksheetId)}/answers/match`,
+      { method: 'POST', body: JSON.stringify({ questionId, choiceId, targetId, generation }), signal }, 10_000),
   uploadWorksheetImage: (file: File, needsWebp = false) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -608,6 +611,7 @@ export const api = {
       analysisDurationMs: number | null;
       perStudent: WorksheetAnalysisPayload['perStudent'];
       feedback?: WorksheetAnalysisPayload['feedback'];
+      sectionAnalysis?: WorksheetAnalysisPayload['sectionAnalysis'];
       agentId: string;
       model: string;
     }>(

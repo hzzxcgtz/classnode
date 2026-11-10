@@ -11,3 +11,12 @@
 .studentLink { display: inline-block; margin: 0; font-size: max(12px, .82em); border: 0; border-radius: 4px; padding: 3px 6px; background: #eaf2f8; color: #426a8c; font-family: inherit; line-height: 1.6; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .studentLink:hover { background: #dceaf4; }
 .studentLink:focus-visible { outline: 2px solid #7996b1; outline-offset: 2px; }
+
+.reportEvidence {
+  margin: 16px 0;
+  padding: 10px 14px;
+  border: 1px solid #d7e4ef;
+  border-radius: 8px;
+  background: #fff;
+}
+.reportEvidence > summary { cursor: pointer; font-weight: 650; color: #344e67; }

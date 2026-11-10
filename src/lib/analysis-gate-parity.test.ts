@@ -18,8 +18,8 @@ test('阳性对照：前端题型表的每一项都有布尔 `graded`', () => {
   assert.deepEqual(missing, [], `这些题型没有布尔 graded：${missing.join(', ')}`);
 });
 
-test('★ 前端全部可作答题型与服务端分析闸门集合相等', () => {
-  const answerable = QUESTION_TYPE_OPTIONS.map((o) => o.value);
+test('★ 前端支持 AI 分析的题型与服务端分析闸门集合相等', () => {
+  const answerable = QUESTION_TYPE_OPTIONS.map(o => o.value);
   assert.deepEqual(
     [...answerable].sort(),
     [...ANALYZABLE_TYPES].sort(),
@@ -28,7 +28,7 @@ test('★ 前端全部可作答题型与服务端分析闸门集合相等', () =
 });
 
 test('反证：前端新增题型但闸门漏掉 ⇒ 上一条必须红', () => {
-  const fake = [...QUESTION_TYPE_OPTIONS.map((o) => o.value), 'future-type'];
+  const fake = [...QUESTION_TYPE_OPTIONS.map(o => o.value), 'future-type'];
   assert.notDeepEqual([...fake].sort(), [...ANALYZABLE_TYPES].sort());
   assert.deepEqual(fake.filter((type) => !ANALYZABLE_TYPES.includes(type)), ['future-type']);
 });

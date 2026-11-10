@@ -409,3 +409,13 @@
 .scoreRow.scoreRowSelected .scoreAdvice { background: #fff8ee; }
 .scoreRow { cursor: pointer; }
 .scoreRow:focus, .scoreRow:focus-visible { outline: none; }
+
+.analysisSection { border: 1px solid #d8e3ef; border-radius: 10px; margin-bottom: 10px; padding: 10px 12px; }
+.analysisSection > summary, .analysisSectionStudents summary { cursor: pointer; font-weight: 600; }
+.analysisSection > summary span { margin-inline-start: 10px; color: #526a83; font-size: .85em; font-weight: 400; }
+.analysisSectionStudents { display: grid; gap: 6px; }
+.analysisSectionStudents > details { background: #f3f7fb; border-radius: 7px; padding: 7px 10px; }
+.analysisSectionStudents p { white-space: pre-wrap; }
+
+.reportTitle { margin: 0 0 10px; color: #263d55; font-size: 1.08rem; }
+.reportSectionsTitle { margin: 18px 0 8px; color: #344e67; font-size: .95rem; }

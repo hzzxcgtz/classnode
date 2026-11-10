@@ -7,7 +7,7 @@ import { aiEvaluationEnabled, hasEvaluation } from '@/lib/worksheet-evaluation';
 import { readAnswerSets } from '@/lib/worksheet-answer-view';
 import { fillSettingsFor } from '@/lib/worksheet-fill-modes';
 import { readPromptRuns } from '@/lib/worksheet-prompt-marks';
-import { draftFromValue, isMultipleChoice } from '@/lib/worksheet-questions';
+import { isMultipleChoice } from '@/lib/worksheet-questions';
 import type { WorksheetAnalysisState } from './analysis-panel';
 import { AnswerViewBody } from './answer-view';
 import { ClassroomImagePreviewContext } from './answer-photo';
@@ -67,11 +67,6 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
   cloudOnly?: boolean;
 }) {
   const submitted = useMemo(() => rows.filter((row): row is StatsRow => row?.status === 'submitted'), [rows]);
-  const hasText = useMemo(() => submitted.some(row => {
-    const draft = draftFromValue(node, row.value);
-    return draft.kind === 'text' ? Boolean(draft.text.trim())
-      : draft.kind === 'fill' && draft.texts.some(text => text.trim());
-  }), [node, submitted]);
   const hasClassAnalysis = Boolean(analysisState.payload?.narrative);
   const phrases = hasClassAnalysis ? analysisState.payload?.feedback?.wordCloud : undefined;
   const sharedPhrases = useMemo(() => (phrases ?? [])
@@ -80,8 +75,11 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
   const distribution = stats.distribution;
   const views: View[] = [];
   if (!cloudOnly && distribution && !['text', 'ink'].includes(distribution.kind)) views.push('distribution');
-  if (cloudOnly || isExpressionQuestion(node) || distribution?.kind === 'text' || hasText || phrases?.length) views.push('cloud');
-  if (!cloudOnly && distribution?.kind !== 'text') views.push('answers');
+  if (isExpressionQuestion(node)) views.push('cloud');
+  if (!cloudOnly) views.push('answers');
+  const [selectedPhrase, setSelectedPhrase] = useState<string | null>(null);
+  const phraseEvidence = sharedPhrases.find(phrase => phrase.phrase === selectedPhrase);
+  const examples = phraseEvidence ? submitted.filter(row => phraseEvidence.studentIds.includes(row.participantId)).slice(0, 3) : [];
   const [selected, setSelected] = useState<View | null>(null);
   const [projecting, setProjecting] = useState(false);
   const [fontScale, setFontScale] = useState(100);
@@ -158,7 +156,22 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
           {sharedPhrases.length ? <>
             {analysisState.payload?.stale && <p className={styles.cloudNote}>当前显示上次分析的观点云。重新生成班级分析后可更新。</p>}
             <OpinionCloud phrases={sharedPhrases} presentation={presentation} fontScale={fontScale}
-              showCounts={showCounts} layoutSeed={layoutSeed} />
+              showCounts={showCounts} layoutSeed={layoutSeed}
+              selectedPhrase={presentation ? undefined : selectedPhrase}
+              onSelectPhrase={presentation ? undefined : setSelectedPhrase} />
+            {!presentation && <p className={styles.cloudNote}>点击一个观点，查看相关作答。</p>}
+            {!presentation && phraseEvidence && <section className={styles.cloudEvidence} aria-label="观点对应的作答">
+              <h4>{phraseEvidence.phrase}{showCounts ? ` · ${phraseEvidence.studentIds.length} 份作答` : ''}</h4>
+              {analysisState.payload?.stale
+                ? <p>重新生成全班分析后，可查看与当前作答对应的示例。</p>
+                : examples.length > 0 ? <div className={styles.cards}>
+                  {examples.map(row => <article key={row.participantId}>
+                    <h4>{row.participantName}</h4>
+                    <AnswerViewBody node={answerNode} value={row.value} transcription={false} neutral />
+                    {onOpenStudent && <button type="button" className="btn btn-secondary" onClick={() => onOpenStudent(row.participantId)}>查看作答详情</button>}
+                  </article>)}
+                </div> : <p>当前没有可查看的作答示例。</p>}
+            </section>}
           </> : <div className={styles.cloudNotice} role="status">
             <IconSparkles size={19} aria-hidden="true" />
             <span>{analysisState.loading ? '正在读取观点云…'

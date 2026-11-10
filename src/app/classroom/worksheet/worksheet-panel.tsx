@@ -50,9 +50,9 @@ import { MODULE_META } from '../module-meta';
 import { useModuleViewport } from '../shell/use-module-viewport';
 // ★ M4a/D2：作答区**只有一份实现**（`questions/index.tsx` 的分派器 + 6 个作答体）。
 // 教师端的「学生端预览」渲染的是下面这个 `WorksheetQuestionList`，所以它自动用上同一份。
-import { QuestionInput } from './questions';
+import { QuestionInput, type RenderCanvasPhotoTrigger } from './questions';
 import { ImageCanvasTask } from './image-canvas-task';
-import { deskReviewSettings, isExpressionTask, readImageCanvas } from '@/lib/worksheet-image-canvas';
+import { canvasAutoReviewIds, canvasMatchChoices, canvasDeskReviewSettings, canvasAnswerWidgets, deskReviewSettings, isExpressionTask, readImageCanvas, usesCanvasAnswers } from '@/lib/worksheet-image-canvas';
 import { ChoiceBlankAnswer } from './questions/choice-blank-answer';
 import {
   questionDisplayState,
@@ -312,6 +312,7 @@ const NO_OPEN_QUESTIONS: readonly string[] = [];
  */
 export interface WorksheetQuestionListProps {
   worksheetId?: string;
+  getGeneration?: (questionId: string) => string;
   /**
    * 要画的**段** —— 一个任务一段（标题 + 它的小题），连续散题合一段（无标题）。
    *
@@ -328,6 +329,8 @@ export interface WorksheetQuestionListProps {
   statuses: Record<string, WorksheetQuestionStatus>;
   submitting: Record<string, boolean>;
   interactive: boolean;
+  /** 教师查看真实作答时显示结果，输入与提交仍由 interactive 控制。 */
+  reviewOnly?: boolean;
   /** 教师预览仅在内存试填，图片也不上传。 */
   previewOnly?: boolean;
   /**
@@ -384,11 +387,13 @@ export interface WorksheetQuestionListProps {
 
 export function WorksheetQuestionList({
   worksheetId,
+  getGeneration,
   groups,
   drafts,
   statuses,
   submitting,
   interactive,
+  reviewOnly = false,
   previewOnly = false,
   allowResubmit,
   reward,
@@ -410,6 +415,7 @@ export function WorksheetQuestionList({
   // 两个都叫 locked 会让 `controlsDisabled` 那一行读不出是哪一条在起作用。
   answersLocked: classroomLocked,
 }: WorksheetQuestionListProps) {
+  const [pendingCanvas, setPendingCanvas] = useState<Record<string, boolean>>({});
   if (groups.length === 0) {
     return (
       <div className={styles.questions} data-interactive={interactive ? '1' : '0'}>
@@ -433,7 +439,7 @@ export function WorksheetQuestionList({
   const hiddenQuestionCount = view.hiddenCount;
 
   return (
-    <div className={styles.questions} data-interactive={interactive ? '1' : '0'}>
+    <div className={styles.questions} data-interactive={interactive ? '1' : '0'} data-review-only={reviewOnly || undefined}>
       {visibleGroups.map((group, groupIndex) => (
         // ⚠️ `key` 用下标 + 标题：散题那几段的 `title` 恒为 `null`，拿它当 key 会撞。
         // 段本身不重排（页面上唯一会重排的是小题，而它们各自按 `node.id` 作 key）。
@@ -463,27 +469,44 @@ export function WorksheetQuestionList({
         const state = questionDisplayState(statuses[node.id], raw);
         const submitted = statuses[node.id] === 'submitted';
         // 已提交 + 不许重交 ⇒ 这一题对学生是「定稿」。控件收起，按钮不出现。
-        const personalReview = aiEvaluationEnabled(node);
+        const canvasTask = node.type === 'image-canvas';
+        const personalReview = canvasTask
+          ? node.data.studentAiReviewEnabled === true || canvasAutoReviewIds(node).length > 0
+          : aiEvaluationEnabled(node);
         const questionReviews = reviews.filter(r => r.questionId === node.id);
         const latestReview = questionReviews.filter(r => r.status === 'succeeded' && r.evaluatedAt).sort((a, b) => Date.parse(b.evaluatedAt!) - Date.parse(a.evaluatedAt!))[0];
         const pendingReview = questionReviews.find(r => r.status === 'pending');
         const reviewPending = Boolean(pendingReview);
         const reviewQueued = pendingReview?.phase === 'queued';
-        const reviewLimit = typeof node.data.aiReviewLimit === 'number' ? node.data.aiReviewLimit : 1;
+        const reviewLimit = canvasTask ? Infinity : typeof node.data.aiReviewLimit === 'number' ? node.data.aiReviewLimit : 1;
         const reviewUsed = questionReviews.filter(r => r.status === 'succeeded' && r.source === 'student').length;
         const reviewRemaining = Math.max(0, reviewLimit - reviewUsed);
         const studentHistoryReviews = questionReviews.filter(r => r.source === 'student');
-        const showReviewHistory = studentHistoryReviews.length > 0 && (reviewLimit > 1 || studentHistoryReviews.some(r => r.status === 'superseded'));
+        const showReviewHistory = studentHistoryReviews.length > 0 && ((!canvasTask && reviewLimit > 1)
+          || studentHistoryReviews.some(r => r.status === 'superseded'));
         const latestFailedReview = questionReviews[0]?.status === 'failed' ? questionReviews[0] : null;
         const canRetryLatest = Boolean(personalReview && latestFailedReview?.source === 'student' && latestFailedReview.canRetry !== false && reviewRemaining > 0 && !reviewPending && onRetryReview);
         const currentFeedbackAvailable = !questionReviews.length || questionReviews[0].status === 'succeeded';
-        const locked = personalReview ? reviewPending || reviewRemaining === 0 : submitted && !allowResubmit;
+        const locked = canvasTask ? reviewPending || (submitted && !allowResubmit)
+          : personalReview ? reviewPending || reviewRemaining === 0 : submitted && !allowResubmit;
         const untouched = raw === undefined || isDraftEmpty(raw);
         const deskReview = deskReviewSettings(node);
-        const awaitingDeskRating = Boolean(deskReview && (!raw || raw.kind !== 'audio' || raw.deskRating?.maxStars !== deskReview.maxStars));
-        const canvas = isExpressionTask(node.type) ? readImageCanvas(node.data.imageCanvas) : null;
+        const widgets = canvasAnswerWidgets(node);
+        const composite = usesCanvasAnswers(node);
+        const canvas = (isExpressionTask(node.type) || node.type === 'image-canvas') ? readImageCanvas(node.data.imageCanvas) : null;
+        const canvasUnavailable = canvasTask && (!canvas || !widgets.length);
+        const matchChoices = canvas ? canvasMatchChoices(canvas) : [];
+        const completedMatches = matchChoices.filter(choice => raw?.kind === 'image-canvas' && raw.answers[choice.id]?.kind === 'canvas-match').length;
+        const completeRegions = composite ? completedMatches + widgets.filter(widget => {
+          if (widget.mode === 'region-match') return false;
+          const part = raw?.kind === 'image-canvas' ? raw.answers[widget.id] : undefined;
+          const review = canvasDeskReviewSettings(node, widget);
+          const recordedInPreview = previewOnly && part?.kind === 'audio' && part.url.startsWith('blob:');
+          return part && (recordedInPreview || !isDraftEmpty(part)) && (!review || (part.kind === 'audio' && part.deskRating?.maxStars === review.maxStars));
+        }).length : 0;
+        const awaitingDeskRating = Boolean(!composite && deskReview && (!raw || raw.kind !== 'audio' || raw.deskRating?.maxStars !== deskReview.maxStars));
         // 没内容可提交、又还没交过 ⇒ 按钮按不动（点下去必然被服务端 400 拒）。
-        const submitDisabled = Boolean(submitting[node.id]) || awaitingDeskRating || reviewPending || (raw?.kind === 'fill' && Boolean(raw.pendingAudio?.length)) || (!submitted && untouched);
+        const submitDisabled = Boolean(submitting[node.id]) || pendingCanvas[node.id] || awaitingDeskRating || (composite && completeRegions < widgets.length) || reviewPending || (raw?.kind === 'fill' && Boolean(raw.pendingAudio?.length)) || (!submitted && untouched);
         // ★ M5a：课堂级锁定也禁用控件（停笔），但它**不**收起提交按钮 ——
         // 裁定 ③ 是「停笔，但还能交卷」。见下面渲染那一段。
         const controlsDisabled = !interactive || locked || classroomLocked;
@@ -508,11 +531,11 @@ export function WorksheetQuestionList({
         };
         const promptImage = readPromptImage(node);
         const questionIcon = <span className={styles.questionIcon}>{questionTypeIcon(node.type)}</span>;
-        const feedbackReady = interactive && !reviewPending && !submitting[node.id] && currentFeedbackAvailable;
+        const feedbackReady = (interactive || reviewOnly) && !reviewPending && !submitting[node.id] && currentFeedbackAvailable;
         const gradeState = feedbackReady ? gradeStates?.[node.id] : undefined;
         const currentScore = feedbackReady ? scores?.[node.id] ?? null : null;
-        const aiReferenceScore = interactive && !reviewPending && !submitting[node.id] && currentFeedbackAvailable ? aiReferenceScores?.[node.id] : undefined;
-        const studentAdvice = interactive && !reviewPending && !submitting[node.id] && currentFeedbackAvailable ? aiAdvice?.[node.id] || aiReferenceScore?.advice : undefined;
+        const aiReferenceScore = feedbackReady ? aiReferenceScores?.[node.id] : undefined;
+        const studentAdvice = feedbackReady ? aiAdvice?.[node.id] || aiReferenceScore?.advice : undefined;
         const mixedFillScoring = node.type === 'fill-blank'
           && node.autoGrade !== false
           && hasExplicitFillGrading(fillSettingsFor(node, promptRuns))
@@ -524,8 +547,7 @@ export function WorksheetQuestionList({
          * 🔴 原来它们是**两块**：一个 `✓ 已完成` 的小徽章 + 一个「全部答对／部分答对」的
          * 反馈框（奖励挂在那个框里）。合成一条之后，学生一眼看完「做完没 / 对不对 /
          * 拿到什么」，不用在两处找。
-         * ⚠️ **判分与奖励仍然只在 `interactive` 时有**（教师端预览 `gradeState` 是
-         * `undefined` ⇒ 那两段根本不渲染）—— 这条闸一个字没动。
+         * 未传作答结果的编辑预览没有判分或奖励。
          * ⚠️ `role="status"` + `aria-live` 从原来那个反馈框搬到这里：判分结果是
          * 提交后才出现的一段反馈，读屏要念出来。
          */
@@ -539,7 +561,7 @@ export function WorksheetQuestionList({
         const verdictLabel = mixedFillScoring
           ? (gradeState === 'correct' ? '自动评分部分全对' : gradeState === 'partial' ? '自动评分部分答对' : '自动评分部分再想想')
           : gradeState === 'correct' ? '全部答对' : gradeState === 'partial' ? '部分答对' : '再想一想';
-        const questionMeta = state !== 'empty' || gradeState || aiReferenceScore ? (
+        const questionMeta = state !== 'empty' || gradeState || aiReferenceScore || reviewOnly ? (
           // ★ 2026-09-29（教师 ⑤）：外面多了一层**锚点** —— 奖励角标要挂在判定那一格的
           // 右上角上，而 `.questionResult` 有 `overflow: hidden`（它要把两格的底色裁进圆角里）
           // ⇒ 角标必须是它的**兄弟**才不会被裁掉。`margin-left: auto`（原来在
@@ -563,6 +585,7 @@ export function WorksheetQuestionList({
               </span>
             )}
             <div className={styles.questionResult} role="status" aria-live="polite">
+              {reviewOnly && state === 'empty' && <span className={styles.resultCell} data-tone="unanswered">未作答</span>}
               {state !== 'empty' && (
                 <span
                   className={styles.resultCell}
@@ -612,12 +635,14 @@ export function WorksheetQuestionList({
             —— 再加 6 个题型就是两处各加 6 支，必然漂移（症状：预览里画得出来、
             学生那里画不出来，**没有任何报错**）。见 `questions/index.tsx` 的文件头。
             ⚠️ `draft` 而不是 `raw`：渲染用的起点必须是有形状的那一份。 */
-        const input = (onMediaBusyChange?: (busy: boolean) => void) => <QuestionInput
+        const input = (inputNode: WorksheetQuestionNode, inputDraft: AnswerDraft | undefined, change: (draft: AnswerDraft) => void,
+          onMediaBusyChange?: (busy: boolean) => void, renderCanvasPhotoTrigger?: RenderCanvasPhotoTrigger) => <QuestionInput
           onMediaBusyChange={onMediaBusyChange}
+          renderCanvasPhotoTrigger={renderCanvasPhotoTrigger}
           worksheetId={worksheetId}
-          node={node}
-          draft={draft}
-          onChange={onChange}
+          node={inputNode}
+          draft={inputDraft}
+          onChange={(_, part) => change(part)}
           disabled={controlsDisabled}
           localOnly={previewOnly}
           // ★ 2026-09-27（教师）：「选择和判断学生错误后也要与填空一样给出叉叉符号并
@@ -649,8 +674,9 @@ export function WorksheetQuestionList({
           <section
             className={styles.question}
             data-state={state}
+            data-region-match={matchChoices.length > 0 || undefined}
             key={node.id}
-            aria-label={`${heading} ${canvas ? '整图任务' : questionTypeLabel(node.type)}`}
+            aria-label={`${heading} ${canvas ? '图文题' : questionTypeLabel(node.type)}`}
           >
             {interactive && reward && gradeStates?.[node.id] === 'correct' && (rewardBursts?.[node.id] ?? 0) > 0 ? (
               <RewardBurst
@@ -687,7 +713,7 @@ export function WorksheetQuestionList({
                 右边结果条；**题干正文挪到下一行**（原来三样挤一行，题干被夹在中间）。 */}
             <div className={styles.questionLead}>
               {questionIcon}
-              <span className={styles.typeNickname}>{canvas ? '整图任务' : questionTypeNickname(node.type)}</span>
+              <span className={styles.typeNickname}>{canvas ? '图文题' : questionTypeNickname(node.type)}</span>
               {questionMeta}
             </div>
             {!canvas && <div className={styles.prompt}>
@@ -719,11 +745,16 @@ export function WorksheetQuestionList({
               <img className={styles.promptImage} src={worksheetAssetUrl(promptImage)} alt="任务配图" />
             )}
 
-            {canvas ? <ImageCanvasTask canvas={canvas} title={node.prompt} inputMode={node.inputMode}
-              deskReview={Boolean(deskReview)} draft={draft} disabled={controlsDisabled}>{input}</ImageCanvasTask> : input()}
+            {canvasUnavailable ? <p className={styles.cardNote}>这道图文题暂时无法加载，请告诉老师检查学习单。</p>
+              : canvas ? <ImageCanvasTask key={getGeneration?.(node.id)} canvas={canvas} node={node} onChange={part => onChange?.(node, part)}
+              worksheetId={worksheetId} previewOnly={previewOnly} getGeneration={getGeneration ? () => getGeneration(node.id) : undefined}
+              onBusyChange={busy => setPendingCanvas(current => ({ ...current, [node.id]: busy }))}
+              draft={draft} disabled={controlsDisabled || Boolean(submitting[node.id])}>{input}</ImageCanvasTask>
+              : input(node, draft, part => onChange?.(node, part))}
+            {composite && !locked && <p className={styles.cardNote}>已完成 {completeRegions} / {widgets.length} 个作答区</p>}
             </>)}
 
-            {interactive && <AiReviewFeedback reason={aiReferenceScore?.comment || (feedbackReady ? latestReview?.reason : null)} advice={studentAdvice || (feedbackReady ? latestReview?.advice : null)} review={latestReview} />}
+            {(interactive || reviewOnly) && !canvasTask && <AiReviewFeedback reason={aiReferenceScore?.comment || (feedbackReady ? latestReview?.reason : null)} advice={studentAdvice || (feedbackReady ? latestReview?.advice : null)} review={latestReview} />}
 
             {/* 「提交本题」内联在每题下方，**不做固定底栏**（规格 §3-AC）。
                 ⚠️ 锁住时不渲染按钮，而是说清楚为什么 —— 一个按不动的「重新提交」比
@@ -733,7 +764,7 @@ export function WorksheetQuestionList({
                 ⇒ 直接改成「非锁定才渲染提交区」：锁定时这里什么都不画（按钮本来就不渲染）。 */}
             {interactive && showReviewHistory && <ReviewHistory node={node} reviews={studentHistoryReviews} onRetry={personalReview && reviewRemaining > 0 && !reviewPending ? onRetryReview : undefined} />}
             {interactive && !showReviewHistory && latestFailedReview && !reviewPending && <ReviewFailure review={latestFailedReview} onRetry={canRetryLatest && onRetryReview ? () => onRetryReview(latestFailedReview.id) : undefined} />}
-            {interactive && !previewOnly && (!locked || personalReview) && (
+            {interactive && !previewOnly && !canvasUnavailable && (!locked || (personalReview && (!canvasTask || reviewPending))) && (
                 <>
                   {/* ★ M5a：锁定期间**保留提交**（停笔但可交卷），这句话是它的说明。
                       「只能提交已保存的内容」不是修辞 —— 有未保存改动的那道题会被拦下
@@ -741,7 +772,7 @@ export function WorksheetQuestionList({
                   {classroomLocked && (
                     <p className={styles.lockedNote}>老师已锁定作答 —— 只能提交已保存的内容</p>
                   )}
-                  {personalReview && (reviewPending || reviewLimit > 1) && <div className={`${styles.reviewStatus}${reviewPending ? ` ${styles.reviewThinkingCard}` : ''}`} role="status">
+                  {personalReview && (reviewPending || (!canvasTask && reviewLimit > 1)) && <div className={`${styles.reviewStatus}${reviewPending ? ` ${styles.reviewThinkingCard}` : ''}`} role="status">
                     {reviewPending ? <ReviewThinking key={`${pendingReview!.id}-${pendingReview!.phase}`} queued={reviewQueued} /> : <span>还可评价 <strong>{reviewRemaining}</strong> 次</span>}
                   </div>}
 
@@ -762,11 +793,15 @@ export function WorksheetQuestionList({
                           <span className={styles.spinner} aria-hidden="true" />
                           正在保存…
                         </>
-                      ) : reviewPending ? (reviewQueued ? '等待 AI 评价…' : 'AI 思考中…') : personalReview && reviewRemaining > 0 ? '完成作答并提交' : submitted ? '保存修改' : '完成作答并提交'}
+                      ) : reviewPending ? (reviewQueued ? '等待 AI 评价…' : 'AI 思考中…')
+                        : canvasTask ? '提交整题'
+                          : personalReview && reviewRemaining > 0 ? '完成作答并提交' : submitted ? '保存修改' : '完成作答并提交'}
                     </button>
                   </div>}
                 </>
             )}
+            {canvasTask && submitted && feedbackReady && latestReview &&
+              <AiReviewFeedback reason={latestReview.reason} advice={latestReview.advice} review={latestReview} />}
           </section>
           );
           })}
@@ -1189,6 +1224,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
           >
             <WorksheetQuestionList
               worksheetId={worksheetId ?? undefined}
+              getGeneration={answers.getGeneration}
               groups={load.worksheet.groups}
               drafts={answers.drafts}
               statuses={answers.statuses}

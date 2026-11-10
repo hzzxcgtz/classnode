@@ -12,14 +12,15 @@ type Point = { x: number; y: number };
 const superscriptDigits = '⁰¹²³⁴⁵⁶⁷⁸⁹';
 const layoutScales = [1, .82, .67, .55];
 
-function OpinionLayout({ words, size, fontScale }: {
+function OpinionLayout({ words, size, fontScale, selected, onSelect }: {
   words: Word[];
   size: Size;
   fontScale: number;
+  selected: string | null;
+  onSelect: (word: string | null) => void;
 }) {
   const [attempt, setAttempt] = useState(0);
   const [placedWords, setPlacedWords] = useState<ComputedWordData[] | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
   const [offset, setOffset] = useState<Point>({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const drag = useRef<{
@@ -62,8 +63,8 @@ function OpinionLayout({ words, size, fontScale }: {
   }, [attempt, words.length]);
 
   const selectWord = useCallback((word: string | null) => {
-    setSelected(current => current === word ? null : word);
-  }, []);
+    onSelect(selected === word ? null : word);
+  }, [onSelect, selected]);
   const renderWord = useCallback((data: WordRendererData, ref?: Ref<SVGTextElement>) =>
     <ClassroomCloudWord data={data} ref={ref} selected={selected === data.text} onSelect={selectWord}
       countLabel={`${data.value} 份作答`} />, [selected, selectWord]);
@@ -111,14 +112,14 @@ function OpinionLayout({ words, size, fontScale }: {
 
   function endDrag(event: PointerEvent<HTMLDivElement>) {
     if (drag.current?.pointerId !== event.pointerId) return;
-    if (!drag.current.moved && event.type === 'pointerup') setSelected(null);
+    if (!drag.current.moved && event.type === 'pointerup') onSelect(null);
     drag.current = null;
     setDragging(false);
   }
 
   if (fallback) {
     return <ul className={styles.cloudFallback} style={{ '--cloud-font-scale': fontScale / 100 } as CSSProperties}>
-      {words.map(word => <li key={word.text} title={`${word.value} 份作答`}>{word.text}</li>)}
+      {words.map(word => <li key={word.text} title={`${word.value} 份作答`}><button type="button" aria-pressed={selected === word.text} onClick={() => selectWord(word.text)}>{word.text}</button></li>)}
     </ul>;
   }
 
@@ -136,12 +137,14 @@ function OpinionLayout({ words, size, fontScale }: {
   </div>;
 }
 
-export function OpinionCloud({ phrases, presentation, fontScale, showCounts, layoutSeed }: {
+export function OpinionCloud({ phrases, presentation, fontScale, showCounts, layoutSeed, selectedPhrase, onSelectPhrase }: {
   phrases: CloudPhrase[];
   presentation: boolean;
   fontScale: number;
   showCounts: boolean;
   layoutSeed: number;
+  selectedPhrase?: string | null;
+  onSelectPhrase?: (phrase: string | null) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size | null>(null);
@@ -149,6 +152,13 @@ export function OpinionCloud({ phrases, presentation, fontScale, showCounts, lay
     text: showCounts ? `${phrase}\u2002${String(studentIds.length).replace(/\d/g, digit => superscriptDigits[Number(digit)])}` : phrase,
     value: studentIds.length,
   })), [phrases, showCounts]);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const selection = onSelectPhrase ? selectedPhrase : highlight;
+  const selectedWord = words[phrases.findIndex(item => item.phrase === selection)]?.text ?? null;
+  const selectWord = useCallback((word: string | null) => {
+    const phrase = phrases[words.findIndex(item => item.text === word)]?.phrase ?? null;
+    (onSelectPhrase ?? setHighlight)(phrase);
+  }, [onSelectPhrase, phrases, words]);
   const layoutKey = JSON.stringify([size, fontScale, layoutSeed, words]);
 
   useEffect(() => {
@@ -167,6 +177,6 @@ export function OpinionCloud({ phrases, presentation, fontScale, showCounts, lay
 
   return <div ref={host} className={styles.cloud} data-presentation={presentation || undefined}
     role="group" aria-label="共同观点">
-    {size && words.length > 0 && <OpinionLayout key={layoutKey} words={words} size={size} fontScale={fontScale} />}
+    {size && words.length > 0 && <OpinionLayout key={layoutKey} words={words} size={size} fontScale={fontScale} selected={selectedWord} onSelect={selectWord} />}
   </div>;
 }

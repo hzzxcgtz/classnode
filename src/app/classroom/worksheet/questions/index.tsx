@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 import { emptyDraftFor, isPhotoNode, isAudioNode } from '@/lib/worksheet-answer-value';
@@ -46,10 +46,21 @@ import styles from '../worksheet.module.css';
  *（学生会以为界面坏了）—— 这与 D2 之前面板上那句话逐字相同，只是搬到了这里，
  * 因为它现在与分派是同一件事。
  */
+export type RenderCanvasPhotoTrigger = (state: {
+  openCamera: () => void;
+  openFile: () => void;
+  openPreview: () => void;
+  photoUrl: string;
+  disabled: boolean;
+  uploading: boolean;
+  error: string;
+}) => ReactNode;
+
 export interface QuestionInputProps {
   worksheetId?: string;
   localOnly?: boolean;
   onMediaBusyChange?: (busy: boolean) => void;
+  renderCanvasPhotoTrigger?: RenderCanvasPhotoTrigger;
   node: WorksheetQuestionNode;
   /**
    * 这一题的输入态。`undefined` = **学生一个指头都还没动过**（面板的 `drafts` 里没有它）。
@@ -81,7 +92,7 @@ export interface QuestionInputProps {
   correctBlanks?: Record<string, string>;
 }
 
-export function QuestionInput({ worksheetId, node, draft, onChange, disabled, correctKeys, correctBlanks, localOnly = false, onMediaBusyChange }: QuestionInputProps) {
+export function QuestionInput({ worksheetId, node, draft, onChange, disabled, correctKeys, correctBlanks, localOnly = false, onMediaBusyChange, renderCanvasPhotoTrigger }: QuestionInputProps) {
   /**
    * 这一题的**起点**（形状一定与 `node.type` 同族）。
    *
@@ -128,6 +139,7 @@ export function QuestionInput({ worksheetId, node, draft, onChange, disabled, co
       <PhotoBody
         localOnly={localOnly}
         onBusyChange={onMediaBusyChange}
+        renderCanvasTrigger={renderCanvasPhotoTrigger}
         draft={pick('photo') ?? { kind: 'photo', url: '' }}
         onChange={(next) => onChange?.(node, next)}
         disabled={disabled}
@@ -232,9 +244,10 @@ export function QuestionInput({ worksheetId, node, draft, onChange, disabled, co
   return <p className={styles.cardNote}>（这项任务的作答形式暂时没法在这里作答）</p>;
 }
 
-function PhotoBody({ draft, onChange, disabled, localOnly, onBusyChange }: {
+function PhotoBody({ draft, onChange, disabled, localOnly, onBusyChange, renderCanvasTrigger }: {
   localOnly: boolean;
   onBusyChange?: (busy: boolean) => void;
+  renderCanvasTrigger?: RenderCanvasPhotoTrigger;
   draft: Extract<AnswerDraft, { kind: 'photo' }>;
   onChange: (next: AnswerDraft) => void;
   disabled: boolean;
@@ -255,6 +268,7 @@ function PhotoBody({ draft, onChange, disabled, localOnly, onBusyChange }: {
     if (!localOnly && window.isSecureContext && typeof navigator.mediaDevices?.getUserMedia === 'function') {
       setCameraOpen(true);
     } else {
+      if (!localOnly) inputRef.current?.setAttribute('capture', 'environment');
       inputRef.current?.click();
     }
   };
@@ -286,14 +300,15 @@ function PhotoBody({ draft, onChange, disabled, localOnly, onBusyChange }: {
     }
   };
 
-  return (
-    <div className={styles.photoAnswer}>
+  const inlineTrigger = renderCanvasTrigger;
+  const content = (
+    <>
       <input
         ref={inputRef}
         className={styles.photoAnswerInput}
         type="file"
         accept="image/jpeg,image/png,image/webp"
-        capture="environment"
+        capture={inlineTrigger ? undefined : "environment"}
         disabled={disabled || uploading}
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -304,14 +319,14 @@ function PhotoBody({ draft, onChange, disabled, localOnly, onBusyChange }: {
           }
         }}
       />
-      {draft.url ? (
+      {inlineTrigger ? inlineTrigger({ openCamera, openFile: () => { inputRef.current?.removeAttribute('capture'); inputRef.current?.click(); }, openPreview: () => setPreview(true),
+        photoUrl: draft.url ? photoSource : '', disabled: disabled || uploading, uploading, error }) : draft.url ? (
         <div className={styles.photoAnswerPreview}>
           <div className={styles.photoAnswerImage}>
             <button type="button" className={styles.photoAnswerPreviewButton} onClick={() => setPreview(true)} aria-label="放大照片并调整方向">
               <img src={photoSource} alt="已上传的照片作答" />
             </button>
           </div>
-          {preview && <ClassroomImagePreview key={draft.url} src={worksheetAssetUrl(draft.url)} onClose={() => setPreview(false)} />}
           {!disabled && (
             <div className={styles.photoAnswerActions}>
               <button type="button" className={styles.photoAnswerAction} disabled={uploading} onClick={openCamera}>
@@ -333,6 +348,7 @@ function PhotoBody({ draft, onChange, disabled, localOnly, onBusyChange }: {
           <small>支持 JPG、PNG、WebP</small>
         </button>
       )}
+      {preview && draft.url && <ClassroomImagePreview key={draft.url} src={worksheetAssetUrl(draft.url)} onClose={() => setPreview(false)} />}
       {cameraOpen && !disabled && <PaperCameraDialog
         onCancel={() => setCameraOpen(false)}
         onFallback={() => {setCameraOpen(false); inputRef.current?.click();}}
@@ -345,9 +361,10 @@ function PhotoBody({ draft, onChange, disabled, localOnly, onBusyChange }: {
         setPendingPhoto(null);
         void upload(file, needsWebp !== undefined, needsWebp);
       }} />}
-      {error && <p className={styles.photoAnswerError}>{error}</p>}
-    </div>
+      {!inlineTrigger && error && <p className={styles.photoAnswerError}>{error}</p>}
+    </>
   );
+  return inlineTrigger ? content : <div className={styles.photoAnswer}>{content}</div>;
 }
 
 /**

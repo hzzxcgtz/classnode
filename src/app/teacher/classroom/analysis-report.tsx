@@ -70,12 +70,25 @@ function StudentGroupHint({ students, onOpenStudent }: { students: { id: string;
 export function AnalysisReport({ text, payload, className, onOpenStudent }: { text: string; payload: WorksheetAnalysisPayload; className?: string; onOpenStudent?: (id: string) => void }) {
   const report = classReportContent(text, payload.entries, payload.participantNames ?? {}, payload.feedback?.groups ?? []);
   const groups = [...(payload.feedback?.groups ?? []), ...report.groups];
-  return <Markdown className={className} allowImages={false} renderLink={(href) => {
+  const renderMarkdown = (content: string, styling?: string) => <Markdown className={styling} allowImages={false} renderLink={(href) => {
     if (!href?.startsWith('#classnode-group-')) return undefined;
     const group = groups.find(group => `#classnode-group-${group.id}` === href);
     if (!group) return <span className={styles.unverified}>部分同学（名单待核实）</span>;
     const students = [...new Set(group.studentIds)].map(id => ({ id, name: payload.participantNames?.[id] ?? '' }));
     if (students.some(student => !student.name)) return <span className={styles.unverified}>相关同学（名单待核实）</span>;
     return <StudentGroupHint students={students} onOpenStudent={onOpenStudent} />;
-  }}>{normalizeWorksheetAnalysisMarkdown(report.text)}</Markdown>;
+  }}>{content}</Markdown>;
+  const markdown = normalizeWorksheetAnalysisMarkdown(report.text);
+  const evidence = /^### 典型表现与作答依据[ \t]*\r?\n([\s\S]*?)(?=^#{1,3} |(?![\s\S]))/m.exec(markdown);
+  if (!evidence?.[1].trim()) return renderMarkdown(markdown, className);
+  const before = markdown.slice(0, evidence.index).trim();
+  const after = markdown.slice(evidence.index + evidence[0].length).trim();
+  return <div className={className}>
+    {before && renderMarkdown(before)}
+    <details className={styles.reportEvidence}>
+      <summary>典型表现与作答依据</summary>
+      {renderMarkdown(evidence[1].trim())}
+    </details>
+    {after && renderMarkdown(after)}
+  </div>;
 }

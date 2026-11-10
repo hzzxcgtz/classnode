@@ -10,6 +10,8 @@ import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import { useSocket } from '@/lib/socket';
 import { isNotFound } from '@/lib/http-error';
+import { AnswerViewBody } from './answer-view';
+import { Markdown } from '@/lib/markdown';
 import type { WorksheetAnalysisPayload } from '@/lib/types';
 import { moduleCountUnit } from './worksheet-tile-state';
 import { activeWorksheetAnalysisTask, startWorksheetAnalysisTask, stopWorksheetAnalysisTask, forgetWorksheetAnalysis, WORKSHEET_ANALYSIS_STARTED_EVENT, type AnalysisAction } from '@/lib/worksheet-analysis-background';
@@ -468,8 +470,24 @@ export function AnalysisBody({ state, classroomId, worksheetId, questionId, name
       )}
 
       {!loading && payload && payload.covered > 0 && payload.narrative && !generatingReport && (
-        <section className={styles.resultCard} aria-label="AI 分析结果">
+        <section className={styles.resultCard} aria-label="全班分析结果">
+          <h3 className={styles.reportTitle}>全班分析</h3>
           <AnalysisReport onOpenStudent={openTask} className={styles.resultText} payload={payload} text={localize(payload.narrative) ?? ''} />
+          {Boolean(payload.sectionAnalysis?.length) && <h4 className={styles.reportSectionsTitle}>按作答区查看</h4>}
+          {payload.sectionAnalysis?.map(section => <details key={section.id} className={styles.analysisSection}>
+            <summary>{section.title}<span>{section.mode === 'ai' ? '表达评价' : section.mode === 'answer' ? '练习判分' : '只收集'}</span></summary>
+            <Markdown className={styles.resultText} allowImages={false}>{section.findings}</Markdown>
+            <div className={styles.analysisSectionStudents}>
+              {section.students.map(student => <details key={student.studentId}>
+                <summary>{payload.participantNames?.[student.studentId] ?? '学生'}{student.correct === null ? '' : student.correct ? ' · 正确' : ' · 待订正'}</summary>
+                {student.value == null ? <p>本区没有已提交作答。</p> : <>
+                  <AnswerViewBody node={{ id: questionId, type: 'short-answer', prompt: section.title, inputMode: 'keyboard', data: {}, children: [] }}
+                    value={student.value} transcription={false} neutral />
+                  {section.mode === 'ai' && <p>{student.feedback ?? '本次未取得这位学生的分区反馈。'}</p>}
+                </>}
+              </details>)}
+            </div>
+          </details>)}
         </section>
       )}
 

@@ -5,7 +5,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { ImageCanvasEditor } from './image-canvas-editor';
-import { deskReviewSettings, isExpressionTask, readImageCanvas } from '@/lib/worksheet-image-canvas';
+import { deskReviewSettings, isExpressionTask, readImageCanvas, usesCanvasAnswers } from '@/lib/worksheet-image-canvas';
 import { EvaluationSettings } from './evaluation-settings';
 import { hasEvaluation, aiEvaluationEnabled } from '@/lib/worksheet-evaluation';
 import { EditorRewardAmount, EditorRewardUnit } from './editor-reward-unit';
@@ -241,7 +241,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
   onRemove: () => void;
 }) {
   const typeOption = QUESTION_TYPE_OPTIONS.find(option => option.value === node.type);
-  const typeLabel = node.type === 'single-choice' || node.type === 'multi-choice'
+  const typeLabel = node.data.imageCanvas ? '图文题' : node.type === 'single-choice' || node.type === 'multi-choice'
     ? (isMultipleChoice(node) ? '多选题' : '单选题')
     : typeOption?.label ?? node.type;
   const promptRuns = readPromptRunsFor(node);
@@ -320,7 +320,6 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
   const badgeLabel = label || heading;
   /** ★ 2026-09-26：这道题**会不会判分**（开关关掉 ⇒ 答案与分值一起隐藏）。 */
   const gradedOn = gradesOnSubmit(node);
-  const showInputModeRow = typeOption?.graded === false || isInkNode(node) || node.inputMode === 'photo';
   const editorCopy = QUESTION_EDITOR_COPY[node.type] ?? {
     title: '作答设置',
     description: '',
@@ -332,7 +331,9 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
    * 与填空题的「标准答案」并排，所以它的容器 A 只有题干。
    */
   const isExpression = isExpressionTask(node.type);
-  const canvas = isExpression ? readImageCanvas(node.data.imageCanvas) : null;
+  const canvas = isExpression || node.type === 'image-canvas' ? readImageCanvas(node.data.imageCanvas) : null;
+  const canvasType = node.type === 'image-canvas' || Boolean(canvas);
+  const composite = usesCanvasAnswers(node);
   const deskReview = deskReviewSettings(node);
   const isBlankType = node.type === 'fill-blank' || node.type === 'choice-blank';
   /** 题干里有表格域标记 ⇒ 出现「表格域作答设置」（判据只有它）。 */
@@ -343,8 +344,9 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
    */
   const tableBlockRef = useRef<HTMLDivElement | null>(null);
   const [selectedBlankId, setSelectedBlankId] = useState<string | null>(null);
+  const showInputModeRow = typeOption?.graded === false || isInkNode(node) || node.inputMode === 'photo';
   const answerBlock: { title: string; hint: string } | null =
-    node.type === 'true-false'
+    canvasType || node.type === 'true-false'
       ? null
       : isChoiceQuestion(node)
         ? { title: '选项', hint: gradedOn ? '拖动左侧把手调整顺序，点右侧圆点设置答案。' : '拖动左侧把手调整顺序；当前任务收集学生选择，不设置正确答案。' }
@@ -540,11 +542,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           <span>必填</span>
         </div>
 
-        {isExpression && <ImageCanvasEditor key={node.id} node={node} onChange={onDataChange} onModeChange={onInputModeChange} />}
-        {canvas ? <label className="worksheet-editor-field">
-          <span>任务名称（用于看板与读屏）</span>
-          <input className="input" value={node.prompt} onChange={event => onPromptChange(event.target.value, { promptRuns: undefined })} />
-        </label> : (
+        {canvasType ? <ImageCanvasEditor key={node.id} node={node} onChange={onDataChange} onModeChange={onInputModeChange} /> : (
         <div className={`worksheet-editor-block${(node.type === 'drawing' || node.type === 'short-answer' || node.type === 'open-ended') ? ' drawing-prompt-block' : ''}`}>
           {<PromptEditor
             heading={<h4><EditorIcon kind="prompt" />任务描述{node.type === 'drawing' && <span className="drawing-required">*</span>}</h4>}
@@ -794,44 +792,27 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
 
         {!isBlankType && <div className="worksheet-editor-block worksheet-editor-analysis-settings">
           <h3 className="drawing-zone-heading"><EditorIcon kind="grading" />任务用途</h3>
-          <EvaluationSettings allowAi={!deskReview && (node.type === 'short-answer' || node.type === 'drawing')} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls)} unit={pointsUnit} scoreLimit={100} template={node.type === 'drawing' && readDrawingTool(node) === 'flowchart' ? '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。' : undefined} data={node.data} allowAnswer={isGradedQuestionType(node.type)} legacyMode={aiScoredFor(node) ? 'ai' : gradedOn && isGradedQuestionType(node.type) ? 'answer' : 'collect'} legacyScored={aiScoredFor(node) || gradedOn} reference={node.type === 'short-answer' || node.type === 'drawing' ? node.data.answers : undefined} maxScore={aiScoringMaxScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onNotice={onNotice} onChange={patch => {
+          {(!canvasType || (!composite && isExpression)) && <EvaluationSettings exampleMode={node.type === 'drawing' ? 'drawing' : node.inputMode === 'audio' || node.inputMode === 'photo' || node.inputMode === 'handwriting' ? node.inputMode : 'keyboard'} allowAi={!deskReview && (node.type === 'short-answer' || node.type === 'drawing')} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls)} unit={pointsUnit} scoreLimit={100} template={node.type === 'drawing' && readDrawingTool(node) === 'flowchart' ? '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。' : undefined} data={node.data} allowAnswer={isGradedQuestionType(node.type)} legacyMode={aiScoredFor(node) ? 'ai' : gradedOn && isGradedQuestionType(node.type) ? 'answer' : 'collect'} legacyScored={aiScoredFor(node) || gradedOn} reference={node.type === 'short-answer' || node.type === 'drawing' ? node.data.answers : undefined} maxScore={aiScoringMaxScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onNotice={onNotice} onChange={patch => {
             onDataChange({...patch, aiScoringEnabled:patch.evaluationMode === 'ai' && patch.evaluationScored === true});
             onAutoGradeChange(patch.evaluationMode === 'answer');
-          }}/>
-          {isExpression && node.inputMode === 'audio' && <div className="worksheet-evaluation-requirements">
-            <label><strong>同桌录音与评星 </strong>
-              <select className="input" value={deskReview?.maxStars ?? 0} onChange={event => {
-                const maxStars = Number(event.target.value);
-                if (maxStars !== 3 && maxStars !== 5) onDataChange({ deskReview: undefined });
-                else {
-                  onDataChange({ deskReview: { maxStars, instruction: deskReview?.instruction ?? '' },
-                    evaluationVersion: 1, evaluationMode: 'collect', evaluationScored: false,
-                    aiScoringEnabled: false, studentAiReviewEnabled: false });
-                  onAutoGradeChange(false);
-                }
-              }}><option value={0}>关闭</option><option value={3}>三星评价</option><option value={5}>五星评价</option></select>
-            </label>
-            {deskReview && <>
-              <span>学生用自己的 iPad 为身旁的同桌录音、评星，评价随作答一起提交。</span>
-              <label>评星提示<textarea className="input" rows={2} maxLength={600} value={deskReview.instruction}
-                placeholder="例如：听一听，同桌有没有说清楚海底生物的特点？"
-                onChange={event => onDataChange({ deskReview: { ...deskReview, instruction: event.target.value } })} /></label>
-            </>}
-          </div>}
-          {(node.type === 'short-answer' || node.type === 'open-ended') && (
+          }}>
+            {isExpression && (
             <label className="worksheet-evaluation-requirements">
               <strong>观点提炼要求（选填）</strong>
-              <span>可填写关注方向、条数和呈现形式，仅用于生成班级观点云。</span>
+              <span>仅用于全班观点云。可写关注方向、希望提炼几条，以及用关键词还是短语。默认提炼 5～7 条有作答依据的观点。</span>
               <textarea
                 className="input"
                 rows={3}
                 maxLength={1200}
                 value={typeof node.data.wordCloudRequirements === 'string' ? node.data.wordCloudRequirements : ''}
                 onChange={event => onDataChange({ wordCloudRequirements: event.target.value })}
-                placeholder="例如：从学生作答中提炼 5～7 个关键词或短语，关注学无止境、实事求是、善于观察等方向。"
+                placeholder="填写希望全班观点云呈现的内容和形式。"
               />
+              <span>写法示例：提炼 5～7 个短语，关注学无止境、实事求是、善于观察和敢问敢辩。学生提出的其他有依据的观点也可保留。</span>
             </label>
           )}
+          </EvaluationSettings>}
+          {canvasType && (composite || !isExpression) && <p>选中作答区设置评价标准。学生提交整题后，AI 会评价已设标准的作答区。在课堂看板可另行生成全班分析。</p>}
         </div>}
 
       {/*

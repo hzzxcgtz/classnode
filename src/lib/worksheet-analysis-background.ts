@@ -22,6 +22,7 @@ type AnalysisResult = {
   analyzedAt?: string | null;
   perStudent: WorksheetAnalysisPayload['perStudent'];
   feedback?: WorksheetAnalysisPayload['feedback'];
+  sectionAnalysis?: WorksheetAnalysisPayload['sectionAnalysis'];
   agentId: string;
   model: string;
 };

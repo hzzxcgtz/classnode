@@ -20,7 +20,7 @@
 // 所有可作答题型都放行；`task` 是容器，没有作答值，明确不在此列。
 export const ANALYZABLE_TYPES: readonly string[] = [
   'single-choice', 'true-false', 'multi-choice', 'fill-blank', 'short-answer', 'open-ended',
-  'order', 'match', 'categorize', 'drawing', 'choice-blank',
+  'order', 'match', 'categorize', 'drawing', 'choice-blank', 'image-canvas',
 ];
 
 /**

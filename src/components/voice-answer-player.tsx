@@ -1,6 +1,6 @@
 'use client';
 import {AudioTranscription} from './audio-transcription';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { IconPlayerPlayFilled, IconPlayerPauseFilled, IconMicrophone, IconRefresh } from '@tabler/icons-react';
 import styles from './voice-answer.module.css';
 
@@ -9,7 +9,7 @@ export function audioTime(seconds: number) {
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 }
 /** Same player for student drafts, submitted answers and teacher review. */
-export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答', compact = false, review = false, preload = 'none', tone = 'green', transcriptionActions = true, transcriptFontSize, transcription = true }: { src: string; durationMs: number; transcription?: boolean; transcriptionActions?: boolean; transcriptFontSize?: number; preload?: 'none'|'metadata'; tone?: 'green'|'blue'; title?: string; compact?: boolean; review?: boolean }) {
+export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答', compact = false, stackedTimeline = false, review = false, preload = 'none', tone = 'green', transcriptionActions = true, transcriptFontSize, transcription = true }: { src: string; durationMs: number; transcription?: boolean; transcriptionActions?: boolean; transcriptFontSize?: number; preload?: 'none'|'metadata'; tone?: 'green'|'blue'; title?: string; compact?: boolean; stackedTimeline?: boolean; review?: boolean }) {
   const audio = useRef<HTMLAudioElement>(null);
   const pendingSeek = useRef<number | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -28,7 +28,10 @@ export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答
     document.querySelectorAll('audio').forEach(other => { if (other !== element) other.pause(); });
     try { await element.play(); setError(''); } catch { setError('暂时无法播放，请重试。'); }
   };
-  const progress = <input type="range" className={compact ? styles.compactProgress : undefined} min={0} max={Math.max(length, 1)} step={0.1} value={Math.min(position, Math.max(length, 1))} aria-label="语音播放进度"
+  const max = Math.max(length, 1);
+  const current = Math.min(position, max);
+  const progress = <input type="range" className={compact ? styles.compactProgress : undefined} min={0} max={max} step={0.1} value={current} aria-label="语音播放进度"
+    style={stackedTimeline ? { '--played': `${(current / max) * 100}%` } as CSSProperties : undefined}
     onChange={event => {
       const next = Number(event.target.value);
       setPosition(next); pendingSeek.current = next;
@@ -45,7 +48,9 @@ export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答
     <button type="button" className={styles.play} onClick={() => void toggle()} aria-label={playing ? '暂停语音' : '播放语音'}>
       {playing ? <IconPlayerPauseFilled size={22} aria-hidden="true" /> : <IconPlayerPlayFilled size={22} aria-hidden="true" />}
     </button>
-    {compact ? <>{progress}<span className={styles.compactTime}>{audioTime(position)} / {audioTime(length)}</span></> : <div className={styles.track}>
+    {compact ? stackedTimeline ? <div className={styles.stackedTimeline}>
+      {progress}<span className={styles.compactTime}>{audioTime(position)} / {audioTime(length)}</span>
+    </div> : <>{progress}<span className={styles.compactTime}>{audioTime(position)} / {audioTime(length)}</span></> : <div className={styles.track}>
       <div className={styles.trackHeader}><strong><IconMicrophone size={16} aria-hidden="true" />{title}</strong><span>{audioTime(position)} / {audioTime(length)}</span></div>
       {progress}
     </div>}

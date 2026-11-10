@@ -1,11 +1,13 @@
 import { aiScoringConfigOf } from './analysis-scoring.js';
 import { wordCloudRequirementsOf } from './analysis-feedback.js';
 import { aiEvaluationEnabled } from './worksheet-evaluation.js';
+import { canvasAutoReviewIds } from './worksheet-image-canvas.js';
 import type { PrismaClient } from '@prisma/client';
 import type { QuestionNode } from './worksheet-questions.js';
 
 /** Quotas count successful student evaluations, not saves or teacher evaluations. */
 export function individualReviewSettings(node: QuestionNode) {
+  if (node.type === 'image-canvas') return { enabled: canvasAutoReviewIds(node).length > 0, limit: Infinity };
   const raw = node.data.aiReviewLimit;
   return {
     enabled: (aiEvaluationEnabled(node) || (aiScoringConfigOf(node).enabled && node.autoGrade !== false)),

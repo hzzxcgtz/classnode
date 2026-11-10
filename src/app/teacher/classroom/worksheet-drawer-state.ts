@@ -1,3 +1,4 @@
+import { canvasAnswerEntries } from '../../../lib/worksheet-image-canvas.ts';
 import type { WorksheetBoardAnswerRow, WorksheetGradeState, WorksheetQuestionNode } from '@/lib/types';
 // 题型的读法（选项、作答值 → 输入态）只有一份，在 `src/lib/worksheet-questions.ts`
 // （学生端作答面板与教师端预览都引它）。这里**转出**同一份，不是抄一份。
@@ -277,6 +278,8 @@ function entryText(entries: Array<{ id: string; text: string }>, id: string): st
  *     ⇒ 今天 `formatAnswer` 覆盖**全部 9 个题型**，没有一支是「故意不管」的。
  */
 export function formatAnswer(node: WorksheetQuestionNode, value: unknown): string | null {
+  const regions = canvasAnswerEntries(node, value);
+  if (regions) return regions.length ? `已作答 ${regions.length} 个区域` : null;
   // ★ M4b：**笔迹不是文字** ⇒ `answerText` 回 `null`（`readInkValue` 认得它）。那一幅画由
   // `questionOutcome` 的 `ink` 带走、由 `worksheet-drawer.tsx` 的 `InkPreview` 画出来 ——
   // 这里回 `null` **不是**「学生没作答」。

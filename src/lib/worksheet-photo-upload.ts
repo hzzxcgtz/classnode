@@ -11,8 +11,9 @@ export function worksheetPhotoCompressionPlan(bytes: number, width: number, heig
 }
 
 /** Best effort: unreadable/unsupported photos and failed compression use the original file. */
-export async function prepareWorksheetPhoto(file: File): Promise<File> {
-  if (file.size <= MIN_PHOTO_BYTES || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return file;
+export async function prepareWorksheetPhoto(file: File, targetBytes?: number): Promise<File> {
+  if (file.size <= (targetBytes ?? MIN_PHOTO_BYTES)) return file;
+  if (!targetBytes && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return file;
   let objectUrl: string | undefined;
   let image: HTMLImageElement | undefined;
   let canvas: HTMLCanvasElement | undefined;
@@ -29,21 +30,38 @@ export async function prepareWorksheetPhoto(file: File): Promise<File> {
     const plan = worksheetPhotoCompressionPlan(file.size, image.naturalWidth, image.naturalHeight);
     if (!plan) return file;
     canvas = document.createElement('canvas');
-    canvas.width = plan.width; canvas.height = plan.height;
     const context = canvas.getContext('2d');
     if (!context) return file;
-    // Flatten transparency onto white paper before either output format.
-    context.fillStyle = '#fff'; context.fillRect(0, 0, plan.width, plan.height);
-    context.drawImage(image, 0, 0, plan.width, plan.height);
     const target = canvas;
-    const encode = (type: string) => new Promise<Blob | null>((resolve) => {
+    const encode = (type: string, quality: number) => new Promise<Blob | null>((resolve) => {
       const timer = window.setTimeout(() => resolve(null), PROCESS_TIMEOUT_MS);
-      target.toBlob(result => { window.clearTimeout(timer); resolve(result); }, type, plan.quality);
+      target.toBlob(result => { window.clearTimeout(timer); resolve(result); }, type, quality);
     });
-    let blob = await encode('image/webp');
-    // Unsupported Canvas encoders may silently return PNG. Never upload that larger fallback.
-    if (!blob || blob.type !== 'image/webp' || !blob.size) blob = await encode('image/jpeg');
-    if (!blob || !['image/webp', 'image/jpeg'].includes(blob.type) || blob.size === 0 || blob.size >= file.size * 0.95) return file;
+    let blob: Blob | null = null;
+    let supportsWebp = true;
+    const initialScale = targetBytes ? Math.min(1, 2400 / Math.max(image.naturalWidth, image.naturalHeight)) : 1;
+    const width = targetBytes ? image.naturalWidth * initialScale : plan.width;
+    const height = targetBytes ? image.naturalHeight * initialScale : plan.height;
+    const scales = targetBytes ? [1, 0.8, 0.62, 0.46, 0.32, 0.2] : [1];
+    for (const scale of scales) {
+      target.width = Math.max(1, Math.round(width * scale));
+      target.height = Math.max(1, Math.round(height * scale));
+      // Flatten transparency onto white paper before either output format.
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, target.width, target.height);
+      context.drawImage(image, 0, 0, target.width, target.height);
+      for (const quality of targetBytes ? [0.88, 0.74, 0.58] : [plan.quality]) {
+        if (supportsWebp) {
+          blob = await encode('image/webp', quality);
+          supportsWebp = Boolean(blob?.size && blob.type === 'image/webp');
+        }
+        if (!supportsWebp) blob = await encode('image/jpeg', quality);
+        if (!blob?.size || !['image/webp', 'image/jpeg'].includes(blob.type)) return file;
+        if (!targetBytes || blob.size <= targetBytes) break;
+      }
+      if (!targetBytes || (blob && blob.size <= targetBytes)) break;
+    }
+    if (!blob || (targetBytes ? blob.size > targetBytes : blob.size >= file.size * 0.95)) return file;
     const extension = blob.type === 'image/webp' ? 'webp' : 'jpg';
     return new File([blob], `${file.name.replace(/\.[^.]*$/, '') || 'photo'}.${extension}`, { type: blob.type, lastModified: file.lastModified });
   } catch {

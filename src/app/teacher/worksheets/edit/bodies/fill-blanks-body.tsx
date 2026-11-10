@@ -1,6 +1,6 @@
 'use client';
 
-import { needsWholeFillConversion, convertWholeFillSettings, updateSharedFillEvaluation } from '@/lib/worksheet-evaluation-edit';
+import { needsWholeFillConversion, convertWholeFillSettings, updateFillEvaluation } from '@/lib/worksheet-evaluation-edit';
 import { EvaluationSettings } from '../evaluation-settings';
 import { hasEvaluation } from '@/lib/worksheet-evaluation';
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from 'react';
@@ -449,8 +449,15 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                 </label>}
               </div>}
               {section !== 'mode' && <>
-              {settings[index].evaluationMode === 'ai' && <p className="worksheet-evaluation-help">本题所有表达空共用以下评价标准，修改会自动同步；各空的分值仍分别设置。</p>}
-              {!needsConversion && <EvaluationSettings allowAi={fillWholeScore(node.data) === undefined && (settings[index].mode === 'text' || settings[index].mode === 'audio')} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls,slot.id)} unit={pointsUnit} data={settings[index] as unknown as Record<string, unknown>} allowAnswer={settings[index].mode !== 'audio'} legacyMode={!gradingEnabled ? 'collect' : settings[index].mode === 'audio' ? settings[index].gradingMode === 'ai' ? 'ai' : 'collect' : 'answer'} legacyScored={gradingEnabled && (settings[index].mode !== 'audio' || settings[index].gradingMode === 'ai')} maxScore={settings[index].maxScore ?? inheritScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onChange={patch => updateSettings(updateSharedFillEvaluation(explicitSettings(),index,{...patch,gradingMode:patch.evaluationMode === 'answer' ? 'auto' : patch.evaluationMode === 'ai' ? 'ai' : 'none'}))}/>}
+              {settings[index].evaluationMode === 'ai' && <div className="worksheet-evaluation-help">
+                <p>此处的评价要求只用于本空。</p>
+                {index > 0 && settings[index - 1].evaluationMode === 'ai' && <button type="button" className="btn btn-secondary"
+                  onClick={() => updateSettings(updateFillEvaluation(explicitSettings(), index, {
+                    evaluationText: settings[index - 1].evaluationText ?? '',
+                    evaluationImages: settings[index - 1].evaluationImages ?? [],
+                  }))}>复制上一空的评价标准</button>}
+              </div>}
+              {!needsConversion && <EvaluationSettings exampleMode={settings[index].mode === 'audio' ? 'audio' : 'keyboard'} allowAi={fillWholeScore(node.data) === undefined && (settings[index].mode === 'text' || settings[index].mode === 'audio')} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls,slot.id)} unit={pointsUnit} data={settings[index] as unknown as Record<string, unknown>} allowAnswer={settings[index].mode !== 'audio'} legacyMode={!gradingEnabled ? 'collect' : settings[index].mode === 'audio' ? settings[index].gradingMode === 'ai' ? 'ai' : 'collect' : 'answer'} legacyScored={gradingEnabled && (settings[index].mode !== 'audio' || settings[index].gradingMode === 'ai')} maxScore={settings[index].maxScore ?? inheritScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onChange={patch => updateSettings(updateFillEvaluation(explicitSettings(),index,{...patch,gradingMode:patch.evaluationMode === 'answer' ? 'auto' : patch.evaluationMode === 'ai' ? 'ai' : 'none'}))}/>}
               {settings[index].mode === 'inline' && (
                 <label className="worksheet-editor-field worksheet-editor-inline-word-field">
                   <span>这一空的待选词</span>

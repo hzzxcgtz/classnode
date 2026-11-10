@@ -367,7 +367,7 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
   const worksheet = await seedWorksheet(db.prisma);
   await db.prisma.worksheet.update({
     where: {id:worksheet.id},
-    data: {content: {...SAMPLE_CONTENT, nodes:SAMPLE_CONTENT.nodes.map(node => node.id !== 'q_2' ? node : {
+    data: {content: {...SAMPLE_CONTENT, nodes:[...SAMPLE_CONTENT.nodes.map(node => node.id !== 'q_2' ? node : {
       ...node, prompt:'水的化学式是____，分子组成是____',
       // Conditional answers are nested secrets too: exercise real saved rules in both read paths.
       data: {
@@ -381,7 +381,15 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
         },
         explanation: '两个氢一个氧',
       },
-    })}},
+    }), {
+      id: 'canvas-fixture', type: 'image-canvas', prompt: '图文示例', inputMode: 'keyboard', children: [],
+      data: { imageCanvas: { url: '/uploads/chat/chat-1.png', width: 100, height: 100, widgets: [
+        { id: 'canvas-note', kind: 'answer', mode: 'keyboard', x: 10, y: 10, width: 40, height: 20,
+          canvasEvaluation: { mode: 'ai', criteria: '图文题教师专用评价要求' } },
+        { id: 'region-1', kind: 'answer', mode: 'region-match', x: 55, y: 10, width: 40, height: 20,
+          matchConfig: { id: 'word-1', text: '珊瑚', correct: '答对', incorrect: '再看看' } },
+      ] } },
+    }]}},
   });
   const { classroom, participant } = await seedClassroom(db.prisma, '9001');
   await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
@@ -408,7 +416,7 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
   assert.equal(body.id, worksheet.id);
   assert.equal(body.title, '光合作用学习单');
   assert.equal(body.description, '第一课时');
-  assert.equal(body.content.nodes.length, 6, '六道题一道都不能少');
+  assert.equal(body.content.nodes.length, 7, '各题应保留，含图文题');
   assert.equal(body.content.nodes[0].prompt, '光合作用需要哪些条件？');
   assert.deepEqual(
     body.content.nodes[0].data.options,

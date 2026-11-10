@@ -198,6 +198,8 @@
 }
 
 /* 「正在写」比普通悬停更稳定：即使鼠标移开，学生仍知道自己刚才在操作哪一题。 */
+.question[data-region-match='true'] { overflow: visible; }
+
 .question[data-state='drafting'],
 .question:focus-within {
   border-color: rgba(82, 113, 152, .58);
@@ -2111,6 +2113,7 @@
 /* 进度状态也与图标同色：已完成用绿，正在写沿用“部分答对”的琥珀配色。 */
 .resultCell[data-tone='progress-completed'] { background: #f0fdf4; color: #15803d; }
 .resultCell[data-tone='progress-drafting'] { background: #eef4fb; color: #466384; }
+.resultCell[data-tone='unanswered'] { background: #f2f5f8; color: #536a82; }
 
 /* 判分那一段：底色与字色随结果走（三段各自一档，配色与「正确答案」那块互不干扰） */
 .resultCell[data-tone='correct'] { background: #f0fdf4; color: #15803d; }
@@ -3441,4 +3444,103 @@
 .imageCanvasButton {
   min-width: 44px;
   min-height: 44px;
+}
+
+.inkFrame[data-inline='true'] { height: 100%; }
+.inkFrame[data-inline='true'] .inkCanvas { height: 100%; border: 0; border-radius: 8px; }
+.inkFrame[data-inline='true'] .inkLimit { position: absolute; z-index: 2; bottom: 0; left: 0; }
+.voiceAnswer[data-inline-canvas='true'] {
+  display: flex;
+  align-content: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  gap: 2px 5px;
+  white-space: normal;
+}
+.voiceAnswer[data-inline-canvas='true'] .voiceRecordRow.canvasVoiceButtons:not(:empty) {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 100%;
+}
+.voiceAnswer[data-inline-canvas='true'] .voiceRecordRow.canvasVoiceButtons[data-two-buttons='true'] {
+  grid-template-columns: minmax(0, 1fr) 20%;
+}
+.voiceAnswer[data-inline-canvas='true'] .voiceRecordRow .canvasVoiceMain,
+.voiceAnswer[data-inline-canvas='true'] .voiceRecordRow .canvasVoiceSwitch {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  padding: 0 4px;
+  text-align: center;
+}
+.voiceAnswer[data-inline-canvas='true'] .voiceActions .voiceAction { min-width: 44px; min-height: 44px; }
+.voiceAnswer[data-inline-canvas='true'] .voiceActions:empty { display: none; }
+.canvasVoiceButtons, .voiceAnswer[data-inline-canvas='true'] .voiceRecordRow.canvasVoiceButtons:not(:empty) {
+  display: grid;
+  gap: 0 3%;
+  width: 100%;
+  height: 100%;
+}
+.canvasVoiceButtons { grid-template-columns: minmax(0, 1fr) 20%; }
+.voiceAnswer[data-inline-canvas='true'] .voiceRecordRow.canvasVoiceButtons[data-two-buttons='false'] { flex: 1 1 0; width: auto; min-width: 0; }
+.canvasVoiceMain, .canvasVoiceSwitch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid #b9d2c4;
+  border-radius: 8px;
+  background: #edf5f0;
+  color: #365e4d;
+  font-size: .84rem;
+}
+.canvasVoiceSwitch { border-color: #d5e1ef; background: #edf3fb; color: #4a7099; }
+.canvasVoiceMain > :is(span, strong) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvasVoiceButtons svg { max-width: 65%; max-height: 65%; flex: none; }
+.canvasVoicePlayback {
+  display: flex; align-items: center; gap: 4px; width: 100%; height: 100%; min-width: 0;
+  box-sizing: border-box; padding: 0 5px; border-radius: 7px;
+}
+.canvasVoicePlayback [data-voice-player] { flex: 1 1 0; min-width: 0; gap: 4px; color: var(--canvas-text-color, #365e4d); }
+.canvasPlaybackActions { display: flex; flex: none; gap: 2px; margin-inline-start: auto; }
+.canvasPlaybackActions .voiceAction {
+  display: grid; place-items: center; width: 27px; height: 28px; min-width: 0; min-height: 0; padding: 0;
+  border: 0; border-radius: 5px; background: transparent; color: #3c6254; cursor: pointer;
+}
+.canvasPlaybackActions .voiceAction:hover:not(:disabled) { background: #dceae2; }
+.canvasPlaybackActions .voiceAction:disabled { opacity: .5; cursor: default; }
+.canvasPlaybackActions .voiceDelete { color: #99564e; }
+.canvasPlaybackActions .voiceDelete:hover:not(:disabled) { background: #fae9e4; }
+.canvasPlaybackActions .voiceAction svg { width: 14px; height: 14px; }
+
+.canvasVoiceButtons .canvasVoiceMain, .canvasVoiceButtons .canvasVoiceSwitch,
+.voiceAnswer[data-inline-canvas='true'] .voiceRecordRow .canvasVoiceMain,
+.voiceAnswer[data-inline-canvas='true'] .voiceRecordRow .canvasVoiceSwitch,
+.canvasVoicePlayback {
+  border-color: var(--canvas-voice-border, #b9d2c4);
+  border-style: var(--canvas-voice-line, solid);
+  border-width: var(--canvas-voice-line-width, 1px);
+  background: var(--canvas-voice-background, #edf5f0);
+}
+.canvasVoiceButtons .canvasVoiceSwitch,
+.voiceAnswer[data-inline-canvas='true'] .voiceRecordRow .canvasVoiceSwitch {
+  border-color: var(--canvas-voice-border, #d5e1ef);
+  background: var(--canvas-voice-background, #edf3fb);
+}
+.canvasVoiceButtons .canvasVoiceMain,
+.voiceAnswer[data-inline-canvas='true'] .voiceRecordRow .canvasVoiceMain:not(.voiceCancel) { color: var(--canvas-text-color, #365e4d); }
+
+.aiFeedbackSection { display: grid; gap: 4px; }
+.aiFeedbackSection > strong { color: #29455f; font-size: .9rem; }
+.aiFeedbackPart { border: 1px solid #cddded; border-radius: 8px; padding: 8px 12px; }
+.aiFeedbackPart > summary { cursor: pointer; font-weight: 650; color: #29455f; }
+.aiFeedbackPart[open] > summary { margin-bottom: 8px; }
+
+.questions[data-review-only] :is(input, textarea):disabled:not(:placeholder-shown) {
+  color: #354f67;
+  -webkit-text-fill-color: currentColor;
+  opacity: 1;
 }

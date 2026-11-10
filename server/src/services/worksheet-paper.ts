@@ -413,7 +413,7 @@ export function paperQuestion(node: QuestionNode, heading: string, fallbackPoint
     heading,
     // ★ 2026-09-30 教师：「题型使用别名，例如开心填空」——纸上印**别名**（学生端屏幕上
     // 那几个名字），教师念「开心填空」时与学生的屏幕对得上。
-    meta: `${canvas ? '整图任务' : questionTypeNickname(node.type)} · ${collect ? '信息收集，不计分' : `${ai.enabled ? ai.maxScore : points.full} 分`}`,
+    meta: `${canvas ? '图文题' : questionTypeNickname(node.type)} · ${collect ? '信息收集，不计分' : `${ai.enabled ? ai.maxScore : points.full} 分`}`,
     prompt: promptParts(node),
     body: rendered.body,
     answer: collect ? [] : rendered.answer,

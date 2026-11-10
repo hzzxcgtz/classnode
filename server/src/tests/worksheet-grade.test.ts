@@ -204,7 +204,8 @@ const ANSWER_KEY_AUDIT: Record<QuestionType, AnswerShapeSample[]> = {
     label: '图文题作答区保留位置并剥离评价标准',
     data: { imageCanvas: { widgets: [{ id: 'a', canvasEvaluation: { mode: 'ai', criteria: '口头解释依据' }, matchConfig: { id: 'word-1', text: '珊瑚' } }] } },
     answerKeys: ['canvasEvaluation', 'matchConfig'], safeKeys: ['imageCanvas'],
-    afterStrip: { imageCanvas: { widgets: [{ id: 'a' }] } },
+    // 学生端使用投影后的开关；缺少有效作答区时为 false，评价标准仍须剥离。
+    afterStrip: { imageCanvas: { widgets: [{ id: 'a' }] }, studentAiReviewEnabled: false },
   }],
   'open-ended': [{ label: '开放题（无答案键）', data: {}, answerKeys: [], safeKeys: [], afterStrip: {} }],
   // ★ 2026-09-25：**空数组 = 这一格的答案**，不是漏填 ——

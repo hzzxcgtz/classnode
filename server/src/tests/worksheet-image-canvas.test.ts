@@ -168,6 +168,9 @@ test('整图任务可保存并投影给学生，同桌录音评星随实名作�
     if (message.includes('当前仅处理')) return { success: true, content: '其余区域只整理内容。' };
     assert.match(message, /录音中的观察/);
     assert.match(message, /照片中能辨认景物特点/);
+    assert.match(message, /作答区 1 .+的 AI 评价要求：录音标准：说清观察依据/);
+    assert.match(message, /典型表现与作答依据/);
+    assert.match(message, /classnode-feedback/);
     return { success: true, content: '建议把景物特点转成具体的口头说明。' };
   });
   const query = `?classroomId=${room.id}`;

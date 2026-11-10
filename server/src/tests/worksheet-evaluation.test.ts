@@ -67,7 +67,8 @@ test('真实HTTP提交：文字与图片共同传给AI，反馈成功计次数�
  const file=resolveLocalPath(imageUrl);fs.mkdirSync(path.dirname(file),{recursive:true});const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8ioAAAAASUVORK5CYII=','base64');fs.writeFileSync(file,bytes);
  t.after(async()=>{await db.$disconnect();fs.unlinkSync(file);fs.rmSync(dir,{recursive:true,force:true});});
  const agent=await db.agent.create({data:{name:'测试分析',platform:'coze',apiKey:'test',botId:'123',purpose:'analysis'}});
- const node=q({...evaluation,evaluationImages:[imageUrl],studentAiReviewEnabled:false,aiReviewLimit:1});
+ const reportPreference = '全班分析用表格对照典型作答';
+ const node=q({...evaluation,evaluationText: `${evaluation.evaluationText}。个人评价和建议各一句。${reportPreference}。`,evaluationImages:[imageUrl],studentAiReviewEnabled:false,aiReviewLimit:1});
  const sheet=await db.worksheet.create({data:{title:'反馈测试',content:{schemaVersion:1,nodes:[node]} as unknown as Prisma.InputJsonValue,settings:{analysisAgentId:agent.id,rewardStyle:'points',allowResubmit:false}}});
  const room=await db.classroom.create({data:{code:'9876',title:'测试课堂',mode:'standard',status:'active'}});
  const person=await db.classroomStudent.create({data:{classroomId:room.id,type:'student'}});
@@ -75,6 +76,9 @@ test('真实HTTP提交：文字与图片共同传给AI，反馈成功计次数�
  const app=express();app.use(express.json());app.set('prisma',db);let calls=0;
  app.set('analysisProxy',async(_agent:unknown,message:string,images:Buffer[])=>{
   calls++;assert.match(message,/说清观察与依据/);assert.match(message,/AI 评价要求/);assert.match(message,/只给具体评价与建议/);assert.match(message,/我看到了颜色变化/);assert.doesNotMatch(message,/提炼 5～7 个关键词/);assert.equal(images.length,1);assert.deepEqual(images[0],bytes);
+  assert.match(message, /个人评价和建议各一句/);
+  assert.match(message, /调整对应字段的文字，保留返回字段/);
+  assert.doesNotMatch(message, /400～600字中文正文/);
   await db.worksheetAnswer.updateMany({data:{score:7,gradeState:'partial',isCorrect:false}}); // A stale grade present when AI returns must also be removed.
   const label=message.match(/请给下面这些学生评分：([^。]+)/)?.[1]?.split('、')[0];assert.ok(label);
   return {success:true,content:`<classnode-scores>${JSON.stringify({scores:[{student:label,score:null,reason:'你描述了颜色变化。',advice:'再说说变化前后的区别。'}]})}</classnode-scores>`};
@@ -114,6 +118,9 @@ test('真实HTTP提交：文字与图片共同传给AI，反馈成功计次数�
  await teacherPost(`/analysis/q?classroomId=${room.id}`);
  app.set('analysisProxy',async(_agent:unknown,message:string,images:Buffer[],_signal:unknown,audio:unknown[])=>{
   summaryCalls++;assert.match(message,/个人评价结果汇总/);assert.match(message,/你描述了颜色变化/);assert.ok(message.includes(withCloud.data.wordCloudRequirements));assert.equal(images.length,0);assert.deepEqual(audio,[]);
+  assert.ok(message.includes(reportPreference));
+  assert.match(message, /个人反馈的格式要求不用于班级正文/);
+  assert.match(message, /典型表现与作答依据/);
   return {success:true,content:'### 主要表现\n已有评价显示能描述变化，建议补充前后过程。<classnode-feedback>{"groups":[],"students":[],"wordCloud":[]}</classnode-feedback>'};
  });
  const summaryResult=await teacherPost(`/analysis/q/run?classroomId=${room.id}&analysisOnly=true`);

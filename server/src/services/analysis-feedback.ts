@@ -63,7 +63,7 @@ export function feedbackInstruction(entries: readonly Entry[], includeStyle = tr
     classReportOnly ? '{"groups":[{"id":"g1","students":["张伟#7"]}],"students":[]}'
       : '{"groups":[{"id":"g1","students":["张伟#7"]}],"students":[{"student":"张伟#7","advice":"针对该学生实际作答的一条具体小建议"}]}',
     FEEDBACK_END,
-    '报告各段标题必须使用 ### Markdown 标题。典型表现对应名单与个人反馈是数据协议说明，不是正文小节，不输出这两个标题。所有 groups 和 students 只放在 classnode-feedback 起止标签内，禁止裸 JSON 或把数据块放进引用段落。若另需评分数据块，两种数据块都返回。',
+    '正文默认使用 ### Markdown 小节标题，教师明确指定正文形式时按本题要求。典型表现对应名单与个人反馈是数据协议说明，不是正文小节。所有 groups 和 students 只放在 classnode-feedback 起止标签内，禁止裸 JSON 或把数据块放进引用段落。若另需评分数据块，两种数据块都返回。',
   ].join('\n');
 }
 

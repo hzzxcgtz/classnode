@@ -32,7 +32,7 @@ test('reject error pages, HTML and incomplete or oversized files with understand
 test('read compact v5 templates as well as old complete templates',async()=>{
  const fs=await import('node:fs');
  const text=fs.readFileSync(new URL('../../../myportal/prompt-templates/analysis/primary-chinese.md',import.meta.url),'utf8');
- const result=await readAnalysisTemplate('primary-chinese',async()=>new Response(text));assert.equal(result.version,'5.2.0');assert.equal(result.text,text);
+ const result=await readAnalysisTemplate('primary-chinese',async()=>new Response(text));assert.equal(result.version,'5.3.0');assert.equal(result.text,text);
 });
 
 test('universal template is bundled and available without external network', async () => {
@@ -40,6 +40,6 @@ test('universal template is bundled and available without external network', asy
  const fs = await import('node:fs');
  const file = fs.readFileSync(new URL('../../../myportal/prompt-templates/analysis/universal.md', import.meta.url), 'utf8');
  assert.equal(result.text, file);
- assert.equal(result.version, '5.2.0');
+ assert.equal(result.version, '5.3.0');
  assert.match(result.text, /不增加教师未要求的评分项/);
 });

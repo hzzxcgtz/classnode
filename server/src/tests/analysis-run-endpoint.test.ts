@@ -203,6 +203,7 @@ test('表达题从手写和照片作答生成观点云，切换输入方式后�
   const agent = await makeAgent(prisma, 'coze', null);
   const node = { id: 'q3', type: 'short-answer', prompt: '说说发现', inputMode: 'handwriting', data: {}, children: [] };
   const cloudRequirements = '提炼 5～7 个关键词或短语，关注颜色变深';
+  const reportPreference = '全班分析先用表格列典型观察';
   const { worksheet, classroom, participants } = await seed(prisma, { analysisAgentId: agent.id, node, roster: TWO_STUDENTS });
   const report = '两份作答都提到颜色变深。<classnode-feedback>' + JSON.stringify({
     groups: [], students: [], wordCloud: [{ phrase: '颜色变深', students: [ZHANG, LI] }],
@@ -223,6 +224,9 @@ test('表达题从手写和照片作答生成观点云，切换输入方式后�
       assert.ok(message.includes(`${ZHANG} 提到颜色变深。`));
       assert.match(message, /原有文字观察：颜色变深/);
       assert.ok(message.includes(cloudRequirements));
+      assert.ok(message.includes(reportPreference));
+      assert.match(message, /教师在本题 AI 评价要求中明确指定全班分析/);
+      assert.match(message, /classnode-feedback/);
       assert.doesNotMatch(message, /默认提炼 5～7 条/);
     } else {
       assert.match(message, /默认提炼 5～7 条/);
@@ -241,7 +245,7 @@ test('表达题从手写和照片作答生成观点云，切换输入方式后�
   const file = resolveLocalPath(photo);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   await sharp({ create: { width: 32, height: 32, channels: 3, background: '#233344' } }).png().toFile(file);
-  await prisma.worksheet.update({ where: { id: worksheet.id }, data: { content: { schemaVersion: 1, nodes: [{ ...node, inputMode: 'photo', data: { wordCloudRequirements: cloudRequirements } }] } } });
+  await prisma.worksheet.update({ where: { id: worksheet.id }, data: { content: { schemaVersion: 1, nodes: [{ ...node, inputMode: 'photo', data: { wordCloudRequirements: cloudRequirements, rubricText: reportPreference } }] } } });
   await prisma.worksheetAnswer.updateMany({ where: { response: { participantId: participants[0] } }, data: { value: { format: 'photo/v1', url: photo } } });
   await prisma.worksheetAnswer.updateMany({ where: { response: { participantId: participants[1] } }, data: { value: { format: 'text/v1', text: '原有文字观察：颜色变深' } } });
   await assertCloud();

@@ -54,6 +54,7 @@ import { QuestionInput } from '@/app/classroom/worksheet/questions';
 // 组件这一层**没有回归网**（本仓没有 jsdom / testing-library）。
 import { TrueFalseBody } from './bodies/true-false-body';
 import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choice-body';
+import { FillCombinationsEditor } from './bodies/fill-combinations-editor';
 import { ChoiceBlankSetup } from './bodies/fill-blanks-body';
 // 表达题参考作答支持完整段落，仍沿用 nested answers 数据结构。
 import { fillWholeScore, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading } from '@/lib/worksheet-fill-modes';
@@ -75,7 +76,7 @@ import { questionTypeIcon } from '@/lib/worksheet-question-icons';
 // 作图工具选择器（`bodies/drawing-settings.tsx`）与学生端画布读的是同一个函数。
 import { readDrawingTool } from '@/lib/worksheet-drawing';
 import { IconMicrophone } from '@tabler/icons-react';
-import { EditorIcon, TrashIcon } from './editor-icons';
+import { EditorIcon } from './editor-icons';
 
 /**
  * 作答体那一块的标题 / 说明（**只服务 `answerBlock` 的兜底那一支**）。
@@ -173,7 +174,7 @@ function HeadSwitch({ checked, onChange, label, title, text }: {
  * 保存失败时会把逐题的原因原样带回来。这里重复一遍是为了**不必先保存一次才知道**，
  * 但它们可能与服务端漂移 —— 漂移的后果只是提示早晚，不是放行。
  */
-export function QuestionCard({ heading, label, expanded, focusedMode = false, onToggle, taskId, onDragStart, node, inheritedPoints, pointsUnit, rewardStyle, rejectedPointInput, onPromptChange, onDataChange, onAppendEvaluationImages, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onNotice, onRemove }: {
+export function QuestionCard({ heading, label, expanded, focusedMode = false, onToggle, taskId, onDragStart, node, inheritedPoints, pointsUnit, rewardStyle, rejectedPointInput, onPromptChange, onDataChange, onAppendEvaluationImages, onPointsInputChange, onPointsChange, onInputModeChange, onAutoGradeChange, onToleranceChange, onNotice }: {
   /**
    * ★ 2026-09-25（第二轮终审 F3）：卡片上显示的**两级题号**（`任务一 · 2`）——
    * 与看板列头 / 抽屉 / 导出 / **保存失败的报错**同一份，由 `editorRenderRows` 给出。
@@ -238,7 +239,6 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
    * 而 toast 住在 `page.tsx` ⇒ 中间必须有人把它转下去，否则复制成功一声不吭。
    */
   onNotice: (message: string, type: 'success' | 'error') => void;
-  onRemove: () => void;
 }) {
   const typeOption = QUESTION_TYPE_OPTIONS.find(option => option.value === node.type);
   const typeLabel = node.data.imageCanvas ? '图文题' : node.type === 'single-choice' || node.type === 'multi-choice'
@@ -476,7 +476,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             ⚠️ `touch-action: none`（CSS）是**必须**的：不写的话触屏上浏览器会先把这次
             拖动解释成滚动，`pointermove` 到一半就断了。
             ★ 2026-09-30（教师）：「排序按钮可以取消了」⇒ 把手右边那对 `▲▼`
-            （`onMove`）**删掉了**，这一行现在只剩把手与删除。换位**只有拖拽一条路**。
+            （`onMove`）**删掉了**。换位**只有拖拽一条路**。
             🔴 代价写在明处：拖拽对**键盘用户不可用**（`onPointerDown` 起手），
               这一改等于把「键盘换题序」这条能力一起拿掉了。别当成免费的清理。
           */}
@@ -488,17 +488,6 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             aria-label={`拖动「${heading}」调整顺序`}
           >
             ⠿
-          </button>
-          <button
-            type="button"
-            className="worksheet-editor-icon-button is-danger"
-            onClick={onRemove}
-            title="删除这项任务"
-            aria-label="删除这项任务"
-          >
-            {/* ★ 2026-10-05：这个垃圾桶搬去了 `editor-icons.tsx` —— 教师要求
-                「删除统一用垃圾桶图标」，于是它成了全编辑页的那一个图标，不再是本文件私有的内联 SVG。 */}
-            <TrashIcon />
           </button>
         </div>
       </header>
@@ -563,6 +552,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         {isBlankType && <div className="worksheet-editor-blank-detail-panel" data-blank-settings-for={node.id}>
           <ChoiceBlankSetup onAppendEvaluationImages={onAppendEvaluationImages} section="details" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId}/>
         </div>}
+        {isBlankType && <FillCombinationsEditor node={node} onDataChange={onDataChange} />}
         {/*
           ★ 2026-10-06（教师）：「判断题的答案设置移到上面题干的后面」。
           ⊘ 它原来在**最下面**（自动评分、分值设置之后）—— 判分相关的设置都堆在那里，

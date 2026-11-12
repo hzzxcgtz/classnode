@@ -20,6 +20,7 @@ import {
 } from '@/lib/worksheet-reward';
 import { QuestionCard } from './question-card';
 import { TaskCard } from './task-card';
+import { TrashIcon } from './editor-icons';
 import { dropIndexAt, editorRenderBlocks, placeHoverPreview, scoreSummary } from './worksheet-editor-core';
 import { flattenAnswerable, TASK_TYPE } from '@/lib/worksheet-questions';
 import { WorksheetPreviewModal } from './preview-modal';
@@ -363,9 +364,7 @@ function WorksheetEditorBody() {
   }, [drag, editor]);
 
   const requestRemove = useCallback(async (node: WorksheetQuestionNode, heading: string) => {
-    // 🔴 任务是**一整块**，而它的删除按钮就在任务头行上 —— 与小题的删除按钮只隔几十像素。
-    // 说成「确定删除第 1 题吗？」的后果是：教师以为在删一道题，实际删掉了整个任务
-    // （在那之前更糟：迁移之后顶层往往只有一个任务，删它 = **清空整份学习单**）。
+    // 删除主题会一并删除下属任务，确认文案需要明确影响范围。
     const isTask = node.type === TASK_TYPE;
     const count = node.children.length;
     const lines = [
@@ -422,6 +421,14 @@ function WorksheetEditorBody() {
     : null;
 
   const activeQuestion = activeBlock?.questions.find(row => row.node.id === openId) ?? null;
+  const renderOutlineRemove = (node: WorksheetQuestionNode, heading: string) => {
+    const label = node.type === TASK_TYPE ? `删除主题「${heading}」` : `删除第 ${heading} 项任务`;
+    return <button type="button" className="worksheet-editor-icon-button is-danger worksheet-editor-outline-remove"
+      aria-label={label} title={label} onClick={() => void requestRemove(node, heading)}>
+      <TrashIcon />
+    </button>;
+  };
+
   const renderQuestionCard = (row: EditorBlock['questions'][number]) => (
     <QuestionCard
       key={row.node.id}
@@ -450,7 +457,6 @@ function WorksheetEditorBody() {
       // 里而 toast 住在这里 ⇒ 这句话得转三层（本题卡 → 题干编辑器 → 弹窗的 onCopied）。
       // 断了不会报错，只是**复制成功一声不吭**。
       onNotice={notify}
-      onRemove={() => void requestRemove(row.node, row.heading)}
     />
   );
 
@@ -582,6 +588,7 @@ function WorksheetEditorBody() {
                         <em>{row.node.prompt.trim() || '未填写任务描述'}</em>
                       </span>
                     </button>
+                    {renderOutlineRemove(row.node, row.label)}
                   </div>
                 ));
               }
@@ -589,6 +596,7 @@ function WorksheetEditorBody() {
               const task = block.task;
               const taskTotals = scoreSummary(task.node.children, inheritedPoints);
               const taskActive = activeTaskId === task.node.id;
+              const taskTitle = task.node.prompt.trim() || `主题 ${blockIndex + 1}`;
               return (
                 <section
                   className={`worksheet-editor-outline-task${taskActive ? ' is-active' : ''}`}
@@ -603,10 +611,11 @@ function WorksheetEditorBody() {
                     >
                       <span className="worksheet-editor-outline-chevron">⌄</span>
                       <span>
-                        <strong>{task.node.prompt.trim() || `任务 ${blockIndex + 1}`}</strong>
+                        <strong>{taskTitle}</strong>
                         <em>{taskTotals.questions} 项任务 · 满分 {taskTotals.maxScore}</em>
                       </span>
                     </button>
+                    {renderOutlineRemove(task.node, taskTitle)}
                     <button
                       type="button"
                       className="worksheet-editor-drag-handle"
@@ -630,6 +639,7 @@ function WorksheetEditorBody() {
                             <em>{row.node.prompt.trim() || '未填写任务描述'}</em>
                           </span>
                         </button>
+                        {renderOutlineRemove(row.node, row.label)}
                         <button
                           type="button"
                           className="worksheet-editor-outline-drag"
@@ -676,9 +686,9 @@ function WorksheetEditorBody() {
                 total={activeBlock.task.total}
                 node={activeBlock.task.node}
                 onTitleChange={prompt => editor.updatePrompt(activeBlock.task!.node.id, prompt)}
+                onTitleVisibilityChange={showTitle => editor.updateData(activeBlock.task!.node.id, { showTitle })}
                 onDescriptionChange={description => editor.updateData(activeBlock.task!.node.id, { description })}
                 onMove={delta => editor.moveQuestion(activeBlock.task!.node.id, delta)}
-                onRemove={() => void requestRemove(activeBlock.task!.node, '')}
                 onDragStart={event => startDrag(event, activeBlock.task!.node.id, '', activeBlock.task!.index)}
                 onAddQuestion={() => setPickerFor({ parentId: activeBlock.task!.node.id })}
                 inheritedPoints={inheritedPoints}

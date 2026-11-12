@@ -445,11 +445,10 @@ export function WorksheetQuestionList({
         // 段本身不重排（页面上唯一会重排的是小题，而它们各自按 `node.id` 作 key）。
         // ★ 2026-09-26（教师）：「题目要**装在**任务容器里」—— 原来只有一个标题 + 一串平铺的卡，
         // 标题看起来像它自己也是一道题（而它没有提交，只是看着像）。
-        // ⚠️ **只在有标题的那几段**加容器：散题那一段（`title === null`）没有名字，
-        // 给它套一个框只是噪音 —— 而它本来就是老数据才有的形态。
+        // 隐藏已填写的主题标题时也保留容器。
         <div
           className={styles.group}
-          data-container={group.title ? '1' : '0'}
+          data-container={group.title || group.titleHidden ? '1' : '0'}
           key={`${groupIndex}:${group.title ?? ''}`}
         >
           {group.title && <h3 className={styles.groupTitle}>{group.title}</h3>}

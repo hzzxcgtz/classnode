@@ -20,8 +20,8 @@ const evaluationExamples: Record<EvaluationExample, string> = {
 };
 
 /** One editor for question-level and per-blank evaluation; input mode is independent. */
-export function EvaluationSettings({ data, legacyMode, legacyScored, allowAnswer = true, allowAi = true, reference, maxScore = 1, scoreLimit = 99, unit = '分', rewardStyle, exampleMode, template, onChange, limit, onTriggerChange, onNotice, onImagesUploaded, children }: {
-  data: Record<string, unknown>; legacyMode: EvaluationMode; legacyScored: boolean; allowAnswer?: boolean; allowAi?: boolean;
+export function EvaluationSettings({ data, legacyMode, legacyScored, allowAnswer = true, allowAi = true, showAnswerHelp = true, reference, maxScore = 1, scoreLimit = 99, unit = '分', rewardStyle, exampleMode, template, onChange, limit, onTriggerChange, onNotice, onImagesUploaded, children }: {
+  data: Record<string, unknown>; legacyMode: EvaluationMode; legacyScored: boolean; allowAnswer?: boolean; allowAi?: boolean; showAnswerHelp?: boolean;
   reference?: unknown; maxScore?: number; scoreLimit?: number; unit?: string; rewardStyle?: RewardStyle; exampleMode?: EvaluationExample; template?: string; onChange: (patch: Record<string, unknown>) => void;
   children?: ReactNode;
   limit: number; onTriggerChange: (patch: Record<string, unknown>) => void;
@@ -39,7 +39,7 @@ export function EvaluationSettings({ data, legacyMode, legacyScored, allowAnswer
       {([{key:'answer', label:'练习判分', Icon:IconCheck}, {key:'ai', label:'表达评价', Icon:IconSparkles}, {key:'collect', label:'调查收集', Icon:IconInbox}] as const).filter(item => (allowAnswer || item.key !== 'answer') && (allowAi || item.key !== 'ai')).map(({key,label,Icon}) => <button type="button" key={key} aria-pressed={mode===key} className={mode===key?'is-selected':''} onClick={() => {if(key !== mode || !hasEvaluation(data)) { change({evaluationMode:key, evaluationScored:key==='answer' || (key==='ai' && scored), ...(key==='ai' ? {maxScore:1, aiScoringMaxScore:1} : {})}); if(key==='ai') onTriggerChange({studentAiReviewEnabled:true, aiReviewLimit:1}); }}}><Icon size={18}/>{label}</button>)}
     </div>
     {mode === 'collect' && <p className="worksheet-evaluation-help">只收集作答，不判对错、不计分，也不生成个人 AI 评价。教师仍可发起全班整体分析。</p>}
-    {mode === 'answer' && <p className="worksheet-evaluation-help">必须设置标准答案，提交后自动判分，不生成个人 AI 评价。教师仍可发起全班整体分析。</p>}
+    {mode === 'answer' && showAnswerHelp && <p className="worksheet-evaluation-help">必须设置标准答案，提交后自动判分，不生成个人 AI 评价。教师仍可发起全班整体分析。</p>}
     {mode === 'ai' && !allowAi && <p className="worksheet-evaluation-help" role="status">客观题不支持表达评价，请选择练习判分或调查收集。</p>}
     {showAi && <>
       <EvaluationRequirementsField label="AI 评价要求" images={images} onImagesUploaded={onImagesUploaded}

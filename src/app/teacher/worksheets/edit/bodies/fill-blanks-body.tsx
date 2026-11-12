@@ -1,5 +1,7 @@
 'use client';
 
+import combinationStyles from './fill-combinations-editor.module.css';
+import { reconcileFillCombinations } from '@/lib/worksheet-fill-combinations';
 import { needsWholeFillConversion, convertWholeFillSettings, updateFillEvaluation } from '@/lib/worksheet-evaluation-edit';
 import { EvaluationSettings } from '../evaluation-settings';
 import { hasEvaluation } from '@/lib/worksheet-evaluation';
@@ -218,6 +220,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
   const answerSets = readBlankAnswers(node);
   const answerSlots = readBlankCount(node);
   const settings = fillSettingsFor(node, runs);
+  const combinationMode = Array.isArray(node.data.fillAnswerCombinations);
   const gradingEnabled = node.autoGrade !== false || settings.some(setting=>setting.evaluationVersion === 1);
   const poolChoices = sharedPoolChoices(node);
   const updateSettings = (next: typeof settings, answers?: string[][]) => {
@@ -225,6 +228,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
     //   原先这里按「有没有 AI 空」写那个开关，而它今天恒为 false。老题库里那个键原样留着
     //   （`aiScoredFor` 会按题型把它挡掉，看板不会再挂「AI 评分」）。
     onDataChange({
+      ...reconcileFillCombinations(node.data.fillAnswerCombinations, slots.map(slot => slot.id)),
       fillBlankSettings: writeFillSettings(node, runs, next),
       ...(answers ? { answers, blanks: undefined } : {}),
       ...(next.some(setting => setting.mode === 'audio' && setting.evaluationVersion !== 1) ? { studentAiReviewEnabled: node.data.studentAiReviewEnabled ?? true, aiReviewLimit: node.data.aiReviewLimit ?? 1 } : {}),
@@ -236,6 +240,15 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
       : !isLegacyFillGrading(setting.gradingMode));
 
   const renderAnswer = (index: number) => {
+    if (combinationMode) return (
+      <div className={combinationStyles.answerNotice}>
+        <span>按最匹配的一组答案判分。</span>
+        <button type="button" className={combinationStyles.answerLink} onClick={() => {
+          const table = document.getElementById(`fill-combinations-${node.id}`);
+          table?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }}>设置答案组合 ↓</button>
+      </div>
+    );
     const rule = settings[index].conditionalAnswer;
     const candidates = slots.filter((slot, sourceIndex) => sourceIndex !== index
       && isScoredPool(settings[sourceIndex]) && !settings[sourceIndex].conditionalAnswer
@@ -252,7 +265,9 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
     return (
       <div className="grid gap-2">
         {isScoredPool(settings[index]) && (rule || (canDepend && candidates.length > 0)) && (
-          <label className="grid gap-1">
+          <details open={rule ? true : undefined} className="rounded-lg border border-slate-200 p-3">
+            <summary className="cursor-pointer text-sm">高级：根据另一空判分</summary>
+            <label className="mt-2 grid gap-1">
             <span>第 {index + 1} 空的判分依据</span>
             <select className="input" value={rule?.sourceId ?? ''} onChange={event => {
               const sourceId = event.target.value;
@@ -264,7 +279,8 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                 <option key={slot.id} value={slot.id}>根据第 {slots.indexOf(slot) + 1} 空判分</option>
               ))}
             </select>
-          </label>
+            </label>
+          </details>
         )}
         {isScoredPool(settings[index]) && rule ? sourceAvailable && [...new Set(answerSets[sourceIndex].filter(answer => answer.trim()))].map(when => (
           <label key={when} className="grid gap-1">
@@ -457,7 +473,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                     evaluationImages: settings[index - 1].evaluationImages ?? [],
                   }))}>复制上一空的评价标准</button>}
               </div>}
-              {!needsConversion && <EvaluationSettings exampleMode={settings[index].mode === 'audio' ? 'audio' : 'keyboard'} allowAi={fillWholeScore(node.data) === undefined && (settings[index].mode === 'text' || settings[index].mode === 'audio')} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls,slot.id)} unit={pointsUnit} data={settings[index] as unknown as Record<string, unknown>} allowAnswer={settings[index].mode !== 'audio'} legacyMode={!gradingEnabled ? 'collect' : settings[index].mode === 'audio' ? settings[index].gradingMode === 'ai' ? 'ai' : 'collect' : 'answer'} legacyScored={gradingEnabled && (settings[index].mode !== 'audio' || settings[index].gradingMode === 'ai')} maxScore={settings[index].maxScore ?? inheritScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onChange={patch => updateSettings(updateFillEvaluation(explicitSettings(),index,{...patch,gradingMode:patch.evaluationMode === 'answer' ? 'auto' : patch.evaluationMode === 'ai' ? 'ai' : 'none'}))}/>}
+              {!needsConversion && <EvaluationSettings showAnswerHelp={!combinationMode} exampleMode={settings[index].mode === 'audio' ? 'audio' : 'keyboard'} allowAi={fillWholeScore(node.data) === undefined && (settings[index].mode === 'text' || settings[index].mode === 'audio')} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls,slot.id)} unit={pointsUnit} data={settings[index] as unknown as Record<string, unknown>} allowAnswer={settings[index].mode !== 'audio'} legacyMode={!gradingEnabled ? 'collect' : settings[index].mode === 'audio' ? settings[index].gradingMode === 'ai' ? 'ai' : 'collect' : 'answer'} legacyScored={gradingEnabled && (settings[index].mode !== 'audio' || settings[index].gradingMode === 'ai')} maxScore={settings[index].maxScore ?? inheritScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onChange={patch => updateSettings(updateFillEvaluation(explicitSettings(),index,{...patch,gradingMode:patch.evaluationMode === 'answer' ? 'auto' : patch.evaluationMode === 'ai' ? 'ai' : 'none'}))}/>}
               {settings[index].mode === 'inline' && (
                 <label className="worksheet-editor-field worksheet-editor-inline-word-field">
                   <span>这一空的待选词</span>
@@ -476,7 +492,7 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                   ⚠️ 老库里写着 `'ai'` / `'none'` 的空下面那句提示会点出来（见 `legacyGradingOf`）。 */}
               {/* 答案独占第三行；本空的分值紧跟在这一行末尾。 */}
               {gradingEnabled && settings[index].mode !== 'audio' && (!hasEvaluation(settings[index] as unknown as Record<string, unknown>) || settings[index].evaluationMode === 'answer') && <div className="worksheet-editor-fill-answer-field">
-                <span>答案</span>
+                {combinationMode ? <span>判分</span> : <span>答案</span>}
                 <div className="worksheet-editor-fill-answer-editor">
                   {renderAnswer(index)}
                 </div>
@@ -521,9 +537,9 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                 也算不进「当前任务满分」—— 请给这些空填上答案（需要主观评价时，请将该空切换为<strong>表达评价</strong>）。
               </p>
             )}
-            <p className="worksheet-editor-compact-note">
+            {!combinationMode && <p className="worksheet-editor-compact-note">
               练习空必须设置答案；调查空只收集作答；表达空由 AI 评价。同题所有表达空提交后合并评价，客观空得分与 AI 得分合计。
-            </p>
+            </p>}
             {/* ⚠️ 只在**旧口径**下说这句（`!explicitGrading`）：接管逐空之后每个空的分值
                 可能各不相同，而这句话还按题目级分值报「每个空 X × N 空 ⇒ 全对最多 Y」——
                 它会与上面那句逐空构成说明、以及题目卡上那个「本题满分」徽章给出不同的数。

@@ -487,6 +487,8 @@ export interface AnswerableGroup {
    * ⚠️ `null` 时刻意**不编**一个「任务一」（与题号无前缀、迁移不猜是同一条纪律）。
    */
   title: string | null;
+  /** 学生端隐藏已填写的主题标题时，仍保留该主题的容器。 */
+  titleHidden?: true;
   /**
    * ★ 2026-09-25（教师裁定）：任务的**描述** —— 例如「读下面的材料，回答 1–3 题」。
    *
@@ -511,7 +513,7 @@ export interface AnswerableGroup {
  * ⚠️ 顺序与 `flattenAnswerable` **逐项相同**（用例钉着），因为两处都从
  * 「先本节点、再按序递归 children」那条遍历来。
  */
-export function groupAnswerable(nodes: WorksheetQuestionNode[]): AnswerableGroup[] {
+export function groupAnswerable(nodes: WorksheetQuestionNode[], hideStudentTitles = false): AnswerableGroup[] {
   // ⚠️ 题号（含散题那个**跨全文**的计数器）由 `flattenAnswerable` **算一次** ——
   // 逐节点分别调用会把散题的计数器每组重置成 1，于是每道散题都叫「1」。
   // 这里只做**切段**：因为拍平是 DFS、一个顶层节点的全部可作答后代在结果里**必然连续**，
@@ -540,7 +542,13 @@ export function groupAnswerable(nodes: WorksheetQuestionNode[]): AnswerableGroup
       // ⚠️ 「连续」的散题才合成一段：中间隔了一个任务，就不属于同一段了。
       flushLoose();
       const title = typeof top.prompt === 'string' ? top.prompt.trim() : '';
-      groups.push({ title: title || null, description: descriptionOf(top), items: itemsOfTop });
+      const titleHidden = hideStudentTitles && Boolean(title) && top.data?.showTitle === false;
+      groups.push({
+        title: titleHidden ? null : title || null,
+        ...(titleHidden ? { titleHidden: true } : {}),
+        description: descriptionOf(top),
+        items: titleHidden ? itemsOfTop.map(item => ({ ...item, heading: item.label })) : itemsOfTop,
+      });
       continue;
     }
     loose.push(...itemsOfTop);
@@ -550,14 +558,14 @@ export function groupAnswerable(nodes: WorksheetQuestionNode[]): AnswerableGroup
 }
 
 /**
- * 学生端要画的那几段 —— **空任务整段丢掉**（这是学生端与编辑页唯一的口径差别）。
+ * 学生端按主题设置显示标题，并跳过没有作答任务的主题。
  *
  * 教师 2026-09-25 裁定「允许空任务」：编辑器里点「+ 添加任务」之后还没放小题时，
  * 容器是一块看得见、可以往里加东西的地方。而**学生端**那一侧，一个空任务渲染出来
  * 是一行光秃秃的标题、下面什么都没有 —— 那是「渲染坏了」的长相，不是「这里可以加」。
  */
 export function studentVisibleGroups(nodes: WorksheetQuestionNode[]): AnswerableGroup[] {
-  return groupAnswerable(nodes).filter((group) => group.items.length > 0);
+  return groupAnswerable(nodes, true).filter((group) => group.items.length > 0);
 }
 
 /** 选项的 key 由**位置**派生（A、B、C…），与规格 §4.3 的示例一致。 */

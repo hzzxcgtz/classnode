@@ -21,7 +21,7 @@ export interface AnswerReview {
   reason: string | null; advice: string | null; error: string | null;
   createdAt: string; evaluatedAt: string | null; evaluationDurationMs?: number | null;
 }
-export function ReviewHistory({ node, reviews, onRetry, renderReviewActions, renderReviewDetails, teacherView = false }: { node: WorksheetQuestionNode; reviews: AnswerReview[]; onRetry?: (id: string) => void | Promise<void>; renderReviewActions?: (review: AnswerReview) => ReactNode; renderReviewDetails?: (review: AnswerReview) => ReactNode; teacherView?: boolean }) {
+export function ReviewHistory({ node, reviews, currentValue, onRetry, renderReviewActions, renderReviewDetails, teacherView = false }: { node: WorksheetQuestionNode; reviews: AnswerReview[]; currentValue?: unknown; onRetry?: (id: string) => void | Promise<void>; renderReviewActions?: (review: AnswerReview) => ReactNode; renderReviewDetails?: (review: AnswerReview) => ReactNode; teacherView?: boolean }) {
   const accordionName = useId();
   const [retrying, setRetrying] = useState<string | null>(null);
   const retry = async (id: string) => {
@@ -31,6 +31,8 @@ export function ReviewHistory({ node, reviews, onRetry, renderReviewActions, ren
   };
   const records = reviews.filter(r => r.status !== 'submitted');
   if (!records.length) return null;
+  const currentView = teacherView ? answerView(node, currentValue) : null;
+  const currentAudioUrl = currentView?.kind === 'audio' ? currentView.url : null;
   return <section className={styles.reviewHistory} aria-label="提交与评价记录">
     <h4 className={styles.reviewHistoryHeading}>提交与评价记录 · {records.length} 条</h4>
     {records.map((r, index) => <details key={r.id} name={accordionName} className={styles.reviewRevision} onToggle={event => {
@@ -44,7 +46,12 @@ export function ReviewHistory({ node, reviews, onRetry, renderReviewActions, ren
       <div className={styles.reviewRevisionBody}>
       {r.evaluatedAt && <ReviewTiming review={r} />}
 
-      {teacherView && (() => { const view = answerView(node, r.value); return view.kind === 'audio' ? <VoiceAnswerPlayer transcription={false} review={teacherView} src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="这次提交的语音" /> : null; })()}
+      {teacherView && (() => {
+        const view = answerView(node, r.value);
+        return view.kind === 'audio' && view.url !== currentAudioUrl
+          ? <VoiceAnswerPlayer review src={worksheetAssetUrl(view.url)} durationMs={view.durationMs} title="这次提交的语音" />
+          : null;
+      })()}
       {r.status === 'superseded' && <p role="status">{r.error || '历史结果，不计入当前成绩和评价次数'}</p>}
       <div className={styles.reviewEvaluation}><div className={styles.reviewEvaluationText}>
       <AiReviewFeedback reason={r.reason} advice={r.advice} actions={renderReviewActions?.(r)}/>

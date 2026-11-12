@@ -208,7 +208,7 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
                   <div className={styles.cloudEvidenceTrack} tabIndex={0} role="region" aria-label="相关学生作答，可横向滚动">
                     {examples.map((row, index) => <article key={row.participantId} className={styles.cloudEvidenceCard}>
                       <header><span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><h5>{row.participantName}</h5></header>
-                      <div className={styles.cloudAnswer}><AnswerViewBody node={answerNode} value={row.value} transcription={false} neutral /></div>
+                      <div className={styles.cloudAnswer}><AnswerViewBody node={answerNode} value={row.value} neutral /></div>
                       {onOpenStudent && <button type="button" className="btn btn-secondary" onClick={() => onOpenStudent(row.participantId)}
                         aria-label={`查看${row.participantName}的作答详情`}>查看作答 <IconArrowRight size={15} aria-hidden="true" /></button>}
                     </article>)}
@@ -232,7 +232,7 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
         {view === 'answers' && submitted.length > 0 && <div className={styles.cards}>
           {submitted.map((row, index) => <article key={row.participantId}>
             <h4>{presentation ? `作答 ${index + 1}` : row.participantName}</h4>
-            <AnswerViewBody node={answerNode} value={row.value} transcription={false} neutral />
+            <AnswerViewBody node={answerNode} value={row.value} neutral />
             {!presentation && onOpenStudent && <button type="button" className="btn btn-secondary"
               onClick={() => onOpenStudent(row.participantId)}>查看作答详情</button>}
           </article>)}

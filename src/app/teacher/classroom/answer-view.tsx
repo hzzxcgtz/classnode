@@ -136,6 +136,7 @@ function renderView(node: WorksheetQuestionNode, view: AnswerView, transcription
     case 'fill':
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {view.combinationLabel && <small style={{ color: MUTED }}>{view.combinationLabel}</small>}
           {view.blanks.slice(0, view.hasTable ? view.tableBase : undefined).map((blank, index) => (
             <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: "0.75rem", color: MUTED }}>

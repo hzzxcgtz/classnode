@@ -37,7 +37,7 @@ export function TeacherReviewHistory({ classroomId, worksheetId, participantId, 
       reason={lecture.review?.reason} advice={lecture.review?.advice} score={lecture.review?.score} maxScore={lecture.review?.maxScore} unit={lecture.review?.unit}
       reviewAnnotationId={lecture.review ? `${classroomId}:${worksheetId}:${participantId}:${node.id}:${lecture.review.id}` : undefined}
       note={lecture.review?.status === 'superseded' ? (lecture.review.error || '历史评价，不计入当前成绩') : undefined} onClose={()=>setLecture(null)}/>}
-    {error ? <p role="status">提交历史暂时未能读取，正在重试。</p> : <ReviewHistory teacherView node={node} reviews={reviews} renderReviewDetails={review => <ReviewEvidencePanel evidence={reviews.find(row=>row.id===review.id)?.evidence}/>} renderReviewActions={review =>
+    {error ? <p role="status">提交历史暂时未能读取，正在重试。</p> : <ReviewHistory teacherView node={node} reviews={reviews} currentValue={value} renderReviewDetails={review => <ReviewEvidencePanel evidence={reviews.find(row=>row.id===review.id)?.evidence}/>} renderReviewActions={review =>
     <ReviewPreviewButton openExternally={()=>setLecture({mode:'review',review,snapshot:{node,value:review.value}})} annotationId={`${classroomId}:${worksheetId}:${participantId}:${node.id}:${review.id}`} title={`${studentName || '学生'} · AI 评价与建议`} reason={review.reason} advice={review.advice} score={review.score} maxScore={review.maxScore} unit={review.unit}
       note={review.status === 'superseded' ? (review.error || '历史评价，不计入当前成绩') : undefined} />
   } />}

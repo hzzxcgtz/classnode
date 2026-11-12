@@ -1,3 +1,4 @@
+import { reconcileFillCombinations } from './worksheet-fill-combinations.ts';
 import type { WorksheetQuestionNode } from './types';
 import { blankSlots, fillSettingsFor, writeFillSettings } from './worksheet-fill-modes.ts';
 import { blankRuns, isPlainRuns, type PromptRun } from './worksheet-prompt-marks.ts';
@@ -14,6 +15,7 @@ export function fillPromptPatch(node: WorksheetQuestionNode, previous: PromptRun
   const settings = fillSettingsFor(node, previous);
   const settingsById = new Map(before.map((slot, index) => [slot.id, settings[index]]));
   return {
+    ...reconcileFillCombinations(node.data.fillAnswerCombinations, after.map(slot => slot.id)),
     ...(removesTable ? { table: undefined } : {}),
     promptRuns: isPlainRuns(runs) ? undefined : runs,
     answers: after.map(slot => byId.get(slot.id) ?? []),

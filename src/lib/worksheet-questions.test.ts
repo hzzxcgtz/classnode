@@ -28,6 +28,7 @@ import {
   flattenAnswerable,
   flattenQuestions,
   groupAnswerable,
+  studentVisibleGroups,
   optionBadge,
   questionTypeLabel,
   questionTypeNickname,
@@ -237,6 +238,23 @@ test('🔴 连续散题合成**一组**，不给它编标题（`title: null`）'
 
 test('🔴 任务标题留空 ⇒ 这一组**没有标题行**（与题号无前缀同一件事）', () => {
   assert.deepEqual(groupAnswerable([task('t1', '   ', [q('a')])]).map((g) => g.title), [null]);
+});
+
+test('学生端可隐藏主题标题，保留主题容器、说明和连续题号', () => {
+  const hidden = {
+    ...task('t1', '教师备课用标题', [q('a'), q('b')]),
+    data: { showTitle: false, description: '阅读材料后作答。' },
+  };
+  const visible = task('t2', '旧学习单主题', [q('c')]);
+  const groups = studentVisibleGroups([hidden, visible]);
+  assert.equal(groups[0].title, null);
+  assert.equal(groups[0].titleHidden, true);
+  assert.equal(groups[0].description, '阅读材料后作答。');
+  assert.deepEqual(groups[0].items.map(item => item.heading), ['1', '2']);
+  assert.equal(groups[1].title, '旧学习单主题');
+  assert.equal(groups[1].items[0].heading, '旧学习单主题 · 3');
+  assert.equal(studentVisibleGroups([{ ...hidden, data: { showTitle: true } }])[0].title, hidden.prompt);
+  assert.equal(groupAnswerable([hidden])[0].title, hidden.prompt);
 });
 
 test('所有可作答的题恰好出现一次，顺序与 `flattenAnswerable` 逐项相同', () => {

@@ -3,7 +3,6 @@
 import { useEffect, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
-import { TrashIcon } from './editor-icons';
 import { scoreSummary } from './worksheet-editor-core';
 
 /**
@@ -14,9 +13,7 @@ import { scoreSummary } from './worksheet-editor-core';
  * **所有小题在编辑器里看不见**；而删掉那张卡 = 删掉顶层唯一节点 = **清空整份学习单**。
  *
  * ── 两级各有自己的操作，**不挤在同一排**（§六 的第 2 条）────────────────
- *   · 任务级：改名（就是那个输入框）· 上移 / 下移 / 删除 —— 只在这个头行上；
- *   · 小题级：题型 / 上移 / 下移 / 删除 —— 在每张小题目卡自己的头行上（`question-card.tsx`）。
- * 挤在一排的后果不是难看，是**教师点错**：两个「删除」相邻，删掉的可能是整个任务。
+ *   · 主题设置与排序放在本卡，删除入口位于左侧结构列表。
  *
  * ── 三层「面」（简报的取值，别自创）──────────────────────────────────
  *   页面底 `#f8fafc` · 任务容器 `#f8fafc` + `1px #e2e8f0` + 圆角 12 ·
@@ -24,7 +21,7 @@ import { scoreSummary } from './worksheet-editor-core';
  *   ⇒ 容器与页面底同色，靠**边框**立起来；而**最亮的 `#fff` 留给小题卡** ——
  *   题干是这一页唯一的主角，容器不该比它更抢眼。
  *
- * ⚠️ 本组件**不碰 reducer**：改名 / 上下移 / 删除 / 加小题全部由 `page.tsx` 传进来。
+ * ⚠️ 本组件**不碰 reducer**：编辑、排序和添加任务均通过 `page.tsx` 的回调处理。
  */
 
 export function TaskCard({
@@ -32,9 +29,9 @@ export function TaskCard({
   total,
   node,
   onTitleChange,
+  onTitleVisibilityChange,
   onDescriptionChange,
   onMove,
-  onRemove,
   onAddQuestion,
   onDragStart,
   inheritedPoints,
@@ -47,10 +44,10 @@ export function TaskCard({
   total: number;
   node: WorksheetQuestionNode;
   onTitleChange: (prompt: string) => void;
+  onTitleVisibilityChange: (visible: boolean) => void;
   /** 任务的**描述**（`data.description`）—— 学生端会显示在标题下面。 */
   onDescriptionChange: (description: string) => void;
   onMove: (delta: -1 | 1) => void;
-  onRemove: () => void;
   onAddQuestion: () => void;
   /** ★ 2026-09-26（spec 第 5 步）：指针落在把手上 ⇒ 开始拖。 */
   onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
@@ -117,6 +114,11 @@ export function TaskCard({
           placeholder="主题标题（可以留空）"
           aria-label={`主题 ${index + 1} 的标题`}
         />
+        <label className="worksheet-editor-task-title-visibility">
+          <input type="checkbox" checked={node.data.showTitle !== false}
+            onChange={event => onTitleVisibilityChange(event.target.checked)} />
+          学生端显示标题
+        </label>
         {/*
           ★ 2026-09-26（spec 第 4 步）：任务容器要有**自己的身份** —— 折起来时教师只看得见
           一行标题，而「这一组几道题、多少分」是他扫全卷时最需要的两个数。
@@ -155,15 +157,6 @@ export function TaskCard({
             aria-label="整个主题下移一位"
           >
             ▼
-          </button>
-          <button
-            type="button"
-            className="worksheet-editor-icon-button is-danger"
-            onClick={onRemove}
-            title="删除整个主题"
-            aria-label="删除整个主题"
-          >
-            <TrashIcon />
           </button>
         </div>
       </header>

@@ -2,6 +2,7 @@ import { evaluationRequirements, evaluationImages, hasEvaluation } from './works
 import {
   acceptableAnswersFor,
   conditionalFillAnswerReference,
+  fillCombinationReferences,
   answerSlotCount,
   readPairs,
   readStringMap,
@@ -157,6 +158,8 @@ function appendExplanation(reference: string, node: QuestionNode): string {
 }
 
 function fillReference(node: QuestionNode): string {
+  const combinations = fillCombinationReferences(node.data);
+  if (combinations.length) return '以下为完整的正确答案组合，必须按同一套组合比较，不可混用各组答案。\n' + combinations.join('\n');
   const count = answerSlotCount(node.data);
   if (count === 0) return '（未提供参考答案）';
   const slots = Array.from({ length: count }, (_, index) => {

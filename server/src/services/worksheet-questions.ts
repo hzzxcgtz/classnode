@@ -1,6 +1,8 @@
 import { canvasAutoReviewIds, canvasMatchChoices, readImageCanvas } from './worksheet-image-canvas.js';
 import { aiEvaluationEnabled, hasEvaluation, countsEvaluation } from './worksheet-evaluation.js';
 import { fillAudioSlots } from './worksheet-fill-audio.js';
+import { bestFillCombination, normalizeFillText, readFillAnswerCombinations, MAX_FILL_ANSWER_COMBINATIONS } from './fill-answer-combinations.js';
+export { normalizeFillText } from './fill-answer-combinations.js';
 /** 学习单的题型注册表。**纯函数，全部在服务端** —— 本项目不引入前端测试框架（规格 §11）。 */
 
 // ★ M4b：判分前的 ink 短路，以及写入口的体积校验，都建立在同一份格式判据上。
@@ -286,19 +288,6 @@ export function resolvePoints(node: QuestionNode, fallback: QuestionPoints): Que
 }
 
 /**
- * 填空题的文本归一化。
- *
- * 🔴 **刻意不做大小写不敏感**（规格 §3-T）：化学式 / 英文填空的大小写是语义的一部分，
- * 把 `CO2` 判成 `co2` 正确比不判更糟。英文题请教师在 `answers` 里多列几个写法。
- */
-export function normalizeFillText(raw: string): string {
-  return raw
-    .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))  // 全角→半角
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
  * 读一道题的容错档。**只有 `>= 1` 的整数才算设过** —— 与 `normalizePointValue` 同一把尺子：
  * 库里可能出现任何形状（`0` / 小数 / 字符串 / `null`），认不出的**一律当缺省**（旧规则）。
  * ⚠️ 这里**不抛也不报错**：它是读路径，一份手改过的数据不该让判分 500。
@@ -351,7 +340,7 @@ export function flattenQuestions(content: WorksheetContent): QuestionNode[] {
  * 它们是学生必须看到的题面，剥掉它们会让题目残缺到无法作答。
  */
 export const ANSWER_KEYS = [
-  'correctKeys', 'answers', 'explanation', 'correctOrder', 'pairs', 'placement', 'conditionalAnswer',
+  'correctKeys', 'answers', 'explanation', 'correctOrder', 'pairs', 'placement', 'conditionalAnswer', 'fillAnswerCombinations',
   // 评价与分析要求只供教师与 AI 使用，不能随学生版学习单下发。
   'evaluationText', 'evaluationImages', 'rubricText', 'rubricImageUrl', 'analysisFocus', '__analysisContext', 'audioCriteria', 'audioReference',
   'wordCloudRequirements', 'canvasEvaluation', 'matchConfig',
@@ -453,7 +442,7 @@ export function grade(node: QuestionNode, value: unknown, points: QuestionPoints
   if ((node.type === 'fill-blank' || node.type === 'choice-blank') && aiEvaluationEnabled(node) && Object.values((data.fillBlankSettings as Record<string, Record<string, unknown>>) ?? {}).some(s => hasEvaluation(s) && s.evaluationMode === 'ai' && countsEvaluation(s))) return null;
   if (node.autoGrade === false && !hasEvaluation(node.data) && !((node.type === 'fill-blank' || node.type === 'choice-blank') && Object.values((node.data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation))) return null;
   if (fillAudioSlots(node).some(slot => slot.scored)) return null;
-  const mixedFill = node.type === 'fill-blank' || (node.type === 'choice-blank' && Object.values((data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation)) ? explicitFillGrading(data) : [];
+  const mixedFill = node.type === 'fill-blank' || (node.type === 'choice-blank' && Object.values((data.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation)) || (node.type === 'choice-blank' && readFillAnswerCombinations(data.fillAnswerCombinations).length > 0) ? explicitFillGrading(data) : [];
   if (mixedFill.length > 0) {
     const auto = mixedFill
       .map((setting, index) => ({ ...setting, index }))
@@ -850,8 +839,26 @@ function conditionalPoolRule(data: Record<string, unknown>, index: number) {
   };
 }
 
+/** Complete references retain the relationship between blanks for export and AI analysis. */
+export function fillCombinationReferences(data: Record<string, unknown>): string[] {
+  const combinations = readFillAnswerCombinations(data.fillAnswerCombinations);
+  if (!combinations.length) return [];
+  const entries = fillSettingsEntries(data);
+  const explicit = explicitFillGrading(data);
+  const base = Array.from({ length: answerSlotCount(data) }, (_, i) => acceptableAnswersFor(data, i));
+  return [base, ...combinations.map(item => entries.map(([id]) => item.answers[id] ?? []))]
+    .map((answers, combination) => `组合 ${combination + 1}：` + answers.flatMap((items, index) =>
+      explicit.length && explicit[index]?.gradingMode !== 'auto' ? [] : [`第${index + 1}空「${items.join(' / ')}」`]).join('；'));
+}
+
 /** 展示联动规则，不把依赖空误写成「未提供答案」。 */
 export function conditionalFillAnswerReference(data: Record<string, unknown>, index: number): string[] {
+  const combinations = readFillAnswerCombinations(data.fillAnswerCombinations);
+  if (combinations.length) {
+    const id = fillSettingsEntries(data)[index]?.[0];
+    return [acceptableAnswersFor(data, index), ...combinations.map(item => item.answers[id] ?? [])]
+      .map((answers, i) => `组合 ${i + 1}：${answers.join(' / ')}`);
+  }
   const rule = conditionalPoolRule(data, index);
   if (!rule || rule.sourceIndex < 0) return [];
   return rule.cases.flatMap(item => {
@@ -867,6 +874,11 @@ function normalizePoolAnswer(answer: string): string {
 }
 
 function effectiveFillAnswers(data: Record<string, unknown>, index: number, texts: readonly unknown[]): string[] {
+  if (readFillAnswerCombinations(data.fillAnswerCombinations).length) {
+    const explicit = explicitFillGrading(data);
+    if (explicit.length && explicit[index]?.gradingMode !== 'auto') return [];
+    return acceptableAnswersFor(fillCombinationData(data, texts), index);
+  }
   const rule = conditionalPoolRule(data, index);
   if (!rule) return acceptableAnswersFor(data, index);
   const source = texts[rule.sourceIndex];
@@ -878,6 +890,25 @@ function effectiveFillAnswers(data: Record<string, unknown>, index: number, text
   });
   const answer = readField(matchingCase, 'answer');
   return typeof answer === 'string' && normalizePoolAnswer(answer) ? [answer] : [];
+}
+
+/** Pick one complete answer before grading any individual blank. */
+export function fillCombinationData(data: Record<string, unknown>, texts: readonly unknown[]): Record<string, unknown> {
+  const combinations = readFillAnswerCombinations(data.fillAnswerCombinations);
+  if (!combinations.length) return data;
+  const entries = fillSettingsEntries(data);
+  const total = answerSlotCount(data);
+  const explicit = explicitFillGrading(data);
+  const whole = fillWholeScore(data) !== undefined || data.fillScoring === 'whole';
+  const weights = Array.from({ length: total }, (_, index) =>
+    explicit.length ? explicit[index]?.gradingMode === 'auto' ? whole ? 1 : explicit[index].maxScore : 0 : 1);
+  const base = Array.from({ length: total }, (_, index) => acceptableAnswersFor(data, index));
+  const candidateData = (answers: string[][]) => ({ ...data, answers, blanks: undefined, fillAnswerCombinations: undefined,
+    fillBlankSettings: Object.fromEntries(entries.map(([id, setting]) => [id, { ...(setting as Record<string, unknown>), conditionalAnswer: undefined }])),
+  });
+  const candidates = [candidateData(base), ...combinations.map(combination =>
+    candidateData(base.map((answers, index) => weights[index] ? combination.answers[entries[index]?.[0]] ?? [] : answers)))];
+  return bestFillCombination(candidates, weights, (candidate, index) => fillBlankMatches(candidate, index, texts) === true);
 }
 
 function validateConditionalPoolRule(data: Record<string, unknown>, index: number, errors: string[]): boolean {
@@ -1607,7 +1638,42 @@ function findTableError(data: Record<string, unknown>, prompt: string): string |
   return null;
 }
 
+function validateFillCombinations(data: Record<string, unknown>, errors: string[]): void {
+  const raw = data.fillAnswerCombinations;
+  if (raw === undefined) return;
+  const combinations = readFillAnswerCombinations(raw);
+  if (!Array.isArray(raw) || combinations.length !== raw.length || raw.length >= MAX_FILL_ANSWER_COMBINATIONS) {
+    errors.push(`正确答案最多设置 ${MAX_FILL_ANSWER_COMBINATIONS} 组，请检查答案组合`);
+    return;
+  }
+  if (!combinations.length) return;
+  const entries = fillSettingsEntries(data);
+  const explicit = explicitFillGrading(data);
+  const ids = new Set(entries.map(([id]) => id));
+  const used = new Set<string>(['base']);
+  if (entries.length !== answerSlotCount(data)) errors.push('答案组合与填空域不对应，请重新设置');
+  if (entries.some(([, setting]) => readField(setting, 'conditionalAnswer') !== undefined)) {
+    errors.push('答案组合不能同时使用根据另一空判分，请统一在答案组合中设置');
+  }
+  combinations.forEach((combination, index) => {
+    if (!combination.id.trim() || used.has(combination.id)) errors.push('答案组合的标识重复或为空');
+    used.add(combination.id);
+    if (Object.keys(combination.answers).some(id => !ids.has(id))) errors.push(`组合 ${index + 2} 包含已删除的填空域`);
+    entries.forEach(([id, setting], slot) => {
+      const scored = explicit.length ? explicit[slot]?.gradingMode === 'auto' : readField(setting, 'mode') !== 'audio';
+      if (!scored) return;
+      const original = readField(raw[index], 'answers');
+      const answers = readField(original, id);
+      if (!Array.isArray(answers) || answers.some(answer => typeof answer !== 'string')
+          || !combination.answers[id]?.some(answer => answer.trim())) {
+        errors.push(`组合 ${index + 2} 的第 ${slot + 1} 空请填写标准答案`);
+      }
+    });
+  });
+}
+
 function validateFillBlank(node: QuestionNode, errors: string[]): void {
+    validateFillCombinations(node.data, errors);
     // ★ 2026-09-28（表格填空）：表格先查，**查出问题就不再往下查** —— 后面那些判据
     // 在「空数与答案对不上」的题上会给出更绕的错，教师看不出该改哪儿。
     const tableError = findTableError(node.data, node.prompt);

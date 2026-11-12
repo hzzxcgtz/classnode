@@ -5,6 +5,7 @@ import {
   TABLE_MARK_TEXT,
   acceptableAnswersFor,
   conditionalFillAnswerReference,
+  fillCombinationReferences,
   answerSlotCount,
   readPairs,
   readStringMap,
@@ -272,6 +273,8 @@ function joinAcceptable(answers: readonly string[]): string {
  *    题干那些 `{填空域}` 的先后由 `blankLayout` 决定，而**答案侧不重算它**）。
  */
 function blankAnswer(data: Record<string, unknown>): string {
+  const combinations = fillCombinationReferences(data);
+  if (combinations.length) return combinations.join('\n');
   const total = answerSlotCount(data);
   if (total === 0) return '';
   const reference = (index: number) => {

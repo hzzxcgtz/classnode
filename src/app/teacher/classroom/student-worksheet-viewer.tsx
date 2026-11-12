@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { IconBook2, IconChevronLeft, IconChevronRight, IconLayoutColumns, IconListDetails, IconX } from '@tabler/icons-react';
+import { IconBook2, IconLayoutColumns, IconListDetails, IconX } from '@tabler/icons-react';
 import { WorksheetQuestionList } from '@/app/classroom/worksheet/worksheet-panel';
 import type { AnswerReview } from '@/app/classroom/worksheet/review-history';
 import worksheetStyles from '@/app/classroom/worksheet/worksheet.module.css';
@@ -15,6 +15,7 @@ import { resolveRewardScale, resolveWorksheetFullStep } from '@/lib/worksheet-re
 import { normalizeWorksheetSurfaceOpacity, surfaceAlphas } from '@/lib/worksheet-surface';
 import { answerRowWithDraft } from './worksheet-board-data';
 import { rowVerdict } from './worksheet-drawer-state';
+import { WorksheetTaskNavigation } from './worksheet-task-navigation';
 import styles from './student-worksheet-viewer.module.css';
 
 interface ViewerSource {
@@ -45,12 +46,15 @@ function StudentWorksheetViewer({ classroomId, worksheetId, title, participant, 
   const [reviewsFailed, setReviewsFailed] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const track = useRef<HTMLDivElement>(null);
+  const pagePositions = useRef(new Map<string, number>());
+  const activeRef = useRef(0);
   const titleId = useId();
   const groups = useMemo(() => studentVisibleGroups(nodes), [nodes]);
   const slides = useMemo(() => groups.flatMap(group => group.items.map(item => ({
-    title: group.title, description: group.description, items: [item],
+    ...group, items: [item],
   }))), [groups]);
   const activeIndex = Math.min(active, Math.max(0, slides.length - 1));
+  activeRef.current = activeIndex;
   const { drafts, statuses, grades, scores, currentReviews, submitted } = useMemo(() => {
     const answerRows = new Map(participant.answerRows.map(row => [row.questionId, row]));
     const drafts: Parameters<typeof WorksheetQuestionList>[0]['drafts'] = {};
@@ -110,6 +114,26 @@ function StudentWorksheetViewer({ classroomId, worksheetId, title, participant, 
     track.current?.querySelectorAll<HTMLAudioElement>('section[inert] audio').forEach(audio => audio.pause());
   }, [activeIndex]);
 
+  useLayoutEffect(() => {
+    const slot = track.current?.children[activeIndex];
+    const page = slot?.querySelector<HTMLElement>('section');
+    const id = slides[activeIndex]?.items[0].node.id;
+    if (page && id) page.scrollTop = pagePositions.current.get(id) ?? 0;
+  }, [activeIndex, mode, slides]);
+
+  useEffect(() => {
+    const element = track.current;
+    if (!element) return;
+    const alignPage = () => {
+      const slot = element.firstElementChild as HTMLElement | null;
+      if (slot) element.scrollTo({ left: slot.getBoundingClientRect().width * activeRef.current, behavior: 'auto' });
+    };
+    alignPage();
+    const observer = new ResizeObserver(alignPage);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [mode, slides.length]);
+
   const background = resolveWorksheetBackgroundSources(settings?.backgroundTheme ?? 'none', settings?.backgroundImageUrl ?? null, settings?.backgroundPortraitImageUrl ?? null);
   const landscape = background.landscape ?? background.portrait;
   const alphas = surfaceAlphas(normalizeWorksheetSurfaceOpacity(settings?.surfaceOpacity));
@@ -134,12 +158,14 @@ function StudentWorksheetViewer({ classroomId, worksheetId, title, participant, 
   const goTo = (index: number) => {
     const element = track.current;
     if (!element || index < 0 || index >= slides.length) return;
+    const slot = element.firstElementChild as HTMLElement | null;
+    if (!slot) return;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    element.scrollTo({ left: element.clientWidth * index, behavior: reduceMotion || Math.abs(index - activeIndex) > 1 ? 'auto' : 'smooth' });
+    element.scrollTo({ left: slot.getBoundingClientRect().width * index, behavior: reduceMotion || Math.abs(index - activeIndex) > 1 ? 'auto' : 'smooth' });
   };
 
   return createPortal(<dialog ref={dialog} tabIndex={-1} className={styles.dialog}
-    aria-labelledby={titleId} aria-modal="true" data-overscroll-guard=""
+    aria-labelledby={titleId} aria-modal="true" data-view-mode={mode} data-overscroll-guard=""
     onCancel={event => { event.preventDefault(); onClose(); }}
     onKeyDown={event => {
       if (event.key === 'Escape') {
@@ -165,8 +191,8 @@ function StudentWorksheetViewer({ classroomId, worksheetId, title, participant, 
         <button type="button" aria-pressed={mode === 'continuous'} onClick={() => setMode('continuous')}>
           <IconListDetails size={18} aria-hidden="true" />整页查看
         </button>
-        <button type="button" aria-pressed={mode === 'slides'} onClick={() => { if (mode !== 'slides') { setActive(0); setMode('slides'); } }}>
-          <IconLayoutColumns size={18} aria-hidden="true" />逐项查看
+        <button type="button" aria-pressed={mode === 'slides'} disabled={!slides.length} onClick={() => setMode('slides')}>
+          <IconLayoutColumns size={18} aria-hidden="true" />翻页查看
         </button>
       </div>
       <button type="button" className={styles.close} aria-label="关闭整张学习单" onClick={onClose}><IconX size={21} aria-hidden="true" /></button>
@@ -175,37 +201,30 @@ function StudentWorksheetViewer({ classroomId, worksheetId, title, participant, 
     {mode === 'continuous' || !slides.length ? <div className={`${worksheetStyles.scroller} ${styles.continuous}`} {...surfaceProps}>
       {renderQuestions(groups)}
     </div> : <>
-      <div className={styles.track} ref={track} aria-label="逐项作答" onScroll={event => {
+      <div className={styles.track} ref={track} aria-label="翻页查看学习单" onScroll={event => {
         const element = event.currentTarget;
-        if (element.clientWidth) setActive(Math.max(0, Math.min(slides.length - 1, Math.round(element.scrollLeft / element.clientWidth))));
+        if (event.target !== element) return;
+        const slot = element.firstElementChild as HTMLElement | null;
+        const pageWidth = slot?.getBoundingClientRect().width;
+        if (pageWidth) setActive(Math.max(0, Math.min(slides.length - 1, Math.round(element.scrollLeft / pageWidth))));
       }}>
         {slides.map((slide, index) => {
           const { node } = slide.items[0];
-          return <section key={node.id} className={`${worksheetStyles.scroller} ${styles.slide}`} {...surfaceProps}
-            aria-label={`第 ${index + 1} 项 · ${questionTypeLabel(node.type)}`} aria-hidden={index !== activeIndex} inert={index !== activeIndex}>
-            {Math.abs(index - activeIndex) <= 1 && renderQuestions([slide])}
-          </section>;
+          const current = index === activeIndex;
+          return <div key={node.id} className={styles.slideSlot} data-active={current}>
+            <section className={`${worksheetStyles.scroller} ${styles.slide}`} {...surfaceProps}
+              aria-label={`第 ${index + 1} 项 · ${questionTypeLabel(node.type)}`} aria-hidden={!current} inert={!current}
+              onScroll={event => {
+                if (current && event.target === event.currentTarget) pagePositions.current.set(node.id, event.currentTarget.scrollTop);
+              }}>
+              {Math.abs(index - activeIndex) <= 1 && renderQuestions([slide])}
+            </section>
+            {!current && Math.abs(index - activeIndex) === 1 && <button type="button" className={styles.sidePage}
+              aria-label={`翻到第 ${index + 1} 项任务`} onClick={() => goTo(index)} />}
+          </div>;
         })}
       </div>
-      <footer className={styles.navigation}>
-        <button type="button" onClick={() => goTo(activeIndex - 1)} disabled={activeIndex === 0}>
-          <IconChevronLeft size={18} aria-hidden="true" />上一项
-        </button>
-        <div className={styles.position}>
-          <label className={styles.jump}>
-            <span>任务</span>
-            <select aria-label="跳到任务" value={activeIndex} onChange={event => goTo(Number(event.target.value))}>
-              {slides.map((slide, index) => <option key={slide.items[0].node.id} value={index}>
-                {index + 1} / {slides.length} · {questionTypeLabel(slide.items[0].node.type)}
-              </option>)}
-            </select>
-          </label>
-          <span className={styles.swipeHint}>左右滑动切换任务</span>
-        </div>
-        <button type="button" onClick={() => goTo(activeIndex + 1)} disabled={activeIndex === slides.length - 1}>
-          下一项<IconChevronRight size={18} aria-hidden="true" />
-        </button>
-      </footer>
+      <WorksheetTaskNavigation slides={slides} activeIndex={activeIndex} goTo={goTo} swipe />
     </>}
   </dialog>, document.body);
 }

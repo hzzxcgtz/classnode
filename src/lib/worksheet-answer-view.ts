@@ -1,3 +1,4 @@
+import { selectFillCombination, readFillAnswerCombinations } from './worksheet-fill-combinations.ts';
 import { canvasAnswerEntries } from './worksheet-image-canvas.ts';
 import type { DeskRating } from './worksheet-image-canvas.ts';
 import { readPromptRuns } from './worksheet-prompt-marks.ts';
@@ -107,7 +108,7 @@ export type AnswerView =
   | { kind: 'photo'; url: string }
   | { kind: 'choice'; options: ChoiceOptionView[] }
   | {
-      kind: 'fill';
+      kind: 'fill'; combinationLabel?: string;
       blanks: FillBlankView[];
       /**
        * 全局空序上的原始值（题干里的空在前、表格里的空在后 —— 规格 §「空位顺序」）。
@@ -289,18 +290,20 @@ export function answerView(node: WorksheetQuestionNode, value: unknown): AnswerV
   }
 
   if (draft.kind === 'fill') {
-    const accepted = readAnswerSets(node.data?.answers);
+    const selectedCombination = selectFillCombination(node, draft.texts, readAnswerSets(node.data?.answers));
+    const accepted = selectedCombination.answers;
     const runs = readPromptRuns(node.data.promptRuns, node.prompt);
     const slots = blankSlots(node, runs);
     const settings = fillSettingsFor(node, runs);
     return {
       kind: 'fill',
+      ...(readFillAnswerCombinations(node.data.fillAnswerCombinations).length ? { combinationLabel: `按正确组合 ${selectedCombination.index + 1} 对照` } : {}),
       // ⚠️ `label` 用**全局空序**（`第 N 空`），与题干/表格里的空按同一顺序数 ——
       // 表格里那些空也在这条序列上（规格 §「空位顺序」：标记前文本 → 表格 → 标记后文本）。
       blanks: draft.texts.map((text, index) => {
         const audio = draft.audios?.[slots[index]?.id];
         const setting = settings[index];
-        const rule = setting?.mode === 'pool' ? setting.conditionalAnswer : undefined;
+        const rule = !readFillAnswerCombinations(node.data.fillAnswerCombinations).length && setting?.mode === 'pool' ? setting.conditionalAnswer : undefined;
         const sourceIndex = rule ? slots.findIndex(slot => slot.id === rule.sourceId) : -1;
         const references = rule
           ? sourceIndex < 0 ? [] : rule.cases.map(({ when, answer }) => `第 ${sourceIndex + 1} 空填「${when}」时填「${answer}」`)

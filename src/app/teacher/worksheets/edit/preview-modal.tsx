@@ -1,7 +1,8 @@
 'use client';
 
 import { studentVisibleGroups } from '@/lib/worksheet-questions';
-import { useState, type CSSProperties } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
+import { IconLayoutColumns, IconListDetails } from '@tabler/icons-react';
 import type { WorksheetContent, WorksheetSettings } from '@/lib/types';
 import { resolveWorksheetBackgroundSources } from '@/lib/worksheet-backgrounds';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
@@ -11,6 +12,7 @@ import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 // 唯一一处「教师端引学生端」的地方，而它引的是**唯一的作答态渲染**：
 // 两个模块各自的路径在这里交汇，分叉在结构上不可能。
 import { WorksheetQuestionList } from '@/app/classroom/worksheet/worksheet-panel';
+import { WorksheetTaskNavigation } from '@/app/teacher/classroom/worksheet-task-navigation';
 
 /**
  * 学生端的宽度（规格 §6.3：「按 iPad 宽度渲染的弹窗 —— 价值正在于教师看到的就是
@@ -63,14 +65,33 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
   onClose: () => void;
 }) {
   const [orientation, setOrientation] = useState<PreviewOrientation>('portrait');
+  const [viewMode, setViewMode] = useState<'continuous' | 'slides'>('continuous');
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({});
+  const scrollRef = useRef<HTMLDivElement>(null);
   // 与面板同一条口径：拍平在调用方做（`flattenAnswerable`），所以「屏幕上有几道题」
   // 在预览与学生端是同一个数。
   // ⚠️ 不取 `flattenQuestions`：任务不是一道题（它没有作答控件），把它算进「共 N 题」
   // 会让这个数比屏幕上的卡片多几张 —— 而预览正是教师验收学生端的地方。
-  const groups = studentVisibleGroups(content.nodes);
-  // 「共 N 题」数的是**可作答的题**（与屏幕上画的张数同一个数）。
-  const questionCount = groups.reduce((sum, group) => sum + group.items.length, 0);
+  const groups = useMemo(() => studentVisibleGroups(content.nodes), [content.nodes]);
+  const slides = useMemo(() => groups.flatMap(group => group.items.map(item => ({
+    ...group, items: [item],
+  }))), [groups]);
+  const questionCount = slides.length;
+  const activeIndex = Math.min(selectedIndex, Math.max(0, questionCount - 1));
+  const activeSlide = viewMode === 'slides' ? slides[activeIndex] : undefined;
+
+  function selectView(next: typeof viewMode) {
+    if (next === viewMode) return;
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    setViewMode(next);
+  }
+
+  function goTo(index: number) {
+    if (index < 0 || index >= questionCount || index === activeIndex) return;
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    setSelectedIndex(index);
+  }
   const backgrounds = resolveWorksheetBackgroundSources(
     settings.backgroundTheme,
     settings.backgroundImageUrl,
@@ -122,14 +143,24 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
              按 iPad {orientation === 'portrait' ? '竖屏' : '横屏'}尺寸渲染，共 {questionCount} 项任务。可以试填、手写、选择照片或录音试听。测试内容不保存，也不会调用 AI。
             </p>
           </div>
-          <div className="worksheet-editor-preview-orientation" role="group" aria-label="预览方向">
-            <button type="button" className={orientation === 'portrait' ? 'is-selected' : ''} onClick={() => setOrientation('portrait')}>竖屏</button>
-            <button type="button" className={orientation === 'landscape' ? 'is-selected' : ''} onClick={() => setOrientation('landscape')}>横屏</button>
+          <div className="worksheet-editor-preview-actions">
+            <div className="worksheet-editor-preview-orientation" role="group" aria-label="查看模式">
+              <button type="button" aria-pressed={viewMode === 'continuous'} onClick={() => selectView('continuous')}>
+                <IconListDetails size={16} aria-hidden="true" />整页查看
+              </button>
+              <button type="button" aria-pressed={viewMode === 'slides'} disabled={questionCount === 0} onClick={() => selectView('slides')}>
+                <IconLayoutColumns size={16} aria-hidden="true" />翻页查看
+              </button>
+            </div>
+            <div className="worksheet-editor-preview-orientation" role="group" aria-label="预览方向">
+              <button type="button" aria-pressed={orientation === 'portrait'} onClick={() => setOrientation('portrait')}>竖屏</button>
+              <button type="button" aria-pressed={orientation === 'landscape'} onClick={() => setOrientation('landscape')}>横屏</button>
+            </div>
+            <button type="button" className="btn btn-secondary" onClick={onClose}>关闭</button>
           </div>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>关闭</button>
         </header>
 
-        <div className="worksheet-editor-preview-scroll">
+        <div className="worksheet-editor-preview-scroll" ref={scrollRef}>
           <div
             className="worksheet-editor-preview-stage"
             style={stageStyle}
@@ -139,7 +170,7 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
           >
             <div className="worksheet-editor-preview-title">{title || '未命名学习单'}</div>
             <WorksheetQuestionList
-              groups={groups}
+              groups={activeSlide ? [activeSlide] : groups}
               // 仅接入弹窗本地草稿，不接 onSubmit；previewOnly 让图片也只在本地读取。
               drafts={drafts}
               statuses={{}}
@@ -155,6 +186,7 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
             />
           </div>
         </div>
+        {activeSlide && <WorksheetTaskNavigation slides={slides} activeIndex={activeIndex} goTo={goTo} />}
       </div>
     </>
   );

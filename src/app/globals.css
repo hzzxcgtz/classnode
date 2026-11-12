@@ -6247,6 +6247,7 @@ tr:hover td {
 .worksheet-editor-preview-head {
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: 16px;
   justify-content: space-between;
   padding: 18px 22px;
@@ -6271,6 +6272,13 @@ tr:hover td {
   line-height: 1.7;
 }
 
+.worksheet-editor-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
 /* ⚠️ 轨道**不再自带内边距**（原先 3px）：加了它，这一圈就比右边的「关闭」高 8px ——
    而教师看的是**那三个按钮**齐不齐。现在按钮铺满轨道，三者同高（见上面的变量）。 */
 .worksheet-editor-preview-orientation {
@@ -6279,7 +6287,6 @@ tr:hover td {
   border: 1px solid #dbe4f0;
   border-radius: 9px;
   background: #f1f5f9;
-  margin-left: auto;
 }
 
 .worksheet-editor-preview-orientation button {
@@ -6290,6 +6297,7 @@ tr:hover td {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -6306,9 +6314,14 @@ tr:hover td {
   padding-bottom: 0;
 }
 
-.worksheet-editor-preview-orientation button.is-selected {
+.worksheet-editor-preview-orientation button[aria-pressed='true'] {
   color: #fff;
   background: var(--primary);
+}
+
+.worksheet-editor-preview-orientation button:disabled {
+  opacity: .55;
+  cursor: default;
 }
 
 .worksheet-editor-preview-scroll {
@@ -6776,6 +6789,24 @@ tr:hover td {
 .worksheet-editor-outline-drag:hover {
   background: var(--primary-light);
   color: var(--primary-dark);
+}
+
+.worksheet-editor-outline-remove {
+  flex: 0 0 auto;
+}
+
+@media (hover: hover) {
+  .worksheet-editor-outline-remove {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .worksheet-editor-outline-task-head:hover > .worksheet-editor-outline-remove,
+  .worksheet-editor-outline-question:hover > .worksheet-editor-outline-remove,
+  .worksheet-editor-outline-remove:focus {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .worksheet-editor-outline-add-question {
@@ -11305,7 +11336,19 @@ tr:hover td {
 .worksheet-editor-canvas-head.is-theme-overview > div > span { color: #52718f; font-weight: 600; }
 .worksheet-editor-canvas .worksheet-editor-theme-overview { padding-top: 0; border-top: 0; border-radius: 0 0 10px 10px; }
 .worksheet-editor-canvas .worksheet-editor-theme-overview .worksheet-editor-task-head { margin: 0; padding: 6px 0 10px; border-bottom: 1px solid #d8e3ef; background: transparent; }
-.worksheet-editor-theme-overview .worksheet-editor-task-title { color: #263e58; }
+.worksheet-editor-theme-overview .worksheet-editor-task-title { flex: 0 1 17rem; color: #263e58; }
+.worksheet-editor-task-title-visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-end: auto;
+  color: #52718f;
+  font-size: .8rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.worksheet-editor-task-title-visibility input { margin: 0; accent-color: var(--primary); }
+.worksheet-editor-canvas .worksheet-editor-theme-overview .worksheet-editor-task-head { flex-wrap: wrap; }
 .worksheet-editor-theme-overview .worksheet-editor-task-desc-details { margin: 0; padding: 0; border: 0; background: transparent; }
 .worksheet-editor-theme-overview .worksheet-editor-task-desc-details > summary { color: #52718f; }
 .worksheet-editor-theme-overview .worksheet-editor-task-desc-details > summary em { color: #7d91a8; }

@@ -1,3 +1,4 @@
+import { fillCombinationSecurityFixture } from './helpers/fill-combination-fixture.js';
 import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,7 +18,7 @@ import { createStudentToken } from '../middleware/student-auth.js';
 // 三元素副本，而它不会跟着注册表漂 —— M4a 往黑名单里加了 `correctOrder` / `pairs` /
 // `placement` 之后，那份副本让这条**泄漏红线**用例对三个新的答案键完全失明，
 // 而它仍然是绿的。
-import { ANSWER_KEYS } from '../services/worksheet-questions.js';
+import { ANSWER_KEYS, type QuestionNode } from '../services/worksheet-questions.js';
 
 /**
  * 学习单**学生端**：读取（`student-view`）、作答（`PUT`）、提交判分。
@@ -381,7 +382,7 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
         },
         explanation: '两个氢一个氧',
       },
-    }), {
+    }), fillCombinationSecurityFixture(), {
       id: 'canvas-fixture', type: 'image-canvas', prompt: '图文示例', inputMode: 'keyboard', children: [],
       data: { imageCanvas: { url: '/uploads/chat/chat-1.png', width: 100, height: 100, widgets: [
         { id: 'canvas-note', kind: 'answer', mode: 'keyboard', x: 10, y: 10, width: 40, height: 20,
@@ -416,7 +417,7 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
   assert.equal(body.id, worksheet.id);
   assert.equal(body.title, '光合作用学习单');
   assert.equal(body.description, '第一课时');
-  assert.equal(body.content.nodes.length, 7, '各题应保留，含图文题');
+  assert.equal(body.content.nodes.length, 8, '各题应保留，含答案组合填空题和图文题');
   assert.equal(body.content.nodes[0].prompt, '光合作用需要哪些条件？');
   assert.deepEqual(
     body.content.nodes[0].data.options,
@@ -446,10 +447,23 @@ test('红线：student-view 返回体里搜不到任何答案字段，而教师�
     assert.ok(teacherRaw.includes(key), `教师端读同一份时必须能看到「${key}」—— 否则剥离测试是空的`);
   }
 
+  const combinationFixture = fillCombinationSecurityFixture();
+  const teacherContent = (JSON.parse(teacherRaw) as { content: { nodes: QuestionNode[] } }).content;
+  assert.deepEqual(teacherContent.nodes.find(node => node.id === combinationFixture.id)?.data.fillAnswerCombinations,
+    combinationFixture.data.fillAnswerCombinations, '教师端必须完整保留备用答案及其空位对应关系');
+  const studentCombination = body.content.nodes.find(node => node.id === combinationFixture.id);
+  assert.ok(studentCombination, '学生仍须拿到组合题及填空位置');
+  assert.deepEqual(studentCombination.data.promptRuns, combinationFixture.data.promptRuns);
+  for (const sentinel of ['组合基础甲保密哨兵', '组合基础乙保密哨兵', '组合备用甲保密哨兵', '组合备用乙保密哨兵']) {
+    assert.ok(!raw.includes(sentinel), `学生端泄露了答案组合中的 ${sentinel}`);
+  }
+
   // 阳性对照 ③：库里的行没被动过。「写库时删掉答案」也能让最上面那几条变绿，
   // 而那会让教师的答案键永久消失 —— 比泄露更糟的修法。
   const stored = await db.prisma.worksheet.findUniqueOrThrow({ where: { id: worksheet.id } });
   const storedRaw = JSON.stringify(stored.content);
+  assert.deepEqual((stored.content as unknown as { nodes: QuestionNode[] }).nodes.find(node => node.id === combinationFixture.id)?.data.fillAnswerCombinations,
+    combinationFixture.data.fillAnswerCombinations, '学生端读取不能修改数据库中的答案组合');
   for (const key of ANSWER_KEYS) {
     assert.ok(storedRaw.includes(key), `剥离只发生在**返回前**，库里的「${key}」一个字节都不许动`);
   }

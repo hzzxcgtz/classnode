@@ -1,3 +1,4 @@
+import { fillCombinationSecurityFixture } from './helpers/fill-combination-fixture.js';
 import { prepareTemporarySqliteFile } from './helpers/temporary-sqlite.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -313,7 +314,7 @@ test('安全：响应里**不存在 ANSWER_KEYS 中的任何一个键**，且不
         },
         explanation: '两个氢一个氧',
       },
-    }), {
+    }), fillCombinationSecurityFixture(), {
       id: 'canvas-fixture', type: 'image-canvas', prompt: '图文示例', inputMode: 'keyboard', children: [],
       data: { imageCanvas: { url: '/uploads/chat/chat-1.png', width: 100, height: 100, widgets: [
         { id: 'canvas-note', kind: 'answer', mode: 'keyboard', x: 10, y: 10, width: 40, height: 20,

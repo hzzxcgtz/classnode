@@ -1,4 +1,5 @@
 'use client';
+import { WorksheetDirectory } from './worksheet-directory';
 import { aiEvaluationEnabled } from '@/lib/worksheet-evaluation';
 
 import { ReviewFailure, ReviewHistory, type AnswerReview } from './review-history';
@@ -21,7 +22,7 @@ import type { WorksheetAnswerMode, WorksheetGradeState, WorksheetQuestionNode } 
 import { answerModeView, normalizeAnswerMode, normalizeOpenQuestions } from '@/lib/worksheet-answer-mode';
 // 奖励的取值域、默认档与取值函数只有一份（规格 §9）—— 教师端那个设置面板引的也是它。
 import { resolveFullPoints, resolveRewardScale, resolveWorksheetFullStep, rewardAmount, type RewardScale } from '@/lib/worksheet-reward';
-import { correctKeysFromPayload, isMultipleChoice, questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
+import { correctKeysFromPayload, isMultipleChoice, questionCanEarnReward, questionTypeLabel, studentVisibleGroups, type AnswerableGroup } from '@/lib/worksheet-questions';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { readBlankCount } from '@/lib/worksheet-answer-value';
 import { fillWholeScore, fillSettingsFor, hasExplicitFillGrading } from '@/lib/worksheet-fill-modes';
@@ -454,11 +455,16 @@ export function WorksheetQuestionList({
           className={styles.group}
           data-container={group.title || group.titleHidden ? '1' : '0'}
           key={`${groupIndex}:${group.title ?? ''}`}
+          data-worksheet-group={group.items[0]?.node.id}
         >
           {group.title && <h3 className={styles.groupTitle}>{group.title}</h3>}
           {/* ★ 2026-09-25（教师裁定）：任务的**描述** —— 例如「读下面的材料，回答 1–3 题」。
               它挂在任务上（`data.description`），不是题目的一部分。 */}
-          {group.description && <p className={styles.groupDescription}>{group.description}</p>}
+          {group.description && <div className={styles.groupDescription}>
+            {group.description.split(/\r?\n/).filter(paragraph => paragraph.trim()).map((paragraph, index) => (
+              <p key={index}>{paragraph.trim()}</p>
+            ))}
+          </div>}
           {group.items.map(({ node, heading }) => {
         // 🔴 `raw`（学生动过没有）与 `draft`（屏幕上画什么）**是两件事**，别合并：
         //   · `draft` = `raw ?? emptyDraftFor(node)` —— 负责**渲染**。排序题的起点是一列
@@ -473,6 +479,8 @@ export function WorksheetQuestionList({
         const submitted = statuses[node.id] === 'submitted';
         // 已提交 + 不许重交 ⇒ 这一题对学生是「定稿」。控件收起，按钮不出现。
         const canvasTask = node.type === 'image-canvas';
+        // 评价题与不计分任务只显示完成状态，不展示待评分的奖励槽位。
+        const questionRewardEnabled = questionCanEarnReward(node);
         const personalReview = canvasTask
           ? node.data.studentAiReviewEnabled === true || canvasAutoReviewIds(node).length > 0
           : aiEvaluationEnabled(node);
@@ -584,7 +592,7 @@ export function WorksheetQuestionList({
               ⚠️ 这条设计线上的三次反转、以及 09-28 那条「框高一致」的顾虑，
                 完整记在 `reward-badge.tsx` 的 `QuestionReward` 上。
             */}
-            {reward && (state !== 'empty' || gradeState) && (
+            {questionRewardEnabled && reward && (state !== 'empty' || gradeState) && (
               <span className={styles.resultReward}>
                 <QuestionReward scale={reward} full={fullPoints} score={currentScore} />
               </span>
@@ -680,11 +688,12 @@ export function WorksheetQuestionList({
           <section
             className={styles.question}
             data-state={state}
+            data-worksheet-question={node.id}
             data-region-match={matchChoices.length > 0 || undefined}
             key={node.id}
             aria-label={`${heading} ${canvas ? '图文题' : questionTypeLabel(node.type)}`}
           >
-            {interactive && reward && gradeStates?.[node.id] === 'correct' && (rewardBursts?.[node.id] ?? 0) > 0 ? (
+            {interactive && questionRewardEnabled && reward && gradeStates?.[node.id] === 'correct' && (rewardBursts?.[node.id] ?? 0) > 0 ? (
               <RewardBurst
                 key={`${node.id}:${rewardBursts?.[node.id]}`}
                 scale={reward}
@@ -878,6 +887,7 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
   const label = MODULE_META.worksheet.label;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
   // 见文件头 ②：`cssVar` 与学伴面板共用同一个名字，**不要**改成模块专属的名字。
   useEffect(() => {
     if (!active) containerRef.current?.querySelectorAll('audio').forEach(element => element.pause());
@@ -1235,48 +1245,54 @@ export function WorksheetPanel({ active, classroom, session, toast, setToast, an
             {/* 奖励累计（规格 §9.3）。一个都还没拿到时盒子里是空的 —— 不写 `⭐×0`：
                 「还没有」与「统计过了，是 0」在屏幕上是同一行字，而后者是假话。 */}
             <div className={styles.rewardSlot}>
-              {rewardScale ? <RewardTotal scale={rewardScale} amount={rewardTotal} /> : null}
+              {rewardScale && questions.some(questionCanEarnReward) ? <RewardTotal scale={rewardScale} amount={rewardTotal} /> : null}
             </div>
           </div>
 
-          <div
-            className={styles.scroller}
-            data-has-background={hasBackground ? '1' : '0'}
-            data-has-portrait={backgrounds.portrait ? '1' : '0'}
-            // ⚠️ 透度那两个变量与背景的**同一个元素**：`.question` / `.group` 都是它的后代，
-            //    CSS 变量靠继承传下去，不必逐层透传。
-            style={{ ...backgroundStyle, ...surfaceStyle }}
-          >
-            <WorksheetQuestionList
-              worksheetId={worksheetId ?? undefined}
-              getGeneration={answers.getGeneration}
-              groups={load.worksheet.groups}
-              drafts={answers.drafts}
-              statuses={answers.statuses}
-              submitting={answers.submitting}
-              interactive
-              allowResubmit={load.worksheet.allowResubmit}
-              reward={load.worksheet.reward}
-              rewardFullFallback={load.worksheet.rewardFullFallback}
-              scores={answers.scores}
-              gradeStates={answers.gradeStates}
-              aiReferenceScores={load.worksheet.aiReferenceScores}
-              aiAdvice={load.worksheet.aiAdvice}
-              reviews={reviews}
-              onRetryReview={retryReview}
-              wrongBlankIndexes={answers.wrongBlankIndexes}
-              correctBlanks={answers.correctBlanks}
-              rewardBursts={answers.rewardBursts}
-              answerMode={load.worksheet.answerMode}
-              // ★ 2026-09-30：**广播优先**（有这一份单的键就用广播那份，包括空数组 ——
-              // 「老师把全部收回去了」也是一次广播），否则用 `student-view` 读到的那份。
-              // ⚠️ 判据是「键在不在」而不是「数组非空」：空数组是**有效的状态**。
-              openQuestions={worksheetOpen[load.worksheet.id] ?? load.worksheet.openQuestions}
-              onChange={handleChange}
-              onSubmit={handleSubmit}
-              // ★ M5a：课堂级锁定（与 `allowResubmit` 那道**题级**闸门是两件事）。
-              answersLocked={answersLocked || !active}
-            />
+          <div className={styles.workspace}>
+            <div
+              ref={scrollerRef}
+              className={styles.scroller}
+              data-has-background={hasBackground ? '1' : '0'}
+              data-has-portrait={backgrounds.portrait ? '1' : '0'}
+              // ⚠️ 透度那两个变量与背景的**同一个元素**：`.question` / `.group` 都是它的后代，
+              //    CSS 变量靠继承传下去，不必逐层透传。
+              style={{ ...backgroundStyle, ...surfaceStyle }}
+            >
+              <WorksheetQuestionList
+                worksheetId={worksheetId ?? undefined}
+                getGeneration={answers.getGeneration}
+                groups={load.worksheet.groups}
+                drafts={answers.drafts}
+                statuses={answers.statuses}
+                submitting={answers.submitting}
+                interactive
+                allowResubmit={load.worksheet.allowResubmit}
+                reward={load.worksheet.reward}
+                rewardFullFallback={load.worksheet.rewardFullFallback}
+                scores={answers.scores}
+                gradeStates={answers.gradeStates}
+                aiReferenceScores={load.worksheet.aiReferenceScores}
+                aiAdvice={load.worksheet.aiAdvice}
+                reviews={reviews}
+                onRetryReview={retryReview}
+                wrongBlankIndexes={answers.wrongBlankIndexes}
+                correctBlanks={answers.correctBlanks}
+                rewardBursts={answers.rewardBursts}
+                answerMode={load.worksheet.answerMode}
+                // ★ 2026-09-30：**广播优先**（有这一份单的键就用广播那份，包括空数组 ——
+                // 「老师把全部收回去了」也是一次广播），否则用 `student-view` 读到的那份。
+                // ⚠️ 判据是「键在不在」而不是「数组非空」：空数组是**有效的状态**。
+                openQuestions={worksheetOpen[load.worksheet.id] ?? load.worksheet.openQuestions}
+                onChange={handleChange}
+                onSubmit={handleSubmit}
+                // ★ M5a：课堂级锁定（与 `allowResubmit` 那道**题级**闸门是两件事）。
+                answersLocked={answersLocked || !active}
+              />
+            </div>
+            <WorksheetDirectory key={load.worksheet.id} groups={load.worksheet.groups} statuses={answers.statuses}
+              answerMode={load.worksheet.answerMode} openQuestions={worksheetOpen[load.worksheet.id] ?? load.worksheet.openQuestions}
+              scrollerRef={scrollerRef} />
           </div>
         </>
       ) : (

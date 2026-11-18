@@ -112,7 +112,8 @@ test('主题说明默认折叠，避免每道题上方常驻一块低频输入�
 
   assert.match(source, /<details className="worksheet-editor-task-desc-details">/);
   assert.match(source, /<span>主题说明<\/span>/);
-  assert.match(source, /'已填写' : '选填'/);
+  assert.match(source, /<em>已填写<\/em>/);
+  assert.match(source, /<WorksheetFieldTag optional \/>/);
 });
 
 test('教师编辑页的侧栏、编辑区标题和题目徽章共用全卷连续题号', () => {

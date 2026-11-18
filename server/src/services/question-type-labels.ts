@@ -29,8 +29,8 @@ export const QUESTION_TYPE_LABELS: Readonly<Record<string, string>> = {
 /**
  * 题型的**别名**（★ 2026-09-28 教师给的对照表；★ 2026-09-30 教师用卷也用它）。
  *
- * 🔴 它是**给学生看的**名字（「开心填空」而不是「填空题」）——教师原话：
- * 「题型使用别名，例如开心填空」（那是他在导出结果上提的第二批要求）。
+ * 🔴 它是**给学生看的**名字（「巧思填空」而不是「填空题」）——教师原话：
+ * 「题型使用别名，例如巧思填空」（那是他在导出结果上提的第二批要求）。
  * ⚠️ 与 `QUESTION_TYPE_LABELS` 一样，**必须与前端那张表逐条相同**：
  *    `src/lib/worksheet-ink-parity.test.ts` 一条用例把两张表对拍（漂了会红）。
  * ⚠️ 表里没有的题型（`task` 是任务容器、不是题）**回落到正式题型名** ——
@@ -38,15 +38,15 @@ export const QUESTION_TYPE_LABELS: Readonly<Record<string, string>> = {
  */
 export const QUESTION_TYPE_NICKNAMES: Readonly<Record<string, string>> = {
   'single-choice': '慧眼选择',
-  'true-false': '真假侦探',
+  'true-false': '思辨判断',
   'multi-choice': '慧眼选择',
-  'choice-blank': '开心填空',
-  'fill-blank': '开心填空',
+  'choice-blank': '巧思填空',
+  'fill-blank': '巧思填空',
   'order': '顺序高手',
   'match': '巧手连线',
   'categorize': '分类达人',
   'short-answer': '自由表达',
-  'rating': '评价题',
+  'rating': '评价反馈',
   'image-canvas': '图文题',
   'open-ended': '自由表达',
   'drawing': '创意画板',

@@ -1,0 +1,17 @@
+.tag.tag {
+  display: inline-block;
+  flex-shrink: 0;
+  margin-inline-start: 8px;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: #faece8;
+  color: #a34f3e;
+  font-size: .75rem;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.6;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.tag.tag[data-optional] { background: #edf2f7; color: #64748b; }

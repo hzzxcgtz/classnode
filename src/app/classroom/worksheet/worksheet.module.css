@@ -285,6 +285,8 @@
   line-height: 1.5;
 }
 
+.groupDescription > p { margin: 0; text-indent: 2em; }
+
 /* 任务名。**比题干轻一档**（0.813rem / `#475569`）：题干是这一页唯一的主角，
    而这是分组标签 —— 它抢眼就等于每几道题插一个假主角。 */
 .groupTitle {
@@ -753,7 +755,7 @@
 @media (hover: hover) { .questions[data-interactive='1'] .question:hover { box-shadow: none; transform: none; border-color: rgba(82, 113, 152,.58); } }
 .group[data-container='1'] { border-radius: 14px; box-shadow: none; }
 .groupTitle { margin: 2px 0 4px; padding: 0; border-left: 0; font-size: 1.35rem; text-align: center; }
-.groupDescription { margin: 0 0 8px; padding: 10px 14px; font-size: 1rem; text-align: center; background: rgba(255,255,255,.55); border: 1px solid rgba(219,228,240,.8); }
+.groupDescription { margin: 0 0 8px; padding: 10px 14px; font-size: 1rem; text-align: left; background: rgba(255,255,255,.55); border: 1px solid rgba(219,228,240,.8); }
 .prompt { font-size: 1rem; }
 
 .option { border-radius: 8px; min-height: 54px; box-shadow: none; transition: border-color .16s ease-out, background-color .16s ease-out; }
@@ -2005,7 +2007,7 @@
 @media (hover: hover) { .questions[data-interactive='1'] .question:hover { box-shadow: none; transform: none; border-color: rgba(82, 113, 152,.58); } }
 .group[data-container='1'] { border-radius: 14px; box-shadow: none; }
 .groupTitle { margin: 2px 0 4px; padding: 0; border-left: 0; font-size: 1.35rem; text-align: center; }
-.groupDescription { margin: 0 0 8px; padding: 10px 14px; font-size: 1rem; text-align: center; background: rgba(255,255,255,.55); border: 1px solid rgba(219,228,240,.8); }
+.groupDescription { margin: 0 0 8px; padding: 10px 14px; font-size: 1rem; text-align: left; background: rgba(255,255,255,.55); border: 1px solid rgba(219,228,240,.8); }
 .prompt { font-size: 1.1rem; }
 .option { border-radius: 8px; min-height: 54px; box-shadow: none; transition: border-color .16s ease-out, background-color .16s ease-out; }
 .option:hover { border-color: #7daff2; transform: none; }
@@ -3557,3 +3559,7 @@
 /* Keep rating guidance below the action, including on narrow phones. */
 .ratingSubmitRow { flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
 .ratingSubmitHint { max-width: 100%; margin: 0; font-size: .75rem; line-height: 1.5; color: #718196; text-align: right; overflow-wrap: anywhere; }
+
+/* Keep the directory within the worksheet viewport, independently of its scroller. */
+.workspace { position: relative; display: flex; flex: 1 1 auto; min-height: 0; }
+.workspace > .scroller { min-width: 0; }

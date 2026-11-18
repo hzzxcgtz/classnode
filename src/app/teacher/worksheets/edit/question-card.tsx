@@ -1,4 +1,5 @@
 'use client';
+import { WorksheetFieldTag } from '@/components/worksheet-field-tag';
 
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
@@ -529,7 +530,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           <div>
             <h3><EditorIcon kind="content" />任务与作答</h3>
           </div>
-          <span>必填</span>
+          <WorksheetFieldTag />
         </div>
 
         {canvasType ? <ImageCanvasEditor key={node.id} node={node} onChange={onDataChange} onModeChange={onInputModeChange} /> : (
@@ -790,7 +791,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           }}>
             {isExpression && (
             <label className="worksheet-evaluation-requirements">
-              <strong>观点提炼要求（选填）</strong>
+              <strong>观点提炼要求<WorksheetFieldTag optional /></strong>
               <span>用于说明观点提炼的关注方向。用自然通顺的短句表达，不必刻意压缩字数。尽量保留全部不同观点，包括单人观点；观点云按人数展示前10条，其余在全部观点中查看。</span>
               <textarea
                 className="input"

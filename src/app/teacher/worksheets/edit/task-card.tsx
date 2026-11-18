@@ -1,4 +1,5 @@
 'use client';
+import { WorksheetFieldTag } from '@/components/worksheet-field-tag';
 
 import { useEffect, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
@@ -173,7 +174,7 @@ export function TaskCard({
       <details className="worksheet-editor-task-desc-details">
         <summary>
           <span>主题说明</span>
-          <em>{typeof node.data.description === 'string' && node.data.description.trim() ? '已填写' : '选填'}</em>
+          {typeof node.data.description === 'string' && node.data.description.trim() ? <em>已填写</em> : <WorksheetFieldTag optional />}
         </summary>
         <label className="worksheet-editor-task-desc-field">
           <textarea

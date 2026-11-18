@@ -96,8 +96,8 @@ export const QUESTION_TYPE_OPTIONS: Array<{
    * ★ 2026-09-28（教师）：**给学生看的别名** —— 「适合中小学生的、朗朗上口的」。
    *
    * 教师给的对照表（逐字）：
-   *   选择题 慧眼选择 · 填空题 开心填空 · 连线题 巧手连线 · 分类题 分类达人 ·
-   *   判断题 真假侦探 · 排序题 顺序高手 · 表达题 自由表达 · 绘图题 创意画板
+   *   选择题 慧眼选择 · 填空题 巧思填空 · 连线题 巧手连线 · 分类题 分类达人 ·
+   *   判断题 思辨判断 · 排序题 顺序高手 · 表达题 自由表达 · 绘图题 创意画板
    *
    * 🔴 它与 `label`（教师端用的正式题型名）**是两件事，都要留着**：
    *   教师端下拉里写「慧眼选择」会让人对不上教材与教研的用词。
@@ -110,16 +110,16 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   graded: boolean;
 }> = [
   // ★ 2026-09-26：紧挨着填空题排（它就是填空题的一个变体，教师找它时会先看那里）。
-  { value: 'choice-blank', label: '选择填空', nickname: '开心填空', hint: '任务要求里有几个空，下方给出待选词，学生拖词入空', graded: true },
+  { value: 'choice-blank', label: '选择填空', nickname: '巧思填空', hint: '任务要求里有几个空，下方给出待选词，学生拖词入空', graded: true },
   { value: 'single-choice', label: '单选题', nickname: '慧眼选择', hint: '学生选择一项，可设答案评分或只收集选择', graded: true },
-  { value: 'true-false', label: '判断题', nickname: '真假侦探', hint: '对 / 错两个选项', graded: true },
+  { value: 'true-false', label: '判断题', nickname: '思辨判断', hint: '对 / 错两个选项', graded: true },
   { value: 'multi-choice', label: '多选题', nickname: '慧眼选择', hint: '学生可选多项，可设答案评分或只收集选择', graded: true },
-  { value: 'fill-blank', label: '填空题', nickname: '开心填空', hint: '学生填写文字，可设可接受答案评分或只收集内容', graded: true },
+  { value: 'fill-blank', label: '填空题', nickname: '巧思填空', hint: '学生填写文字，可设可接受答案评分或只收集内容', graded: true },
   { value: 'order', label: '排序题', nickname: '顺序高手', hint: '把打乱的条目排成正确顺序', graded: true },
   { value: 'match', label: '连线题', nickname: '巧手连线', hint: '学生连接左右条目，可设置一对多连线', graded: true },
   { value: 'categorize', label: '归类题', nickname: '分类达人', hint: '把若干条目拖到对应的框里', graded: true },
   { value: 'short-answer', label: '表达题', nickname: '自由表达', hint: '适合简答、说明、习作或观点收集，支持文字、手写、照片、语音，可选 AI 评分', graded: false },
-  { value: 'rating', label: '评价题', nickname: '评价题', hint: '按维度评星，记录评价与感想', graded: false },
+  { value: 'rating', label: '评价题', nickname: '评价反馈', hint: '按维度评星，记录评价与感想', graded: false },
   { value: 'image-canvas', label: '图文题', nickname: '图文题', hint: '上传底图，在图上放置多个不同类型的作答区', graded: false },
   { value: 'open-ended', label: '表达题', nickname: '自由表达', hint: '不设标准答案、不评分，支持文字、手写、照片或语音作答，仅进行 AI 作答分析', graded: false },
   // ★ M4b：`drawing` 这个题型名是**本计划的裁定**（规格没有给）—— 见 `QuestionType` 的注释。
@@ -240,6 +240,19 @@ export function aiScoredFor(node: { type: string; autoGrade?: boolean; data?: Re
   if ((node.type === 'fill-blank' || node.type === 'choice-blank') && Object.values((node.data?.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(hasEvaluation)) return Object.values((node.data?.fillBlankSettings as Record<string,Record<string,unknown>>) ?? {}).some(s=>hasEvaluation(s) && s.evaluationMode === 'ai' && countsEvaluation(s));
   if (node.type === 'fill-blank') return node.autoGrade !== false && Object.values((node.data?.fillBlankSettings as Record<string, { mode?: string; gradingMode?: string }>) ?? {}).some(setting => setting?.mode === 'audio' && setting.gradingMode === 'ai');
   return supportsAiScoring(node) && node.data?.aiScoringEnabled === true;
+}
+
+/** Whether this task can award points/icons, independent of whether anyone has earned them yet. */
+export function questionCanEarnReward(node: { type: string; autoGrade?: boolean; data?: Record<string, unknown> }): boolean {
+  if (node.type === 'rating' || node.type === 'task') return false;
+  const data = node.data ?? {};
+  if (node.type === 'fill-blank' || node.type === 'choice-blank') {
+    const slots = Object.values((data.fillBlankSettings as Record<string, Record<string, unknown>>) ?? {});
+    if (slots.some(slot => hasEvaluation(slot) && countsEvaluation(slot))) return true;
+    if (slots.length && slots.every(hasEvaluation)) return false;
+  }
+  if (hasEvaluation(data)) return countsEvaluation(data);
+  return aiScoredFor(node) || (QUESTION_TYPE_OPTIONS.some(option => option.value === node.type && option.graded) && node.autoGrade !== false);
 }
 
 /**

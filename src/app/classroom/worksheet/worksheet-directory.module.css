@@ -1,0 +1,26 @@
+.directory { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 8; width: 108px; max-height: 65%; display: flex; flex-direction: column; border: 1px solid #d7e2ee; border-radius: 12px; background: rgba(255,255,255,.96); box-shadow: 0 4px 18px rgba(40,65,95,.1); color: #52657a; }
+.heading { display: flex; align-items: center; gap: 5px; padding: 2px 3px 2px 6px; border-bottom: 1px solid #e5ecf3; font-size: 12px; font-weight: 600; }
+.list { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding: 3px; scrollbar-width: thin; }
+.item { display: flex; width: 100%; min-height: 44px; align-items: center; gap: 4px; padding: 4px; border: 0; border-radius: 6px; background: transparent; color: #52657a; font: inherit; font-size: 12px; cursor: pointer; }
+.number { font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.state { display: flex; margin-left: auto; flex-shrink: 0; color: #4b8568; min-width: 13px; }
+.item[aria-current] { background: #e8f0fa; color: #315e8a; font-weight: 600; }
+.item[data-locked] { color: #8a97a8; }
+.item[data-locked] .state { color: #8a97a8; }
+.item:focus, .collapse:focus, .expand:focus { outline: 2px solid #799bbe; outline-offset: -2px; }
+.notice { padding: 8px; font-size: 11px; line-height: 1.5; border-top: 1px solid #e5ecf3; }
+@media (hover: hover) { .item:hover, .collapse:hover, .expand:hover { background: #edf3f9; } }
+@media (max-width: 600px) {
+  .directory { width: 100px; right: 4px; border-radius: 9px; max-height: 52%; }
+  .list { padding: 3px; }
+  .heading { padding: 2px 3px 2px 6px; font-size: 11px; }
+  .item { padding: 4px; gap: 4px; font-size: 11px; }
+  .notice { position: absolute; right: 106px; bottom: 0; width: 165px; border: 1px solid #d7e2ee; border-radius: 8px; background: #fff; box-shadow: 0 3px 12px #28415f18; }
+}
+
+.list[hidden] { display: none; }
+.collapse, .expand { display: flex; align-items: center; justify-content: center; border: 0; background: transparent; color: #647d98; cursor: pointer; padding: 0; }
+.collapse { margin-left: auto; width: 44px; height: 44px; flex-shrink: 0; border-radius: 5px; }
+.directory[data-collapsed] { right: 0; width: 20px; border-radius: 7px 0 0 7px; }
+.expand { width: 44px; min-height: 56px; margin-left: -25px; justify-content: flex-end; padding-right: 2px; border-radius: 6px 0 0 6px; }

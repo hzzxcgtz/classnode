@@ -1,8 +1,9 @@
 'use client';
+import { WorksheetFieldTag } from '@/components/worksheet-field-tag';
 import { useId, useState, type CSSProperties } from 'react';
 import type { WorksheetQuestionNode } from '@/lib/types';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
-import { ratingConfig, ratingCommentLength, ratingDimensionRows, ratingLeafDimensions } from '@/lib/worksheet-rating';
+import { ratingConfig, ratingCommentLength, ratingDimensionRows } from '@/lib/worksheet-rating';
 import { normalizeRewardStyle, type RewardStyle } from '@/lib/worksheet-reward';
 import { PromptText } from '@/lib/worksheet-prompt-text';
 import { readPromptRuns } from '@/lib/worksheet-prompt-marks';
@@ -42,13 +43,17 @@ export function RatingBody({ node, draft, disabled, rewardStyle, onChange }: {
   const style = normalizeRewardStyle(rewardStyle);
   const commentId = useId();
   const count = ratingCommentLength(draft.text);
-  const leaves = ratingLeafDimensions(config);
-  const completed = draft.maxStars === config.maxStars ? leaves.filter(d => draft.ratings[d.id] >= 1 && draft.ratings[d.id] <= config.maxStars).length : 0;
   const short = count < config.minCommentLength;
+  const commentPrompt = config.commentPrompt || '评价与感想';
+  const commentRuns = readPromptRuns(config.commentPromptRuns, commentPrompt);
+  const descriptionStart = commentPrompt.indexOf('\n');
+  const commentTitle = descriptionStart < 0 ? commentPrompt : commentPrompt.slice(0, descriptionStart);
+  const commentDescription = descriptionStart < 0 ? '' : commentPrompt.slice(descriptionStart + 1);
+  const titleRuns = commentRuns.filter(run => run.start < commentTitle.length).map(run => ({ ...run, end: Math.min(run.end, commentTitle.length) }));
+  const descriptionRuns = commentRuns.filter(run => run.end > descriptionStart + 1).map(run => ({ ...run, start: Math.max(0, run.start - descriptionStart - 1), end: run.end - descriptionStart - 1 }));
   return <div className={ratingStyles.body}>
-    <div className={ratingStyles.progress} role="status"><span>请完成全部评价后提交</span><span>已评价 {completed}/{leaves.length} 项</span></div>
     <div className={ratingStyles.tableFrame}>
-      <table className={ratingStyles.table} style={{ '--rating-scale-width': `${Math.max(80, config.maxStars * 44 + 12)}px` } as CSSProperties}>
+      <table className={ratingStyles.table} style={{ '--rating-scale-width': `${Math.max(80, config.maxStars * 36 + 12)}px` } as CSSProperties}>
         <colgroup><col /><col className={ratingStyles.ratingColumn} /></colgroup>
         <thead><tr><th scope="col">评价维度</th><th scope="col">你的评价</th></tr></thead>
         <tbody>{ratingDimensionRows(config).map((dimension, i) => {
@@ -70,7 +75,11 @@ export function RatingBody({ node, draft, disabled, rewardStyle, onChange }: {
     </div>
     {config.commentEnabled && <div className={ratingStyles.comment}>
       <div className={ratingStyles.commentHeading}>
-        <label htmlFor={commentId}><PromptText text={config.commentPrompt || '评价与感想'} runs={readPromptRuns(config.commentPromptRuns, config.commentPrompt || '评价与感想')} placeholder={null} /><span className={ratingStyles.required}>必填</span></label>
+        <label htmlFor={commentId}>
+          <PromptText text={commentTitle} runs={titleRuns} placeholder={null} />
+          <WorksheetFieldTag />
+          {commentDescription && <span className={ratingStyles.commentDescription}><PromptText text={commentDescription} runs={descriptionRuns} placeholder={null} /></span>}
+        </label>
         <span id={`${commentId}-count`} className={ratingStyles.counter} data-short={short && count > 0} aria-live="polite">{count} 字{config.minCommentLength > 1 && ` / 至少 ${config.minCommentLength} 字`}</span>
       </div>
       <textarea id={commentId} className={`input ${ratingStyles.commentInput}`} rows={4} maxLength={10000} required

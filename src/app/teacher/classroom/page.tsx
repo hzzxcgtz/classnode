@@ -9,6 +9,7 @@ import { CompanionAudioPreview, companionAudioUrls } from './companion-audio-pre
 import { VoiceAnswerPlayer } from '@/components/voice-answer-player';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { audioMonitorPreview } from './worksheet-audio-monitor';
+import { classroomBoardAvailability } from '@/lib/classroom-board-availability';
 import { copyText } from '@/lib/copy-text';
 import { useSocket } from '@/lib/socket';
 import { stripImages, stripMarkdownToPlainText, Markdown } from '@/lib/markdown';
@@ -37,6 +38,7 @@ import { MatrixOverlay, type WorksheetWorkspaceEntry } from './matrix-overlay';
 import { WorksheetDrawer, type WorksheetDrawerEntry } from './worksheet-drawer';
 import { clearConfirmText, participantOverview } from './worksheet-drawer-state';
 import { resolveRewardScale, rewardAmountLabel } from '@/lib/worksheet-reward';
+import { flattenAnswerable, questionCanEarnReward } from '@/lib/worksheet-questions';
 import { RewardIcon } from '@/components/worksheet-reward-icon';
 import { activeAnswer, moduleCountUnit, stateHasCells, tileBadgeText, tileShowsWorksheetClear, worksheetTileState, type TileBadge } from './worksheet-tile-state';
 import { useWorksheetBoard } from './use-worksheet-board';
@@ -1193,6 +1195,7 @@ function ClassroomBoardContent() {
           setToast({ msg: '自动同步分组失败，请重新进入课堂重试', type: 'error' });
         }
       }
+      cr = classroomBoardAvailability(cr);
       setClassroom(cr);
       setTeacherCode(cr.code || '');
       setPaused(cr.status === 'paused');
@@ -1411,6 +1414,7 @@ function ClassroomBoardContent() {
     // 载荷是线缆上的值，先过类型守卫 —— 非法 key/state 直接忽略，不写进本地三元素数组。
     // 连 null / undefined 都会走到这里，所以不能直接解构（解构会先抛错，守卫就没机会跑）。
     const unsubMaterials = on('classroom-materials-changed', () => { void loadClassroom(); });
+    const unsubAvailability = on('student-availability-changed', () => { void loadClassroom(); });
     const unsub15 = on('module-state-changed', (data) => {
       const { moduleKey, state } = data ?? {};
       if (!isClassroomModuleKey(moduleKey) || !isClassroomModuleState(state)) return;
@@ -1459,7 +1463,7 @@ function ClassroomBoardContent() {
       setWorksheetOpen((prev) => ({ ...prev, [worksheetId]: questionIds }));
     });
 
-    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsubCleared?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsubMaterials?.(); unsub16?.(); unsub18?.(); unsub19?.(); unsub20?.(); unsubImageOrientation?.(); };
+    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsubCleared?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsubMaterials?.(); unsubAvailability?.(); unsub16?.(); unsub18?.(); unsub19?.(); unsub20?.(); unsubImageOrientation?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: StudentSummary) => {
@@ -1954,6 +1958,7 @@ function ClassroomBoardContent() {
     const scale = settings ? resolveRewardScale(settings) : null;
     if (!scale) return null;
     const nodes = wb.nodesByWorksheet[worksheet.id] ?? [];
+    if (!flattenAnswerable(nodes).some(({ node }) => questionCanEarnReward(node))) return null;
     // ⚠️ `answerRows` 与格子正文**同一条路径**（`wb.board` 里那一行的 `answerRows`）——
     //    另取一份的表现是「同一格上写了两个数」，而屏幕上不报错。
     const rows = wb.board?.worksheets.filter((item) => item.id === worksheet.id)[0]

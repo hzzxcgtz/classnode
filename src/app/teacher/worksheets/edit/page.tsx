@@ -1,4 +1,5 @@
 'use client';
+import { WorksheetFieldTag } from '@/components/worksheet-field-tag';
 import { type FillLayout } from '@/lib/worksheet-fill-layout';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -512,7 +513,7 @@ function WorksheetEditorBody() {
         ⚠️ 高度是实打实的（~70px，常驻）。想再省就得把它收起来，而收起来等于把它藏了 ——
           它的性质与标题一样（不常改，但一打开就该看见）。 */ }
       <details className="worksheet-editor-note-disclosure">
-        <summary><strong>使用说明</strong><span>{editor.description.trim() ? '已填写' : '选填'}</span><em>仅教师可见</em></summary>
+        <summary><strong>使用说明</strong>{editor.description.trim() ? <span>已填写</span> : <WorksheetFieldTag optional />}<em>仅教师可见</em></summary>
         <label htmlFor="worksheet-editor-note-input" className="sr-only">使用说明</label>
         <textarea id="worksheet-editor-note-input" className="input" rows={2}
           value={editor.description} maxLength={2000}

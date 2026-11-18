@@ -1042,7 +1042,7 @@ export default function ClassesPage() {
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                   {availabilityBusyId === s.id ? <circle className="student-availability-spinner" cx="12" cy="12" r="9" strokeDasharray="42 16" /> : <>
                                     <circle cx="12" cy="12" r="9" />
-                                    {s.disabled ? <path d="m10 8 6 4-6 4z" /> : <path d="M9 8v8m6-8v8" />}
+                                    {s.disabled ? <path d="m10 8 6 4-6 4z" /> : <path d="m5.6 5.6 12.8 12.8" />}
                                   </>}
                                 </svg>
                               </button>

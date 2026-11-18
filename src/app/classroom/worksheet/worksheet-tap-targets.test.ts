@@ -30,15 +30,16 @@ function stripComments(css: string): string {
 /** 取某条类规则里声明的 `{ width, height, minHeight, minWidth }`（数值 + 原始单位）。 */
 function boxOf(css: string, cls: string): Record<string, number> {
   const stripped = stripComments(css);
-  const start = stripped.indexOf(`.${cls} {`);
-  if (start === -1) return {};
-  const end = stripped.indexOf('}', start);
-  const body = stripped.slice(start, end);
   const out: Record<string, number> = {};
-  for (const prop of ['width', 'height', 'min-width', 'min-height']) {
-    // 只认纯 px 值 —— 别的单位（%、rem、vh）这里一律不当成命中区尺寸，交给真机看。
-    const m = body.match(new RegExp(`(?:^|[;{\\s])${prop}\\s*:\\s*([\\d.]+)px`));
-    if (m) out[prop] = Number(m[1]);
+  // Shared base rules may precede the class's own size rule (e.g. .collapse, .expand).
+  for (let start = stripped.indexOf(`.${cls} {`); start !== -1; start = stripped.indexOf(`.${cls} {`, start + 1)) {
+    const end = stripped.indexOf('}', start);
+    const body = stripped.slice(start, end);
+    for (const prop of ['width', 'height', 'min-width', 'min-height']) {
+      const m = body.match(new RegExp(`(?:^|[;{\\s])${prop}\\s*:\\s*([\\d.]+)px`));
+      if (m && out[prop] === undefined) out[prop] = Number(m[1]);
+    }
+    if (Object.keys(out).length) break;
   }
   return out;
 }
@@ -74,7 +75,12 @@ test('★ 本模块里每个 <button> 的命中区都必须 ≥ 44px（尺寸可
   const tooSmall: string[] = [];
   for (const { file, line, classes } of buttons) {
     assert.ok(classes.length > 0, `${file}:${line} 的 <button> 没挂 styles 类，本用例量不到它`);
-    const boxes = classes.map((c) => boxOf(CSS, c));
+    // Each component's `styles` import owns its dimensions; new modules need not copy rules into worksheet.module.css.
+    const filename = path.join(HERE, file);
+    const source = fs.readFileSync(filename, 'utf8');
+    const styleImport = source.match(/import styles from ['"]([^'"]+\.module\.css)['"]/);
+    const css = styleImport ? fs.readFileSync(path.resolve(path.dirname(filename), styleImport[1]), 'utf8') : CSS;
+    const boxes = classes.map((c) => boxOf(css, c));
     // 尺寸可以写在任一兄弟类上（例如 `.submitButton` 给高度、`Resubmit` 只改配色）⇒ 取并集。
     const height = Math.max(...boxes.map((b) => b.height ?? b['min-height'] ?? 0));
     const width = Math.max(...boxes.map((b) => b.width ?? b['min-width'] ?? 0));

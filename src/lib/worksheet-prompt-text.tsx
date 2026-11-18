@@ -1,3 +1,4 @@
+import { WorksheetExternalLink } from '@/components/worksheet-external-link';
 import { normalizeWorksheetLinkIcon, worksheetLinkIconImage } from './worksheet-link-icons';
 import { BlankInput } from './worksheet-blank-input';
 import linkStyles from './worksheet-prompt-link.module.css';
@@ -271,11 +272,11 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
           }
           const name = text.slice(run.start, parts[parts.length - 1].end);
           return (
-            <a key={run.start} href={href} className={linkStyles.link} data-link-icon={normalizeWorksheetLinkIcon(run.linkIcon)} style={{ '--worksheet-link-icon': `url("${worksheetLinkIconImage(run.linkIcon)}")` } as CSSProperties} target="_blank" rel="noopener noreferrer"
+            <WorksheetExternalLink key={run.start} href={href} className={linkStyles.link} data-link-icon={normalizeWorksheetLinkIcon(run.linkIcon)} style={{ '--worksheet-link-icon': `url("${worksheetLinkIconImage(run.linkIcon)}")` } as CSSProperties} target="_blank" rel="noopener noreferrer"
               title="点击在新标签页打开" aria-label={`${name}（在新标签页打开）`}
               >
               {parts.map(part => <span key={part.start} style={{ ...promptTextStyle(part, plain), color: 'inherit' }}>{text.slice(part.start, part.end)}</span>)}
-            </a>
+            </WorksheetExternalLink>
           );
         }
         if (markAt < 0) {

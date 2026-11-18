@@ -1,4 +1,5 @@
 'use client';
+import { WorksheetFieldTag } from '@/components/worksheet-field-tag';
 import { useEffect, useState } from 'react';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 import type { WorksheetQuestionNode } from '@/lib/types';
@@ -98,7 +99,7 @@ export function RatingEditor({ node, rewardStyle, onDataChange }: {
       </div>
       {config.commentEnabled && <div className={styles.commentSettings}>
         <div className={styles.commentRow}>
-          <div className={styles.field}>文字提示<span className={styles.optional}>选填</span>
+          <div className={styles.field}>文字提示<WorksheetFieldTag optional />
             <div className={styles.promptEditor}><RatingTextEditor id={`${node.id}_comment_prompt`} label="文字提示" text={config.commentPrompt} runs={config.commentPromptRuns} limit={500}
               onChange={(text, runs) => change({ commentPrompt: text, commentPromptRuns: runs })} /></div>
           </div>
@@ -116,7 +117,7 @@ export function RatingEditor({ node, rewardStyle, onDataChange }: {
             </span>
           </label>
         </div>
-        <label className={styles.field}>观点提炼要求<span className={styles.optional}>选填</span>
+        <label className={styles.field}>观点提炼要求<WorksheetFieldTag optional />
           <textarea className={`input ${styles.cloudRequirements}`} rows={3} maxLength={1200} value={typeof node.data.wordCloudRequirements === 'string' ? node.data.wordCloudRequirements : ''}
             placeholder="完整提炼有作答依据的观点，包括单人观点；合并相近表达，保留不同立场，按提及人数排序。"
             onChange={event => onDataChange({ wordCloudRequirements: event.target.value })} />

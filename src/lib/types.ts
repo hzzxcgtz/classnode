@@ -824,6 +824,7 @@ export interface ClassSummary {
 }
 
 export interface StudentSummary {
+  disabled?: boolean;
   id: string;
   classId: string;
   name: string;
@@ -875,6 +876,7 @@ export interface AvatarRandomCandidate {
 }
 
 export interface ClassroomStudentSummary {
+  disabled?: boolean;
   id: string; // ClassroomStudent.id：稳定的课堂参与者 ID
   participantType: 'student' | 'group';
   studentId: string | null; // 仅真实学生参与者存在
@@ -885,7 +887,7 @@ export interface ClassroomStudentSummary {
   groupId: string | null;
   groupName?: string;
   groupMemberId?: string;
-  groupMembers?: { id: string; name: string; participantId: string; studentId: string | null; studentNo: string | null; avatarId: number | null }[];
+  groupMembers?: { disabled?: boolean; id: string; name: string; participantId: string; studentId: string | null; studentNo: string | null; avatarId: number | null }[];
   status: string;
 }
 

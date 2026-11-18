@@ -1,6 +1,6 @@
 {
   "name": "classnode",
-  "version": "2.2.5",
+  "version": "2.2.6",
   "packageManager": "pnpm@11.3.0",
   "engines": {
     "node": ">=24"

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '@/lib/api';
+import { studentNameIndex, matchesStudentName } from '@/lib/student-name-index';
 import { Toast, Pagination, TeacherPageHeader, TeacherPageTabs, TeacherEmptyState, TeacherLoadingState, useTeacherConfirm } from '@/lib/components';
 import { getApiBaseUrl } from '@/lib/api-base';
 import type { AvatarSummary, ClassGroup, ClassSummary, StudentSummary } from '@/lib/types';
@@ -46,6 +47,11 @@ export default function ClassesPage() {
   const [studentPage, setStudentPage] = useState(1);
   const [studentPageSize, setStudentPageSize] = useState(20);
   const [studentSearch, setStudentSearch] = useState('');
+  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'active' | 'disabled'>('all');
+  const [availabilityBusyId, setAvailabilityBusyId] = useState<string | null>(null);
+  const availabilityBusyRef = useRef(false);
+  const selectedClassRef = useRef(selectedClass);
+  selectedClassRef.current = selectedClass;
   const [studentGroupFilter, setStudentGroupFilter] = useState<'all' | 'grouped' | 'ungrouped'>('all');
   const [deleteBlocked, setDeleteBlocked] = useState<{
     classId: string;
@@ -332,6 +338,23 @@ export default function ClassesPage() {
     const data = await api.getStudents(selectedClass);
     setStudents(data);
   }
+  const toggleStudentDisabled = async (student: StudentSummary) => {
+    if (availabilityBusyRef.current || !selectedClass) return;
+    const classId = selectedClass;
+    availabilityBusyRef.current = true;
+    setAvailabilityBusyId(student.id);
+    try {
+      const updated = await api.setStudentDisabled(classId, student.id, !student.disabled);
+      if (selectedClassRef.current === classId) setStudents(previous => previous.map(item => item.id === updated.id ? updated : item));
+      setToast({ msg: updated.disabled ? `已停用 ${student.name}，身份选择名单中暂不显示` : `已恢复 ${student.name}，可以重新选择姓名进入`, type: 'success' });
+    } catch (error) {
+      setToast({ msg: error instanceof Error ? error.message : '修改学生状态失败', type: 'error' });
+    } finally {
+      availabilityBusyRef.current = false;
+      setAvailabilityBusyId(null);
+    }
+  };
+
   const handleSort = (field: StudentSortField) => {
     if (sortField === field) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -341,15 +364,18 @@ export default function ClassesPage() {
     }
   };
 
+  const studentNameIndexes = useMemo(() => new Map(students.map(student => [student.id, studentNameIndex(student.name)])), [students]);
   const normalizedStudentSearch = studentSearch.trim().toLocaleLowerCase('zh-CN');
   const filteredStudents = students.filter((student) => {
     const groupName = studentGroupMap.get(student.id) || '';
-    const matchesSearch = !normalizedStudentSearch || [student.name, student.studentNo || '', student.tag || '', groupName]
+    const matchesSearch = !normalizedStudentSearch || matchesStudentName(studentNameIndexes.get(student.id)!, studentSearch)
+      || [student.studentNo || '', student.tag || '', groupName]
       .some((value) => value.toLocaleLowerCase('zh-CN').includes(normalizedStudentSearch));
     const matchesGroup = studentGroupFilter === 'all'
       || (studentGroupFilter === 'grouped' && Boolean(groupName))
       || (studentGroupFilter === 'ungrouped' && !groupName);
-    return matchesSearch && matchesGroup;
+    const matchesAvailability = availabilityFilter === 'all' || (availabilityFilter === 'disabled' ? student.disabled === true : !student.disabled);
+    return matchesSearch && matchesGroup && matchesAvailability;
   });
 
   const sortedStudents = [...filteredStudents].sort((a, b) => {
@@ -723,13 +749,17 @@ export default function ClassesPage() {
                           <input
                             value={studentSearch}
                             onChange={(event) => { setStudentSearch(event.target.value); setStudentPage(1); }}
-                            placeholder="搜索姓名、学号、分组或标签"
+                            placeholder="搜索姓名或拼音首字母"
+                            title="也可搜索学号、分组和标签"
                             aria-label="搜索学生"
                           />
                           {studentSearch && (
                             <button type="button" onClick={() => { setStudentSearch(''); setStudentPage(1); }} aria-label="清空学生搜索">×</button>
                           )}
                         </label>
+                        <select className="classes-group-filter" aria-label="学生可用状态" value={availabilityFilter} onChange={event => { setAvailabilityFilter(event.target.value as typeof availabilityFilter); setStudentPage(1); }}>
+                          <option value="all">全部状态</option><option value="active">可用学生</option><option value="disabled">已停用</option>
+                        </select>
                         <select
                           className="classes-group-filter"
                           value={studentGroupFilter}
@@ -788,10 +818,10 @@ export default function ClassesPage() {
               {/* 内容区域 */}
               {tabMode === 'students' ? (
                 <div className="classes-student-content" style={{ padding: 0 }}>
-                  {(studentSearch || studentGroupFilter !== 'all') && students.length > 0 && (
+                  {(studentSearch || studentGroupFilter !== 'all' || availabilityFilter !== 'all') && students.length > 0 && (
                     <div className="classes-filter-summary">
                       <span>找到 <strong>{sortedStudents.length}</strong> 名学生</span>
-                      <button type="button" onClick={() => { setStudentSearch(''); setStudentGroupFilter('all'); setStudentPage(1); }}>清除筛选</button>
+                      <button type="button" onClick={() => { setStudentSearch(''); setStudentGroupFilter('all'); setAvailabilityFilter('all'); setStudentPage(1); }}>清除筛选</button>
                     </div>
                   )}
                   {students.length === 0 ? (
@@ -805,7 +835,7 @@ export default function ClassesPage() {
                       icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>}
                       title="没有符合条件的学生"
                       description="可以调整关键词或清除分组筛选。"
-                      action={<button className="btn btn-secondary" onClick={() => { setStudentSearch(''); setStudentGroupFilter('all'); setStudentPage(1); }}>查看全部学生</button>}
+                      action={<button className="btn btn-secondary" onClick={() => { setStudentSearch(''); setStudentGroupFilter('all'); setAvailabilityFilter('all'); setStudentPage(1); }}>查看全部学生</button>}
                     />
                   ) : (
                     <>
@@ -883,7 +913,7 @@ export default function ClassesPage() {
                             borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                           }}>标签</th>
                           <th style={{
-                            width: 140, textAlign: 'center',
+                            width: 190, textAlign: 'center',
                             padding: '10px 12px', fontSize: "0.8125rem", fontWeight: 600, color: '#475569',
                             borderBottom: '2px solid #e2e8f0', letterSpacing: '0.02em',
                           }}>操作</th>
@@ -924,7 +954,8 @@ export default function ClassesPage() {
                                   <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="var(--classes-text-muted)" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                 </div>
                               </div>
-                              {s.name}
+                              <span style={{ color: s.disabled ? '#788493' : undefined }}>{s.name}</span>
+                              {s.disabled && <span className="student-disabled-badge">已停用</span>}
                               {s.avatarChangeTokens > 0 && (
                                 <span title="可换头像次数" style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 4, padding: '0 4px', borderRadius: 4, background: '#faf4eb', color: '#805620', fontSize: "0.75rem", fontWeight: 700 }}>
                                   <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
@@ -1003,6 +1034,17 @@ export default function ClassesPage() {
                                 onMouseEnter={e => { e.currentTarget.style.background = '#faf4eb'; }}
                                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+                              </button>
+                              <button type="button" className="student-availability-action" data-disabled={Boolean(s.disabled)} aria-busy={availabilityBusyId === s.id}
+                                title={s.disabled ? '恢复后可在身份选择名单中选择该学生' : '暂时停用，隐藏身份选择入口并保留全部历史'}
+                                aria-label={`${s.disabled ? '恢复' : '停用'}学生 ${s.name}`} disabled={availabilityBusyId !== null}
+                                onClick={() => void toggleStudentDisabled(s)}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  {availabilityBusyId === s.id ? <circle className="student-availability-spinner" cx="12" cy="12" r="9" strokeDasharray="42 16" /> : <>
+                                    <circle cx="12" cy="12" r="9" />
+                                    {s.disabled ? <path d="m10 8 6 4-6 4z" /> : <path d="M9 8v8m6-8v8" />}
+                                  </>}
+                                </svg>
                               </button>
                               <button title="编辑"
                                 onClick={() => setEditingStudent(s)}

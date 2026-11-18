@@ -129,6 +129,7 @@ model Student {
   ///（同名的人被移出再添加不会撞键）—— 这正是这里需要的语义。
   classId   String?
   name      String   // 学生姓名
+  disabled  Boolean  @default(false) // 请假等临时停用，保留学生资料和课堂历史
   studentNo String?  // 学号
   gender    String?  // boy / girl（用于头像匹配、自动分配）
   tag       String?  // 分组标签 (如 A组, B组)

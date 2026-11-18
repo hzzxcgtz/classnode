@@ -1,3 +1,4 @@
+import { ensureStudentAvailabilityColumn } from './student-availability-schema.js';
 import { ensureClassroomMaterialColumns } from './classroom-material-schema.js';
 import type { PrismaClient } from "@prisma/client";
 import { migrateClassroomParticipants, provisionGroupMembers } from './participant-migration.js';
@@ -14,6 +15,7 @@ import { migrateBlankMarkText } from './worksheet-blank-mark-migration.js';
 export async function migrateLegacyDatabase(prisma: PrismaClient, backupDatabase: (label: string) => string | null): Promise<void> {
   // 自动同步数据库 schema（兼容旧版数据库缺少新表/列的情况）
   try {
+    await ensureStudentAvailabilityColumn(prisma);
     const dbVersion = await prisma.$queryRawUnsafe<{ version: string }[]>(`SELECT sqlite_version() as version`);
     console.log(`[server] SQLite version: ${dbVersion[0].version}`);
 

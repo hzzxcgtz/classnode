@@ -138,9 +138,10 @@ router.post('/code/:code/student-session', async (req, res) => {
     if (!classroom || classroom.status === 'ended') return res.status(404).json({ error: '课堂不存在或已结束' });
     const participant = await prisma.classroomStudent.findFirst({
       where: { classroomId: classroom.id, id: participantId },
-      select: { id: true, groupId: true, studentId: true, type: true },
+      select: { id: true, groupId: true, studentId: true, type: true, student: { select: { disabled: true } } },
     });
     if (!participant) return res.status(403).json({ error: '该参与者不属于当前课堂' });
+    if (participant.student?.disabled) return res.status(403).json({ error: '该学生已暂时停用，请联系老师恢复后再进入' });
     let groupMemberId: string | undefined;
     let sessionParticipantId = participant.id;
     const switching = req.body?.switchMember === true;
@@ -163,9 +164,10 @@ router.post('/code/:code/student-session', async (req, res) => {
       if (!member?.studentId) return res.status(403).json({ error: '请选择当前小组的组员' });
       const personal = await prisma.classroomStudent.findFirst({
         where: { classroomId: classroom.id, studentId: member.studentId, groupId: participant.groupId },
-        select: { id: true },
+        select: { id: true, student: { select: { disabled: true } } },
       });
       if (!personal) return res.status(403).json({ error: '未找到组员的课堂身份' });
+      if (personal.student?.disabled) return res.status(403).json({ error: '该学生已暂时停用，请联系老师恢复后再进入' });
       sessionParticipantId = personal.id;
       groupMemberId = member.id;
     }
@@ -1307,10 +1309,11 @@ router.get('/:id/students', limitPublicCodeRequests, async (req, res) => {
       ));
     }
     const isTeacher = hasTeacherSession(req);
-    res.json(filtered.map(cs => ({
+    res.json(filtered.filter(cs => isTeacher || !cs.student?.disabled).map(cs => ({
       // id 始终是稳定的课堂参与者 ID；标准模式另外保留真实 studentId。
       id: cs.id,
       participantType: cs.type,
+      ...(cs.student?.disabled ? { disabled: true } : {}),
       studentId: cs.studentId,
       name: cs.type === 'group' ? (cs.group?.name || '未命名小组') : (cs.student?.name || '未知学生'),
       // 学生端用学号辅助确认身份，性别仅提供给教师端。
@@ -1322,7 +1325,7 @@ router.get('/:id/students', limitPublicCodeRequests, async (req, res) => {
       status: cs.status,
       ...(classroom.groupLoginMode === 'member' && cs.type === 'group' ? { groupMembers: (cs.group?.members ?? []).flatMap(member => {
         const personal = students.find(row => row.studentId === member.studentId && row.type === 'student');
-        return personal ? [{ ...member, participantId: personal.id, avatarId: personal.student?.avatarId ?? null }] : [];
+        return personal && (isTeacher || !personal.student?.disabled) ? [{ ...member, ...(personal.student?.disabled ? { disabled: true } : {}), participantId: personal.id, avatarId: personal.student?.avatarId ?? null }] : [];
       }).sort((left, right) => compareStudentNumbers(left.studentNo, right.studentNo, left.name, right.name)) } : {}),
     })));
   } catch (error) {

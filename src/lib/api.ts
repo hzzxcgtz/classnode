@@ -214,6 +214,8 @@ export const api = {
   /** **彻底删除**这名学生（含他在全部课堂的对话与学习单作答）。 */
   deleteStudent: (classId: string, studentId: string) =>
     request(`/api/classes/${classId}/students/${studentId}`, { method: 'DELETE' }),
+  setStudentDisabled: (classId: string, studentId: string, disabled: boolean) =>
+    request<StudentSummary>(`/api/classes/${classId}/students/${studentId}/availability`, { method: 'PUT', body: JSON.stringify({ disabled }) }),
   updateStudent: (classId: string, studentId: string, data: { name?: string; studentNo?: string; gender?: string | null; tag?: string | null; avatarId?: number | null }) =>
     request<StudentSummary>(`/api/classes/${classId}/students/${studentId}`, { method: 'PUT', body: JSON.stringify(data) }),
   // Classroom

@@ -1128,9 +1128,15 @@ export function setupSocketHandlers(io: Server, prisma: PrismaClient, app?: impo
         // 令牌签发后教师仍可能调整课堂成员；加入实时课堂前必须再次确认归属。
         const classroomStudent = await prisma.classroomStudent.findFirst({
           where: { classroomId: classroom.id, id: data.studentId },
+          include: { student: { select: { disabled: true } } },
         });
         if (!classroomStudent) {
           socket.emit('student-auth-error', { error: '你已不在当前课堂，请重新选择身份' });
+          return;
+        }
+
+        if (classroomStudent.student?.disabled) {
+          socket.emit('student-auth-error', { error: '该学生已暂时停用，请联系老师恢复后再进入' });
           return;
         }
 

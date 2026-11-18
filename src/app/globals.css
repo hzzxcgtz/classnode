@@ -11860,3 +11860,14 @@ tr:hover td {
 @media (max-width: 600px) {
   .worksheet-editor-formatbar > .worksheet-editor-tool-group { flex-wrap: wrap; max-width: 100%; }
 }
+
+.student-disabled-badge { display: inline-block; padding: 2px 6px; border-radius: 5px; background: #f1f3f5; color: #788493; font-size: .6875rem; font-weight: 400; white-space: nowrap; }
+.student-availability-action { display: inline-flex; align-items: center; justify-content: center; padding: 4px 6px; border: none; border-radius: 6px; background: transparent; color: var(--classes-text-secondary, #64748b); cursor: pointer; transition: color .15s, background-color .15s; }
+.student-availability-action[data-disabled='true'] { color: var(--primary); }
+.student-availability-action:not(:disabled):hover { color: var(--primary); background: #edf3f9; }
+.student-availability-action:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
+.student-availability-action:disabled { opacity: .55; cursor: wait; }
+
+.student-availability-spinner { transform-origin: center; animation: student-availability-spin .8s linear infinite; }
+@keyframes student-availability-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .student-availability-spinner { animation: none; } }

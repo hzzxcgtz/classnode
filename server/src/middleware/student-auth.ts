@@ -59,3 +59,7 @@ export function revokeClassroomStudentSessions(classroomId: string): void {
     if (key.startsWith(`${classroomId}:`)) currentSessions.delete(key);
   }
 }
+
+export function revokeStudentParticipantSession(classroomId: string, participantId: string): void {
+  currentSessions.delete(`${classroomId}:${participantId}`);
+}

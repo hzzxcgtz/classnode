@@ -43,10 +43,10 @@ export function IdentityPicker({
     const listRef = useRef<HTMLDivElement>(null);
     const memberLogin = classroom?.groupLoginMode === 'member';
     const isGroupMode = !group && (classroom?.mode === 'group' || classroom?.mode === 'advanced');
-    const choices = useMemo(() => group ? (group.groupMembers ?? []).map(member => ({
+    const choices = useMemo(() => group ? (students.find(student => student.id === group.id)?.groupMembers ?? []).filter(member => !member.disabled).map(member => ({
       ...group, participantType: 'student' as const, id: member.participantId, studentId: member.studentId, avatarId: member.avatarId,
       groupMemberId: member.id, name: member.name, studentNo: member.studentNo,
-    })) : students, [group, students]);
+    })) : students.filter(student => !student.disabled), [group, students]);
     const nameColumnWidth = Math.min(108, Math.max(54, ...choices.map(s =>
       Array.from(s.name).reduce((width, char) => width + (/[^\x00-\xff]/.test(char) ? 18 : 10), 0)
     )));

@@ -596,14 +596,18 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
   useEffect(() => {
     let cancelled = false;
     if (step === 'identity' && classroom?.id) {
-      api.getClassroomStudents(classroom.id).then(data => {
-        setStudents(data);
-        // 加载头像 SVG 映射
-        api.getAvatarsAll('student').then(avatars => {
-          const m: Record<number, string> = {};
-          avatars.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); });
-          setAvatarSvgs(m);
-        }).catch(() => {});
+      let rosterGeneration = 0;
+      const refreshStudents = async () => {
+        const generation = ++rosterGeneration;
+        const data = await api.getClassroomStudents(classroom.id);
+        if (!cancelled && generation === rosterGeneration) setStudents(data);
+      };
+      void refreshStudents().catch(() => {});
+      api.getAvatarsAll('student').then(avatars => {
+        if (cancelled) return;
+        const m: Record<number, string> = {};
+        avatars.forEach((avatar) => { m[avatar.id] = fixSvgUrl(avatar.svgContent); });
+        setAvatarSvgs(m);
       }).catch(() => {});
       // 连接状态监听 socket，获取已登录学生列表
       (async () => {
@@ -612,7 +616,11 @@ export function useClassroomSession(options: ClassroomSessionOptions) {
         const statusSocketRef = optionsRef.current.statusSocketRef;
         if (statusSocketRef.current) statusSocketRef.current.disconnect();
         const sk = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
-        sk.on('connect', () => sk.emit('listen-classroom-status', classroom.id));
+        sk.on('connect', () => {
+          sk.emit('listen-classroom-status', classroom.id);
+          void refreshStudents().catch(() => {});
+        });
+        sk.on('student-availability-changed', () => { void refreshStudents().catch(() => {}); });
         sk.on('online-students', (data: { studentIds: string[] }) => setOnlineStudentIds(new Set(data.studentIds)));
         statusSocketRef.current = sk;
       })();

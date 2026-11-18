@@ -1,3 +1,5 @@
+import type { Server } from 'socket.io';
+import { revokeStudentParticipantSession } from '../middleware/student-auth.js';
 import { Router } from 'express';
 import { PrismaClient, Prisma } from '@prisma/client';
 
@@ -200,6 +202,35 @@ router.post('/:classId/students/batch-names', async (req, res) => {
 });
 
 // 更新学生
+/** Temporary absence changes availability, never membership or historical records. */
+router.put('/:classId/students/:studentId/availability', async (req, res) => {
+  if (typeof req.body?.disabled !== 'boolean') return res.status(400).json({ error: '请提供有效的停用状态' });
+  const prisma: PrismaClient = req.app.get('prisma');
+  try {
+    const found = await prisma.student.findFirst({ where: { id: req.params.studentId, classId: req.params.classId }, select: { id: true } });
+    if (!found) return res.status(404).json({ error: '未找到当前班级的学生' });
+    const { student, participants } = await prisma.$transaction(async tx => {
+      const student = await tx.student.update({ where: { id: found.id, classId: req.params.classId }, data: { disabled: req.body.disabled } });
+      const participants = await tx.classroomStudent.findMany({ where: { studentId: found.id }, select: { id: true, classroomId: true } });
+      return { student, participants };
+    });
+    const io: Server | undefined = req.app.get('io');
+    if (student.disabled) for (const participant of participants) {
+      revokeStudentParticipantSession(participant.classroomId, participant.id);
+      const room = io?.in(`participant:${participant.classroomId}:${participant.id}`);
+      room?.emit('student-auth-error', { error: '该学生已暂时停用，请联系老师恢复后再进入' });
+      room?.disconnectSockets(true);
+    }
+    for (const id of new Set(participants.map(participant => participant.classroomId))) {
+      io?.to(`status:${id}`).to(`classroom:${id}`).to(`teacher:${id}`).emit('student-availability-changed');
+    }
+    res.json(student);
+  } catch (error) {
+    console.error('[classes] 更新学生可用状态失败:', error);
+    res.status(500).json({ error: '更新学生可用状态失败' });
+  }
+});
+
 router.put('/:classId/students/:studentId', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');

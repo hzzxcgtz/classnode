@@ -7,6 +7,7 @@ import { extractReviewEvidence } from '../services/review-evidence.js';
 import { hasVersionedEvaluation } from '../services/worksheet-evaluation-grades.js';
 import { mayKeepPriorAiGrade, removedEvaluationScore } from '../services/worksheet-evaluation-grades.js';
 import { hasEvaluation, evaluationImages, evaluationRequirements, countsEvaluation } from '../services/worksheet-evaluation.js';
+import { readRatingAnswer, ratingSubmissionError, ratingScaleChanged, canRestoreRatingScale } from '../services/worksheet-rating.js';
 import { findFillAudioValueError, fillAudioSlots } from '../services/worksheet-fill-audio.js';
 import { answerGradeWithFillAudio } from '../services/analysis-scoring.js';
 import { findAudioValueError, readAudioAnswer } from '../services/worksheet-audio.js';
@@ -834,6 +835,8 @@ router.post('/', async (req, res) => {
  * ⚠️ `content` 传了就整体替换（题目树没有「按 id 打补丁」的语义，硬做会把
  * 「删掉一道题」表达不出来）。改动会被归一化 + 校验一遍，与新建同一条路径。
  */
+class RatingDefinitionConflict extends Error {}
+
 router.put('/:id', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
@@ -870,6 +873,29 @@ router.put('/:id', async (req, res) => {
 
     const changedAnswers: Array<{answer:AnswerRow;classroomId:string;participantId:string}> = [];
     const worksheet = await prisma.$transaction(async tx=>{
+      if (body.content !== undefined) {
+        // Read the live definition inside the same transaction as the check and update.
+        const current = await tx.worksheet.findUniqueOrThrow({ where: { id: req.params.id }, select: { content: true } });
+        const next = new Map(flattenAnswerable((data.content as unknown as WorksheetContent).nodes).map(({ node }) => [node.id, node]));
+        const changedRatings = flattenAnswerable((current.content as unknown as WorksheetContent).nodes).filter(({ node }) => {
+          if (node.type !== 'rating') return false;
+          const replacement = next.get(node.id);
+          return replacement?.type !== 'rating' || ratingScaleChanged(node.data, replacement.data);
+        });
+        if (changedRatings.length) {
+          const answers = await tx.worksheetAnswer.findMany({
+            where: { questionId: { in: changedRatings.map(({ node }) => node.id) }, response: { worksheetId: req.params.id }, value: { not: Prisma.DbNull } },
+            select: { questionId: true, value: true },
+          });
+          for (const { node } of changedRatings) {
+            const values = answers.filter(answer => answer.questionId === node.id).map(answer => answer.value);
+            const replacement = next.get(node.id);
+            if (values.length && !(replacement?.type === 'rating' && canRestoreRatingScale(node.data, replacement.data, values))) {
+              throw new RatingDefinitionConflict('评价题已有作答，不能更改评价上限、增删末级维度或删除该题。请复制学习单后调整；如需重做，请先导出并清空原作答。');
+            }
+          }
+        }
+      }
       const updated = await tx.worksheet.update({where:{id:req.params.id},data});
       if (body.content !== undefined) {
         const oldQuestions = new Map(flattenAnswerable((existing.content as unknown as WorksheetContent).nodes ?? []).map(item=>[item.node.id,item.node]));
@@ -893,6 +919,7 @@ router.put('/:id', async (req, res) => {
     for (const {answer,classroomId,participantId} of changedAnswers) broadcastAnswerUpdate(req,{classroomId,participantId},answer);
     res.json(worksheet);
   } catch (error) {
+    if (error instanceof RatingDefinitionConflict) return res.status(409).json({ error: error.message, code: 'rating-definition-in-use' });
     console.error('[worksheets] 更新学习单失败:', error);
     res.status(500).json({ error: '更新学习单失败' });
   }
@@ -1575,7 +1602,7 @@ function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: 
   const aiScoring = aiScoringConfigOf(node, scoringUnit);
   const subjective = node.type === 'short-answer' || node.type === 'drawing' || node.type === 'open-ended';
   const hasReference = Array.isArray(node.data.answers) && node.data.answers.some(slot => Array.isArray(slot) ? slot.some(value => typeof value === 'string' && value.trim()) : typeof slot === 'string' && slot.trim());
-  const analysisMode = aiScoring.enabled ? 'scored' : node.type === 'open-ended' ? 'open' : !subjective && node.autoGrade === false ? 'collection' : aiScoring.enabled ? 'scored' : subjective && !hasReference && !rubric.text && !rubric.imageUrl ? 'open' : 'guided';
+  const analysisMode = node.type === 'rating' ? 'collection' : aiScoring.enabled ? 'scored' : node.type === 'open-ended' ? 'open' : !subjective && node.autoGrade === false ? 'collection' : aiScoring.enabled ? 'scored' : subjective && !hasReference && !rubric.text && !rubric.imageUrl ? 'open' : 'guided';
   return {
     analysisMode,
     analysisFocus: !hasEvaluation(node.data) && typeof node.data.analysisFocus === 'string' ? node.data.analysisFocus : '',
@@ -1602,11 +1629,11 @@ function analysisQuestionMeta(node: QuestionNode, heading: string, scoringUnit: 
 
 /** 保存报告的教学依据版本，重算统计不会让旧报告被误认为最新。 */
 function analysisBasisKey(payload: ReturnType<typeof buildAnalysisPayload>, wordCloudRequirements = '', node?: QuestionNode) {
-  return crypto.createHash('sha256').update(JSON.stringify({ version: ANALYSIS_PROMPT_VERSION, prompt: payload.prompt, details: payload.questionDetails, reference: payload.referenceAnswer, rubric: payload.rubricText, rubricImage: payload.rubricImageUrls ?? payload.rubricImageUrl, context: payload.context ?? '', focus: payload.analysisFocus ?? '', mode: payload.analysisMode, scoring: payload.aiScoring, ...(node && analysisSections(node).length ? { sections: analysisSections(node), background: node.type === 'image-canvas' ? readImageCanvas(node.data.imageCanvas)?.url : undefined } : {}), ...(node?.type === 'image-canvas' ? { canvasSectionReport: 1 } : {}), ...(wordCloudRequirements ? { wordCloudRequirements } : {}) })).digest('hex');
+  return crypto.createHash('sha256').update(JSON.stringify({ version: ANALYSIS_PROMPT_VERSION, ...(node && (isExpressionTask(node.type) || node.type === 'rating') ? { opinionPolicy: 3 } : {}), prompt: payload.prompt, details: payload.questionDetails, reference: payload.referenceAnswer, rubric: payload.rubricText, rubricImage: payload.rubricImageUrls ?? payload.rubricImageUrl, context: payload.context ?? '', focus: payload.analysisFocus ?? '', mode: payload.analysisMode, scoring: payload.aiScoring, ...(node && analysisSections(node).length ? { sections: analysisSections(node), background: node.type === 'image-canvas' ? readImageCanvas(node.data.imageCanvas)?.url : undefined } : {}), ...(node?.type === 'image-canvas' ? { canvasSectionReport: 1 } : {}), ...(wordCloudRequirements ? { wordCloudRequirements } : {}) })).digest('hex');
 }
 
 function usesRawClassAnalysis(node: QuestionNode): boolean {
-  return isExpressionTask(node.type) || node.type === 'drawing' || individualReviewSettings(node).enabled;
+  return isExpressionTask(node.type) || node.type === 'rating' || node.type === 'drawing' || individualReviewSettings(node).enabled;
 }
 
 /**
@@ -2004,7 +2031,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     const photoReport = !scoped && payload.photoWriting === true && entries.some(entry => entry.kind === 'photo');
     const audioReport = !scoped && !!payload.audioAnswers?.length
       && entries.every(entry => entry.kind === 'audio');
-    const includeWordCloud = !scoped && isExpressionTask(target.node.type);
+    const includeWordCloud = !scoped && (isExpressionTask(target.node.type) || (target.node.type === 'rating' && Boolean(target.node.data.rating) && (target.node.data.rating as Record<string, unknown>).commentEnabled !== false));
     const classReportOnly = !scoped && req.query.analysisOnly === 'true';
     const mediaReport = photoReport || audioReport || (classReportOnly && usesRawClassAnalysis(target.node));
     const readableIds = new Set(entries.filter(entry => entry.kind !== 'unknown').map(entry => entry.studentId));
@@ -3249,7 +3276,7 @@ router.get('/:id/reviews', async (req, res) => {
     if (!(await isWorksheetInClassroom(prisma, classroomId, req.params.id))) return res.status(404).json({ error: '学习单不属于当前课堂' });
     const reviewId = typeof req.query.reviewId === 'string' ? req.query.reviewId : undefined;
     const rows = await prisma.worksheetAnswerReview.findMany({ where: { id: reviewId, answer: { response: { classroomId, worksheetId: req.params.id, participantId } } }, orderBy: { createdAt: 'desc' }, include: { answer: { select: { questionId: true } } } });
-    res.json({ reviews: rows.map(({ question, requestId, generation, answer, ...row }) => ({ ...row, evidence: extractReviewEvidence(`<classnode-evidence>${JSON.stringify({students:[{student:row.id,...((question as Record<string,unknown> | null)?.evaluationEvidence as object ?? {})}]})}</classnode-evidence>`,[{studentId:row.id,anonLabel:row.id}]).byStudent.get(row.id) ?? null, questionId: answer.questionId, phase: row.status === 'pending' ? (runningReviews.has(row.id) ? 'running' : 'queued') : null })) });
+    res.json({ reviews: rows.map(({ question, requestId: _requestId, generation: _generation, answer, ...row }) => ({ ...row, evidence: extractReviewEvidence(`<classnode-evidence>${JSON.stringify({students:[{student:row.id,...((question as Record<string,unknown> | null)?.evaluationEvidence as object ?? {})}]})}</classnode-evidence>`,[{studentId:row.id,anonLabel:row.id}]).byStudent.get(row.id) ?? null, questionId: answer.questionId, phase: row.status === 'pending' ? (runningReviews.has(row.id) ? 'running' : 'queued') : null })) });
   } catch { res.status(500).json({ error: '读取提交历史失败' }); }
 });
 
@@ -3558,6 +3585,11 @@ router.put('/:id/answers', worksheetMutation(async (req, res, database) => {
     // ⚠️ 它**不是格式门**：`findInkValueError` 对认不出的 `format` 一律放行（认得出才查体积）。
     // 往这里加一句「认不出的 `format` ⇒ 400」是**另一件事**，会违反
     // `worksheet-answer-value.ts:48-76`（那段「`format` 在服务端只被读两处」）那条纪律 —— 见 `services/worksheet-ink.ts` 的 🔴。
+    if (node.type === 'rating' && body.value != null) {
+      const rating = readRatingAnswer(node.data, body.value);
+      if (!rating) return res.status(400).json({ error: '请按当前评价维度和星级重新填写' });
+      body.value = rating;
+    }
     const inkError = findInkValueError(body.value);
     if (inkError) return res.status(400).json({ error: inkError });
     const fillAudioError = findFillAudioValueError(node, body.value);
@@ -3794,6 +3826,11 @@ router.post('/:id/answers/submit', worksheetMutation(async (req, res, database) 
       if (!readAudioAnswer(answer.value) || !rating || rating.maxStars !== deskReview.maxStars) {
         return res.status(409).json({ error: '请先录下同桌的回答，再按当前任务要求评星', code: 'desk-rating-required' });
       }
+    }
+
+    if (node.type === 'rating') {
+      const error = ratingSubmissionError(node.data, answer.value);
+      if (error) return res.status(409).json({ error, code: 'rating-incomplete' });
     }
 
     const reviewSettings = individualReviewSettings(node);

@@ -95,6 +95,7 @@ export const QUESTION_TYPE_ICONS: Record<QuestionType, ReactNode> = {
     <Glyph><rect x="3" y="13" width="18" height="8" rx="3" /><rect x="6" y="5" width="5" height="5" rx="1.5" /><rect x="14" y="5" width="5" height="5" rx="1.5" /></Glyph>
   ),
   // 绘图：一支笔
+  rating: (<Glyph><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z" /></Glyph>),
   drawing: (
     <Glyph><path d="M4 20l4-1 10-10a2.5 2.5 0 0 0-3.5-3.5L4.5 15.5 4 20z" /><path d="M13.5 6.5l4 4" /></Glyph>
   ),

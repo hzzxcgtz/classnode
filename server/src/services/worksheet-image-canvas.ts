@@ -26,7 +26,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function readCanvasColor(value: unknown): string | undefined {
-  return typeof value === 'string' && (value === 'transparent' || /^#[\da-f]{6}$/i.test(value)) ? value : undefined;
+  return typeof value === 'string' && (value === 'transparent' || /^#[\da-f]{6}([\da-f]{2})?$/i.test(value)) ? value : undefined;
 }
 
 function readDeskReview(value: unknown): DeskReview | null {

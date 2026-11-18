@@ -1,0 +1,31 @@
+.scroll { max-width: 1000px; margin-inline: auto; overflow-x: auto; border: 1px solid #d4e0eb; border-radius: 12px; background: #fff; }
+.table { width: 100%; min-width: 680px; border-collapse: collapse; font-size: .8125rem; color: #334b60; }
+.table th, .table td { border: 0; padding: 13px 16px; vertical-align: middle; }
+.table thead { background: #f0f5f9; color: #657b8f; }
+.table thead th { font-size: .75rem; font-weight: 500; text-align: left; white-space: nowrap; }
+.table tbody th { width: 29%; font-weight: 500; text-align: left; line-height: 1.5; }
+.table tbody tr + tr { border-top: 1px solid #e6edf3; }
+.table tbody tr:hover td { background: transparent; }
+.average { width: 140px; }
+.averageInner { display: flex; align-items: center; gap: 10px; }
+.averageInner strong { color: #315f85; font-size: .9375rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stars { position: relative; display: inline-block; flex-shrink: 0; height: 18px; color: #e3e9ef; }
+.stars > span { display: flex; width: max-content; gap: 1px; }
+.stars > .filled { position: absolute; inset: 0 auto 0 0; overflow: hidden; color: #d9a134; }
+.filled > * { flex: 0 0 18px; }
+.distribution { width: 43%; min-width: 220px; }
+.distributionHeading { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+.legend, .legend > span { display: flex; align-items: center; gap: 4px; }
+.legend { gap: 10px; }
+.legend i, .counts i { width: 6px; height: 6px; border-radius: 2px; flex-shrink: 0; }
+.track { display: flex; height: 21px; overflow: hidden; border-radius: 5px; background: #f0f4f8; }
+.track > span { display: flex; align-items: center; justify-content: center; font-size: .625rem; font-weight: 500; border-right: 2px solid white; box-sizing: border-box; font-variant-numeric: tabular-nums; }
+.track > span:last-child { border-right: 0; }
+.counts { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 5px; font-size: .625rem; color: #718196; }
+.counts > span { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+.counts b { font-weight: 500; color: #526a80; }
+.total { width: 65px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.total span { color: #8492a3; font-size: .6875rem; margin-left: 4px; }
+.empty { color: #8492a3; }
+
+.table .groupRow th { background: #f0f5f9; font-weight: 600; padding-top: 9px; padding-bottom: 9px; }

@@ -73,7 +73,7 @@ export function canvasChoiceColor(choice: Pick<CanvasMatchChoice, 'id' | 'color'
 
 export function canvasChoiceFill(choice: Pick<CanvasMatchChoice, 'id' | 'color'>): string {
   const color = canvasChoiceColor(choice);
-  return color === 'transparent' ? color : `${color}b3`;
+  return color === 'transparent' || color.length === 9 ? color : `${color}b3`;
 }
 
 export function canvasRecordingStyle(widget: CanvasWidget, rect: CanvasRect = widget): CSSProperties {
@@ -105,4 +105,14 @@ export function canvasRegionNode(node: WorksheetQuestionNode, widget: CanvasWidg
   if (deskReview) data.deskReview = deskReview;
   const inputMode = mode === 'peer-audio' ? 'audio' : (mode === 'region-match' || mode === 'star-rating') ? 'keyboard' : mode;
   return { ...node, type: 'short-answer', inputMode, data };
+}
+
+/** Alpha is stored on the background color so it survives every existing canvas read path. */
+export function canvasColorOpacity(color: string, fallback = 100): number {
+  return color === 'transparent' ? 0 : /^#[0-9a-f]{8}$/i.test(color)
+    ? Math.round(parseInt(color.slice(7), 16) / 255 * 100) : fallback;
+}
+export function canvasColorWithOpacity(color: string, opacity: number): string {
+  const base = color === 'transparent' ? '#ffffff' : color.slice(0, 7);
+  return `${base}${Math.round(Math.max(0, Math.min(100, opacity)) / 100 * 255).toString(16).padStart(2, '0')}`;
 }

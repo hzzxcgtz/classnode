@@ -14,6 +14,7 @@ export async function trackDataTask<T>(task: () => Promise<T> | T): Promise<T | 
 export const maintenanceGate: RequestHandler = (req, res, next) => {
   if (busy) { res.status(503).json({ error: '系统正在备份或维护，请稍后重试' }); return; }
   // These handlers acquire the exclusive lock themselves, before any file work.
+  if (req.method === 'POST' && /^\/api\/classroom\/[^/]+\/clear-data\/?$/.test(req.path)) { next(); return; }
   if (req.method === 'POST' && /^\/api\/export\/(?:backup\/?|reset\/?|restore\/[^/]+\/?)$/.test(req.path)) { next(); return; }
   active++;
   // A closed response can still have an asynchronous handler writing data.

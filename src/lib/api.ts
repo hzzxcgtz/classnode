@@ -318,6 +318,9 @@ export const api = {
   getOnlineStudentIds: (id: string) =>
     request<{ studentIds: string[] }>(`/api/classroom/${id}/online`),
 
+  clearClassroomData: (id: string) =>
+    request<{ success: boolean }>(`/api/classroom/${id}/clear-data`, { method: 'POST', body: JSON.stringify({ confirm: true }) }),
+
   // 恢复已结束课堂
   restoreClassroom: (id: string) =>
     request(`/api/classroom/${id}/restore`, { method: 'POST' }),

@@ -1,3 +1,4 @@
+import { normalizeWorksheetLinkIcon, type WorksheetLinkIcon } from './worksheet-link-icons.ts';
 import { splitMath } from './worksheet-math.ts';
 
 /**
@@ -79,6 +80,7 @@ export interface PromptRun extends PromptTextStyle {
    */
   blank: string;
   href?: string;
+  linkIcon?: WorksheetLinkIcon;
 }
 
 /** 没设过任何格式时的样子。`color` 的默认值与 `.prompt` 的颜色一致。 */
@@ -170,7 +172,7 @@ function sameStyle(a: PromptTextStyle, b: PromptTextStyle): boolean {
  * **当场消失**，而屏幕上看只是「空短了一点」，直到学生端再也画不出那个框。
  */
 function sameRun(a: PromptRun, b: PromptRun): boolean {
-  return a.blank === b.blank && a.href === b.href && sameStyle(a, b);
+  return a.blank === b.blank && a.href === b.href && a.linkIcon === b.linkIcon && sameStyle(a, b);
 }
 
 /** 这一条分段属于一个填空域吗。 */
@@ -199,6 +201,9 @@ function pushRun(out: PromptRun[], next: PromptRun): void {
   if (next.blank && next.href) {
     next = { ...next };
     delete next.href;
+  }
+  if ('linkIcon' in next && (!next.href || !next.linkIcon || next.linkIcon === 'attachment')) {
+    next = { ...next }; delete next.linkIcon;
   }
   const last = out[out.length - 1];
   // 🔴🔴 **这里曾经有一条「两条挨着的空 = 一个空」的规则 —— 它是错的，已撤掉。**
@@ -258,7 +263,7 @@ function readRun(item: Record<string, unknown>): Omit<PromptRun, 'start' | 'end'
   const href = blank ? undefined : normalizePromptLink(item.href);
   return {
     ...readStyle(item),
-    ...(href ? { href } : {}),
+    ...(href ? { href, ...(normalizeWorksheetLinkIcon(item.linkIcon) !== 'attachment' ? { linkIcon: normalizeWorksheetLinkIcon(item.linkIcon) } : {}) } : {}),
     // ⚠️ 只认**非空字符串**：认不出的值（`true` / `1`）一律当**不是空**。
     // 猜成空会让一道普通的题在学生端长出一个输入框 —— 那是「猜」的代价里最响的一种。
     // （`true` 也不再认：标识是**字符串**，改形状之前的库里没有这种值。）
@@ -500,9 +505,11 @@ export function insertPromptLink(
   to: number,
   label: string,
   address: string,
+  icon: WorksheetLinkIcon = 'attachment',
 ): { text: string; runs: PromptRun[] } | null {
   const href = normalizePromptLink(address);
   const name = label.trim();
+  const linkIcon = normalizeWorksheetLinkIcon(icon) === 'attachment' ? undefined : normalizeWorksheetLinkIcon(icon);
   const start = clampIndex(from, text.length);
   const end = Math.max(start, clampIndex(to, text.length));
   const touchesRange = (left: number, right: number) => left < end && right > start;
@@ -512,11 +519,11 @@ export function insertPromptLink(
     if (touchesRange(at, at + TABLE_MARK_TEXT.length)) return null;
   }
   if (text.slice(start, end) === name) {
-    return { text, runs: rewriteRange(runs, start, end, { href }) };
+    return { text, runs: rewriteRange(runs, start, end, { href, linkIcon }) };
   }
   return {
     text: text.slice(0, start) + name + text.slice(end),
-    runs: replaceRunRange(runs, start, end, name, href),
+    runs: replaceRunRange(runs, start, end, name, href, linkIcon),
   };
 }
 
@@ -848,14 +855,15 @@ export function remapRuns(runs: PromptRun[], prevText: string, nextText: string)
   const oldTo = prev.length - tail;
   const inserted = next.slice(head, next.length - tail);
 
+  const linkOwner = runs.find(run => run.start < from && oldTo < run.end);
   const href = containsPromptMarker(inserted) || inserted.includes('\n')
     ? undefined
-    : runs.find(run => run.start < from && oldTo < run.end)?.href;
-  return replaceRunRange(runs, from, oldTo, inserted, href);
+    : linkOwner?.href;
+  return replaceRunRange(runs, from, oldTo, inserted, href, href ? linkOwner?.linkIcon : undefined);
 }
 
 function replaceRunRange(
-  runs: PromptRun[], from: number, oldTo: number, inserted: string, href?: string,
+  runs: PromptRun[], from: number, oldTo: number, inserted: string, href?: string, linkIcon?: WorksheetLinkIcon,
 ): PromptRun[] {
   const out: PromptRun[] = [];
   runs.forEach((item) => {
@@ -871,7 +879,7 @@ function replaceRunRange(
   //   那个空**不会被切开**。紧贴边界打字则是一个普通的新文字（`blank: ''`）。
   //   ⚠️ 这一条在「只有布尔量」的时候是**做不到**的：那时它与「两个空挨着排」同形。
   const owner = runs.filter(item => isBlankRun(item) && item.start < from && from < item.end)[0];
-  pushRun(out, { start: from, end: from + inserted.length, ...insertedStyle, blank: owner ? owner.blank : '', ...(href && !owner ? { href } : {}) });
+  pushRun(out, { start: from, end: from + inserted.length, ...insertedStyle, blank: owner ? owner.blank : '', ...(href && !owner ? { href, ...(linkIcon ? { linkIcon } : {}) } : {}) });
   const delta = inserted.length - (oldTo - from);
   runs.forEach((item) => {
     const start = Math.max(item.start, oldTo);

@@ -1,4 +1,5 @@
 import { selectFillCombination, readFillAnswerCombinations } from './worksheet-fill-combinations.ts';
+import { ratingAnswerText } from './worksheet-rating.ts';
 import { canvasAnswerEntries } from './worksheet-image-canvas.ts';
 import type { DeskRating } from './worksheet-image-canvas.ts';
 import { readPromptRuns } from './worksheet-prompt-marks.ts';
@@ -246,6 +247,10 @@ export function matchLineGeometry(
  * 只有**读不出形状**时（老值 / 手改过的行）才按 `node.type` 给一个空模型。
  */
 export function answerView(node: WorksheetQuestionNode, value: unknown): AnswerView {
+  if (node.type === 'rating') {
+    const text = ratingAnswerText(node.data, value);
+    return text ? { kind: 'text', text } : { kind: 'none' };
+  }
   const entries = canvasAnswerEntries(node, value);
   if (entries) return entries.length ? {
     kind: 'image-canvas',

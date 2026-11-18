@@ -54,7 +54,7 @@ export function VoiceAnswerPlayer({ src, durationMs, title = '我的语音作答
       <div className={styles.trackHeader}><strong><IconMicrophone size={16} aria-hidden="true" />{title}</strong><span>{audioTime(position)} / {audioTime(length)}</span></div>
       {progress}
     </div>}
-    {review && transcription && <AudioTranscription inline={compact} key={src} src={src} title={title} showActions={transcriptionActions} fontSize={transcriptFontSize}/> }
+    {review && transcription && <AudioTranscription inline key={src} src={src} title={title} showActions={transcriptionActions} fontSize={transcriptFontSize}/> }
     {error && <div className={styles.error} role="status">{error}<button type="button" onClick={() => { audio.current?.load(); void toggle(); }}><IconRefresh size={15} aria-hidden="true" />重试</button></div>}
   </div>;
 }

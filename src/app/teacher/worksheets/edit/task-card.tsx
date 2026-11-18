@@ -115,9 +115,11 @@ export function TaskCard({
           aria-label={`主题 ${index + 1} 的标题`}
         />
         <label className="worksheet-editor-task-title-visibility">
-          <input type="checkbox" checked={node.data.showTitle !== false}
+          <input type="checkbox" aria-label="学生端显示标题" checked={node.data.showTitle !== false}
             onChange={event => onTitleVisibilityChange(event.target.checked)} />
-          学生端显示标题
+          <span>学生端标题</span>
+          <span className="worksheet-editor-title-switch" aria-hidden="true"><i /></span>
+          <em>{node.data.showTitle !== false ? '显示' : '隐藏'}</em>
         </label>
         {/*
           ★ 2026-09-26（spec 第 4 步）：任务容器要有**自己的身份** —— 折起来时教师只看得见

@@ -131,7 +131,7 @@ function WorksheetEditorBody() {
 
   const [pickerFor, setPickerFor] = useState<{ parentId: string | null } | null>(null);
 
-  const { content, worksheetId, usage, saveStatus, draftFound } = editor;
+  const { content, worksheetId, saveStatus, draftFound } = editor;
   // ★ 2026-09-25：页面只做**哑映射** —— 切段与题号在核心里（纯函数、有测试）。
   const blocks = editorRenderBlocks(content.nodes);
 
@@ -409,16 +409,6 @@ function WorksheetEditorBody() {
     );
   }
 
-  /**
-   * 顶栏那句「被使用时警告」（规格 §6.4）。数字全部来自 `/usage`，
-   * 前端不重新拼「是否在用」这个判据（`used` 已经由服务端算好）。
-   */
-  const usageHead = usage && usage.used
-    ? [
-      usage.classroomCount > 0 ? `本单正在被 ${usage.classroomCount} 堂课使用` : null,
-      usage.responseCount > 0 ? `已收到 ${usage.responseCount} 份作答` : null,
-    ].filter((part): part is string => part !== null).join(' · ') || '本单正在被使用'
-    : null;
 
   const activeQuestion = activeBlock?.questions.find(row => row.node.id === openId) ?? null;
   const renderOutlineRemove = (node: WorksheetQuestionNode, heading: string) => {
@@ -521,27 +511,14 @@ function WorksheetEditorBody() {
           改它要动 `snapshotsOf` 的两半基线，而草稿那条不变量挂在那上面，不值当。
         ⚠️ 高度是实打实的（~70px，常驻）。想再省就得把它收起来，而收起来等于把它藏了 ——
           它的性质与标题一样（不常改，但一打开就该看见）。 */ }
-      <div className="worksheet-editor-note">
-        <label className="worksheet-editor-note-label" htmlFor="worksheet-editor-note-input">
-          <strong>使用说明</strong>
-          <em>仅教师可见，不会出现在学生端</em>
-        </label>
-        <textarea
-          id="worksheet-editor-note-input"
-          className="input"
-          rows={2}
-          value={editor.description}
-          maxLength={2000}
+      <details className="worksheet-editor-note-disclosure">
+        <summary><strong>使用说明</strong><span>{editor.description.trim() ? '已填写' : '选填'}</span><em>仅教师可见</em></summary>
+        <label htmlFor="worksheet-editor-note-input" className="sr-only">使用说明</label>
+        <textarea id="worksheet-editor-note-input" className="input" rows={2}
+          value={editor.description} maxLength={2000}
           onChange={event => editor.setDescription(event.target.value)}
-          placeholder="例如：第 3 课课堂练习，完成后一起讲评。"
-        />
-      </div>
-
-      {usageHead && (
-        <div className="worksheet-editor-banner is-warning" role="status">
-          ⚠ {usageHead} · 学生需刷新或重新进入学习单才能看到新内容
-        </div>
-      )}
+          placeholder="例如：第 3 课课堂练习，完成后一起讲评。" />
+      </details>
 
       {draftFound && (
         <DraftBanner
@@ -1118,7 +1095,6 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
                 都是**提交之后**才起作用的两条规则。 */}
             <div className="worksheet-settings-switches">
             <p className="worksheet-evaluation-help">判分与个人评价由小题用途决定：练习判分、调查收集或表达评价。三种用途均支持教师发起全班整体分析。</p>
-            {settings.autoGrade === false && <p role="status">这份旧学习单曾关闭整单判分。旧题暂沿用原规则；请逐题确认用途，切换后按小题的新设置执行。</p>}
 
             <label className="worksheet-settings-switch">
               <span className="worksheet-settings-switch-icon" aria-hidden="true">↻</span>

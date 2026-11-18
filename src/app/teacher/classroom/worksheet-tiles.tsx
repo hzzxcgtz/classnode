@@ -5,6 +5,7 @@ import { WorksheetStatusIcon } from '@/components/worksheet-status-icon';
 import { IconMicrophone } from '@tabler/icons-react';
 import { answerView } from '@/lib/worksheet-answer-view';
 import { TileAnswerBody } from './tile-answer';
+import type { RewardStyle } from '@/lib/worksheet-reward';
 
 /**
  * 看板格子里**学习单那一格的内容区**（规格 §7.2）。
@@ -98,7 +99,8 @@ function stateTone(state: WorksheetTileState): { background: string; border: str
   return { background: '#f8fafc', border: '1px solid #eef2f6', color: 'var(--text-secondary, #475569)' };
 }
 
-export function WorksheetTileContent({ state, answer, compact, recording = false }: {
+export function WorksheetTileContent({ state, answer, compact, recording = false, rewardStyle }: {
+  rewardStyle?: RewardStyle;
   recording?: boolean;
   state: WorksheetTileState;
   /**
@@ -216,7 +218,7 @@ export function WorksheetTileContent({ state, answer, compact, recording = false
                   </span>
                 </div>
               )}
-              <TileAnswerBody answer={answer} />
+              <TileAnswerBody answer={answer} rewardStyle={rewardStyle} />
             </div>
           )}
         </div>

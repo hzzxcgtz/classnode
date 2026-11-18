@@ -1,3 +1,4 @@
+import { ratingAnswerText } from './worksheet-rating.js';
 import { canvasAnswerEntries } from './worksheet-image-canvas.js';
 import { Document, Packer, Paragraph } from 'docx';
 import type { ClassroomArchiveData } from './classroom-archive-data.js';
@@ -16,6 +17,7 @@ const when = (v: Date | null) => v ? v.toLocaleString('zh-CN', { hour12: false }
 /** Resolve only the student's selected entries; reference answers are never inserted into this document. */
 export function studentAnswerText(value: unknown, node?: QuestionNode): string | null {
   const row = record(value), data = record(node?.data);
+  if (node?.type === 'rating') return ratingAnswerText(data, value);
   const names = (items: unknown) => new Map(array(items).map(record).map(item => [String(item.id ?? item.key), String(item.text ?? item.label ?? '')]));
   const lookup = (items: unknown, id: unknown) => names(items).get(String(id)) || '原条目已无法关联';
   if (row.format === 'order/v1') return array(row.order).map((id, i) => `${i + 1}. ${lookup(data.items, id)}`).join('\n') || '未排列条目';

@@ -138,14 +138,16 @@
 .cloudHeader {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px 16px;
-  padding: 12px 0 4px;
+  gap: 12px 20px;
+  padding: 0;
 }
-
-.boardContent[data-view="cloud"] { padding-top: 12px; }
-.boardContent > .cloudHeader:first-child { padding-top: 0; }
+.cloudIdentity { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-width: 0; }
+.views.resultViews { margin: 0 0 16px; }
+.opinionViews { margin: 0; }
+.resultViews button { min-height: 40px; box-sizing: border-box; padding: 8px 14px; font-size: .875rem; line-height: 1.4; }
+.cloudNote.cloudPolicy { margin: 8px 0 12px; }
 
 .cloudTitle { display: flex; align-items: center; gap: 8px; margin: 0; color: #234c76; font-size: 1rem; font-weight: 700; }
 .cloudNote { margin: 2px 0; color: #496783; font-size: .85em; }
@@ -153,7 +155,10 @@
 .cloudControls {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .cloudNotice {
@@ -172,8 +177,11 @@
 .cloudNotice svg { flex-shrink: 0; color: #537ba2; }
 
 .cloudControls button {
-  padding: 4px 10px;
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 8px 12px;
   font-size: .875rem;
+  line-height: 1.4;
 }
 
 .cloudControls button[aria-pressed="true"] {
@@ -275,6 +283,8 @@
 .projection .cloudTitle { font-size: 1.25em; }
 
 .fontControls {
+  box-sizing: border-box;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -390,3 +400,26 @@
 .canvasSamples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .canvasSamples > div { height: 90px; display: grid; min-width: 0; }
 .canvasSamples button > img { height: 90px; }
+
+.opinionList { list-style: decimal; margin: 16px 0; padding-left: 28px; max-height: 480px; overflow-y: auto; }
+.opinionList li { padding: 0 4px; }
+.opinionList button { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-height: 44px; text-align: left; border: 0; border-bottom: 1px solid #e2e8f0; background: transparent; padding: 10px; color: #334155; cursor: pointer; font: inherit; }
+.opinionList button[aria-pressed='true'] { background: #eef4fb; }
+.opinionList button:focus-visible { outline: 2px solid #527198; outline-offset: -2px; }
+.opinionList strong { white-space: nowrap; font-size: .85em; color: #526780; font-weight: 500; }
+
+.ratingDistributionHeading { max-width: 1000px; margin-inline: auto; justify-content: flex-end; }
+
+.fontControls button { min-height: 36px; height: 36px; padding: 6px 10px; }
+@media (max-width: 760px) {
+  .cloudHeader { flex-direction: column; align-items: stretch; }
+  .cloudControls { justify-content: flex-start; margin-left: 0; }
+}
+
+.board { container-type: inline-size; }
+@container (max-width: 760px) {
+  .cloudHeader { flex-direction: column; align-items: stretch; }
+  .cloudControls { justify-content: flex-start; margin-left: 0; }
+}
+
+.opinionViews > button { min-height: 32px; padding: 6px 12px; font-size: .8125rem; line-height: 1.4; }

@@ -157,6 +157,7 @@ const GRADED: Record<QuestionType, boolean> = {
   'multi-choice': true,
   'fill-blank': true,
   'short-answer': false,
+  'rating': false,
   'image-canvas': false,
   'open-ended': false,
   order: true,
@@ -730,6 +731,7 @@ test('归类：assignment 里的非字符串值不算「落对」（不抛）', 
 
 /** 每个题型的**一份合法数据**（用来把「value 坏掉」与「data 坏掉」分开测）。 */
 const SAMPLE_NODES: Record<QuestionType, QuestionNode> = {
+  rating: question('rating', { rating: { maxStars: 3, dimensions: [{ id: 'overall', text: '整体评价' }] }, evaluationVersion: 1, evaluationMode: 'collect', evaluationScored: false }),
   // ★ 2026-09-25：任务的「一份合法数据」= **一个装着小题的容器**。
   //    ⚠️ 里面必须**真的有**一道小题：`VALIDATORS['task']` 会把空任务判为不合法
   //    （一个空任务在界面上是一块空白，学生端会渲染出只有标题、没东西可答的一段）。

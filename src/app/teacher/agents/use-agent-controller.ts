@@ -20,7 +20,7 @@ export interface RelatedClassroomsState {
 
 export function useAgentController({ onNotice, onDeleteBlocked }: {
   onNotice: (notice: Notice) => void;
-  onDeleteBlocked: (agent: AgentSummary, classrooms: RelatedClassroom[]) => void;
+  onDeleteBlocked: (agent: AgentSummary, classrooms: RelatedClassroom[], worksheets: RelatedWorksheet[]) => void;
 }) {
   const { askConfirmation, confirmationDialog } = useTeacherConfirm();
   const [agents, setAgents] = useState<AgentSummary[]>([]);
@@ -91,7 +91,7 @@ export function useAgentController({ onNotice, onDeleteBlocked }: {
       const usage = await api.checkAgentUsage(agent.id);
       if (usage.used) {
         // 把清单一起交给弹窗 —— 它已经在这个响应里了，不要再发一次请求。
-        if (mountedRef.current) callbacksRef.current.onDeleteBlocked(agent, usage.classrooms);
+        if (mountedRef.current) callbacksRef.current.onDeleteBlocked(agent, usage.classrooms, usage.worksheets);
         return;
       }
       if (!await askConfirmation({

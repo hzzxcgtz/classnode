@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ClassroomStudentSummary, StudentClassroom } from '@/lib/types';
-import { chineseStudentSurname } from '@/lib/student-surname';
+import { studentNameIndex, matchesStudentName } from '@/lib/student-name-index';
 import { SvgAvatar } from '@/components/svg-avatar';
 import { useIsMobile } from '../use-is-mobile';
 import styles from './identity-picker.module.css';
@@ -39,32 +39,28 @@ export function IdentityPicker({
     const isMobile = useIsMobile();
     const [group, setGroup] = useState<ClassroomStudentSummary | null>(null);
     const [returningToGroups, setReturningToGroups] = useState(false);
-    const [surname, setSurname] = useState<string | null>(null);
-    const [showAllSurnames, setShowAllSurnames] = useState(false);
+    const [initial, setInitial] = useState<string | null>(null);
     const listRef = useRef<HTMLDivElement>(null);
     const memberLogin = classroom?.groupLoginMode === 'member';
     const isGroupMode = !group && (classroom?.mode === 'group' || classroom?.mode === 'advanced');
-    const choices = group ? (group.groupMembers ?? []).map(member => ({
+    const choices = useMemo(() => group ? (group.groupMembers ?? []).map(member => ({
       ...group, participantType: 'student' as const, id: member.participantId, studentId: member.studentId, avatarId: member.avatarId,
       groupMemberId: member.id, name: member.name, studentNo: member.studentNo,
-    })) : students;
-    const surnameOf = (name: string) => chineseStudentSurname(name.trim()) ?? '其他';
-    const surnames = !isGroupMode && choices.length > 8
-      ? [...new Set(choices.map(student => surnameOf(student.name)))].sort((a, b) => a.localeCompare(b, 'zh-CN-u-co-pinyin'))
+    })) : students, [group, students]);
+    const nameColumnWidth = Math.min(108, Math.max(54, ...choices.map(s =>
+      Array.from(s.name).reduce((width, char) => width + (/[^\x00-\xff]/.test(char) ? 18 : 10), 0)
+    )));
+    const numberColumnWidth = Math.max(24, ...choices.map(s => s.studentNo ? (String(s.studentNo).length + 1) * 8 : 0));
+    const indexedChoices = useMemo(() => choices.map(student => ({ student, index: studentNameIndex(student.name) })), [choices]);
+    const initials = !isGroupMode && choices.length > 8
+      ? [...new Set(indexedChoices.map(({ index }) => index.initial))].sort((a, b) => a === '#' ? 1 : b === '#' ? -1 : a.localeCompare(b))
       : [];
-    const activeSurname = surnames.includes(surname ?? '') ? surname : null;
-    const surnameColumns = isMobile ? 8 : 10;
-    const collapsedSurnameLimit = surnameColumns * 2 - 2;
-    const hasMoreSurnames = surnames.length > collapsedSurnameLimit + 1;
-    const shownSurnames = hasMoreSurnames && !showAllSurnames
-      ? surnames.filter(value => value !== activeSurname).slice(0, collapsedSurnameLimit - (activeSurname ? 1 : 0))
-        .concat(activeSurname ? [activeSurname] : []).sort((a, b) => surnames.indexOf(a) - surnames.indexOf(b))
-      : surnames;
-    const normalizedIdentitySearch = identitySearch.trim().toLocaleLowerCase('zh-CN');
-    const visibleStudents = choices.filter(student =>
-      (!activeSurname || surnameOf(student.name) === activeSurname) &&
-      (!normalizedIdentitySearch || student.name.toLocaleLowerCase('zh-CN').includes(normalizedIdentitySearch))
-    );
+    const activeInitial = initials.includes(initial ?? '') ? initial : null;
+    const initialColumns = Math.ceil((initials.length + 1) / 2);
+    const visibleStudents = indexedChoices.filter(({ student, index }) =>
+      (!activeInitial || index.initial === activeInitial) &&
+      (isGroupMode ? student.name.toLowerCase().includes(identitySearch.trim().toLowerCase()) : matchesStudentName(index, identitySearch))
+    ).map(({ student }) => student);
     const canConfirm = selectedStudent && visibleStudents.some(student =>
       student.id === selectedStudent.id && student.groupMemberId === selectedStudent.groupMemberId
     );
@@ -108,8 +104,7 @@ export function IdentityPicker({
                       onClick={() => {
                         setReturningToGroups(true);
                         setGroup(null);
-                        setSurname(null);
-                        setShowAllSurnames(false);
+                        setInitial(null);
                         onSelectStudent(null);
                         onIdentitySearchChange('');
                       }}
@@ -141,9 +136,9 @@ export function IdentityPicker({
                 type="text"
                 role="searchbox"
                 value={identitySearch}
-                onChange={(event) => onIdentitySearchChange(event.target.value)}
-                placeholder={isGroupMode ? '搜索小组名称' : '搜索你的姓名'}
-                aria-label={isGroupMode ? '搜索小组名称' : '搜索学生姓名'}
+                onChange={(event) => { setInitial(null); onIdentitySearchChange(event.target.value); if (listRef.current) listRef.current.scrollTop = 0; }}
+                placeholder={isGroupMode ? '搜索小组名称' : '搜索姓名或拼音首字母'}
+                aria-label={isGroupMode ? '搜索小组名称' : '搜索姓名或拼音首字母'}
                 className="input"
                 style={{ paddingLeft: 40, paddingRight: identitySearch ? 72 : 14, minHeight: 44, background: '#f8fafc' }}
               />
@@ -158,32 +153,24 @@ export function IdentityPicker({
               )}
             </div>
           )}
-          {surnames.length > 1 && (
-            <div role="group" aria-label="按姓氏筛选" className="mb-3 grid justify-items-center gap-0.5"
-              style={{ gridTemplateColumns: `repeat(${surnameColumns}, minmax(0, 1fr))`, maxHeight: showAllSurnames ? 116 : undefined, overflowY: showAllSurnames ? 'auto' : undefined }}>
-              {[null, ...shownSurnames].map(value => (
-                <button key={value ?? 'all'} type="button" aria-pressed={value === activeSurname}
-                  disabled={joiningClassroom}
-                  className={`min-h-8 w-full max-w-10 rounded-full px-0.5 text-xs font-medium transition-colors ${value === activeSurname
-                    ? 'bg-indigo-100 text-indigo-800 ring-1 ring-inset ring-indigo-200'
-                    : 'bg-slate-100 text-slate-700 hover:bg-indigo-50'}`}
+          {initials.length > 1 && (
+            <div role="group" aria-label="按姓名拼音首字母筛选" className={styles.initials}
+              style={{ gridTemplateColumns: `repeat(${initialColumns}, minmax(0, 1fr))` }}>
+              {[null, ...initials].map(value => (
+                <button key={value ?? 'all'} type="button" aria-pressed={value === activeInitial}
+                  aria-label={value === null ? '全部姓名' : value === '#' ? '其他姓名' : `姓名首字母 ${value}`}
+                  title={value === null ? '全部姓名' : value === '#' ? '其他姓名' : `姓名首字母 ${value}`}
+                  disabled={joiningClassroom} className={styles.initialButton}
                   onClick={() => {
-                    setSurname(value);
+                    setInitial(value);
                     if (listRef.current) listRef.current.scrollTop = 0;
                   }}>
-                  {value ?? '全部'}
+                  {value === null ? <><span className={styles.allLong}>全部</span><span className={styles.allShort}>全</span></> : value}
                 </button>
               ))}
-              {hasMoreSurnames && (
-                <button type="button" aria-expanded={showAllSurnames} disabled={joiningClassroom}
-                  className="min-h-8 w-full max-w-10 rounded-full bg-indigo-50 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
-                  onClick={() => setShowAllSurnames(value => !value)}>
-                  {showAllSurnames ? '收起' : '更多'}
-                </button>
-              )}
             </div>
           )}
-          <div ref={listRef} style={{ display: isGroupMode ? 'grid' : 'flex', gridTemplateColumns: isGroupMode ? 'repeat(auto-fit, minmax(min(100%, 100px), 1fr))' : undefined, flexDirection: 'column', gap: 8, maxHeight: 'min(400px, calc(100vh - 320px))', overflow: 'auto' }}>
+          <div ref={listRef} className={styles.choiceList} style={{ display: isGroupMode ? 'grid' : 'flex', gridTemplateColumns: isGroupMode ? 'repeat(auto-fit, minmax(min(100%, 100px), 1fr))' : undefined, flexDirection: 'column', gap: 8, maxHeight: 'min(400px, calc(100vh - 320px))', overflow: 'auto' }}>
             {visibleStudents.map((s) => {
               const isOnline = onlineStudentIds.has(s.id);
               const isSelected = selectedStudent?.id === s.id && selectedStudent.groupMemberId === s.groupMemberId;
@@ -191,6 +178,7 @@ export function IdentityPicker({
                 <button key={s.groupMemberId ?? s.id} onClick={() => {
                   if (memberLogin && !group) {
                     setGroup(s);
+                    setInitial(null);
                     onIdentitySearchChange('');
                   } else onSelectStudent(s);
                 }} disabled={isOnline || joiningClassroom}
@@ -199,24 +187,24 @@ export function IdentityPicker({
                   {isGroupMode ? (
                     <span className="max-w-full break-words text-lg font-bold leading-snug text-indigo-950">{s.name}</span>
                   ) : (
-                    <>
-                      <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: s.avatarId && avatarSvgs[s.avatarId] ? 'transparent' : (isOnline ? '#e5e7eb' : isSelected ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#f3f4f6'), color: isOnline ? '#d1d5db' : isSelected ? 'white' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: "1rem" }}>
+                    <span className={styles.personContent} style={{ '--identity-name-width': `${nameColumnWidth}px`, '--identity-number-width': `${numberColumnWidth}px` } as CSSProperties}>
+                      <span style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: s.avatarId && avatarSvgs[s.avatarId] ? 'transparent' : (isOnline ? '#e5e7eb' : isSelected ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#f3f4f6'), color: isOnline ? '#d1d5db' : isSelected ? 'white' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: "1rem" }}>
                         {s.avatarId && avatarSvgs[s.avatarId] ? (
                           <SvgAvatar svg={avatarSvgs[s.avatarId]} size={36} fallback={s.name[0]} />
                         ) : s.name[0]}
-                      </div>
-                      <span className="min-w-0 break-words" style={{ fontSize: '1.125rem', fontWeight: 700, color: isOnline ? '#9ca3af' : '#1a1a2e', lineHeight: 1.35 }}>{s.name}</span>
-                      {s.studentNo && <span className="shrink-0 text-xs font-medium text-slate-500">#{s.studentNo}</span>}
-                    </>
+                      </span>
+                      <span className="min-w-0 break-words" style={{ fontSize: '1.125rem', fontWeight: 700, color: isOnline ? '#9ca3af' : '#1a1a2e', lineHeight: 1.35 }}><span className={/^[\p{Script=Han}]{2}$/u.test(s.name) ? styles.shortName : undefined}>{s.name}</span>{isOnline && <span className={styles.onlineLabel}>已登录</span>}</span>
+                      <span className="shrink-0 text-xs font-medium text-slate-500">{s.studentNo ? `#${s.studentNo}` : ''}</span>
+                    </span>
                   )}
-                  {isOnline && <span style={{ fontSize: "0.688rem", color: '#9ca3af', background: '#f3f4f6', padding: '2px 8px', borderRadius: 10, flexShrink: 0 }}>已登录</span>}
+                  {isOnline && isGroupMode && <span style={{ fontSize: "0.688rem", color: '#9ca3af', background: '#f3f4f6', padding: '2px 8px', borderRadius: 10, flexShrink: 0 }}>已登录</span>}
                 </button>
               );
             })}
             {visibleStudents.length === 0 && (
               <div role="status" style={{ gridColumn: '1 / -1', padding: '36px 20px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: 12, border: '1px dashed #cbd5e1' }}>
                 <div style={{ fontSize: '0.938rem', fontWeight: 600, marginBottom: 4 }}>没有找到匹配结果</div>
-                <div style={{ fontSize: '0.813rem' }}>请调整搜索内容或姓氏筛选</div>
+                <div style={{ fontSize: '0.813rem' }}>请调整搜索内容或首字母筛选</div>
               </div>
             )}
           </div>

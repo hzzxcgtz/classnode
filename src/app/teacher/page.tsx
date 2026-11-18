@@ -49,6 +49,8 @@ export default function TeacherDashboard() {
   } | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [loadingQrClassroomId, setLoadingQrClassroomId] = useState<string | null>(null);
+  const [clearingClassroomId, setClearingClassroomId] = useState<string | null>(null);
+  const clearingRef = useRef(false);
   const [endingClassroomId, setEndingClassroomId] = useState<string | null>(null);
   const [lanAccess, setLanAccess] = useState(true);
   const [networkSaving, setNetworkSaving] = useState(false);
@@ -188,6 +190,24 @@ export default function TeacherDashboard() {
     } finally {
       endingRef.current = false;
       setEndingClassroomId(null);
+    }
+  };
+
+  const clearClassroomData = async (classroom: ActiveClassroom) => {
+    if (clearingRef.current) return;
+    if (!confirm(`清空「${classroom.title || "未命名课堂"}」的全部活动数据？\n\n将清除：学习单作答与评分、AI 分析、对话、通知、批注及互动记录。\n保留：课堂、互动码、名单、学习单和教学材料配置。\n\n此操作不可撤销，已连接的学生需要重新选择姓名。`)) return;
+    clearingRef.current = true;
+    setClearingClassroomId(classroom.id);
+    try {
+      await api.clearClassroomData(classroom.id);
+      setOnlineMap(prev => ({ ...prev, [classroom.id]: 0 }));
+      await loadData();
+      setToast({ msg: "课堂数据已清空，可以重新开展活动", type: "success" });
+    } catch (error) {
+      setToast({ msg: error instanceof Error ? error.message : "清空数据失败", type: "error" });
+    } finally {
+      clearingRef.current = false;
+      setClearingClassroomId(null);
     }
   };
 
@@ -761,25 +781,24 @@ export default function TeacherDashboard() {
                 <div className="active-classroom-actions">
                 {/* 编辑 + 互动码 */}
                 <button onClick={() => openSettings(cr)} title="修改课堂设置"
-                  style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.875rem", background: "transparent", color: 'var(--text-secondary, #475569)', border: "1px solid var(--card-border)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#475569"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  className="active-classroom-action">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   编辑
                 </button>
                 <button onClick={() => void openQrCode(cr)} disabled={loadingQrClassroomId !== null} title="显示互动码"
-                  style={{ padding: "4px 8px", borderRadius: 6, fontSize: "0.875rem", background: "transparent", color: 'var(--text-secondary, #475569)', border: "1px solid var(--card-border)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, transition: "all 0.15s" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "var(--primary)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="17" y="2" width="5" height="5" rx="1"/><rect x="2" y="17" width="5" height="5" rx="1"/><path d="M11 2h2"/><path d="M11 22h2"/><path d="M2 11v2"/><path d="M22 11v2"/><path d="M15 15h2v2h-2z"/><path d="M17 15v-1a2 2 0 0 0-2-2h-1"/><path d="M15 19v1a2 2 0 0 0 2 2h1"/><path d="M19 17h2v2h-2z"/></svg>
+                  className="active-classroom-action">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="17" y="2" width="5" height="5" rx="1"/><rect x="2" y="17" width="5" height="5" rx="1"/><path d="M11 2h2"/><path d="M11 22h2"/><path d="M2 11v2"/><path d="M22 11v2"/><path d="M15 15h2v2h-2z"/><path d="M17 15v-1a2 2 0 0 0-2-2h-1"/><path d="M15 19v1a2 2 0 0 0 2 2h1"/><path d="M19 17h2v2h-2z"/></svg>
                   {loadingQrClassroomId === cr.id ? "加载中..." : "互动码"}
+                </button>
+
+                <button type="button" className="active-classroom-action" onClick={() => void clearClassroomData(cr)} disabled={clearingClassroomId !== null || endingClassroomId !== null} title="清空作答、对话与分析，保留课堂配置">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg>
+                  {clearingClassroomId === cr.id ? "清空中..." : "清空数据"}
                 </button>
 
                 {/* 结束课堂 — 红字轮廓，hover 加强 */}
                 <button onClick={() => void endClassroom(cr)} disabled={endingClassroomId !== null}
-                  style={{ padding: "5px 12px", borderRadius: 6, fontSize: "0.875rem", fontWeight: 500, background: "transparent", color: "#a85d5d", border: "1px solid #fca5a5", cursor: "pointer", lineHeight: 1, transition: "all 0.15s" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#f8eeee"; e.currentTarget.style.color = "#934e4e"; e.currentTarget.style.borderColor = "#f87171"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#a85d5d"; e.currentTarget.style.borderColor = "#fca5a5"; }}>
+                  className="active-classroom-action active-classroom-action-danger">
                   {endingClassroomId === cr.id ? "结束中..." : "结束课堂"}
                 </button>
 

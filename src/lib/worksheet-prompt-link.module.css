@@ -1,0 +1,6 @@
+.link { color: #245990; text-decoration: none; padding: 2px 6px; border: 1px solid #d7e3f0; border-radius: 6px; background: #f1f6fc; line-height: 1.6; overflow-wrap: anywhere; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.link::before { content: ""; display: inline-block; width: 1em; height: 1em; margin-inline-end: .35em; vertical-align: -.14em; background: var(--worksheet-link-icon, url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23527aa4%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M21.44%2011.05l-9.19%209.19a6%206%200%200%201-8.49-8.49l9.19-9.19a4%204%200%200%201%205.66%205.66l-9.2%209.19a2%202%200%200%201-2.83-2.83l8.49-8.48%22%2F%3E%3C%2Fsvg%3E")) center / contain no-repeat; }
+a.link:hover { border-color: #9eb8d5; background: #e8f1fb; }
+a.link:focus-visible { outline: 2px solid #527aa4; outline-offset: 2px; }
+
+.link [data-link-caret] { display: inline; padding: 0; min-width: 0; }

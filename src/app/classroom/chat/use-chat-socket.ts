@@ -191,6 +191,10 @@ export function useChatSocket(options: ChatSocketOptions) {
         optionsRef.current.setStep('identity');
       });
 
+      socket.on('classroom-data-cleared', () => {
+        try { localStorage.removeItem(`chat_session_${optionsRef.current.code}`); } catch {}
+        window.location.reload();
+      });
       socket.on('classroom-ended', () => {
         try { localStorage.removeItem(`chat_session_${optionsRef.current.code}`); } catch {}
         optionsRef.current.setToast({ msg: '课堂已结束', type: 'info' });

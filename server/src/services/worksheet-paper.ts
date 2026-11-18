@@ -1,3 +1,4 @@
+import { ratingDimensionRows, ratingConfig } from './worksheet-rating.js';
 import { analysisRubric } from './analysis-question.js';
 import {
   FILL_BLANK_TEXT,
@@ -322,6 +323,11 @@ function renderQuestion(node: QuestionNode): { body: PaperInline[][]; answer: Pa
     return { body: pool.length > 0 ? [inlineOf(`待选词：${pool.join('　')}`)] : [], answer: inlineOf(blankAnswer(data)), answerNote: null };
   }
 
+  if (node.type === 'rating') {
+    const config = ratingConfig(node.data);
+    return { body: [...ratingDimensionRows(config).map((d) => inlineOf(`${'　'.repeat(d.depth)}${d.text}${d.isLeaf ? `　${'☆'.repeat(config.maxStars)}` : ''}`)),
+      ...(config.commentEnabled ? [inlineOf(config.commentPrompt || '评价与感想'), inlineOf('________________________________')] : [])], answer: [], answerNote: null };
+  }
   if (node.type === 'short-answer') {
     return { body: [], answer: inlineOf(joinAcceptable(acceptableAnswersFor(data, 0))), answerNote: null };
   }

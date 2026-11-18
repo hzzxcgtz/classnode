@@ -2,8 +2,9 @@
 .action,.tools button { display:inline-flex; align-items:center; gap:5px; border:1px solid #cddbe8; background:#f5f9fd; color:#41678e; border-radius:8px; padding:7px 10px; font:inherit; font-size:13px; cursor:pointer; }
 .action:disabled { opacity:.6; cursor:wait; }
 .transcript { margin-top:10px; padding:14px; background:#fff; border:1px solid #d5e1ed; border-radius:10px; }
-.tools { display:flex; gap:8px; align-items:center; flex-wrap:wrap; color:#71849b; font-size:13px; }
-.tools>span { margin-right:auto; }
+.tools { display:flex; gap:8px; align-items:center; flex-wrap:nowrap; color:#71849b; font-size:13px; }
+.tools>span { margin-right:auto; min-width:0; }
+.tools button { flex-shrink:0; margin-left:auto; white-space:nowrap; }
 .transcript p,.full p { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.8; }
 .transcript p { margin:12px 0; color:#2c435e; font-size:15px; }
 .root small,.full small { color:#7a8ca1; font-size:12px; }

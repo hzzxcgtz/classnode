@@ -12,9 +12,9 @@
 .toolbar small { margin-left:auto; color:#7b8da0; font-size:.78rem; }
 .scroll { overflow:auto; max-height:600px; border-top:1px solid #e0e8f0; }
 .table { border-collapse:separate; border-spacing:0; width:100%; text-align:left; table-layout:fixed; }
-.table th,.table td { border-right:1px solid #e3ebf2; border-bottom:1px solid #e3ebf2; padding:12px; width:280px; vertical-align:middle; }
+.table th,.table td { border-right:1px solid #e3ebf2; border-bottom:1px solid #e3ebf2; padding:12px; vertical-align:middle; }
 .table thead th { position:sticky; top:0; z-index:2; background:#f7fafc; font-size:.9rem; }
-.table th:first-child { position:sticky; left:0; z-index:1; width:130px; background:#f7fafc; font-size:.85rem; }
+.table th:first-child { position:sticky; left:0; z-index:1; width:104px; white-space:nowrap; background:#f7fafc; font-size:.85rem; }
 .table thead th:first-child { z-index:3; }
 .table thead th div { display:flex; align-items:center; justify-content:space-between; min-height:28px; }
 .table thead small { font-size:.75rem; color:#8495a7; font-weight:400; }

@@ -225,7 +225,9 @@ test('表达题从手写和照片作答生成观点云，切换输入方式后�
       assert.match(message, /classnode-feedback/);
       assert.doesNotMatch(message, /默认提炼 5～7 条/);
     } else {
-      assert.match(message, /默认提炼 5～7 条/);
+      assert.match(message, /尽可能完整提炼有作答依据的不同观点/);
+      assert.match(message, /单人观点/);
+      assert.match(message, /前10条/);
     }
     return { success: true, content: report };
   });

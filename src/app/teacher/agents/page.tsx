@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { FieldError, Toast, Pagination, TeacherPageHeader, TeacherEmptyState, TeacherLoadingState } from '@/lib/components';
-import type { AgentSummary, PlatformTokenSummary, RelatedClassroom } from '@/lib/types';
+import type { AgentSummary, PlatformTokenSummary, RelatedClassroom, RelatedWorksheet } from '@/lib/types';
 import { api } from '@/lib/api';
 import { tokenExpiryView } from '@/lib/platform-token-expiry';
 import { agentPurposeOf, type AgentPurpose } from '@/lib/agent-purpose';
@@ -29,7 +29,7 @@ export default function AgentsPage() {
   const [toast, setToast] = useState<{ show: boolean; msg: string; type: 'success' | 'error' }>({ show: false, msg: '', type: 'success' });
   const toastTimerRef = useRef<number | null>(null);
   const [errorTip, setErrorTip] = useState<AgentErrorTipData | null>(null);
-  const [deleteBlocked, setDeleteBlocked] = useState<{ agentName: string; classrooms: RelatedClassroom[] } | null>(null);
+  const [deleteBlocked, setDeleteBlocked] = useState<{ agentName: string; classrooms: RelatedClassroom[]; worksheets: RelatedWorksheet[] } | null>(null);
   const [agentSearch, setAgentSearch] = useState('');
   /**
    * ★ 2026-09-25：共享 API Token 的列表。
@@ -56,7 +56,7 @@ export default function AgentsPage() {
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
       toastTimerRef.current = window.setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
     },
-    onDeleteBlocked: (agent, classrooms) => setDeleteBlocked({ agentName: agent.name, classrooms }),
+    onDeleteBlocked: (agent, classrooms, worksheets) => setDeleteBlocked({ agentName: agent.name, classrooms, worksheets }),
   });
 
   useEffect(() => () => {
@@ -290,7 +290,7 @@ export default function AgentsPage() {
         <Pagination current={agentPage} total={filteredAgents.length} pageSize={agentPageSize} pageSizeOptions={[8, 12, 20, 40, 60]} onChange={setAgentPage} onPageSizeChange={setAgentPageSize} />
       )}
 
-      {deleteBlocked && <AgentDeleteBlockedDialog agentName={deleteBlocked.agentName} classrooms={deleteBlocked.classrooms} onClose={() => setDeleteBlocked(null)} />}
+      {deleteBlocked && <AgentDeleteBlockedDialog agentName={deleteBlocked.agentName} classrooms={deleteBlocked.classrooms} worksheets={deleteBlocked.worksheets} onClose={() => setDeleteBlocked(null)} />}
       {relatedClassrooms && (
         <AgentRelatedClassroomsDialog
           agentName={relatedClassrooms.agent.name}

@@ -1,3 +1,4 @@
+import { readRatingAnswer, ratingConfig, type RatingAnswer } from './worksheet-rating.ts';
 import { canvasAnswerFormatMatches, canvasMatchChoices, canvasAnswerMode, canvasAnswerWidgets, canvasRegionNode, deskReviewSettings, readCanvasAnswers, readCanvasMatch, readCanvasStarRating, readDeskRating, readImageCanvas, usesCanvasAnswers, type DeskRating, type CanvasMatchResult, type CanvasStarRating } from './worksheet-image-canvas.ts';
 import type { WorksheetQuestionNode } from './types';
 import { defaultInkBox, inkFormatOf, isInkColor, isInkNode, isInkShapeKind, isInkTextSize, readInkValue, INK_DEFAULT_TEXT_SIZE, INK_STROKE_COLOR } from './worksheet-ink.ts';
@@ -116,6 +117,7 @@ import { blankLayout } from './worksheet-table.ts';
  * 做整行精确匹配，**全部零命中**。
  */
 export type WorksheetAnswerValue =
+  | RatingAnswer
   | CanvasStarRating
   | CanvasMatchResult
   | { format: 'image-canvas/v1'; answers: Record<string, WorksheetAnswerValue> }
@@ -150,6 +152,7 @@ export type WorksheetAnswerValue =
  * 换掉之后教师抽屉里那幅图的宽高比与学生画的那一版不同，而两边都「看起来正常」。
  */
 export type AnswerDraft =
+  | ({ kind: 'rating' } & Omit<RatingAnswer, 'format'>)
   | ({ kind: 'canvas-stars' } & Omit<CanvasStarRating, 'format'>)
   | ({ kind: 'canvas-match' } & Omit<CanvasMatchResult, 'format'>)
   | { kind: 'image-canvas'; answers: Record<string, AnswerDraft> }
@@ -439,6 +442,7 @@ function draftKindOf(node: WorksheetQuestionNode): AnswerDraft['kind'] | null {
  * 屏幕上也不会因此多出任何控件。
  */
 export function emptyDraftFor(node: WorksheetQuestionNode): AnswerDraft {
+  if (node.type === 'rating') return { kind: 'rating', maxStars: ratingConfig(node.data).maxStars, ratings: {}, text: '' };
   if (usesCanvasAnswers(node)) return { kind: 'image-canvas', answers: {} };
   const kind = draftKindOf(node);
   if (kind === 'audio') return { kind: 'audio', url: '', durationMs: 0 };
@@ -502,6 +506,7 @@ export function inkDraftHasContent(draft: InkAnswerDraft): boolean {
 }
 
 export function isDraftEmpty(draft: AnswerDraft): boolean {
+  if (draft.kind === 'rating') return !Object.values(draft.ratings).some(v => Number.isInteger(v) && v >= 1 && v <= draft.maxStars) && !draft.text.trim();
   if (draft.kind === 'canvas-match') return false;
   if (draft.kind === 'canvas-stars') return !readCanvasStarRating({ ...draft, format: 'canvas-stars/v1' });
   if (draft.kind === 'image-canvas') return Object.values(draft.answers).every(isDraftEmpty);
@@ -544,6 +549,7 @@ function valueFromDraft(node: WorksheetQuestionNode, draft: AnswerDraft): Worksh
     return widget ? valueFromDraft(canvasRegionNode(node, widget), draft) : null;
   }
   const type = node.type;
+  if (type === 'rating') return draft.kind === 'rating' ? readRatingAnswer(node.data, { ...draft, format: 'rating/v1' }) : null;
   if (isAudioNode(node)) {
     if (draft.kind !== 'audio' || !WORKSHEET_AUDIO_URL.test(draft.url) || !validAudioDuration(draft.durationMs)) return null;
     const deskRating = readDeskRating(draft.deskRating);
@@ -740,6 +746,10 @@ function reconcileWithNode(node: WorksheetQuestionNode, draft: AnswerDraft): Ans
  * **不抛**。它是渲染路径上的东西，一次 TypeError 会让整个面板白屏。
  */
 export function draftFromValue(node: WorksheetQuestionNode, value: unknown): AnswerDraft {
+  if (node.type === 'rating') {
+    const answer = readRatingAnswer(node.data, value);
+    return answer ? { kind: 'rating', maxStars: answer.maxStars, ratings: answer.ratings, text: answer.text } : emptyDraftFor(node);
+  }
   const widgets = canvasAnswerWidgets(node);
   if (usesCanvasAnswers(node)) {
     const parts = readCanvasAnswers(value);
@@ -748,8 +758,8 @@ export function draftFromValue(node: WorksheetQuestionNode, value: unknown): Ans
     for (const choice of canvas ? canvasMatchChoices(canvas) : []) {
       const result = parts && readCanvasMatch(parts[choice.id]);
       if (result) {
-        const { format: _, ...answer } = result;
-        answers[choice.id] = { kind: 'canvas-match', ...answer };
+        const { targetId, targetNumber, correct, feedback } = result;
+        answers[choice.id] = { kind: 'canvas-match', targetId, targetNumber, correct, feedback };
       }
     }
     for (const widget of widgets) {

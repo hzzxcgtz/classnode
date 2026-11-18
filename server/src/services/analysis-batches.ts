@@ -9,6 +9,8 @@ export type AnalysisBatchSend = (prompt: string, images: Buffer[], audio: Array<
   Promise<{ success: boolean; content?: string; error?: string }>;
 export type ScheduleAnalysisBatch = <T>(batch: AnalysisBatch, work: (send: AnalysisBatchSend) => Promise<T>) => Promise<T>;
 
+const CLASS_BATCH_RESPONSE_LIMIT = 12;
+
 /** Bound each request by both number of works and the size of its attachments/text. */
 export function splitClassBatches(entries: AnalyzeEntry[]): AnalyzeEntry[][] {
   const batches: AnalyzeEntry[][] = [];
@@ -19,7 +21,7 @@ export function splitClassBatches(entries: AnalyzeEntry[]): AnalyzeEntry[][] {
     const duration = entry.kind === 'audio' ? entry.durationMs ?? 0 : entry.fillAudios?.reduce((sum, clip) => sum + clip.durationMs, 0) ?? 0;
     const files = clips + Number(entry.kind === 'photo' || entry.kind === 'ink');
     const length = entry.text?.length ?? 0;
-    if (batch.length && (batch.length >= 24 || attachments + files > 6 || audioCount + clips > 5
+    if (batch.length && (batch.length >= CLASS_BATCH_RESPONSE_LIMIT || attachments + files > 6 || audioCount + clips > 5
       || audioMs + duration > 180_000 || chars + length > 18_000)) {
       batches.push(batch);
       batch = [];

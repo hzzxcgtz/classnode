@@ -1355,6 +1355,7 @@ function ClassroomBoardContent() {
 
     const unsub5 = on('classroom-paused', () => setPaused(true));
     const unsub6 = on('classroom-resumed', () => setPaused(false));
+    const unsubCleared = on('classroom-data-cleared', () => window.location.reload());
     const unsub7 = on('classroom-ended', () => {
       setToast({ msg: '课堂已结束', type: 'success' });
       router.push('/teacher');
@@ -1458,7 +1459,7 @@ function ClassroomBoardContent() {
       setWorksheetOpen((prev) => ({ ...prev, [worksheetId]: questionIds }));
     });
 
-    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsubMaterials?.(); unsub16?.(); unsub18?.(); unsub19?.(); unsub20?.(); unsubImageOrientation?.(); };
+    return () => { window.clearTimeout(initialLoadTimer); unsub1?.(); unsub2?.(); unsub3?.(); unsubDeepThink?.(); unsub4?.(); unsub5?.(); unsub6?.(); unsub7?.(); unsubCleared?.(); unsub8?.(); unsub9?.(); unsub10?.(); unsub11?.(); unsub12?.(); unsub13?.(); unsub14?.(); unsub15?.(); unsubMaterials?.(); unsub16?.(); unsub18?.(); unsub19?.(); unsub20?.(); unsubImageOrientation?.(); };
   }, [id, joinTeacherBoard, on, loadClassroom, router]);
 
   const openStudentDrawer = async (student: StudentSummary) => {
@@ -2008,41 +2009,6 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
   };
 
   /**
-   * 格子内容区那行小字：这个学生**实际**在哪个模块（「当前位置」）。
-   *
-   * 🔴 只在「固定」模式下出现。跟随模式下格子的模块就是这个学生的实际位置
-   * （同一个来源 `resolveStudentFocus`），写出来只是把同一件事说两遍；小组格的逐人差异
-   * 也已经由 `mixed` 分支列出来了。固定模式下则不然：教师选的是「探究空间」，而某个
-   * 学生可能正待在「学习单」里 —— 格子上显示的是等待画面，这行小字是唯一告诉教师
-   * 「他在哪儿」的东西（用户 2026-09-23 的截图批注：箭头指向格子空白处）。
-   *
-   * 学生格说他自己在哪；小组格只列**不在**指定模块里的那些人，都在就不显示
-   * （否则「3 人都在探究空间」会盖在每一格上，那是噪音，不是信息）。
-   */
-  const tileLocationNote = (module: GroupTileModule, members: ClassroomCardStudent[]): string | null => {
-    if (boardMode !== 'assign') return null;
-    if (members.length === 0) return null;
-    // 学生格（含只有 1 人的小组）：他自己的实际位置。
-    if (members.length === 1) {
-      const actual = resolveStudentFocus(members[0].id);
-      if (actual === module) return null;
-      // `unknown` 在 `moduleLabelOf` 里是「…」（给格子标题用的），这句话里要说清楚。
-      return actual === 'unknown' ? '位置未知' : `实际在：${moduleLabelOf(actual)}`;
-    }
-    // 小组格：按实际位置归类。
-    const tally = new Map<TileModule, number>();
-    for (const member of members) {
-      const actual = resolveStudentFocus(member.id);
-      if (actual === module) continue;
-      tally.set(actual, (tally.get(actual) ?? 0) + 1);
-    }
-    if (tally.size === 0) return null;
-    const parts = [...tally.entries()].map(([actual, count]) =>
-      `${actual === 'unknown' ? '位置未知' : moduleLabelOf(actual)} ${count}`);
-    return `实际：${parts.join('、')}`;
-  };
-
-  /**
    * 三件套各几人（+ 首页 / 未知）。
    *
    * ★ 2026-09-29（教师批注 ③）：「这里显示的人数应该是指**当前正处在这个页面中的
@@ -2470,6 +2436,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
         // 表现是「同一格上写了两个不同的数」，而屏幕上不报错。
         return (
           <WorksheetTileContent
+            rewardStyle={worksheet ? wb.settingsByWorksheet[worksheet.id]?.rewardStyle : undefined}
             recording={Boolean(recording)}
             state={state}
             // ★ 2026-09-28（教师）：下方那一块 ——「学生此刻正在做的那一题」的实时作答。
@@ -2519,24 +2486,7 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       }
     })();
 
-    // 「当前所在位置」那行小字。只在固定模式下、且与该格显示的模块不同时出现 ——
-    // 判断全在 `tileLocationNote` 里，两处看板（主看板 / 全屏）共用这一个出口。
-    const locationNote = tileLocationNote(module, members);
-    if (!locationNote) return content;
-    return (
-      <>
-        <div title="该学生此刻实际所在的模块（固定模式下与他被指定的可能不同）"
-          style={{
-            flexShrink: 0, padding: compact ? '2px 6px' : '3px 8px', borderRadius: compact ? 4 : 6,
-            background: '#f8fafc', border: '1px solid #eef2f6',
-            fontSize: "0.75rem", color: 'var(--text-secondary)', lineHeight: 1.4,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-          {locationNote}
-        </div>
-        {content}
-      </>
-    );
+    return content;
   };
 
   // 投屏轮次预计算

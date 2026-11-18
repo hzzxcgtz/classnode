@@ -1,8 +1,10 @@
 'use client';
 
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { IconArrowRight, IconChartBar, IconChevronDown, IconDeviceDesktop, IconMessages, IconSparkles } from '@tabler/icons-react';
+import { IconChartBar, IconChevronDown, IconDeviceDesktop, IconMessages, IconSparkles } from '@tabler/icons-react';
 import type { WorksheetQuestionNode } from '@/lib/types';
+import type { RewardStyle } from '@/lib/worksheet-reward';
+import { ratingConfig } from '@/lib/worksheet-rating';
 import { aiEvaluationEnabled, hasEvaluation } from '@/lib/worksheet-evaluation';
 import { readAnswerSets } from '@/lib/worksheet-answer-view';
 import { fillSettingsFor } from '@/lib/worksheet-fill-modes';
@@ -13,12 +15,15 @@ import { AnswerViewBody } from './answer-view';
 import { AnswerPhoto, ClassroomImagePreviewContext } from './answer-photo';
 import { InkPreview } from './ink-preview';
 import { canvasRegionStats, type Bar, type QuestionDistribution, type QuestionStats, type StatsRow } from './worksheet-question-stats';
+import { rankedOpinions, OPINION_CLOUD_LIMIT } from '@/lib/opinion-views';
+import { RatingDistributionTable } from './rating-distribution';
+import { RatingTileResult } from './rating-tile-result';
 import { OpinionCloud } from './opinion-cloud';
 import styles from './collection-results.module.css';
 import boardStyles from './question-stats-overlay.module.css';
 
 export function isCollectionQuestion(node: WorksheetQuestionNode): boolean {
-  if (node.type === 'image-canvas') return true;
+  if (node.type === 'image-canvas' || node.type === 'rating') return true;
   if (node.type === 'fill-blank' || node.type === 'choice-blank') {
     const slots = fillSettingsFor(node, readPromptRuns(node.data.promptRuns, node.prompt));
     const answers = readAnswerSets(node.data.answers);
@@ -35,11 +40,11 @@ export function isCollectionQuestion(node: WorksheetQuestionNode): boolean {
   return node.autoGrade === false || node.type === 'short-answer' || node.type === 'open-ended' || node.type === 'drawing';
 }
 
-type View = 'distribution' | 'cloud' | 'answers';
-const VIEW_LABELS: Record<View, string> = { distribution: '作答分布', cloud: '观点云', answers: '原答' };
+type View = 'distribution' | 'cloud';
+const VIEW_LABELS: Record<View, string> = { distribution: '作答分布', cloud: '观点云' };
 
 export function isExpressionQuestion(node: WorksheetQuestionNode): boolean {
-  return node.type === 'short-answer' || node.type === 'open-ended';
+  return node.type === 'short-answer' || node.type === 'open-ended' || (node.type === 'rating' && ratingConfig(node.data).commentEnabled);
 }
 
 function Bars({ bars, total, unit }: { bars: Array<Bar & { steps?: string[] }>; total: number; unit: string }) {
@@ -58,8 +63,9 @@ function Bars({ bars, total, unit }: { bars: Array<Bar & { steps?: string[] }>; 
   })}</ul>;
 }
 
-export function CollectionResults({ node, stats, rows, unit, analysisState, onOpenStudent, renderMatrix, cloudOnly = false }: {
+export function CollectionResults({ node, stats, rows, unit, rewardStyle, analysisState, renderMatrix, cloudOnly = false }: {
   node: WorksheetQuestionNode;
+  rewardStyle?: RewardStyle;
   stats: QuestionStats;
   rows: ReadonlyArray<StatsRow | undefined>;
   unit: string;
@@ -77,18 +83,17 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
     setCloudReport({ revision: reportRevision, phrases });
   }
   const reportPhrases = cloudReport.revision === reportRevision ? cloudReport.phrases : phrases;
-  const sharedPhrases = useMemo(() => (reportPhrases ?? [])
-    .filter(({ studentIds }) => studentIds.length >= 2)
-    .slice(0, 10), [reportPhrases]);
+  const allPhrases = useMemo(() => rankedOpinions(reportPhrases ?? []), [reportPhrases]);
+  const sharedPhrases = allPhrases.slice(0, OPINION_CLOUD_LIMIT);
+  const [opinionView, setOpinionView] = useState<'cloud' | 'list'>('cloud');
   const distribution = stats.distribution;
   const canvas = node.type === 'image-canvas';
   const regions = useMemo(() => canvasRegionStats(node, rows), [node, rows]);
   const views: View[] = [];
   if (canvas || (!cloudOnly && distribution && !['text', 'ink'].includes(distribution.kind))) views.push('distribution');
   if (isExpressionQuestion(node)) views.push('cloud');
-  if (!cloudOnly && !canvas) views.push('answers');
   const [selectedPhrase, setSelectedPhrase] = useState<string | null>(null);
-  const phraseEvidence = sharedPhrases.find(phrase => phrase.phrase === selectedPhrase);
+  const phraseEvidence = allPhrases.find(phrase => phrase.phrase === selectedPhrase);
   const examples = phraseEvidence ? submitted.filter(row => phraseEvidence.studentIds.includes(row.participantId)) : [];
   const [selected, setSelected] = useState<View | null>(null);
   const [projecting, setProjecting] = useState(false);
@@ -118,11 +123,9 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
           </h3>
           <span className={styles.submission}>已提交 <strong>{stats.submitted} / {stats.total}</strong> {unit}</span>
         </div>
-        {!canvas && view !== 'cloud' && projectionButton}
       </header>}
-      {presentation && view !== 'cloud' && <div className={styles.projectionActions}>{projectionButton}</div>}
       <div className={presentation ? styles.projectionContent : styles.boardContent} data-view={view}>
-        {views.length > 1 && <div role="group" aria-label="结果展示方式" className={styles.views}>
+        {!presentation && views.length > 1 && <div role="group" aria-label="结果展示方式" className={`${styles.views} ${styles.resultViews}`}>
           {views.map(key => <button type="button" key={key} aria-pressed={view === key} onClick={() => setSelected(key)}
             className={`btn ${view === key ? 'btn-primary' : 'btn-secondary'}`}>{VIEW_LABELS[key]}</button>)}
         </div>}
@@ -153,10 +156,11 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
           </section>)}
         </div>}
         {view === 'distribution' && !canvas && submitted.length > 0 && <>
-          <div className={styles.distributionHeading}>
-            <h4>{distribution?.kind === 'order' ? '最常见的排序组合' : '作答分布'}</h4>
-            <p>按已提交的 {stats.submitted} {unit}计算比例{isMultipleChoice(node) ? '，多选题各项独立统计' : ''}</p>
+          <div className={`${styles.distributionHeading} ${node.type === 'rating' ? styles.ratingDistributionHeading : ''}`}>
+            {distribution?.kind === 'order' && <h4>最常见的排序组合</h4>}
+            <p>{node.type === 'rating' ? '各维度按实际评价人数计算，未评价不计入平均值。' : <>按已提交的 {stats.submitted} {unit}计算比例{isMultipleChoice(node) ? '，多选题各项独立统计' : ''}</>}</p>
           </div>
+          {distribution?.kind === 'rating' && <RatingDistributionTable rewardStyle={rewardStyle} data={distribution} max={ratingConfig(node.data).maxStars} unit={unit} />}
           {distribution?.kind === 'options' && <Bars bars={distribution.bars} total={stats.submitted} unit={unit} />}
           {distribution?.kind === 'order' && <Bars bars={distribution.topOrders} total={stats.submitted} unit={unit} />}
           {distribution?.kind === 'blanks' && distribution.blanks.map(blank => <section key={blank.label}>
@@ -167,12 +171,15 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
         </>}
         {view === 'cloud' && <>
           <div className={styles.cloudHeader}>
-            <div>
-              <h4 className={styles.cloudTitle}><IconMessages size={22} aria-hidden="true" />观点云</h4>
-              {!presentation && sharedPhrases.length > 0 && <p className={styles.cloudNote}>AI 归纳相近作答</p>}
+            <div className={styles.cloudIdentity}>
+              {(presentation || cloudOnly || views.length <= 1) && <h4 className={styles.cloudTitle}><IconMessages size={22} aria-hidden="true" />观点云</h4>}
+              {sharedPhrases.length > 0 && <div role="group" aria-label="观点展示方式" className={`purpose-segmented-control ${styles.opinionViews}`}>
+                <button type="button" className={opinionView === 'cloud' ? 'is-selected' : ''} aria-pressed={opinionView === 'cloud'} onClick={() => setOpinionView('cloud')}>观点云 · 前{sharedPhrases.length}条</button>
+                <button type="button" className={opinionView === 'list' ? 'is-selected' : ''} aria-pressed={opinionView === 'list'} onClick={() => setOpinionView('list')}>全部观点 · {allPhrases.length}条</button>
+              </div>}
             </div>
             <div className={styles.cloudControls} role="group" aria-label="观点云展示操作">
-              {sharedPhrases.length > 0 && <>
+              {sharedPhrases.length > 0 && opinionView === 'cloud' && <>
                 <div className={styles.fontControls} role="group" aria-label="观点字号">
                   <button type="button" className="btn btn-secondary" aria-label="缩小观点字号" disabled={fontScale <= 70}
                     onClick={() => setFontScale(value => Math.max(70, value - 10))}>A−</button>
@@ -188,14 +195,20 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
               {projectionButton}
             </div>
           </div>
+          {!presentation && sharedPhrases.length > 0 && <p className={`${styles.cloudNote} ${styles.cloudPolicy}`}>按提及人数排序，不评价观点好坏</p>}
           {sharedPhrases.length ? <>
             {analysisState.payload?.stale && <p className={styles.cloudNote}>当前显示上次分析的观点云。重新生成班级分析后可更新。</p>}
-            <OpinionCloud phrases={sharedPhrases} presentation={presentation} fontScale={fontScale}
+            {opinionView === 'list' ? <ol className={styles.opinionList}>
+              {allPhrases.map(item => <li key={item.phrase}><button type="button" aria-pressed={selectedPhrase === item.phrase}
+                onClick={() => setSelectedPhrase(selectedPhrase === item.phrase ? null : item.phrase)}>
+                <span>{item.phrase}</span><strong>{item.studentIds.length} {unit}</strong>
+              </button></li>)}
+            </ol> : <OpinionCloud phrases={sharedPhrases} presentation={presentation} fontScale={fontScale}
               showCounts={showCounts} layoutSeed={layoutSeed}
-              selectedPhrase={presentation ? undefined : selectedPhrase}
-              onSelectPhrase={presentation ? undefined : setSelectedPhrase} />
+              selectedPhrase={selectedPhrase}
+              onSelectPhrase={setSelectedPhrase} />}
             {!presentation && <p className={styles.cloudNote}>点击一个观点，查看相关作答。</p>}
-            {!presentation && phraseEvidence && <details open key={phraseEvidence.phrase} className={styles.cloudEvidence}>
+            {phraseEvidence && <details open key={phraseEvidence.phrase} className={styles.cloudEvidence}>
               <summary className={styles.cloudEvidenceHeading}>
                 <strong>{phraseEvidence.phrase}</strong>
                 <span className={styles.cloudEvidenceCount}>{phraseEvidence.studentIds.length} 份作答</span>
@@ -208,9 +221,9 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
                   <div className={styles.cloudEvidenceTrack} tabIndex={0} role="region" aria-label="相关学生作答，可横向滚动">
                     {examples.map((row, index) => <article key={row.participantId} className={styles.cloudEvidenceCard}>
                       <header><span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><h5>{row.participantName}</h5></header>
-                      <div className={styles.cloudAnswer}><AnswerViewBody node={answerNode} value={row.value} neutral /></div>
-                      {onOpenStudent && <button type="button" className="btn btn-secondary" onClick={() => onOpenStudent(row.participantId)}
-                        aria-label={`查看${row.participantName}的作答详情`}>查看作答 <IconArrowRight size={15} aria-hidden="true" /></button>}
+                      <div className={styles.cloudAnswer}>{node.type === 'rating'
+                        ? <RatingTileResult node={node} value={row.value} rewardStyle={rewardStyle} />
+                        : <AnswerViewBody node={answerNode} value={row.value} neutral />}</div>
                     </article>)}
                   </div>
                   {examples.length < phraseEvidence.studentIds.length && <p>当前可查看 {examples.length} 份作答。</p>}
@@ -225,25 +238,18 @@ export function CollectionResults({ node, stats, rows, unit, analysisState, onOp
                   ? presentation ? '完成全班分析后，就能在这里看到同学们的共同观点。'
                     : '在下方生成全班分析后，就能在这里看到同学们的共同观点。'
                   : '等同学们提交作答后，生成全班分析即可查看观点云。'
-                : reportPhrases ? '这次分析还没有发现至少两份作答共有的观点。'
+                : reportPhrases ? '这次分析尚未提炼出有作答依据的观点。'
                 : '这份分析暂无观点云，更新全班分析后即可重新整理。'}</span>
           </div>}
         </>}
-        {view === 'answers' && submitted.length > 0 && <div className={styles.cards}>
-          {submitted.map((row, index) => <article key={row.participantId}>
-            <h4>{presentation ? `作答 ${index + 1}` : row.participantName}</h4>
-            <AnswerViewBody node={answerNode} value={row.value} neutral />
-            {!presentation && onOpenStudent && <button type="button" className="btn btn-secondary"
-              onClick={() => onOpenStudent(row.participantId)}>查看作答详情</button>}
-          </article>)}
-        </div>}
+
       </div>
     </>;
   }
 
   return <section className={styles.board}>
     {!projecting && renderContent(false)}
-    {!canvas && <dialog ref={dialog} className={styles.projection} data-view={view} aria-label={view === 'cloud' ? '观点云投屏' : '信息收集结果投屏'} onKeyDown={event => {
+    {view === 'cloud' && <dialog ref={dialog} className={styles.projection} data-view={view} aria-label="观点云投屏" onKeyDown={event => {
         if (event.key === 'Escape') event.stopPropagation();
       }} onClose={() => {
         setProjecting(false);

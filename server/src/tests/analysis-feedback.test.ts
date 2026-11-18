@@ -86,3 +86,13 @@ test('独立返回的词云 JSON 可与反馈块共存，也能从已保存正�
   assert.doesNotMatch(parsed.narrative, /wordCloud|```/);
   assert.deepEqual(parseAnalysisFeedback(parsed.narrative + '\n' + cloud, entries, true).feedback.wordCloud, expected);
 });
+
+test('完整观点保存和读回超过十条，合并重复观点的人数并保留单人观点', () => {
+ const output=raw({wordCloud:[...Array.from({length:16},(_,i)=>({phrase:`课堂观点${i}`,students:['张伟#1']})),{phrase:'课堂观点15',students:['张伟#2','张伟#2']}]});
+ const parsed=parseAnalysisFeedback(output,entries,true).feedback;
+ assert.equal(parsed.wordCloud?.length,16);
+ assert.deepEqual(parsed.wordCloud?.[0],{phrase:'课堂观点15',studentIds:['a','b']});
+ assert.equal(parsed.wordCloud?.[1].studentIds.length,1);
+ const stored=readAnalysisFeedback({analysisFeedback:parsed},['a','b']);
+ assert.deepEqual(stored?.wordCloud,parsed.wordCloud);
+});

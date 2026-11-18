@@ -1,0 +1,11 @@
+.result { container-type: inline-size; min-width: 0; color: #334155; }
+.ratings { display: grid; grid-template-columns: minmax(0, 1fr); margin: 0; gap: 0 14px; }
+.item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px solid #dbe5df80; font-size: .6875rem; line-height: 1.4; }
+.item dt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item dd { display: flex; align-items: center; gap: 4px; margin: 0; white-space: nowrap; color: #52657a; font-variant-numeric: tabular-nums; }
+.item b { font-weight: 600; color: #334155; }
+.missing { margin-top: 4px; font-size: .6875rem; color: #718196; }
+.comment { margin-top: 7px; }
+.label { margin-bottom: 3px; font-size: .6875rem; color: #718196; font-weight: 500; }
+.text { font-size: .75rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+@container (min-width: 240px) { .ratings { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

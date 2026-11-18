@@ -13,6 +13,7 @@ import {
   TRUE_FALSE_OPTIONS,
   type WorksheetEntry,
 } from '../../../lib/worksheet-questions.ts';
+import { ratingConfig, ratingDimensionRows, readRatingAnswer } from '../../../lib/worksheet-rating.ts';
 import { readPairs, readPlacement } from '../../../lib/worksheet-answer-view.ts';
 import { readInkValue, type InkValue } from '../../../lib/worksheet-ink.ts';
 import { isGradedType, rowVerdict } from './worksheet-drawer-state.ts';
@@ -58,6 +59,7 @@ export interface MatrixCell {
 }
 
 export type QuestionDistribution =
+  | { kind: 'rating'; dimensions: Array<{ id: string; label: string; depth?: number; isLeaf?: boolean; count: number; average: number | null; bars: Bar[] }> }
   /** 单选 / 多选 / 判断：逐选项 + （多选）选答组合。 */
   | { kind: 'options'; bars: Bar[]; combos: Bar[] }
   /** 填空（含表格）：逐空的高频答案。 */
@@ -298,6 +300,16 @@ function buildDistribution(
   node: Parameters<typeof draftFromValue>[0],
   submittedRows: ReadonlyArray<StatsRow>,
 ): QuestionDistribution {
+  if (node.type === 'rating') {
+    const config = ratingConfig(node.data);
+    const answers = submittedRows.map(row => readRatingAnswer(node.data, row.value));
+    return { kind: 'rating', dimensions: ratingDimensionRows(config).map((d, i) => {
+      const values = answers.flatMap(answer => answer?.ratings[d.id] ? [answer.ratings[d.id]] : []);
+      return { id: d.id, depth: d.depth, isLeaf: d.isLeaf, label: d.text || `评价维度 ${i + 1}`, count: values.length,
+        average: values.length ? values.reduce((sum, n) => sum + n, 0) / values.length : null,
+        bars: Array.from({ length: config.maxStars }, (_, index) => ({ label: `${index + 1} / ${config.maxStars}`, count: values.filter(n => n === index + 1).length })) };
+    }) };
+  }
   if (submittedRows.length === 0) return null;
 
   // ── 选项族（单选 / 多选 / 判断）──────────────────────────────────────

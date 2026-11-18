@@ -393,6 +393,7 @@ test('🔴 每个题型在抽屉里都「有话说」—— 没有哪个题型�
         strokes: [{ color: '#1f2937', width: 0.016, points: [[0.5, 0.5]] as [number, number][] }],
       },
     },
+    rating: { node: node({ id: 'rating_sample', type: 'rating', data: { rating: { maxStars: 3, dimensions: [{ id: 'a', text: '清晰程度' }] } } }), value: { format: 'rating/v1', maxStars: 3, ratings: { a: 2 }, text: '' } },
   };
 
   for (const option of QUESTION_TYPE_OPTIONS) {
@@ -735,6 +736,7 @@ const EXPECTED_GRADED: Record<QuestionType, boolean> = {
   // ★ 2026-09-26：选择填空**判分**（与填空题共用判分器）。
   'choice-blank': true,
   'short-answer': false,
+  'rating': false,
   'image-canvas': false,
   'open-ended': false,
   // ★ M4b：`drawing: false` **是有意的决定，不是补测试** —— 手写 / 绘图不参与自动判分

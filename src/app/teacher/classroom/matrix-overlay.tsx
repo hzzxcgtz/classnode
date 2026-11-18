@@ -332,6 +332,7 @@ export function MatrixOverlay({
                   worksheetId={selectedQuestionTarget.worksheetId}
                   questionId={selectedQuestionTarget.questionId}
                   nodesByWorksheet={nodesByWorksheet}
+                  rewardStyle={settingsByWorksheet[selectedQuestionTarget.worksheetId]?.rewardStyle}
                   embedded
                   onClose={() => {}}
                   onOpenStudent={id => openParticipant(id, selectedQuestionTarget.questionId)}

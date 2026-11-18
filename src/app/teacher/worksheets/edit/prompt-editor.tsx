@@ -1,8 +1,10 @@
 'use client';
 
 import { createPortal } from 'react-dom';
+import { WORKSHEET_LINK_ICONS, normalizeWorksheetLinkIcon, worksheetLinkIconImage, type WorksheetLinkIcon } from '@/lib/worksheet-link-icons';
+import { rememberTextColor, useRecentTextColors } from './use-recent-text-colors';
 import { IconArrowLeft, IconArrowRight, IconLink, IconTrash } from '@tabler/icons-react';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 import {useImageUpload, ImageDropOverlay} from './use-image-upload';
 import type { WorksheetQuestionNode } from '@/lib/types';
@@ -85,6 +87,11 @@ import { MathInsertDialog } from './math-insert-dialog';
  */
 export interface PromptEditorProps {
   heading?: ReactNode;
+  basicFormatting?: boolean;
+  /** Undefined keeps the inline bar; null hides it; a host shares the existing selection controls. */
+  toolbarTarget?: HTMLElement | null;
+  onEditingFocus?: () => void;
+  fieldLabel?: string;
   node: WorksheetQuestionNode;
   /**
    * ★ 2026-09-26：`data` 补丁与题干**同一次**提交 —— 一个按键只进一格撤销栈。
@@ -205,7 +212,7 @@ function selectedCellRange(root: HTMLElement | null) {
   return {el,row:Number(td.dataset.tableRow),col:Number(td.dataset.tableCol),from:range?.from??caret!,to:range?.to??caret!};
 }
 
-export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRequestPaste, onTableMarkClick, onNotice, onBlankSelect, selectedBlankId, blankInspector, tableEditor, descriptionOnly = false }: PromptEditorProps) {
+export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRequestPaste, onTableMarkClick, onNotice, onBlankSelect, selectedBlankId, blankInspector, tableEditor, descriptionOnly = false, basicFormatting = false, toolbarTarget, onEditingFocus, fieldLabel = '任务描述' }: PromptEditorProps) {
   const supportsBlankSlots = !descriptionOnly && hasPromptBlankSlots(node.type);
   /**
    * ★ 2026-09-29（教师）：「增加选择、判断、填空、排序题型的剪贴板粘贴导入功能」。
@@ -231,7 +238,9 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
    * 这一串字，而要选的是**颜色**（2026-09-26 教师原话：「图中右侧的色彩圆放到下拉列表里，
    * 让人在选的时候就能看到实际颜色」）。要让它看得见，只能自己画。
    */
+  const recentColors = useRecentTextColors();
   const [colorOpen, setColorOpen] = useState(false);
+  useEffect(() => { if (toolbarTarget === null) setColorOpen(false); }, [toolbarTarget]);
   const [customColor,setCustomColor]=useState(DEFAULT_PROMPT_STYLE.color);
   /**
    * ★ 2026-09-30：「插入公式」那个弹窗开着没有。
@@ -248,6 +257,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
     to: number;
     name: string;
     address: string;
+    icon: WorksheetLinkIcon;
     error?: string;
   } | null>(null);
   const [tablePicker, setTablePicker] = useState(false);
@@ -256,7 +266,17 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
   const draggedBlank = useRef<{ nodeId: string; id: string } | null>(null);
   const [tableRows, setTableRows] = useState(3);
   const [tableCols, setTableCols] = useState(3);
+  const colorMenuRef = useRef<HTMLDivElement | null>(null);
   const colorBoxRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    const menu = colorMenuRef.current;
+    const box = colorBoxRef.current;
+    if (!colorOpen || !menu || !box) return;
+    const left = box.getBoundingClientRect().left;
+    const width = menu.getBoundingClientRect().width;
+    menu.style.left = `${Math.max(12 - left, Math.min(0, document.documentElement.clientWidth - 12 - width - left))}px`;
+  }, [colorOpen]);
 
   const runs = readPromptRunsFor(node);
   const imageUrl = readPromptImage(node);
@@ -413,16 +433,17 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
       const href = currentRuns[linkIndex].href!;
       let first = linkIndex;
       let last = linkIndex;
-      while (currentRuns[first - 1]?.href === href) first--;
-      while (currentRuns[last + 1]?.href === href) last++;
+      const icon = normalizeWorksheetLinkIcon(currentRuns[linkIndex].linkIcon);
+      while (currentRuns[first - 1]?.href === href && normalizeWorksheetLinkIcon(currentRuns[first - 1]?.linkIcon) === icon) first--;
+      while (currentRuns[last + 1]?.href === href && normalizeWorksheetLinkIcon(currentRuns[last + 1]?.linkIcon) === icon) last++;
       if (to <= currentRuns[last].end) {
         const start = currentRuns[first].start;
         const end = currentRuns[last].end;
-        setLinkDraft({ from: start, to: end, name: node.prompt.slice(start, end), address: href });
+        setLinkDraft({ from: start, to: end, name: node.prompt.slice(start, end), address: href, icon });
         return;
       }
     }
-    setLinkDraft({ from, to, name: node.prompt.slice(from, to), address: '' });
+    setLinkDraft({ from, to, name: node.prompt.slice(from, to), address: '', icon: 'attachment' });
   };
 
   const closeLink = (from: number, to: number) => {
@@ -438,8 +459,8 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
   const saveLink = () => {
     const el = editableRef.current;
     if (!el || !linkDraft) return;
-    const { from, to, name, address } = linkDraft;
-    const next = insertPromptLink(runsRef.current, node.prompt, from, to, name, address);
+    const { from, to, name, address, icon } = linkDraft;
+    const next = insertPromptLink(runsRef.current, node.prompt, from, to, name, address, icon);
     if (!next) {
       const error = !normalizePromptLink(address)
         ? '请输入以 https:// 或 http:// 开头的有效网址。'
@@ -637,6 +658,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
       const table=readTableFor(node),cell=table?.rows[target.row]?.[target.col];
       if(!table || !cell || target.to<=target.from)return;
       const nextRuns=setStyleOnRange(cellTextRuns(cell),cell.text,target.from,target.to,patch);
+      if (patch.color) rememberTextColor(patch.color);
       onDataChange({table:setCellContent(table,target.row,target.col,cell.text,nextRuns)});
       renderRunsInto(target.el,cell.text,nextRuns);target.el.focus();placeSelection(target.el,target.from,target.to);
       setColorOpen(false);refreshToolbar();return;
@@ -649,6 +671,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
       setToolbar(NO_SELECTION);
       return;
     }
+    if (patch.color && range.to > range.from) rememberTextColor(patch.color);
     const nextRuns = setStyleOnRange(runsRef.current, node.prompt, range.from, range.to, patch);
     if (nextRuns === runsRef.current) return;
     // 🔴 与题干**同一次**提交：分两次 dispatch 会让 ⌘Z 的第一下退到一个什么都没变的
@@ -881,19 +904,10 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
     onDataChange({...fillPromptPatch(node,runs,node.prompt,runs,readBlankAnswers(node),undefined,next),table:next});
     onBlankSelect?.('');
   };
-  return (
-    <div ref={editorRootRef} className={supportsBlankSlots ? `worksheet-editor-visual-fill${blankInspector ? ' worksheet-editor-text-fill' : ''}` : undefined}>
-    <div className="worksheet-editor-visual-content">
-    <div className="worksheet-editor-rich-field">
-      {/* ★ 2026-09-26（教师）：「这个工具栏能不能集成到下面的编辑框里，现在感觉有点割裂感。」
-          ⇒ 工具条与编辑区收进**同一个框**：框顶那一条是工具，下面就是正文（Word / 问卷星
-          都是这个样子）。提示语挪到**框外面**去 —— 它原来是夹在两者中间的那一条，
-          正是「割裂感」的一部分。 */}
-      <div className={`worksheet-editor-rich-box${fileOver ? ' is-file-over' : ''}`} {...dropProps}>
-        {fileOver && <ImageDropOverlay label="任务配图" replacing={Boolean(imageUrl)} />}
+  const formatbar = (
         <div
           className="worksheet-editor-formatbar"
-          aria-label="任务描述文字格式"
+          aria-label={`${fieldLabel}文字格式`}
           // ⚠️ 捕获阶段：要在**任何**控件把焦点拿走之前量。理由见 `pendingRangeRef`。
           onMouseDownCapture={() => {
             const el = editableRef.current;
@@ -941,7 +955,15 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
                 <b style={{ backgroundColor: toolbar.color }} aria-hidden="true" />
               </button>
               {colorOpen && (
-                <div className="worksheet-editor-color-menu" role="dialog" aria-label="文字颜色选择">
+                <div className="worksheet-editor-color-menu" ref={colorMenuRef} role="dialog" aria-label="文字颜色选择">
+                  {recentColors.length > 0 && <section className="worksheet-editor-recent-colors" aria-label="最近使用的文字颜色">
+                    <div>最近使用</div>
+                    <div role="listbox" aria-label="最近使用的颜色">
+                      {recentColors.map(color => <button type="button" key={color} role="option" aria-label={`使用颜色 ${color}`} title={color}
+                        aria-selected={toolbar.color.toLowerCase() === color} onMouseDown={event => event.preventDefault()}
+                        onClick={() => applyToSelection({ color }, colorSelectionRef.current ?? undefined)}><b style={{ backgroundColor: color }} aria-hidden="true" /></button>)}
+                    </div>
+                  </section>}
                   <div className="worksheet-editor-color-grid" role="listbox" aria-label="文字颜色">
                   {WORKSHEET_TEXT_COLORS.map(color => (
                     <button
@@ -1068,6 +1090,18 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
           </label>
           </div>
         </div>
+  );
+  return (
+    <div ref={editorRootRef} className={supportsBlankSlots ? `worksheet-editor-visual-fill${blankInspector ? ' worksheet-editor-text-fill' : ''}` : undefined}>
+    <div className="worksheet-editor-visual-content">
+    <div className={`worksheet-editor-rich-field${basicFormatting ? ' worksheet-editor-basic-format' : ''}${toolbarTarget !== undefined ? ' worksheet-editor-detached-toolbar' : ''}`}>
+      {/* ★ 2026-09-26（教师）：「这个工具栏能不能集成到下面的编辑框里，现在感觉有点割裂感。」
+          ⇒ 工具条与编辑区收进**同一个框**：框顶那一条是工具，下面就是正文（Word / 问卷星
+          都是这个样子）。提示语挪到**框外面**去 —— 它原来是夹在两者中间的那一条，
+          正是「割裂感」的一部分。 */}
+      <div className={`worksheet-editor-rich-box${fileOver ? ' is-file-over' : ''}`} {...(basicFormatting ? {} : dropProps)}>
+        {fileOver && <ImageDropOverlay label="任务配图" replacing={Boolean(imageUrl)} />}
+        {toolbarTarget === undefined ? formatbar : toolbarTarget ? createPortal(formatbar, toolbarTarget) : null}
         {supportsBlankSlots && blankSlots(node,runs).length > 0 && <div className="worksheet-editor-blank-actions" role="group" aria-label="所选填空操作">
           <strong>{activeBlank ? `第 ${blankSlots(node, runs).findIndex(slot => slot.id === selectedBlankId) + 1} 空` : '填空操作'}</strong>
           <button type="button" title="选择前一个填空域" aria-label="选择前一个填空域" disabled={selectedSlot<=0} onMouseDown={event=>event.preventDefault()} onClick={()=>selectRelativeBlank(-1)}><IconArrowLeft size={15}/></button>
@@ -1085,9 +1119,10 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
           contentEditable
           role="textbox"
           aria-multiline="true"
-          aria-label="任务描述"
+          aria-label={fieldLabel}
           data-empty={node.prompt.length === 0 ? '1' : undefined}
-          data-placeholder={descriptionOnly ? '说明学生需要在下面的表格中完成什么。' : supportsBlankSlots ? '输入任务描述；选中文字或放置光标后，点击“插入填空”。' : '请填写任务描述，告诉学生要做什么。'}
+          data-placeholder={basicFormatting ? `填写${fieldLabel}` : descriptionOnly ? '说明学生需要在下面的表格中完成什么。' : supportsBlankSlots ? '输入任务描述；选中文字或放置光标后，点击“插入填空”。' : '请填写任务描述，告诉学生要做什么。'}
+          onFocus={onEditingFocus}
           onKeyDown={handlePromptKeyDown}
           onKeyUp={event => { if (!composingRef.current && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key) && editableRef.current) normalizePromptCaret(editableRef.current); }}
           onMouseUp={event => { if (!(event.target as HTMLElement).closest('[data-blank-id], [data-table-mark]') && editableRef.current) normalizePromptCaret(editableRef.current); }}
@@ -1203,6 +1238,16 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
                   placeholder="https://example.com/file.pdf"
                   onChange={event => setLinkDraft({ ...linkDraft, address: event.target.value, error: undefined })} />
               </label>
+              <fieldset className="worksheet-editor-link-icons">
+                <legend>链接图标</legend>
+                <div role="group" aria-label="链接图标">
+                  {WORKSHEET_LINK_ICONS.map(option => <button key={option.value} type="button" aria-pressed={linkDraft.icon === option.value}
+                    onClick={() => setLinkDraft({ ...linkDraft, icon: option.value })}>
+                    <img src={worksheetLinkIconImage(option.value)} width={32} height={32} alt="" aria-hidden="true" />
+                    <span>{option.label}</span>
+                  </button>)}
+                </div>
+              </fieldset>
               {linkDraft.error && <p className="worksheet-editor-math-error" role="alert">{linkDraft.error}</p>}
             </div>
             <footer className="worksheet-editor-math-foot">

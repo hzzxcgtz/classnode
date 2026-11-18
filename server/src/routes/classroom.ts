@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { withDataMaintenance } from '../services/data-maintenance.js';
+import { clearClassroomSocketData } from '../socket/index.js';
+import { revokeClassroomStudentSessions } from '../middleware/student-auth.js';
 import { provisionGroupMembers } from '../services/participant-migration.js';
 import { beginMaterialEdit, endMaterialEdit, hasClassroomRequests } from '../services/classroom-material-edit.js';
 import { Router, type RequestHandler } from 'express';
@@ -1892,6 +1896,55 @@ router.put('/:id/modules/:moduleKey', async (req, res) => {
   } catch (error) {
     console.error('[Classroom] set module state error:', error);
     res.status(500).json({ error: '设置模块状态失败' });
+  }
+});
+
+// Keep the classroom setup; reset only the activity generated in this classroom.
+router.post('/:id/clear-data', async (req, res) => {
+  if (req.body?.confirm !== true) return res.status(400).json({ error: '请确认清空课堂数据' });
+  const id = req.params.id;
+  const prisma: PrismaClient = req.app.get('prisma');
+  try {
+    await withDataMaintenance(async () => {
+      const participants = await prisma.$transaction(async tx => {
+        const classroom = await tx.classroom.findUnique({ where: { id } });
+        if (!classroom) throw new Error('CLASSROOM_NOT_FOUND');
+        const participants = await tx.classroomStudent.findMany({ where: { classroomId: id }, select: { id: true } });
+        await tx.worksheetQuestionAnalysis.deleteMany({ where: { classroomId: id } });
+        // Responses cascade to answers and personal AI review revisions.
+        await tx.worksheetResponse.deleteMany({ where: { classroomId: id } });
+        await tx.message.deleteMany({ where: { classroomId: id } });
+        await tx.interaction.deleteMany({ where: { classroomId: id } });
+        await tx.shieldWarning.deleteMany({ where: { classroomId: id } });
+        await tx.teacherNotification.deleteMany({ where: { classroomId: id } });
+        await tx.webappUsage.deleteMany({ where: { classroomId: id } });
+        await tx.classroomAnnotation.deleteMany({ where: { classroomId: id } });
+        // Rotate participation IDs so offline devices cannot replay pre-reset draft queues.
+        // Student records, group membership and the classroom's frozen roster remain intact.
+        for (const participant of participants) {
+          await tx.classroomStudent.update({ where: { id: participant.id }, data: {
+            id: randomUUID(), totalRounds: 0, warningCount: 0, blacklisted: false, status: 'offline',
+          } });
+        }
+        await tx.classroom.update({ where: { id }, data: {
+          agentContextStarts: Prisma.DbNull,
+        } });
+        return participants;
+      });
+      const connections: Map<string, string> | undefined = req.app.get('activeConnections');
+      for (const key of connections?.keys() ?? []) {
+        if (key.startsWith(`${id}:`)) connections!.delete(key);
+      }
+      revokeClassroomStudentSessions(id);
+      clearClassroomSocketData(req.app.get('io'), id, participants.map(p => p.id));
+    });
+    res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'CLASSROOM_NOT_FOUND') return res.status(404).json({ error: '课堂不存在' });
+    if (message.startsWith('仍有请求')) return res.status(409).json({ error: '有操作正在进行，请稍后再清空数据' });
+    console.error('Clear classroom data error:', error);
+    res.status(500).json({ error: '清空课堂数据失败' });
   }
 });
 

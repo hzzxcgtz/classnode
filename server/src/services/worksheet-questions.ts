@@ -1,3 +1,4 @@
+import { ratingConfig } from './worksheet-rating.js';
 import { canvasAutoReviewIds, canvasMatchChoices, readImageCanvas } from './worksheet-image-canvas.js';
 import { aiEvaluationEnabled, hasEvaluation, countsEvaluation } from './worksheet-evaluation.js';
 import { fillAudioSlots } from './worksheet-fill-audio.js';
@@ -32,7 +33,7 @@ import { isInkFormat } from './worksheet-ink.js';
  * 同一个校验器（`correctKeys` 恰好一个），差别只在单选多一条 `options.length >= 2`。
  */
 export const QUESTION_TYPES = [
-  'single-choice', 'true-false', 'multi-choice', 'fill-blank', 'short-answer', 'open-ended', 'image-canvas',
+  'single-choice', 'true-false', 'multi-choice', 'fill-blank', 'short-answer', 'open-ended', 'image-canvas', 'rating',
   'order', 'match', 'categorize',
   // ★ M4b：绘图题。**不判分**（`graded: false`）—— 学生画图，教师人眼看。
   // 🔴 它同时收口一个真实存在过的窗口：前端 A2 已把 `drawing` 加进
@@ -1359,6 +1360,7 @@ const JUDGES: Record<QuestionType, (data: Record<string, unknown>, value: unknow
   // ⇒ 共用一支，不另写（先例：判断题与单选）。
   'choice-blank': judgeFillBlank,
   'short-answer': () => null,
+  'rating': () => null,
   'image-canvas': () => null,
   'open-ended': () => null,
   order: judgeOrder,
@@ -1863,6 +1865,16 @@ const VALIDATORS: Record<QuestionType, (node: QuestionNode, errors: string[]) =>
  * 对象字面量里引用自己会踩 TDZ，而写两份必然漂移。
  */
   'open-ended': () => {},
+  'rating': (node, errors) => {
+    const config = ratingConfig(node.data);
+    const raw = node.data.rating as Record<string, unknown> | undefined;
+    if (!raw || raw.maxStars !== config.maxStars) errors.push('评价题星级上限须为 1–5 的整数');
+    if (raw?.minCommentLength !== undefined && (!Number.isInteger(raw.minCommentLength) || Number(raw.minCommentLength) < 1 || Number(raw.minCommentLength) > 10000)) errors.push('文字感想最少字数须为 1–10000 的整数');
+    if (!config.dimensions.length || !Array.isArray(raw?.dimensions) || raw.dimensions.length !== config.dimensions.length) errors.push('评价题须设置 1–60 个标识唯一的评价维度');
+    if (Array.isArray(raw?.dimensions) && raw.dimensions.some((d: { parentId?: unknown }, i: number) => d?.parentId !== undefined && d.parentId !== config.dimensions[i]?.parentId)) errors.push('评价维度最多三级，上级维度须存在且不能循环引用');
+    if (config.dimensions.some(d => !d.text.trim())) errors.push('请填写评价维度名称');
+    if (node.data.evaluationMode !== 'collect' || node.data.evaluationScored === true || node.data.aiScoringEnabled === true) errors.push('评价题仅收集评价，不计分');
+  },
   'image-canvas': (node, errors) => {
     const canvas = readImageCanvas(node.data.imageCanvas);
     if (!canvas) errors.push('请上传有效的图文题底图');

@@ -91,7 +91,8 @@ export function FillCombinationsEditor({ node, onDataChange }: { node: Worksheet
         }])}>＋ 添加组合</button>
         {hasManualBlanks && <small>手工填写：多个答案用 | 分隔</small>}
       </div>
-      <div className={styles.scroll} tabIndex={0} aria-label="答案组合表，可左右滚动"><table className={styles.table}>
+      <div className={styles.scroll} tabIndex={0} aria-label="答案组合表，可左右滚动"><table className={styles.table} style={{ minWidth: 104 + columns.length * 280 }}>
+        <colgroup><col style={{ width: 104 }} />{columns.map(column => <col key={column.id} />)}</colgroup>
         <thead><tr><th scope="col">填空域</th>{columns.map((column, i) => <th key={column.id} scope="col"><div><span>组合 {i + 1}</span>{i === 0 ? <small>基础答案</small> : <button type="button" aria-label={`删除组合 ${i + 1}`} className={styles.remove} onClick={() => save(extra.filter(item => item.id !== column.id))}>×</button>}</div></th>)}</tr></thead>
         <tbody>{rows.map(row => <tr key={row.id}><th scope="row"><span>第 {row.index + 1} 空</span></th>
           {columns.map((column, i) => {

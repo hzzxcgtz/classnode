@@ -1,4 +1,5 @@
 'use client';
+import { canvasColorOpacity, canvasColorWithOpacity } from '@/lib/worksheet-image-canvas';
 
 import { useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
 import { IconCamera, IconCheck, IconHandClick, IconInfoCircle, IconKeyboard, IconLayersIntersect, IconMicrophone, IconPhoto, IconPhotoUp, IconPuzzle, IconRotate, IconStar, IconTrash, IconTypography, IconWriting, IconZoomIn, IconZoomOut } from '@tabler/icons-react';
@@ -35,8 +36,7 @@ const DEFAULT_COLORS = {
 };
 const MAX_BACKGROUND_BYTES = 300 * 1024;
 const RESIZE_LABELS = { nw: '左上', n: '上', ne: '右上', e: '右', se: '右下', s: '下', sw: '左下', w: '左' };
-const PALETTE = ['#ffffff', '#f0f7fd', '#edfaf3', '#fff5da', '#ffe6df', '#efe5fa', '#d6e9f8', '#8aaac4',
-  '#91b8a6', '#3c729d', '#2c7459', '#ba593e', '#7c53a0', '#24384d'];
+const PALETTE = ['#000000', '#ffffff', '#808080', '#ff0000', '#ff8000', '#ffff00', '#008000', '#00bfff', '#0000ff', '#800080', '#ff69b4', '#a52a2a'];
 type Drag = { widget: CanvasWidget; x: number; y: number; width: number; height: number; edge?: CanvasResizeEdge; source?: CanvasRect };
 type NameLocation = 'widget' | 'source' | 'layer';
 
@@ -543,25 +543,24 @@ function AppearanceColor({ name, current, transparent = true, onChange }: {
   onChange: (color: string) => void;
 }) {
   const selected = current.toLowerCase();
-  const swatches = [...new Set([...(transparent ? ['transparent'] : []), ...PALETTE, selected])];
-  return <>
-    <div className={styles.colorSummary}>
-      <strong>{name}</strong>
-      <label className={styles.colorPicker}>
-        <span data-transparent={selected === 'transparent'} style={{ backgroundColor: selected }} aria-hidden="true" />
-        {selected === 'transparent' ? '透明' : selected.toUpperCase()}
-        <input type="color" aria-label={`自定义${name}`} value={selected === 'transparent' ? '#8aaac4' : selected}
-          onChange={event => onChange(event.target.value)} />
-      </label>
-    </div>
-    <div className={styles.palette} role="group" aria-label={name}>
-      {swatches.map(swatch => <button key={swatch} type="button" data-transparent={swatch === 'transparent'} style={{ backgroundColor: swatch }}
-        aria-label={swatch === 'transparent' ? '透明' : swatch} aria-pressed={selected === swatch}
-        onClick={() => onChange(swatch)}>
-        {selected === swatch && <IconCheck size={12} stroke={2.5} aria-hidden="true" />}
-      </button>)}
-    </div>
-  </>;
+  const base = selected === 'transparent' ? selected : selected.slice(0, 7);
+  const swatches = [...new Set([...(transparent ? ['transparent'] : []), ...PALETTE])];
+  return <div className={styles.colorSummary}>
+    <strong>{name}</strong>
+    <details className={styles.colorMenu}>
+      <summary aria-label={`选择${name}`}><span data-transparent={selected === 'transparent'} style={{backgroundColor:current}} />{base === 'transparent' ? '透明' : base.toUpperCase()}</summary>
+      <div className={styles.colorPopover}>
+        <div className={styles.palette} role="group" aria-label={name}>
+          {swatches.map(swatch => <button key={swatch} type="button" data-transparent={swatch === 'transparent'} style={{backgroundColor:swatch}}
+            aria-label={swatch === 'transparent' ? '透明' : swatch} aria-pressed={base === swatch} onClick={event => {
+              onChange(swatch); event.currentTarget.closest('details')?.removeAttribute('open');
+            }}>{base === swatch && <IconCheck size={12} stroke={2.5} aria-hidden="true" />}</button>)}
+        </div>
+        <label className={styles.colorPicker}>自定义颜色<input type="color" aria-label={`自定义${name}`} value={base === 'transparent' ? '#ffffff' : base}
+          onChange={event => onChange(event.target.value)} /></label>
+      </div>
+    </details>
+  </div>;
 }
 
 function CanvasAppearance({ widget, recording, onChange }: {
@@ -591,10 +590,20 @@ function CanvasAppearance({ widget, recording, onChange }: {
       <AppearanceColor name="框色" current={border} onChange={color => onChange({ ...widget, borderColor: color })} />
     </div>
     <div className={styles.appearanceSection}>
-      <AppearanceColor name="底色" current={fill} onChange={color => onChange(candidate
-        ? { ...widget, matchConfig: { ...candidate, color } }
-        : { ...widget, backgroundColor: color })} />
+      <AppearanceColor name="底色" current={fill} onChange={color => {
+        const next = color === 'transparent' ? color : canvasColorWithOpacity(color, fill === 'transparent' ? 100 : canvasColorOpacity(fill, candidate ? 70 : 100));
+        onChange(candidate ? {...widget, matchConfig:{...candidate, color:next}} : {...widget, backgroundColor:next});
+      }} />
     </div>
+    <label className={styles.opacityControl}>
+      <span>底色透明度</span>
+      <input type="range" min={0} max={100} step={1} aria-label="底色透明度" value={100 - canvasColorOpacity(fill, candidate ? 70 : 100)}
+        onChange={event => {
+          const color = canvasColorWithOpacity(fill, 100 - Number(event.target.value));
+          onChange(candidate ? {...widget, matchConfig:{...candidate, color}} : {...widget, backgroundColor:color});
+        }} />
+      <output>{100 - canvasColorOpacity(fill, candidate ? 70 : 100)}%</output>
+    </label>
     <div className={styles.appearanceSection}>
       <div className={styles.colorSummary}><strong>框线</strong></div>
       <div className={styles.lineStyles} role="group" aria-label="框线线型">

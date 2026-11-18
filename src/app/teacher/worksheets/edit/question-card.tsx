@@ -4,6 +4,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { RatingEditor } from './bodies/rating-editor';
 import { ImageCanvasEditor } from './image-canvas-editor';
 import { deskReviewSettings, isExpressionTask, readImageCanvas, usesCanvasAnswers } from '@/lib/worksheet-image-canvas';
 import { EvaluationSettings } from './evaluation-settings';
@@ -346,7 +347,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
   const [selectedBlankId, setSelectedBlankId] = useState<string | null>(null);
   const showInputModeRow = typeOption?.graded === false || isInkNode(node) || node.inputMode === 'photo';
   const answerBlock: { title: string; hint: string } | null =
-    canvasType || node.type === 'true-false'
+    canvasType || node.type === 'rating' || node.type === 'true-false'
       ? null
       : isChoiceQuestion(node)
         ? { title: '选项', hint: gradedOn ? '拖动左侧把手调整顺序，点右侧圆点设置答案。' : '拖动左侧把手调整顺序；当前任务收集学生选择，不设置正确答案。' }
@@ -549,6 +550,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           />}
         </div>
         )}
+        {node.type === 'rating' && <div className="worksheet-editor-block worksheet-editor-rating-settings"><RatingEditor node={node} rewardStyle={rewardStyle} onDataChange={onDataChange} /></div>}
         {isBlankType && <div className="worksheet-editor-blank-detail-panel" data-blank-settings-for={node.id}>
           <ChoiceBlankSetup onAppendEvaluationImages={onAppendEvaluationImages} section="details" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId}/>
         </div>}
@@ -780,7 +782,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         </section>
       )}
 
-        {!isBlankType && <div className="worksheet-editor-block worksheet-editor-analysis-settings">
+        {!isBlankType && node.type !== 'rating' && <div className="worksheet-editor-block worksheet-editor-analysis-settings">
           <h3 className="drawing-zone-heading"><EditorIcon kind="grading" />任务用途</h3>
           {(!canvasType || (!composite && isExpression)) && <EvaluationSettings exampleMode={node.type === 'drawing' ? 'drawing' : node.inputMode === 'audio' || node.inputMode === 'photo' || node.inputMode === 'handwriting' ? node.inputMode : 'keyboard'} allowAi={!deskReview && (node.type === 'short-answer' || node.type === 'drawing')} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls)} unit={pointsUnit} scoreLimit={100} template={node.type === 'drawing' && readDrawingTool(node) === 'flowchart' ? '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。' : undefined} data={node.data} allowAnswer={isGradedQuestionType(node.type)} legacyMode={aiScoredFor(node) ? 'ai' : gradedOn && isGradedQuestionType(node.type) ? 'answer' : 'collect'} legacyScored={aiScoredFor(node) || gradedOn} reference={node.type === 'short-answer' || node.type === 'drawing' ? node.data.answers : undefined} maxScore={aiScoringMaxScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onNotice={onNotice} onChange={patch => {
             onDataChange({...patch, aiScoringEnabled:patch.evaluationMode === 'ai' && patch.evaluationScored === true});
@@ -789,7 +791,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             {isExpression && (
             <label className="worksheet-evaluation-requirements">
               <strong>观点提炼要求（选填）</strong>
-              <span>仅用于全班观点云。可写关注方向、希望提炼几条，以及用关键词还是短语。默认提炼 5～7 条有作答依据的观点。</span>
+              <span>用于说明观点提炼的关注方向。用自然通顺的短句表达，不必刻意压缩字数。尽量保留全部不同观点，包括单人观点；观点云按人数展示前10条，其余在全部观点中查看。</span>
               <textarea
                 className="input"
                 rows={3}
@@ -798,7 +800,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                 onChange={event => onDataChange({ wordCloudRequirements: event.target.value })}
                 placeholder="填写希望全班观点云呈现的内容和形式。"
               />
-              <span>写法示例：提炼 5～7 个短语，关注学无止境、实事求是、善于观察和敢问敢辩。学生提出的其他有依据的观点也可保留。</span>
+              <span>写法示例：提炼有作答依据的短语，关注学无止境、实事求是、善于观察和敢问敢辩。学生提出的其他有依据的观点也可保留。</span>
             </label>
           )}
           </EvaluationSettings>}
@@ -856,7 +858,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
               alt="任务描述配图预览"
             />
           )}
-          <QuestionInput node={node} draft={undefined} disabled />
+          <QuestionInput node={node} rewardStyle={rewardStyle} draft={undefined} disabled />
         </div>
       )}
 

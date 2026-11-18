@@ -123,7 +123,7 @@
 .modes button:hover:not([aria-pressed="true"]) { background: #f5f8fb; }
 .close { flex: 0 0 auto; min-width: 42px; padding: 0; }
 .close:hover, .navigation button:hover:not(:disabled) { background: #eaf2fa; }
-.dialog button:focus, .jump select:focus { outline: 2px solid #527aa3; outline-offset: 2px; }
+.dialog button:focus, .pageMarker:focus { outline: 2px solid #527aa3; outline-offset: 2px; }
 
 .notice { margin: 0; padding: 8px 22px; background: #fff8eb; color: #785620; font-size: .8rem; }
 .continuous { min-width: 0; }
@@ -145,12 +145,12 @@
 .track::-webkit-scrollbar { display: none; }
 .track::before, .track::after {
   content: '';
-  flex: 0 0 calc((100% - min(792px, 76%)) / 2);
+  flex: 0 0 calc((100% - min(var(--worksheet-page-width, 792px), 76%)) / 2);
 }
 .slideSlot {
   position: relative;
   display: flex;
-  flex: 0 0 min(792px, 76%);
+  flex: 0 0 min(var(--worksheet-page-width, 792px), 76%);
   box-sizing: border-box;
   min-width: 0;
   min-height: 0;
@@ -189,7 +189,7 @@
 
 .navigation {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
   min-height: 68px;
@@ -201,19 +201,13 @@
 .navigation button:first-child { justify-self: start; }
 .navigation button:last-child { justify-self: end; }
 .navigation button:disabled { opacity: .48; cursor: default; }
-.position { display: flex; align-items: center; gap: 12px; min-width: 0; color: #566e86; font-size: .8rem; }
-.jump { display: inline-flex; align-items: center; gap: 7px; }
-.jump select {
-  max-width: 190px;
-  min-height: 36px;
-  padding: 5px 8px;
-  border: 1px solid #d0deeb;
-  border-radius: 8px;
-  background: #fff;
-  color: #274a6d;
-  font: inherit;
-  font-weight: 650;
-}
+.position { display: flex; justify-content:center; align-items: center; gap: 12px; min-width: 0; color: #566e86; font-size: .8rem; }
+.pageMarkers { display:flex; align-items:center; gap:7px; overflow-x:auto; min-width:0; max-width:100%; padding:5px 3px; scrollbar-width:thin; }
+.navigation .pageMarker { flex:0 0 32px; width:32px; height:32px; min-height:32px; padding:0; border:1px solid #d5e1ed; border-radius:8px; background:#edf3f9; color:#72869b; font-size:.75rem; font-variant-numeric:tabular-nums; font-weight:600; transition:background .15s,color .15s; }
+.navigation .pageMarker[aria-current='page'] { background:#3b628d; border-color:#3b628d; color:#fff; box-shadow:0 2px 5px #31577f28; }
+.navigation .pageMarker:hover:not([aria-current='page']) { background:#dce9f5; border-color:#a3bdd6; }
+.swipeHint { flex-shrink:0; font-size:.72rem; color:#8a9bad; }
+.pageAnnouncement { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 
 @media (max-width: 620px) {
   .dialog { --viewer-margin: 8px; }
@@ -224,6 +218,5 @@
   .modes { order: 1; width: 100%; }
   .modes button { flex: 1; }
   .navigation { gap: 6px; padding-inline: 10px; }
-  .jump select { max-width: 122px; }
-  .swipeHint, .jump > span { display: none; }
+  .swipeHint { display: none; }
 }

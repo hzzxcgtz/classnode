@@ -100,8 +100,8 @@ test('🔴 需要配置的题型，空 data 都必须被拒绝（漏写分支 = 
   // 所以它**不在**豁免表里。旧开放题加入清单后同时加入豁免表，非豁免题型仍为 5 个。
   // 动 `QUESTION_TYPES` / `EXEMPT` 之前先看这里：数字对不上就是在提醒你
   // 「有一个题型的空 data 现在没人管了」。
-  // 图文题需要有效底图和至少一个作答区。
-  assert.equal(checked.length, 6, `实际只跑到 ${checked.length} 个题型`);
+  // 图文题需要底图和作答区；评价题需要合法星级和评价维度。
+  assert.equal(checked.length, 7, `实际只跑到 ${checked.length} 个题型`);
 });
 
 test('旧开放题允许空 data，但仍校验题干', () => {

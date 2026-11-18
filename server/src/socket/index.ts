@@ -2497,3 +2497,14 @@ export function resetSocketData(io: Server, app: import('express').Application):
   shieldWordsCacheTime = 0;
   anonymizer.reset();
 }
+
+/** Release only this classroom's cached interaction data after an exclusive reset. */
+export function clearClassroomSocketData(io: Server, classroomId: string, participantIds: string[]): void {
+  drainWebappMonitor(io, classroomId);
+  teacherNotificationCache.delete(classroomId);
+  for (const key of platformConversations.keys()) {
+    if (key.startsWith(`${classroomId}:`)) platformConversations.delete(key);
+  }
+  for (const id of participantIds) studentMsgTimestamps.delete(id);
+  io.to(`classroom:${classroomId}`).to(`teacher:${classroomId}`).emit('classroom-data-cleared');
+}

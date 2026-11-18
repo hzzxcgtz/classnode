@@ -6,13 +6,14 @@ import { IconLayoutColumns, IconListDetails } from '@tabler/icons-react';
 import type { WorksheetContent, WorksheetSettings } from '@/lib/types';
 import { resolveWorksheetBackgroundSources } from '@/lib/worksheet-backgrounds';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
+import { normalizeRewardStyle } from '@/lib/worksheet-reward';
 import { surfaceAlphas } from '@/lib/worksheet-surface';
 import type { AnswerDraft } from '@/lib/worksheet-answer-value';
 // 🔴 **学生端那个组件本体**，不是一份模仿。理由见下面的文件头 —— 这个 import 是本文件
 // 唯一一处「教师端引学生端」的地方，而它引的是**唯一的作答态渲染**：
 // 两个模块各自的路径在这里交汇，分叉在结构上不可能。
 import { WorksheetQuestionList } from '@/app/classroom/worksheet/worksheet-panel';
-import { WorksheetTaskNavigation } from '@/app/teacher/classroom/worksheet-task-navigation';
+import { WorksheetPageGallery } from '@/app/teacher/classroom/worksheet-page-gallery';
 
 /**
  * 学生端的宽度（规格 §6.3：「按 iPad 宽度渲染的弹窗 —— 价值正在于教师看到的就是
@@ -51,7 +52,8 @@ type PreviewOrientation = 'portrait' | 'landscape';
  * 学生的会话状态（保存中、离线条数、奖励累计），教师端没有对应物。所以这里只画一个
  * 标题条 + 题目列 —— 与学生在面板里看到的上半部分一致，而不是假装连状态都一样。
  *
- * 🔴 **奖励一处都不许在这里出现**（规格 §3-U：教师在那些地方问的是「哪道题错得多」，
+ * 评价题通过 ratingIconStyle 跟随学习单图标，只用于作答输入，不产生奖励。
+ * 🔴 **得分奖励一处都不许在这里出现**（规格 §3-U：教师在那些地方问的是「哪道题错得多」，
  * 星星不提供信息）。它不会出现有**两道**保证，都是结构性的、不是一句约定：
  *   · 下面这个 `WorksheetQuestionList` **不传** `reward` / `scores` —— 共享组件里那两处
  *     奖励的渲染都以「传了配置」为前提（`reward?: …`，不传就没有东西可画）；
@@ -87,11 +89,6 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
     setViewMode(next);
   }
 
-  function goTo(index: number) {
-    if (index < 0 || index >= questionCount || index === activeIndex) return;
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    setSelectedIndex(index);
-  }
   const backgrounds = resolveWorksheetBackgroundSources(
     settings.backgroundTheme,
     settings.backgroundImageUrl,
@@ -127,11 +124,18 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
       : {}),
   } as CSSProperties;
 
+  const renderQuestions = (visibleGroups: typeof groups) => <WorksheetQuestionList
+    groups={visibleGroups} drafts={drafts} statuses={{}} submitting={{}} interactive previewOnly
+    onChange={(node, draft) => setDrafts(previous => ({ ...previous, [node.id]: draft }))}
+    ratingIconStyle={normalizeRewardStyle(settings.rewardStyle)}
+    allowResubmit answersLocked={false} />;
+
   return (
     <>
       <div className="modal-overlay" onClick={onClose} />
       <div
         className="worksheet-editor-preview-modal teacher-preview-dialog"
+        data-view-mode={viewMode}
         role="dialog"
         aria-modal="true"
         aria-labelledby="worksheet-preview-title"
@@ -160,33 +164,19 @@ export function WorksheetPreviewModal({ title, content, settings, onClose }: {
           </div>
         </header>
 
-        <div className="worksheet-editor-preview-scroll" ref={scrollRef}>
-          <div
-            className="worksheet-editor-preview-stage"
-            style={stageStyle}
-            data-has-background={hasBackground ? '1' : '0'}
-            data-has-portrait={backgrounds.portrait ? '1' : '0'}
-            data-preview-orientation={orientation}
-          >
+        {activeSlide ? <WorksheetPageGallery slides={slides} activeIndex={activeIndex} onSelect={setSelectedIndex}
+          pageWidth={(orientation === 'portrait' ? STUDENT_STAGE_WIDTH : STUDENT_LANDSCAPE_WIDTH) + 24}
+          surfaceStyle={{...stageStyle, width:undefined, minHeight:undefined}}
+          hasBackground={hasBackground} hasPortrait={Boolean(backgrounds.portrait)}
+          renderPage={index => renderQuestions([slides[index]])} /> : <div className="worksheet-editor-preview-scroll" ref={scrollRef}>
+          <div className="worksheet-editor-preview-stage" style={stageStyle}
+            data-has-background={hasBackground ? '1' : '0'} data-has-portrait={backgrounds.portrait ? '1' : '0'}
+            data-preview-orientation={orientation}>
             <div className="worksheet-editor-preview-title">{title || '未命名学习单'}</div>
-            <WorksheetQuestionList
-              groups={activeSlide ? [activeSlide] : groups}
-              // 仅接入弹窗本地草稿，不接 onSubmit；previewOnly 让图片也只在本地读取。
-              drafts={drafts}
-              statuses={{}}
-              submitting={{}}
-              interactive
-              previewOnly
-              onChange={(node, draft) => setDrafts(previous => ({ ...previous, [node.id]: draft }))}
-              // 预览没有已提交状态，始终允许修改测试内容。
-              allowResubmit
-              // ★ M5a：锁定是**课堂级**的运行时状态，教师端的「学生端预览」没有课堂可言
-              // ⇒ 恒 `false`。显式写出来（而不是靠默认值）是刻意的，见那个字段的注释。
-              answersLocked={false}
-            />
+            {renderQuestions(groups)}
           </div>
-        </div>
-        {activeSlide && <WorksheetTaskNavigation slides={slides} activeIndex={activeIndex} goTo={goTo} />}
+        </div>}
+
       </div>
     </>
   );

@@ -70,6 +70,7 @@
     "mind-elixir": "5.15.1",
     "next": "15.5.25",
     "opus-media-recorder": "0.8.0",
+    "pinyin-pro": "^3.29.5",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",
     "react": "19.2.4",

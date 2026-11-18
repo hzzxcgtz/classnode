@@ -50,6 +50,7 @@ import { MODULE_META } from '../module-meta';
 import { useModuleViewport } from '../shell/use-module-viewport';
 // ★ M4a/D2：作答区**只有一份实现**（`questions/index.tsx` 的分派器 + 6 个作答体）。
 // 教师端的「学生端预览」渲染的是下面这个 `WorksheetQuestionList`，所以它自动用上同一份。
+import { ratingSubmissionError } from '@/lib/worksheet-rating';
 import { QuestionInput, type RenderCanvasPhotoTrigger } from './questions';
 import { ImageCanvasTask } from './image-canvas-task';
 import { canvasAutoReviewIds, canvasMatchChoices, canvasDeskReviewSettings, canvasAnswerWidgets, deskReviewSettings, isExpressionTask, readImageCanvas, usesCanvasAnswers } from '@/lib/worksheet-image-canvas';
@@ -333,6 +334,8 @@ export interface WorksheetQuestionListProps {
   reviewOnly?: boolean;
   /** 教师预览仅在内存试填，图片也不上传。 */
   previewOnly?: boolean;
+  /** Icon style for rating inputs, independent of earned rewards in previews. */
+  ratingIconStyle?: RewardScale['style'];
   /**
    * 「提交之后还能不能改」（规格 §8.4 的第二层，第一层在服务端的 409）。
    *
@@ -395,6 +398,7 @@ export function WorksheetQuestionList({
   interactive,
   reviewOnly = false,
   previewOnly = false,
+  ratingIconStyle,
   allowResubmit,
   reward,
   rewardFullFallback,
@@ -505,7 +509,9 @@ export function WorksheetQuestionList({
         }).length : 0;
         const awaitingDeskRating = Boolean(!composite && deskReview && (!raw || raw.kind !== 'audio' || raw.deskRating?.maxStars !== deskReview.maxStars));
         // 没内容可提交、又还没交过 ⇒ 按钮按不动（点下去必然被服务端 400 拒）。
-        const submitDisabled = Boolean(submitting[node.id]) || pendingCanvas[node.id] || awaitingDeskRating || (composite && completeRegions < widgets.length) || reviewPending || (raw?.kind === 'fill' && Boolean(raw.pendingAudio?.length)) || (!submitted && untouched);
+        const ratingError = node.type === 'rating' ? ratingSubmissionError(node.data, raw?.kind === 'rating' ? { ...raw, format: 'rating/v1' } : null) : null;
+        const ratingIncomplete = ratingError !== null;
+        const submitDisabled = ratingIncomplete || Boolean(submitting[node.id]) || pendingCanvas[node.id] || awaitingDeskRating || (composite && completeRegions < widgets.length) || reviewPending || (raw?.kind === 'fill' && Boolean(raw.pendingAudio?.length)) || (!submitted && untouched);
         // ★ M5a：课堂级锁定也禁用控件（停笔），但它**不**收起提交按钮 ——
         // 裁定 ③ 是「停笔，但还能交卷」。见下面渲染那一段。
         const controlsDisabled = !interactive || locked || classroomLocked || (canvasTask && Boolean(submitting[node.id]));
@@ -639,6 +645,7 @@ export function WorksheetQuestionList({
           onMediaBusyChange={onMediaBusyChange}
           renderCanvasPhotoTrigger={renderCanvasPhotoTrigger}
           worksheetId={worksheetId}
+          rewardStyle={ratingIconStyle ?? reward?.style}
           node={inputNode}
           draft={inputDraft}
           onChange={(_, part) => change(part)}
@@ -715,7 +722,7 @@ export function WorksheetQuestionList({
               <span className={styles.typeNickname}>{canvas ? '图文题' : questionTypeNickname(node.type)}</span>
               {questionMeta}
             </div>
-            {!canvas && <div className={styles.prompt}>
+            {!canvas && <div className={`${styles.prompt}${node.type === 'rating' ? ` ${styles.ratingPrompt}` : ''}`}>
               {/* ★ 2026-09-27（教师）：「学生页面中，如果是多选题的话，要在题干前面自动加上
                   『多选』这样的提示文字。」
                   🔴 判据是**共享的那一份** `isMultipleChoice`（`@/lib/worksheet-questions`，
@@ -775,11 +782,13 @@ export function WorksheetQuestionList({
                     {reviewPending ? <ReviewThinking key={`${pendingReview!.id}-${pendingReview!.phase}`} queued={reviewQueued} /> : <span>还可评价 <strong>{reviewRemaining}</strong> 次</span>}
                   </div>}
 
-                  {(!personalReview || reviewRemaining > 0 || reviewPending) && !(submitted && (canvasTask || canRetryLatest)) && <div className={styles.submitRow}>
+                  {(!personalReview || reviewRemaining > 0 || reviewPending) && !(submitted && (canvasTask || canRetryLatest)) && <div className={`${styles.submitRow}${node.type === 'rating' ? ` ${styles.ratingSubmitRow}` : ''}`}>
                     <button
                       type="button"
                       className={`${styles.submitButton}${submitted ? ` ${styles.submitButtonResubmit}` : ''}`}
                       disabled={submitDisabled}
+                      title={ratingError ?? undefined}
+                      aria-describedby={ratingError ? `${node.id}-rating-error` : undefined}
                       onClick={() => onSubmit?.(node)}
                     >
                       {/* ★ M6b/13：判分要等服务端往返，而这段时间原先屏幕上只有**半透明的按钮 + 三个字**。
@@ -796,6 +805,7 @@ export function WorksheetQuestionList({
                         : canvasTask ? '提交整题'
                           : personalReview && reviewRemaining > 0 ? '完成作答并提交' : submitted ? '保存修改' : '完成作答并提交'}
                     </button>
+                    {ratingError && <span id={`${node.id}-rating-error`} className={styles.ratingSubmitHint} role="status">{ratingError}</span>}
                   </div>}
                 </>
             )}

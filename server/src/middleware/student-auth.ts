@@ -53,3 +53,9 @@ export function revokeStudentSession(session: StudentSession): void {
   const key = `${session.classroomId}:${session.studentId}`;
   if (currentSessions.get(key)?.id === session.sessionId) currentSessions.delete(key);
 }
+
+export function revokeClassroomStudentSessions(classroomId: string): void {
+  for (const key of currentSessions.keys()) {
+    if (key.startsWith(`${classroomId}:`)) currentSessions.delete(key);
+  }
+}

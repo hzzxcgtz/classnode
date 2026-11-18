@@ -13,23 +13,26 @@ export interface AnalysisFeedback {
 type Entry = { studentId: string; anonLabel: string };
 const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
-const MAX_CLOUD_OPINIONS = 10;
+const MAX_CLOUD_OPINIONS = 500; // Defensive protocol bound, independent of the ten-item display limit.
 
 export function wordCloudRequirementsOf(node: { type: string; data: Record<string, unknown> }): string {
   const value = node.data.wordCloudRequirements;
-  return (node.type === 'short-answer' || node.type === 'open-ended') && typeof value === 'string'
+  return (node.type === 'short-answer' || node.type === 'open-ended' || node.type === 'rating') && typeof value === 'string'
     ? value.trim().slice(0, 1200)
     : '';
 }
 
 export function wordCloudInstruction(requirements = ''): string {
   return [
-    '在 classnode-feedback JSON 中追加 wordCloud 数组。每项包含 phrase（关键词或短语）和 students（支持该观点的全部学生完整标签）。同一观点内按学生去重，每条至少两人支持，系统按名单计算人数。',
+    '在 classnode-feedback JSON 中追加 wordCloud 数组。每项包含 phrase（自然通顺、能独立读懂的观点短句）和 students（支持该观点的全部学生完整标签）。同一观点内按学生去重，仅一人提出的观点也须保留，系统按名单计算人数。按提及人数从多到少排序，不判断观点好坏。',
+    '措辞优先清楚、自然、忠实原意，通常用 8–18 字，必要时可到 30 字。保留必要的动词、介词和连接词，不为凑字数删成生硬的词语堆叠，不拼接多条独立观点。即使教师要求更短，也优先保证语句通顺和原意完整。',
+    '区分观察与建议：原文肯定的做法写清实际表现，建议保留“建议”“可”等语气，不把改进建议改写成已经发生的事实。表达润色不得新增原文没有的效果、原因或评价，也不得改变对应学生名单。',
+    '表述示例（只示范语法，不能当作作答证据）：“反馈明确修改方向”可写为“反馈能指出修改方向”；“补充异情境检测任务”可写为“建议补充不同情境的检测任务”。输出前逐条检查搭配是否自然、意思是否明确、立场是否忠实。',
     '依据可辨认的学生作答或已确认的作答记录提炼。合并意思相近的表达，分别保留不同立场。不从题干、评分标准、分数或教师建议推断学生观点。',
     requirements
-      ? `教师本题的观点提炼要求（仅用于 wordCloud）：${JSON.stringify(requirements)}。按其指定的方向、条数和形式提炼，也保留有真实作答支持的其他代表性观点。`
-      : '默认提炼 5～7 条共同观点。',
-    `最多 ${MAX_CLOUD_OPINIONS} 条；按证据返回实际条数，缺少共同观点时返回空数组。提炼要求只影响观点云。`,
+      ? `教师本题的观点提炼要求（仅用于 wordCloud）：${JSON.stringify(requirements)}。按其关注方向提炼，语句须符合上述自然表达规则。若其中限制条数或排除单人观点，以本协议的完整保留规则为准。`
+      : '尽可能完整提炼有作答依据的不同观点，包括单人观点。不要为了凑数拆分近义观点。',
+    `最多 ${MAX_CLOUD_OPINIONS} 条（协议安全上限）；按证据返回实际条数，没有可辨认观点时返回空数组。不要按云的展示容量截断结果：界面按人数仅展示前10条，全部观点保留在列表。提炼要求不影响正文。`,
   ].join('\n');
 }
 
@@ -40,10 +43,12 @@ function readWordCloud(raw: unknown, resolveId: (value: string) => string | unde
     const row = object(value);
     const phrase = typeof row.phrase === 'string' ? row.phrase.trim().replace(/\s+/g, ' ') : '';
     const key = phrase.toLowerCase();
-    if (phrase.length < 2 || phrase.length > 30 || seen.has(key) || !Array.isArray(row.students)) continue;
+    if (phrase.length < 2 || phrase.length > 30 || !Array.isArray(row.students)) continue;
     const ids = row.students.map(label => typeof label === 'string' ? resolveId(label) : undefined);
     if (!ids.length || ids.some(id => !id)) continue;
-    result.push({ phrase, studentIds: [...new Set(ids as string[])] });
+    const previous = seen.has(key) ? result.find(item => item.phrase.toLowerCase() === key) : undefined;
+    if (previous) previous.studentIds = [...new Set([...previous.studentIds, ...ids as string[]])];
+    else result.push({ phrase, studentIds: [...new Set(ids as string[])] });
     seen.add(key);
   }
   return result.sort((a, b) => b.studentIds.length - a.studentIds.length).slice(0, MAX_CLOUD_OPINIONS);

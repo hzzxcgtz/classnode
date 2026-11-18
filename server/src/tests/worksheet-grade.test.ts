@@ -200,6 +200,7 @@ interface AnswerShapeSample {
 }
 
 const ANSWER_KEY_AUDIT: Record<QuestionType, AnswerShapeSample[]> = {
+  rating: [{ label: '评价配置原样下发', data: { rating: { maxStars: 3, dimensions: [{ id: 'overall', text: '整体评价' }] } }, answerKeys: [], safeKeys: ['rating'], afterStrip: { rating: { maxStars: 3, dimensions: [{ id: 'overall', text: '整体评价' }] } } }],
   'image-canvas': [{
     label: '图文题作答区保留位置并剥离评价标准',
     data: { imageCanvas: { widgets: [{ id: 'a', canvasEvaluation: { mode: 'ai', criteria: '口头解释依据' }, matchConfig: { id: 'word-1', text: '珊瑚' } }] } },

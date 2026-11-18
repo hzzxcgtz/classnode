@@ -25,6 +25,7 @@ export interface ServerToClientEvents {
   }) => void;
   'student-auth-error': (data: { error: string }) => void;
   'teacher-auth-error': (data: { error: string }) => void;
+  'classroom-data-cleared': () => void;
   'classroom-ended': () => void;
   'classroom-paused': () => void;
   'classroom-resumed': () => void;

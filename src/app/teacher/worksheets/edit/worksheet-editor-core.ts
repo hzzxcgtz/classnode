@@ -444,8 +444,10 @@ export function newQuestion(type: QuestionType, fillLayout: FillLayout = 'text')
     // 改它的是教师逐题点的那一个开关（`updateInputMode`）。
     inputMode: type === 'drawing' ? 'handwriting' : 'keyboard',
     // New objective exercises always require an answer; historical nodes are unchanged.
-    ...(isGradedQuestionType(type) ? { autoGrade: true as const } : {}),
-    data: isGradedQuestionType(type)
+    ...(type === 'rating' ? { autoGrade: false as const } : isGradedQuestionType(type) ? { autoGrade: true as const } : {}),
+    data: type === 'rating'
+      ? { rating: { maxStars: 3, dimensions: [{ id: 'dimension_1', text: '' }], commentEnabled: true, commentPrompt: '', minCommentLength: 1 }, evaluationVersion: 1, evaluationMode: 'collect', evaluationScored: false }
+      : isGradedQuestionType(type)
       ? {evaluationVersion:1,evaluationMode:'answer',evaluationScored:true}
       : type === 'drawing' || type === 'short-answer'
         ? { ...(type === 'drawing' ? {drawingTool:'free'} : {}), evaluationVersion:1,evaluationMode:'ai',evaluationScored:false,studentAiReviewEnabled:true,aiReviewLimit:1 }

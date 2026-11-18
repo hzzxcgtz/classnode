@@ -12,6 +12,8 @@ import { useRotatedImageSource } from '@/components/use-image-rotation';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 import { PaperCameraDialog } from './paper-camera-dialog';
 import { PhotoCropDialog } from './photo-crop-dialog';
+import type { RewardStyle } from '@/lib/worksheet-reward';
+import { RatingBody } from './rating-body';
 import { AudioBody } from './audio-body';
 import { DeskRatingInput } from '../desk-rating';
 import { deskReviewSettings } from '@/lib/worksheet-image-canvas';
@@ -57,6 +59,7 @@ export type RenderCanvasPhotoTrigger = (state: {
 }) => ReactNode;
 
 export interface QuestionInputProps {
+  rewardStyle?: RewardStyle;
   worksheetId?: string;
   localOnly?: boolean;
   onMediaBusyChange?: (busy: boolean) => void;
@@ -92,7 +95,7 @@ export interface QuestionInputProps {
   correctBlanks?: Record<string, string>;
 }
 
-export function QuestionInput({ worksheetId, node, draft, onChange, disabled, correctKeys, correctBlanks, localOnly = false, onMediaBusyChange, renderCanvasPhotoTrigger }: QuestionInputProps) {
+export function QuestionInput({ worksheetId, rewardStyle, node, draft, onChange, disabled, correctKeys, correctBlanks, localOnly = false, onMediaBusyChange, renderCanvasPhotoTrigger }: QuestionInputProps) {
   /**
    * 这一题的**起点**（形状一定与 `node.type` 同族）。
    *
@@ -122,6 +125,11 @@ export function QuestionInput({ worksheetId, node, draft, onChange, disabled, co
     if (start.kind === kind) return start as Extract<AnswerDraft, { kind: K }>;
     return null;
   };
+
+  if (node.type === 'rating') {
+    const rating = pick('rating');
+    return rating ? <RatingBody rewardStyle={rewardStyle} node={node} draft={rating} disabled={disabled} onChange={next => onChange?.(node, next)} /> : null;
+  }
 
   if (isAudioNode(node)) {
     const audio = pick('audio') ?? { kind: 'audio' as const, url: '', durationMs: 0 };

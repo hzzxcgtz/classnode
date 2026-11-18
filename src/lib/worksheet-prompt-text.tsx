@@ -1,5 +1,6 @@
+import { normalizeWorksheetLinkIcon, worksheetLinkIconImage } from './worksheet-link-icons';
 import { BlankInput } from './worksheet-blank-input';
-import { IconExternalLink } from '@tabler/icons-react';
+import linkStyles from './worksheet-prompt-link.module.css';
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
 import { promptFrameStyle, DEFAULT_PROMPT_STYLE, blankAriaLabel, blankValueStyle, inputWidthCh, isBlankRun, normalizePromptLink, promptTextStyle, type PromptRun } from './worksheet-prompt-marks';
 // ★ 2026-09-30：题面里的数学公式（`$x^2$`）。**切分**是纯逻辑（`worksheet-math.ts`，16 条
@@ -259,7 +260,7 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
         const markAt = chunk.indexOf(TABLE_MARK_TEXT);
         const href = markAt < 0 ? normalizePromptLink(run.href) : undefined;
         if (href) {
-          const sameLink = (part: PromptRun) => !isBlankRun(part) && part.href === run.href
+          const sameLink = (part: PromptRun) => !isBlankRun(part) && part.href === run.href && normalizeWorksheetLinkIcon(part.linkIcon) === normalizeWorksheetLinkIcon(run.linkIcon)
             && part.frame === run.frame && part.frameId === run.frameId && part.frameBorderColor === run.frameBorderColor && part.frameFillColor === run.frameFillColor
             && !text.slice(part.start, part.end).includes(TABLE_MARK_TEXT);
           if (previous && previous.end === run.start && sameLink(previous)) return null;
@@ -270,10 +271,9 @@ export function PromptText({ text, runs, placeholder, blanks, table }: PromptTex
           }
           const name = text.slice(run.start, parts[parts.length - 1].end);
           return (
-            <a key={run.start} href={href} target="_blank" rel="noopener noreferrer"
+            <a key={run.start} href={href} className={linkStyles.link} data-link-icon={normalizeWorksheetLinkIcon(run.linkIcon)} style={{ '--worksheet-link-icon': `url("${worksheetLinkIconImage(run.linkIcon)}")` } as CSSProperties} target="_blank" rel="noopener noreferrer"
               title="点击在新标签页打开" aria-label={`${name}（在新标签页打开）`}
-              style={{ color: '#245990', textDecoration: 'underline', textUnderlineOffset: '0.16em', overflowWrap: 'anywhere' }}>
-              <IconExternalLink size="1em" aria-hidden="true" style={{ display: 'inline-block', verticalAlign: '-0.14em', marginInlineEnd: '0.25em' }} />
+              >
               {parts.map(part => <span key={part.start} style={{ ...promptTextStyle(part, plain), color: 'inherit' }}>{text.slice(part.start, part.end)}</span>)}
             </a>
           );

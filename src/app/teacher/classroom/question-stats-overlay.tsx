@@ -1,4 +1,5 @@
 'use client';
+import type { RewardStyle } from '@/lib/worksheet-reward';
 
 import { RewardUnit } from '@/components/worksheet-reward-unit';
 import { useMemo } from 'react';
@@ -150,7 +151,7 @@ function Section({ title, children, note }: { title: React.ReactNode; children: 
 }
 
 export function QuestionStatsOverlay({
-  classroomId, mode, memberLogin, board, worksheetId, questionId, nodesByWorksheet, onClose, onOpenStudent, expandAnalysis = false, embedded = false,
+  classroomId, mode, memberLogin, board, worksheetId, questionId, nodesByWorksheet, rewardStyle, onClose, onOpenStudent, expandAnalysis = false, embedded = false,
 }: {
   /** 课堂 mode —— 只在量词上用（分组 / 高级模式下「人」要写成「组」），与旁边两屏同源。 */
   mode: string;
@@ -160,6 +161,7 @@ export function QuestionStatsOverlay({
   worksheetId: string;
   questionId: string;
   nodesByWorksheet: Record<string, WorksheetQuestionNode[]>;
+  rewardStyle?: RewardStyle;
   onClose: () => void;
   onOpenStudent?: (participantId: string) => void;
   /** 从总览的 AI 入口进入时，直接展开本题下方的分析。 */
@@ -359,7 +361,7 @@ export function QuestionStatsOverlay({
           )}
 
           {node && stats && rows && (collection || isExpressionQuestion(node)) && (
-            <CollectionResults key={`${worksheetId}:${questionId}`} node={node} stats={stats} unit={unit}
+            <CollectionResults key={`${worksheetId}:${questionId}`} node={node} stats={stats} unit={unit} rewardStyle={rewardStyle}
               cloudOnly={!collection} rows={rows} analysisState={analysisState} onOpenStudent={onOpenStudent}
               renderMatrix={(data) => data.kind === 'match'
                 ? <Matrix rowLabel="左栏" colLabel="右栏" rows={data.left} cols={data.right} cells={data.cells} />

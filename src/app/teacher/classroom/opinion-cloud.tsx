@@ -1,5 +1,6 @@
 'use client';
 
+import { rankedOpinions, OPINION_CLOUD_LIMIT } from '@/lib/opinion-views';
 import { WordCloud, type ComputedWordData, type Word, type WordRendererData } from '@isoterik/react-word-cloud';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type Ref } from 'react';
 import { CLOUD_FONT, ClassroomCloudWord, horizontalCloudWord, useClassroomCloudColors } from './classroom-word-cloud';
@@ -137,7 +138,7 @@ function OpinionLayout({ words, size, fontScale, selected, onSelect }: {
   </div>;
 }
 
-export function OpinionCloud({ phrases, presentation, fontScale, showCounts, layoutSeed, selectedPhrase, onSelectPhrase }: {
+export function OpinionCloud({ phrases: inputPhrases, presentation, fontScale, showCounts, layoutSeed, selectedPhrase, onSelectPhrase }: {
   phrases: CloudPhrase[];
   presentation: boolean;
   fontScale: number;
@@ -146,6 +147,7 @@ export function OpinionCloud({ phrases, presentation, fontScale, showCounts, lay
   selectedPhrase?: string | null;
   onSelectPhrase?: (phrase: string | null) => void;
 }) {
+  const phrases = useMemo(() => rankedOpinions(inputPhrases).slice(0, OPINION_CLOUD_LIMIT), [inputPhrases]);
   const host = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size | null>(null);
   // Polling returns new arrays for the same report. Keep the layout inputs stable
@@ -179,7 +181,7 @@ export function OpinionCloud({ phrases, presentation, fontScale, showCounts, lay
   }, []);
 
   return <div ref={host} className={styles.cloud} data-presentation={presentation || undefined}
-    role="group" aria-label="共同观点">
+    role="group" aria-label="按提及人数展示前十条观点">
     {size && words.length > 0 && <OpinionLayout key={layoutKey} words={words} size={size} fontScale={fontScale} selected={selectedWord} onSelect={selectWord} />}
   </div>;
 }

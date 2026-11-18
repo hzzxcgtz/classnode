@@ -1,3 +1,5 @@
+import { normalizeWorksheetLinkIcon, worksheetLinkIconImage } from '@/lib/worksheet-link-icons';
+import linkStyles from '@/lib/worksheet-prompt-link.module.css';
 import { locateInLengths } from '@/lib/text-offsets';
 import { TABLE_MARK_TEXT } from '@/lib/worksheet-table';
 import { blankRuns, promptFrameStyle, isBlankRun, promptRunStyle, type PromptRun } from '@/lib/worksheet-prompt-marks';
@@ -59,7 +61,7 @@ export function promptLinksMatch(el: HTMLElement, runs: PromptRun[]): boolean {
   const rendered = Array.from(el.querySelectorAll<HTMLElement>('[data-prompt-href]'));
   return expected.length === rendered.length && rendered.every((span, index) => {
     const run = expected[index];
-    return span.dataset.promptHref === run.href && promptNodeOffset(el, span) === run.start
+    return span.dataset.promptHref === run.href && span.parentElement?.dataset.promptLinkIcon === normalizeWorksheetLinkIcon(run.linkIcon) && promptNodeOffset(el, span) === run.start
       && promptModelText(span).length === run.end - run.start;
   });
 }
@@ -74,7 +76,7 @@ export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[])
     stop.dataset.frameGap = 'true';
     return stop;
   };
-  runs.forEach((run) => {
+  runs.forEach((run, index) => {
     const frameKey = run.frame ? `${run.frame}:${run.frameId}:${run.frameBorderColor}:${run.frameFillColor}` : undefined;
     if (!frameKey) {
       if (previousFrame) el.appendChild(frameGap());
@@ -109,13 +111,35 @@ export function renderRunsInto(el: HTMLElement, text: string, runs: PromptRun[])
     const whole = text.slice(run.start, run.end);
     const markAt = whole.indexOf(TABLE_MARK_TEXT);
     if (markAt < 0) {
+      if (run.href) {
+        const sameLink = (part: PromptRun | undefined) => part && !isBlankRun(part) && part.href === run.href && normalizeWorksheetLinkIcon(part.linkIcon) === normalizeWorksheetLinkIcon(run.linkIcon) && part.frame === run.frame && part.frameId === run.frameId && part.frameBorderColor === run.frameBorderColor && part.frameFillColor === run.frameFillColor && !text.slice(part.start, part.end).includes(TABLE_MARK_TEXT);
+        if (index > 0 && runs[index - 1].end === run.start && sameLink(runs[index - 1])) return;
+        const parts = [run];
+        for (const part of runs.slice(index + 1)) {
+          if (part.start !== parts[parts.length - 1].end || !sameLink(part)) break;
+          parts.push(part);
+        }
+        const link = document.createElement('span');
+        link.className = linkStyles.link;
+        link.dataset.promptLinkIcon = normalizeWorksheetLinkIcon(run.linkIcon);
+        link.style.setProperty('--worksheet-link-icon', `url("${worksheetLinkIconImage(run.linkIcon)}")`);
+        link.title = '链接：' + run.href;
+        // A real, zero-model-length caret stop separates the decorative icon from link text.
+        const start = caretStop();
+        start.dataset.linkCaret = 'start';
+        link.appendChild(start);
+        for (const part of parts) {
+          const child = document.createElement('span');
+          applyRunStyle(child, promptRunStyle(part), text.slice(part.start, part.end));
+          child.dataset.promptHref = part.href;
+          child.style.color = 'inherit';
+          link.appendChild(child);
+        }
+        target.appendChild(link);
+        return;
+      }
       const span = document.createElement('span');
       applyRunStyle(span, style, whole);
-      if (run.href) {
-        span.dataset.promptHref = run.href;
-        span.style.color = '#245990';
-        span.style.textDecoration = 'underline';
-      }
       target.appendChild(span);
       return;
     }

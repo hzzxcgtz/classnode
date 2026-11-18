@@ -3,6 +3,8 @@
 import { useMemo } from 'react';
 import { useRotatedImageSource } from '@/components/use-image-rotation';
 import { isAudioNode } from '@/lib/worksheet-answer-value';
+import type { RewardStyle } from '@/lib/worksheet-reward';
+import { RatingTileResult } from './rating-tile-result';
 import { answerView, type AnswerView } from '@/lib/worksheet-answer-view';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
 // ★ 2026-09-30：题面文本里的数学公式（选项 / 左右项 / 框名 / 条目）。
@@ -73,9 +75,12 @@ function Line({ children, color = MUTED }: { children: React.ReactNode; color?: 
   return <div style={{ fontSize: "0.75rem", color, lineHeight: 1.35 }}>{children}</div>;
 }
 
-export function TileAnswerBody({ answer }: { answer: TileAnswer }) {
+export function TileAnswerBody({ answer, rewardStyle }: { answer: TileAnswer; rewardStyle?: RewardStyle }) {
   // ⚠️ memo：`answerView` 每次调用都返回新对象，而这一格每 30 秒会因快照更新重渲染一次。
-  const view = useMemo(() => answerView(answer.node, answer.value), [answer.node, answer.value]);
+  const view = useMemo((): AnswerView => {
+    if (answer.node.type === 'rating') return { kind: 'none' };
+    return answerView(answer.node, answer.value);
+  }, [answer.node, answer.value]);
   // ⚠️ `flexShrink: 0` 是给**滚动**用的（★ 2026-09-29，教师：「内容比较长则自动加上垂直
   // 滚动条」）：外面那一层是 column flex + `overflowY: auto`，而子项默认 `flex-shrink: 1`
   // 会被压到刚好塞下 —— 那时没有任何东西溢出，滚动条永远不出现，长内容**直接被切掉**
@@ -88,7 +93,7 @@ export function TileAnswerBody({ answer }: { answer: TileAnswer }) {
   const fill = view.kind === 'ink';
   return (
     <div data-worksheet-preview-question={answer.node.id} style={{ display: 'flex', flexDirection: 'column', gap: 3, ...(fill ? { flex: 1, minHeight: 0 } : { flexShrink: 0 }) }}>
-      {renderCompact(view, answer.node)}
+      {answer.node.type === 'rating' ? <RatingTileResult node={answer.node} value={answer.value} rewardStyle={rewardStyle} /> : renderCompact(view, answer.node)}
     </div>
   );
 }

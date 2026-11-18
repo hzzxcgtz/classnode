@@ -1,3 +1,4 @@
+import { ratingLeafDimensions, ratingConfig, ratingAnswerText } from './worksheet-rating.js';
 import { evaluationRequirements, evaluationImages, hasEvaluation } from './worksheet-evaluation.js';
 import {
   acceptableAnswersFor,
@@ -20,10 +21,6 @@ import {
 
 function recordOf(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-}
-
-function fieldOf(raw: unknown, key: string): unknown {
-  return recordOf(raw)[key];
 }
 
 function textOf(raw: unknown): string | null {
@@ -172,6 +169,10 @@ function fillReference(node: QuestionNode): string {
 
 /** 题干之外、模型理解题目所必需的题面材料。 */
 export function analysisQuestionDetails(node: QuestionNode): string {
+  if (node.type === 'rating') {
+    const config = ratingConfig(node.data);
+    return `评价维度：${ratingLeafDimensions(config).map(d => d.path).join('、')}；评价上限：${config.maxStars}。\n仅汇总评价分布和文字感想，不判对错、不评分、不排名。观点云只从文字感想提炼，不从评价等级、题干或提示语推断观点。${config.commentEnabled ? `文字提示：${config.commentPrompt || '评价与感想'}` : '未收集文字感想。'}`;
+  }
   switch (node.type) {
     case 'single-choice':
     case 'multi-choice':
@@ -263,6 +264,7 @@ export function analysisReferenceAnswer(node: QuestionNode): string {
  * 一份学生作答的可读投影。`null` 表示形状无法识别；空白作答返回空串，调用方会明确标成空白。
  */
 export function analysisAnswerText(node: QuestionNode, value: unknown): string | null {
+  if (node.type === 'rating') return ratingAnswerText(node.data, value);
   const raw = recordOf(value);
   switch (node.type) {
     case 'single-choice':

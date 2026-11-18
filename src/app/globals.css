@@ -10642,15 +10642,7 @@ tr:hover td {
   .student-board-actions { width: 100%; }
 }
 
-/* 绘图题试版：仅当前题型使用新的题干、作答、评价层级。 */
-.worksheet-editor-canvas[data-editing-type='drawing'] > .worksheet-editor-canvas-head { margin-bottom: 10px; padding-bottom: 8px; border: 0; }
-.worksheet-editor-canvas[data-editing-type='drawing'] > .worksheet-editor-canvas-head h2 { display: none; }
-.worksheet-editor-canvas[data-editing-type='drawing'] .worksheet-editor-task-head { padding-bottom: 8px; margin-bottom: 6px; border: 0; }
-.worksheet-editor-canvas[data-editing-type='drawing'] .worksheet-editor-task-title { font-size: .9375rem; color: #475569; }
-.worksheet-editor-canvas[data-editing-type='drawing'] .worksheet-editor-task-tools { display: none; }
-.worksheet-editor-canvas[data-editing-type='drawing'] .worksheet-editor-task-totals { font-size: .8125rem; }
-.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) > .worksheet-editor-question-head { background: transparent; padding: 8px 0 14px; border-bottom: 1px solid #CDD5E0; }
-.worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .worksheet-editor-question-heading-copy strong { font-size: 1.125rem; }
+/* 表达和绘图保留专属作答区域；题头与主题设置沿用编辑器公共样式。 */
 .worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .is-prompt { display: contents; }
 .worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .is-prompt > .worksheet-editor-section-head { display: none; }
 .worksheet-editor-question.is-focused:is([data-question-type='drawing'], [data-question-type='short-answer']) .is-prompt > .worksheet-editor-block:not(.drawing-prompt-block) { display: contents; }
@@ -11871,3 +11863,71 @@ tr:hover td {
 .student-availability-spinner { transform-origin: center; animation: student-availability-spin .8s linear infinite; }
 @keyframes student-availability-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .student-availability-spinner { animation: none; } }
+
+/* Worksheet editor form controls: one size and type scale across question types. */
+.worksheet-editor, .worksheet-settings-dialog {
+  --worksheet-editor-control-height: 44px;
+  --worksheet-editor-control-radius: 8px;
+  --worksheet-editor-action-height: 40px;
+}
+.worksheet-editor :is(input.input, select.input),
+.worksheet-settings-dialog :is(input.input, select.input),
+.worksheet-editor .worksheet-editor-points-field .input,
+.worksheet-editor .worksheet-editor-points-control .input,
+.worksheet-editor .worksheet-editor-fill-score-input input,
+.worksheet-editor .worksheet-evaluation-number input {
+  box-sizing: border-box;
+  height: var(--worksheet-editor-control-height);
+  min-height: var(--worksheet-editor-control-height);
+  border-radius: var(--worksheet-editor-control-radius);
+  font-size: .875rem;
+  font-weight: 400;
+}
+.worksheet-editor textarea.input, .worksheet-settings-dialog textarea.input {
+  border-radius: var(--worksheet-editor-control-radius);
+  font-size: .875rem;
+  line-height: 1.65;
+}
+.worksheet-editor .btn, .worksheet-settings-dialog .btn { min-height: var(--worksheet-editor-action-height); }
+.worksheet-editor-order-columns.is-collection { grid-template-columns: minmax(0, 1fr); }
+.worksheet-editor .worksheet-editor-warn-hint,
+.worksheet-editor .worksheet-editor-status-note,
+.worksheet-editor .worksheet-evaluation-help,
+.worksheet-settings-dialog .worksheet-settings-help { font-size: .75rem; line-height: 1.65; }
+@media (max-width: 600px) {
+  .worksheet-editor, .worksheet-settings-dialog { --worksheet-editor-action-height: 44px; }
+  .worksheet-editor :is(input.input, select.input, textarea.input),
+  .worksheet-settings-dialog :is(input.input, select.input, textarea.input),
+  .worksheet-editor .worksheet-editor-points-field .input,
+  .worksheet-editor .worksheet-editor-points-control .input,
+  .worksheet-editor .worksheet-editor-fill-score-input input,
+  .worksheet-editor .worksheet-evaluation-number input { font-size: 16px; }
+  .worksheet-editor .worksheet-editor-icon-button { min-width: 44px; min-height: 44px; }
+  .worksheet-editor .worksheet-evaluation-option { min-width: 0; }
+  .worksheet-editor .worksheet-evaluation-number { flex-wrap: wrap; }
+}
+
+/* Narrow screens keep task names intact; status sits on its own line. */
+@media (max-width: 600px) {
+  .worksheet-editor-question.is-focused .worksheet-editor-question-summary {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 7px 8px;
+  }
+  .worksheet-editor-question-heading-copy > strong { white-space: nowrap; }
+  .worksheet-editor-question-summary .worksheet-editor-grade-status { grid-column: 1 / -1; justify-self: end; margin-left: 0; }
+}
+@media (max-width: 1050px) {
+  .worksheet-editor-text-fill > .worksheet-editor-blank-inspector,
+  .worksheet-editor-table-top > .worksheet-editor-blank-inspector { min-height: 0; }
+}
+@media (max-width: 600px) {
+  .worksheet-editor-meta { flex: 1 1 100%; min-width: 0; padding-left: 0; flex-wrap: wrap; gap: 6px; }
+  .worksheet-editor-meta .worksheet-editor-totals { max-width: 100%; white-space: normal; line-height: 1.5; }
+}
+@media (max-width: 600px) {
+  .worksheet-editor .worksheet-editor-formatbar button,
+  .worksheet-editor .worksheet-editor-basic-format .worksheet-editor-formatbar button,
+  .worksheet-settings-head > button { min-width: 44px; min-height: 44px; }
+}

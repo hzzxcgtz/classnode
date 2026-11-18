@@ -1,4 +1,5 @@
 'use client';
+import { EDITOR_CLOUD_HELP, EDITOR_CLOUD_PLACEHOLDER } from './worksheet-editor-copy';
 import { WorksheetFieldTag } from '@/components/worksheet-field-tag';
 
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
@@ -59,7 +60,7 @@ import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choic
 import { FillCombinationsEditor } from './bodies/fill-combinations-editor';
 import { ChoiceBlankSetup } from './bodies/fill-blanks-body';
 // 表达题参考作答支持完整段落，仍沿用 nested answers 数据结构。
-import { fillWholeScore, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading } from '@/lib/worksheet-fill-modes';
+import { blankSlots, fillWholeScore, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading } from '@/lib/worksheet-fill-modes';
 import { TableBody } from './bodies/table-body';
 import { tableMarkIndex } from '@/lib/worksheet-table';
 // ⚠️ 只引 `OrderBody` —— `OrderAnswerBody`（正确顺序）现在住在它里面（两栏并排），
@@ -351,12 +352,12 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
     canvasType || node.type === 'rating' || node.type === 'true-false'
       ? null
       : isChoiceQuestion(node)
-        ? { title: '选项', hint: gradedOn ? '拖动左侧把手调整顺序，点右侧圆点设置答案。' : '拖动左侧把手调整顺序；当前任务收集学生选择，不设置正确答案。' }
+        ? { title: '选项', hint: gradedOn ? (isMultipleChoice(node) ? '拖动左侧把手调整顺序，勾选右侧方框设置答案。' : '拖动左侧把手调整顺序，点击右侧圆点设置答案。') : '拖动左侧把手调整顺序；当前仅收集选择，不设置正确答案。' }
         : isBlankType
           // ★ 2026-10-06：「填空域与表格域会自动同步」与「表格域作答设置」那一块里的
           // 「表格里的空与题干里的空是同一批」是同一个事实（表格域不出现时这句还是错的）⇒ 删这边半句。
           ? null
-          : { title: editorCopy.title, hint: editorCopy.description };
+          : { title: node.type === 'match' && !gradedOn ? '连线项目' : editorCopy.title, hint: editorCopy.description };
   const shownPoints = displayPoints(node, inheritedPoints);
   // ★ 2026-09-28（表格填空）：这笔账搬去了 `maximumPointsFor`（有用例）。
   // 🔴 原来这里数的是 `blankCount(promptRuns)` —— **不含表格里的空** ⇒
@@ -456,7 +457,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             「这是第几题 · 什么题型 · 多少分」这三件**题面里没有**的事。
             ⚠️ 别再把题干挪回来：重复一次不会报错，只会让人以为有两道一样的题。
           */}
-          <span className="worksheet-editor-question-index">{focusedMode && node.type === 'drawing' ? `第 ${badgeLabel} 项任务` : badgeLabel}</span>
+          <span className="worksheet-editor-question-index">{badgeLabel}</span>
           {focusedMode ? (
             <span className="worksheet-editor-question-heading-copy">
               <strong><span className="worksheet-editor-type-glyph">{questionTypeIcon(node.type)}</span>{typeLabel}</strong>
@@ -536,7 +537,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         {canvasType ? <ImageCanvasEditor key={node.id} node={node} onChange={onDataChange} onModeChange={onInputModeChange} /> : (
         <div className={`worksheet-editor-block${(node.type === 'drawing' || node.type === 'short-answer' || node.type === 'open-ended') ? ' drawing-prompt-block' : ''}`}>
           {<PromptEditor
-            heading={<h4><EditorIcon kind="prompt" />任务描述{node.type === 'drawing' && <span className="drawing-required">*</span>}</h4>}
+            heading={<h4><EditorIcon kind="prompt" />任务描述<WorksheetFieldTag /></h4>}
             node={node}
             onPromptChange={onPromptChange}
             onDataChange={onDataChange}
@@ -552,7 +553,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         </div>
         )}
         {node.type === 'rating' && <div className="worksheet-editor-block worksheet-editor-rating-settings"><RatingEditor node={node} rewardStyle={rewardStyle} onDataChange={onDataChange} /></div>}
-        {isBlankType && <div className="worksheet-editor-blank-detail-panel" data-blank-settings-for={node.id}>
+        {isBlankType && blankSlots(node, promptRuns).some(slot => slot.id === selectedBlankId) && <div className="worksheet-editor-blank-detail-panel" data-blank-settings-for={node.id}>
           <ChoiceBlankSetup onAppendEvaluationImages={onAppendEvaluationImages} section="details" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId}/>
         </div>}
         {isBlankType && <FillCombinationsEditor node={node} onDataChange={onDataChange} />}
@@ -563,14 +564,14 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
           ⊘ 填空题**没有**这一块（教师 2026-10-05 裁定 A）：每个空的答案住在「填空与作答设置」
             的卡片里。两个入口编辑同一份数据就是本仓最防的那种分叉。
         */}
-        {node.type === 'true-false' && (
+        {node.type === 'true-false' && gradedOn && (
           <div className="worksheet-editor-block">
             <div className="worksheet-editor-block-head">
               <div>
                 <h4><EditorIcon kind="answer" />正确答案</h4>
               </div>
             </div>
-            <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer />
+            <TrueFalseBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />
           </div>
         )}
         {answerBlock && (
@@ -623,10 +624,10 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
                   但不渲染 —— 再插回标记它就回来）。
                 ⚠️ 于是「有表没标记」这种状态在界面上**没有入口**了（它只可能来自
                   手工改过的库）；那种题保存时会被服务端拒（「学生看不到这张表」）。 */}
-            {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} />}
+            {node.type === 'order' && <OrderBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
             {node.type === 'match' && <MatchBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
             {node.type === 'categorize' && <CategorizeBody node={node} onDataChange={onDataChange} showAnswer={gradedOn} />}
-            {node.type === 'open-ended' && <p className="worksheet-editor-answer-disabled">开放题不设置标准答案和评分规则。教师可在课堂中对学生作答进行 AI 分析。</p>}
+            {node.type === 'open-ended' && <p className="worksheet-editor-answer-disabled">只收集作答，不判对错、不计分。教师可发起全班整体分析。</p>}
 
           </div>
         )}
@@ -673,8 +674,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         <section className={`worksheet-editor-question-section is-grading${gradedOn ? '' : ' is-collection'}`}>
           <div className="worksheet-editor-section-head">
             <div>
-              <h3><EditorIcon kind="grading" />{isBlankType ? '整题计分' : '答案核对设置'}</h3>
-              <p>{isBlankType ? '逐空评分：文字和选词按标准答案给分，语音可由 AI 按评价要求评分。仅收集作答时，整题不计分，可由教师发起内容分析。' : '选择是否设置答案。信息收集不判对错、不计分，可进行 AI 分析。'}</p>
+              <h3><EditorIcon kind="grading" />{isBlankType ? '整题计分' : '计分设置'}</h3>
+              <p>{isBlankType ? '逐空评分：文字和选词按标准答案给分，语音可由 AI 按评价要求评分。仅收集作答时，整题不计分，可由教师发起内容分析。' : '按标准答案自动判分；不需要判分时，可在任务用途中切换为调查收集。'}</p>
             </div>
             <div className="worksheet-editor-head-actions">
               {/* ⚠️ 徽章里**不写「自动评分」** —— 卡片标题就是它（原来那句
@@ -785,23 +786,22 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
 
         {!isBlankType && node.type !== 'rating' && <div className="worksheet-editor-block worksheet-editor-analysis-settings">
           <h3 className="drawing-zone-heading"><EditorIcon kind="grading" />任务用途</h3>
-          {(!canvasType || (!composite && isExpression)) && <EvaluationSettings exampleMode={node.type === 'drawing' ? 'drawing' : node.inputMode === 'audio' || node.inputMode === 'photo' || node.inputMode === 'handwriting' ? node.inputMode : 'keyboard'} allowAi={!deskReview && (node.type === 'short-answer' || node.type === 'drawing')} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls)} unit={pointsUnit} scoreLimit={100} template={node.type === 'drawing' && readDrawingTool(node) === 'flowchart' ? '判断框必须有两分出边并标注 是/否；循环必须有一条回到判断框的线；每个框的文字要说清一步操作；流程要有明确的开始与结束。' : undefined} data={node.data} allowAnswer={isGradedQuestionType(node.type)} legacyMode={aiScoredFor(node) ? 'ai' : gradedOn && isGradedQuestionType(node.type) ? 'answer' : 'collect'} legacyScored={aiScoredFor(node) || gradedOn} reference={node.type === 'short-answer' || node.type === 'drawing' ? node.data.answers : undefined} maxScore={aiScoringMaxScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onNotice={onNotice} onChange={patch => {
+          {(!canvasType || (!composite && isExpression)) && <EvaluationSettings exampleMode={node.type === 'drawing' ? 'drawing' : node.inputMode === 'audio' || node.inputMode === 'photo' || node.inputMode === 'handwriting' ? node.inputMode : 'keyboard'} allowAi={!deskReview && (node.type === 'short-answer' || node.type === 'drawing')} rewardStyle={rewardStyle} onImagesUploaded={urls=>onAppendEvaluationImages?.(urls)} unit={pointsUnit} scoreLimit={100} template={node.type === 'drawing' && readDrawingTool(node) === 'flowchart' ? '判断框的分支应标注「是／否」；循环连线应正确；过程框应写清操作；开始和结束标记应完整。' : undefined} data={node.data} allowAnswer={isGradedQuestionType(node.type)} legacyMode={aiScoredFor(node) ? 'ai' : gradedOn && isGradedQuestionType(node.type) ? 'answer' : 'collect'} legacyScored={aiScoredFor(node) || gradedOn} reference={node.type === 'short-answer' || node.type === 'drawing' ? node.data.answers : undefined} maxScore={aiScoringMaxScore} limit={Number(node.data.aiReviewLimit)||1} onTriggerChange={onDataChange} onNotice={onNotice} onChange={patch => {
             onDataChange({...patch, aiScoringEnabled:patch.evaluationMode === 'ai' && patch.evaluationScored === true});
             onAutoGradeChange(patch.evaluationMode === 'answer');
           }}>
             {isExpression && (
             <label className="worksheet-evaluation-requirements">
               <strong>观点提炼要求<WorksheetFieldTag optional /></strong>
-              <span>用于说明观点提炼的关注方向。用自然通顺的短句表达，不必刻意压缩字数。尽量保留全部不同观点，包括单人观点；观点云按人数展示前10条，其余在全部观点中查看。</span>
+              <span>{EDITOR_CLOUD_HELP}</span>
               <textarea
                 className="input"
                 rows={3}
                 maxLength={1200}
                 value={typeof node.data.wordCloudRequirements === 'string' ? node.data.wordCloudRequirements : ''}
                 onChange={event => onDataChange({ wordCloudRequirements: event.target.value })}
-                placeholder="填写希望全班观点云呈现的内容和形式。"
+                placeholder={EDITOR_CLOUD_PLACEHOLDER}
               />
-              <span>写法示例：提炼有作答依据的短语，关注学无止境、实事求是、善于观察和敢问敢辩。学生提出的其他有依据的观点也可保留。</span>
             </label>
           )}
           </EvaluationSettings>}
@@ -848,7 +848,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             <PromptText
               text={node.prompt}
               runs={promptRuns}
-              placeholder="（任务描述还没写）"
+              placeholder="尚未填写任务描述"
               table={node.data.table}
             />
           </div>
@@ -1253,7 +1253,7 @@ function InputModeRow({ node, onInputModeChange }: {
         </label>
         {expression && <label className="worksheet-editor-option-correct">
           <input type="radio" name={`worksheet-inputmode-${node.id}`} checked={audio} onChange={() => onInputModeChange('audio')} />
-          <span><IconMicrophone size={16} stroke={1.8} aria-hidden="true" />语音录入</span>
+          <span><IconMicrophone size={16} stroke={1.8} aria-hidden="true" />语音作答</span>
         </label>}
       </div>
       {/* 🔴 后果提示，写在开关旁边（不是藏在悬停里、也不是只在选中「手写」之后才出现）：

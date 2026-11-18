@@ -1,0 +1,9 @@
+.summary { white-space: normal; }
+.classroom { margin: 0 0 14px; font-size: .875rem; font-weight: 600; color: #34475e; overflow-wrap: anywhere; }
+.section + .section { margin-top: 13px; padding-top: 13px; border-top: 1px solid #e1e8ef; }
+.section strong { display: inline-flex; align-items: center; gap: 5px; font-size: .75rem; font-weight: 600; }
+.section p { margin: 5px 0 0; color: #596b7e; line-height: 1.7; }
+.remove { color: #9b5350; }
+.keep { color: #46765c; }
+.note { display: flex; align-items: flex-start; gap: 6px; margin: 15px 0 0; color: #718196; font-size: .75rem; line-height: 1.6; }
+.note svg { flex-shrink: 0; margin-top: 2px; }

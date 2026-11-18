@@ -8,7 +8,6 @@
 .scaleControl { display: flex; align-items: center; gap: 14px; color: #52657a; font-size: .8125rem; }
 .scaleInput { display: flex; align-items: center; gap: 10px; }
 .editor .scaleInput select { width: 72px; height: 44px; min-height: 44px; box-sizing: border-box; padding: 8px 12px; font-size: .875rem; }
-.scalePreview { display: flex; gap: 4px; padding-left: 20px; border-left: 1px solid #e0e7ef; }
 .dimensionHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .dimensionHeading h4 span { margin-left: 6px; color: #718196; font-size: .75rem; font-weight: 400; }
 .editor .add { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 6px 10px; font-size: .75rem; white-space: nowrap; }
@@ -32,7 +31,6 @@
   .section { padding: 15px; }
   .heading > span { max-width: 100px; text-align: right; }
   .scale { flex-wrap: wrap; gap: 12px; }
-  .scalePreview { padding-left: 0; border-left: 0; }
   .commentRow { grid-template-columns: minmax(0,1fr); gap: 14px; }
 }
 .row { align-items: start; }
@@ -43,9 +41,9 @@
 /* Match the basic text editor, overriding the generic prompt textarea emphasis. */
 .editor .section .cloudRequirements {
   font-family: inherit;
-  font-size: .8125rem;
+  font-size: .875rem;
   font-weight: 400;
-  line-height: 1.6;
+  line-height: 1.65;
   color: #1e293b;
 }
 
@@ -69,4 +67,18 @@
   .row { grid-template-columns: 32px minmax(0, 1fr); gap: 6px; }
   .rowActions { grid-column: 2; margin-top: 0; }
   .row[data-active='true'] .dimensionInput :global(.worksheet-editor-rich-box) { border-top-left-radius: 0; border-top-right-radius: 0; }
+}
+
+.help { display: block; margin: 6px 0 0; color: #64748b; font-size: .75rem; font-weight: 400; line-height: 1.65; }
+.editor .dimensionInput { min-height: var(--worksheet-editor-control-height, 44px); }
+.editor .add { min-height: var(--worksheet-editor-action-height, 40px); }
+@media (max-width: 600px) {
+  .editor .remove, .editor .addChild { min-width: 44px; min-height: 44px; }
+  .editor .minimumInput input { font-size: 16px; }
+}
+
+@media (max-width: 600px) { .editor .section .cloudRequirements { font-size: 16px; } }
+@media (max-width: 600px) {
+  .sharedToolbar :global(.worksheet-editor-formatbar button),
+  .mobileToolbar :global(.worksheet-editor-formatbar button) { min-width: 44px; min-height: 44px; }
 }

@@ -21,7 +21,7 @@ import {
 
 /** 正确答案栏里显示一个条目的文字；条目被改空时给一句看得懂的话，而不是一个空白。 */
 function entryLabel(text: string): string {
-  return text.trim() || '（这个条目还没写内容）';
+  return text.trim() || '（未填写条目）';
 }
 
 function moveAt<T>(values: T[], from: number, to: number): T[] {
@@ -46,7 +46,7 @@ function moveAt<T>(values: T[], from: number, to: number): T[] {
  *
  * 🔴 **两个顺序不能逐位相同** —— 相同就是「学生什么都不做就是满分」。
  * 维持它的是内核里的 `ensureOrderDistinct`（增删条目时）与 `shuffleOrderItems`
- * （「重新排列」与「取当前顺序」时，后者**保证**结果不同）。这一屏只负责把当下的状态画出来，
+ * （「打乱顺序」与「使用当前顺序」时，后者**保证**结果不同）。这一屏只负责把当下的状态画出来，
  * 并在它们相同的时候说一句 —— 判据一条都不在这里（组件这一层没有回归网）。
  *
  * ── ★ 2026-09-28（教师）：**拆成两个组件** ─────────────────────────────────
@@ -73,7 +73,7 @@ export function OrderAnswerBody({ node, onDataChange }: {
   /**
    * 「正确顺序」这一栏现在能不能用（是不是条目的 id 的一个排列）。
    *
-   * 🔴 `!answerReady` 时**必须留着**「取当前顺序」那个按钮（不只是 `correctOrder` 为空时）。
+   * 🔴 `!answerReady` 时**必须留着**「使用当前顺序」那个按钮（不只是 `correctOrder` 为空时）。
    * 屏幕上的判据原来只有「`correctOrder` 为空」一条，而**真正的死局**是 `correctOrder`
    * **非空、却不是这些条目 id 的排列**（重复 id / 与条目对不上 / 条目缺 id 的行）：那时
    * 按钮被藏掉，而加条目、删条目都救不回来 ⇒ 教师唯一的出路是删掉这道题。
@@ -82,7 +82,7 @@ export function OrderAnswerBody({ node, onDataChange }: {
    * ⚠️ 2026-09-24（C3）更正一段**已被实测证伪**的复现叙述。这里原先写的是（逐字照抄
    * `a4b1a11` 那一版，只省掉与结论无关的中间半句）：
    *
-   *   「审查者实测过一条**死局**：条目缺 id 的行点过一次「取当前顺序」之后，`correctOrder` 里
+   *   「审查者实测过一条**死局**：条目缺 id 的行点过一次「使用当前顺序」之后，`correctOrder` 里
    *     留着两个空串（既指不到任何条目、也不为空），而那个按钮原来只在「为空」时渲染
    *     ⇒ 屏幕上是两行「这个条目已经被删掉了」、保存被 400 拦下、**修复入口已经被它自己
    *     藏掉** ⇒ 教师唯一的出路是删掉这道题。」
@@ -107,7 +107,7 @@ export function OrderAnswerBody({ node, onDataChange }: {
       <span className="worksheet-editor-block-label"><EditorIcon kind="correct" />正确顺序</span>
       {correctOrder.length === 0 ? (
         <p className="worksheet-editor-hint">
-          还没设置答案。可先取当前顺序，再调整位置。
+          尚未设置正确顺序。可使用当前顺序，再调整位置。
         </p>
       ) : (
         <ol className="worksheet-editor-order-answer">
@@ -164,7 +164,7 @@ export function OrderAnswerBody({ node, onDataChange }: {
         // 「正确顺序」与条目对不上（缺 id / 长度不符 / 有重复）—— 它是**存不下**的状态
         //（服务端：「排序题的『正确顺序』必须正好是这些条目各一次」），所以必须说清怎么重设。
         <p className="worksheet-editor-warn-hint">
-          正确顺序与现有条目不一致，请点「取当前顺序」重新设置后保存。
+          正确顺序与现有条目不一致，请点「使用当前顺序」重新设置后保存。
         </p>
       )}
       {!answerReady ? (
@@ -173,10 +173,10 @@ export function OrderAnswerBody({ node, onDataChange }: {
             type="button"
             className="btn btn-secondary"
             disabled={items.length < 2}
-            title={items.length < 2 ? '至少要两个条目' : '把现在的条目顺序当成正确答案，并重新排列学生看到的顺序'}
+            title={items.length < 2 ? '至少要两个条目' : '把现在的条目顺序当成正确答案，并打乱顺序学生看到的顺序'}
             onClick={() => commit(orderUseCurrentOrder(order))}
           >
-            取当前顺序
+            使用当前顺序
           </button>
         </div>
       ) : null}
@@ -185,12 +185,13 @@ export function OrderAnswerBody({ node, onDataChange }: {
 }
 
 /**
- * 条目（学生要排的东西）+「学生看到的顺序」+「重新排列」。
+ * 条目（学生要排的东西）+「学生看到的顺序」+「打乱顺序」。
  * **住在容器 A（题目内容）里**；答案那一半见 `OrderAnswerBody`。
  */
-export function OrderBody({ node, onDataChange }: {
+export function OrderBody({ node, onDataChange, showAnswer = true }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
+  showAnswer?: boolean;
 }) {
   const order = readOrder(node);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
@@ -207,8 +208,8 @@ export function OrderBody({ node, onDataChange }: {
           （正确顺序）—— 它原来住在「自动评分」卡里，两块分在两处，调答案时要上下找。
           ⚠️ 窄屏**上下叠**（教师同日裁定）—— `.worksheet-editor-order-columns` 的媒体查询。
           ⚠️ 「学生看到的顺序与正确答案一模一样」那句提示留在**两栏外面**：它说的是**整题**
-             的状态，且同时指向两栏（「点重新排列，或调整『正确顺序』那一栏」）。 */}
-      <div className="worksheet-editor-order-columns">
+             的状态，且同时指向两栏（「点打乱顺序，或调整『正确顺序』那一栏」）。 */}
+      <div className={`worksheet-editor-order-columns${showAnswer ? '' : ' is-collection'}`}>
       <div className="worksheet-editor-block">
         <span className="worksheet-editor-block-label"><EditorIcon kind="student" />学生看到</span>
         <div className="worksheet-editor-options">
@@ -247,7 +248,7 @@ export function OrderBody({ node, onDataChange }: {
             </div>
           ))}
         </div>
-        {/* ★ 2026-09-28（教师）：「打乱顺序」移到这一行、改名「重新排列」——
+        {/* ★ 2026-09-28（教师）：「打乱顺序」移到这一行、改名「打乱顺序」——
             它和「＋ 添加条目」都是**对条目这一列本身的操作**，摆在一起才读得通；
             而「打乱顺序」这个名字说着像是另一种操作，其实只是把学生看到的顺序重排一次。 */}
         <div className="worksheet-editor-inline-actions worksheet-editor-order-actions">
@@ -258,25 +259,25 @@ export function OrderBody({ node, onDataChange }: {
             type="button"
             className="btn btn-secondary"
             disabled={items.length < 2}
-            title={items.length < 2 ? '至少要两个条目' : '重新排列学生看到的顺序（不会等于正确答案的顺序）'}
+            title={items.length < 2 ? '至少要两个条目' : '打乱顺序学生看到的顺序（不会等于正确答案的顺序）'}
             onClick={() => commit({ items: shuffleOrderItems(items, correctOrder), correctOrder })}
           >
-            重新排列
+            打乱顺序
           </button>
         </div>
       </div>
       {/* ── 右栏：正确顺序（从「自动评分」卡搬来的）───────────────────────── */}
-      <OrderAnswerBody node={node} onDataChange={onDataChange} />
+      {showAnswer && <OrderAnswerBody node={node} onDataChange={onDataChange} />}
       </div>
 
-      {ambiguous && (
+      {showAnswer && ambiguous && (
         // 本地提示，**不是**判据：真正的拦阻在服务端（A1 的那条校验会说「请先把条目打乱，
-        // 或点『重新排列』」）。这里重复一遍是为了不必先保存一次才知道。
-        // ⚠️ 它只有在**库里那一份**是这种状态时才可能出现（增删条目与「取当前顺序」
+        // 或点『打乱顺序』」）。这里重复一遍是为了不必先保存一次才知道。
+        // ⚠️ 它只有在**库里那一份**是这种状态时才可能出现（增删条目与「使用当前顺序」
         // 都会在内核里把顺序挪开）—— 例如手工改过的行。
         <p className="worksheet-editor-warn-hint">
-          ⚠ 学生看到的顺序与正确答案的顺序**一模一样** —— 学生什么都不做就是满分。
-          点「重新排列」，或调整「正确顺序」那一栏。
+          学生看到的顺序与正确顺序相同，请打乱条目顺序后保存。
+          点「打乱顺序」，或调整「正确顺序」那一栏。
         </p>
       )}
     </>

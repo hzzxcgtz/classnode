@@ -1,0 +1,57 @@
+.page { width: 100%; min-width: 0; max-width: 920px; margin: 0 auto; }
+.form { display: flex; flex-direction: column; gap: 18px; padding-bottom: 12px; }
+.section { min-width: 0; background: #fff; border: 1px solid var(--card-border); border-radius: 12px; padding: 20px; }
+.sectionHeading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.sectionHeading > svg { color: var(--primary); flex-shrink: 0; width: 18px; height: 18px; }
+.sectionHeading > span:not(:global(.required-field-mark)) { font-size: 12px; font-weight: 400; color: var(--text-muted); }
+.section :global(.input) { min-height: 44px; border-radius: 8px; font-size: 14px; }
+.form :global(.new-classroom-steps) { margin: 0; padding: 14px 12px; background: #fff; border-color: var(--card-border); border-radius: 12px; }
+.form :global(.new-classroom-steps > div) { gap: 10px; font-size: 13px; }
+.form :global(.new-classroom-steps > div > span) { width: 26px; height: 26px; flex-basis: 26px; }
+.form :global(.new-classroom-mode-grid) { gap: 12px; }
+.modeCard { min-width: 0; min-height: 110px; display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; border: 1.5px solid var(--card-border); border-radius: 10px; background: #fff; font: inherit; text-align: left; cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s; }
+.modeCard[aria-pressed='true'] { border-color: var(--primary); background: var(--primary-tint); box-shadow: inset 0 0 0 .5px var(--primary); }
+.modeTop { display: flex; align-items: center; gap: 10px; }
+.modeTop strong { color: var(--text-primary); font-size: 14px; font-weight: 600; }
+.modeIcon { display: inline-flex; color: var(--primary); flex-shrink: 0; }
+.selectionMark { width: 17px; height: 17px; border: 1.5px solid #cbd5e1; border-radius: 50%; margin-left: auto; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.modeCard[aria-pressed='true'] .selectionMark { border-color: var(--primary); background: var(--primary); color: #fff; }
+.modeDescription { color: var(--text-secondary); font-size: 12px; line-height: 1.65; }
+.loginRow { display: flex; align-items: center; gap: 14px; border-top: 1px solid #edf1f6; padding-top: 14px; margin-top: 14px; font-size: 12px; color: var(--text-secondary); }
+.loginSwitch { display: inline-flex; padding: 3px; background: #edf2f7; border-radius: 8px; }
+.loginSwitch button { border: 0; padding: 7px 14px; border-radius: 6px; background: transparent; color: var(--text-secondary); font: inherit; cursor: pointer; }
+.loginSwitch button[aria-pressed='true'] { background: #fff; color: var(--primary); box-shadow: 0 1px 3px #23365112; font-weight: 600; }
+.loginSwitch button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.form :global(.new-classroom-class-grid) { gap: 10px; }
+.classCard { min-width: 0; min-height: 82px; }
+.classIcon { width: 44px; height: 44px; border-radius: 10px; background: #f0f4f9; color: var(--primary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; }
+.classCard[aria-pressed='true'] .classIcon { background: #fff; }
+.classMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 4px; font-size: 12px; color: var(--text-muted); }
+/* Every content picker uses the same field dimensions, including group-level pickers. */
+.section button[aria-expanded] { min-height: 44px !important; padding: 9px 12px !important; border-radius: 8px !important; border-color: var(--card-border) !important; }
+.section button[aria-expanded]:hover { border-color: var(--primary) !important; }
+.section button[aria-expanded]:focus-visible { outline: 3px solid rgba(var(--primary-focus-rgb), .2); outline-offset: 2px; }
+.section button[aria-expanded] + div button { min-height: 44px; }
+.form :global(.new-classroom-actions) { margin: 0; padding: 16px 20px; border: 1px solid var(--card-border); border-radius: 12px; box-shadow: 0 -4px 18px #23365106; }
+.form :global(.new-classroom-action-buttons .btn) { min-height: 44px; padding: 10px 20px; font-size: 14px; border-radius: 8px; white-space: nowrap; }
+.form :global(.new-classroom-summary span) { line-height: 1.6; overflow-wrap: anywhere; }
+@media (max-width: 680px) {
+  .section { padding: 16px; }
+  .form { gap: 12px; }
+  .form :global(.new-classroom-mode-grid), .form :global(.new-classroom-class-grid) { grid-template-columns: 1fr; }
+  .modeCard { min-height: 0; gap: 6px; padding: 14px; }
+  .modeDescription { margin-left: 32px; }
+  .classCard { display: grid !important; grid-template-columns: 44px minmax(0, 1fr); }
+  .classCard > span:last-child:not(.classIcon) { grid-column: 2; justify-self: start; }
+  .loginRow { flex-wrap: wrap; gap: 8px; }
+  .form :global(.new-classroom-steps > div) { gap: 5px; font-size: 12px; }
+  .form :global(.new-classroom-steps > div > span) { width: 22px; height: 22px; flex-basis: 22px; }
+  .form :global(.new-classroom-actions) { padding: 14px 16px; gap: 12px; flex-direction: column; align-items: stretch; }
+  .form :global(.new-classroom-action-buttons) { width: 100%; }
+  .form :global(.new-classroom-action-buttons .btn) { padding: 10px 12px; }
+  .form :global(.new-classroom-action-buttons .btn-primary) { flex: 1; justify-content: center; }
+  .form :global(.new-classroom-action-buttons .btn-secondary) { display: flex; justify-content: center; }
+  .section :global(.input) { font-size: 16px; }
+  .loginSwitch button { min-height: 44px; padding: 8px 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .modeCard { transition: none; } }

@@ -1,4 +1,5 @@
 'use client';
+import { useTeacherConfirm } from '@/lib/components';
 import { canvasColorOpacity, canvasColorWithOpacity } from '@/lib/worksheet-image-canvas';
 
 import { useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
@@ -64,6 +65,7 @@ export function ImageCanvasEditor({ node, onChange, onModeChange }: {
   onChange: (patch: Record<string, unknown>) => void;
   onModeChange: (mode: Mode) => void;
 }) {
+  const { askConfirmation, confirmationDialog } = useTeacherConfirm();
   const canvas = readImageCanvas(node.data.imageCanvas);
   const editor = useRef<HTMLElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -263,8 +265,8 @@ export function ImageCanvasEditor({ node, onChange, onModeChange }: {
       </div>
       {canvas && <div className={styles.fileActions}>
         {uploadControl}
-        <button type="button" className={styles.iconButton} title="移除底图" aria-label="移除底图" disabled={uploading || Boolean(largeFile)} onClick={() => {
-          if (window.confirm('移除底图和上面的控件？可用编辑器的撤销恢复。')) {
+        <button type="button" className={styles.iconButton} title="移除底图" aria-label="移除底图" disabled={uploading || Boolean(largeFile)} onClick={async () => {
+          if (await askConfirmation({ title: '移除底图及控件？', message: '将移除当前底图和全部控件，可通过编辑器的「撤销」恢复。', confirmLabel: '移除底图及控件', tone: 'danger' })) {
             onChange({ imageCanvas: undefined });
             selectWidget(null);
             setZoom(100);
@@ -514,6 +516,7 @@ export function ImageCanvasEditor({ node, onChange, onModeChange }: {
       </div>
     </fieldset>}
     {error && <p className={styles.error} role="alert">{error}</p>}
+    {confirmationDialog}
   </section>;
 }
 

@@ -3558,7 +3558,6 @@
 
 /* Keep rating guidance below the action, including on narrow phones. */
 .ratingSubmitRow { flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
-.ratingSubmitHint { max-width: 100%; margin: 0; font-size: .75rem; line-height: 1.5; color: #718196; text-align: right; overflow-wrap: anywhere; }
 
 /* Keep the directory within the worksheet viewport, independently of its scroller. */
 .workspace { position: relative; display: flex; flex: 1 1 auto; min-height: 0; }

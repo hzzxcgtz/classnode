@@ -35,7 +35,8 @@ test('★ 底稿面板：用学生的画板、写回带 tool 的 drawingStarter�
   // ③ 开关（教师 2026-10-06：「底稿要设一个开关」）：勾上落一份空底稿让画板立刻出现，取消清掉。
   assert.match(source, /type="checkbox"[\s\S]{0,200}?role="switch"[\s\S]{0,120}?checked=\{!!starter\}/, '没有「要不要设底稿」的开关');
   assert.match(source, /drawingStarter: undefined/, '取消开关没有清掉底稿');
-  assert.match(source, /window\.confirm/, '已经有底稿时取消没有确认 —— 一次误点就丢一张图');
+  assert.match(source, /await askConfirmation/, '移除已有底稿前必须等待确认');
+  assert.match(source, /\{confirmationDialog\}/, '确认窗必须实际渲染');
   // ④ 画板要有明确且足够大的高度：它靠量出容器尺寸才初始化。
   assert.match(source, /className="worksheet-editor-starter-canvas"/, '底稿画板没有使用统一的大画布容器');
   const css = fs.readFileSync(path.resolve(import.meta.dirname, '..', '..', '..', 'globals.css'), 'utf8');

@@ -40,3 +40,18 @@
 
 .panel button.modeSwitch { display:inline-flex; align-items:center; gap:7px; min-height:40px; padding:9px 14px; border:1px solid #9fb7cf; background:#edf3fa; color:#2f557a; font-weight:600; }
 .panel button.modeSwitch:hover { background:#dfebf6; border-color:#7398bc; }
+
+/* Answer combinations use the same editor headings and controls as other types. */
+.panel { min-width: 0; border-radius: 10px; }
+.header { padding: 16px; gap: 12px; }
+.header > div { min-width: 0; }
+.header h4 { font-size: .875rem; font-weight: 600; gap: 6px; }
+.header p, .note { font-size: .75rem; line-height: 1.65; }
+.panel button { min-height: var(--worksheet-editor-action-height, 40px); border-radius: 8px; font-size: .8125rem; font-weight: 500; }
+.panel .table textarea.answer { font-size: .875rem; line-height: 1.65; }
+.choiceRow select.answer { height: var(--worksheet-editor-control-height, 44px); min-height: var(--worksheet-editor-control-height, 44px); font-size: .875rem; }
+@media (max-width: 600px) {
+  .header { flex-direction: column; align-items: flex-start; }
+  .panel .table textarea.answer, .choiceRow select.answer { font-size: 16px; }
+  .panel button.remove { min-width: 44px; }
+}

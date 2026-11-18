@@ -248,7 +248,7 @@ test('★ 选项行：答案设置（圆点/勾选框）在**行尾**，字母�
   // 行首那个字母盒不能丢：关掉自动评分时它是唯一能区分四个选项的东西。
   assert.ok(choice.includes('worksheet-editor-option-correct is-readonly'), '行首的字母盒（A/B/C/D）不见了');
 
-  assert.match(body(CARD), /点右侧圆点设置答案/, '卡片上的提示没有点明行尾答案控件');
+  assert.match(body(CARD), /点击右侧圆点设置答案/, '卡片上的提示没有点明行尾答案控件');
   // ★ 2026-10-06：「点右侧圆点 / 方框」这件事**只由卡片那句讲一次**（同一屏里不说两遍）——
   //    警告条现在只留结论。
   assert.match(choice, /尚未设置正确答案/, '警告条丢了结论');
@@ -299,7 +299,7 @@ test('★ 2026-10-06（教师）：判断题的正确答案块摆在**题干后�
   const live = stripImports(stripComments(CARD));
   // ⚠️ 判据用**这一块的标题**，不要用 `node.type === 'true-false'`：那个条件在卡片靠上处
   //    （摘要/只读预览那条路）也出现过，第一次出现的位置比题干还早 ⇒ 拿它当判据会假红。
-  const stem = live.search(/<h4><EditorIcon[^>]*\/>任务描述(?:\{node\.type === 'drawing' && <span className="drawing-required">\*<\/span>\})?<\/h4>/);
+  const stem = live.search(/<h4><EditorIcon[^>]*\/>任务描述<WorksheetFieldTag \/><\/h4>/);
   const answer = live.search(/<h4><EditorIcon[^>]*\/>正确答案<\/h4>/);
   assert.ok(stem !== -1 && answer !== -1, '题干或判断题的正确答案块不见了');
   assert.ok(answer > stem, '判断题的正确答案没有排在题干之后');

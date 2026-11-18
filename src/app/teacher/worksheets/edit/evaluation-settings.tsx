@@ -4,6 +4,7 @@ import { useId, useRef, useState, type ReactNode } from 'react';
 import { IconCheck, IconSparkles, IconInbox, IconPhotoPlus, IconX } from '@tabler/icons-react';
 import { normalizePastedText } from '@/lib/worksheet-text-normalize';
 import type { RewardStyle } from '@/lib/worksheet-reward';
+import { EDITOR_PURPOSE_HELP, EDITOR_AUTO_REVIEW_HELP } from './worksheet-editor-copy';
 import { EditorRewardUnit } from './editor-reward-unit';
 import { api } from '@/lib/api';
 import { worksheetAssetUrl } from '@/lib/worksheet-presentation';
@@ -12,9 +13,9 @@ import { evaluationImages, evaluationMode, evaluationRequirements, hasEvaluation
 type EvaluationExample = 'keyboard' | 'audio' | 'photo' | 'handwriting' | 'drawing';
 
 const evaluationExamples: Record<EvaluationExample, string> = {
-  keyboard: '说清两小儿各自的观点，并用课文中的一句话说明理由。建议指出哪一处还可以补充依据。',
-  audio: '听学生是否说清景物特点，并举出一个具体例子。根据听到的内容，给一条下次介绍时能用的建议。',
-  photo: '从照片里的推荐词判断是否写清一处景物的特点，理由是否具体。选一句指出写得好的地方或给出修改建议。',
+  keyboard: '关注学生是否说清观点，并结合材料给出具体依据。指出值得肯定的地方，提出一条改进建议。',
+  audio: '关注学生是否表达清楚、理由充分。根据录音内容，提出一条具体的改进建议。',
+  photo: '根据照片中呈现的作答，判断内容是否完整、依据是否充分。指出一处值得肯定或可以改进的地方。',
   handwriting: '看学生是否写出了关键步骤，并说清每一步怎么得到。指出最需要补充说明的一步。',
   drawing: '看图中是否呈现关键步骤，箭头是否表示正确的先后关系。指出一处可以调整的连线，并说明原因。',
 };
@@ -38,8 +39,8 @@ export function EvaluationSettings({ data, legacyMode, legacyScored, allowAnswer
     <div className="worksheet-evaluation-modes purpose-segmented-control" role="group" aria-label="任务用途">
       {([{key:'answer', label:'练习判分', Icon:IconCheck}, {key:'ai', label:'表达评价', Icon:IconSparkles}, {key:'collect', label:'调查收集', Icon:IconInbox}] as const).filter(item => (allowAnswer || item.key !== 'answer') && (allowAi || item.key !== 'ai')).map(({key,label,Icon}) => <button type="button" key={key} aria-pressed={mode===key} className={mode===key?'is-selected':''} onClick={() => {if(key !== mode || !hasEvaluation(data)) { change({evaluationMode:key, evaluationScored:key==='answer' || (key==='ai' && scored), ...(key==='ai' ? {maxScore:1, aiScoringMaxScore:1} : {})}); if(key==='ai') onTriggerChange({studentAiReviewEnabled:true, aiReviewLimit:1}); }}}><Icon size={18}/>{label}</button>)}
     </div>
-    {mode === 'collect' && <p className="worksheet-evaluation-help">只收集作答，不判对错、不计分，也不生成个人 AI 评价。教师仍可发起全班整体分析。</p>}
-    {mode === 'answer' && showAnswerHelp && <p className="worksheet-evaluation-help">必须设置标准答案，提交后自动判分，不生成个人 AI 评价。教师仍可发起全班整体分析。</p>}
+    {mode === 'collect' && <p className="worksheet-evaluation-help">{EDITOR_PURPOSE_HELP.collect}</p>}
+    {mode === 'answer' && showAnswerHelp && <p className="worksheet-evaluation-help">{EDITOR_PURPOSE_HELP.answer}</p>}
     {mode === 'ai' && !allowAi && <p className="worksheet-evaluation-help" role="status">客观题不支持表达评价，请选择练习判分或调查收集。</p>}
     {showAi && <>
       <EvaluationRequirementsField label="AI 评价要求" images={images} onImagesUploaded={onImagesUploaded}
@@ -53,7 +54,7 @@ export function EvaluationSettings({ data, legacyMode, legacyScored, allowAnswer
     {showAi && <>
       <div className="worksheet-evaluation-options">
         <div className="worksheet-evaluation-option"><label><input type="checkbox" checked={scored} onChange={event=>change({evaluationScored:event.target.checked})}/>计入评分</label><span>{scored?'AI 按给分条件评分，同时给出建议。':'只给评价与建议，不产生分数。'}</span>{scored && <label className="worksheet-evaluation-number">满分<input className="input" type="number" min={1} max={scoreLimit} value={maxScore} onChange={event=>{const n=Number(event.target.value);if(Number.isInteger(n)&&n>=1&&n<=scoreLimit)change({maxScore:n,aiScoringMaxScore:n});}}/><EditorRewardUnit style={rewardStyle} unit={unit}/></label>}</div>
-        <div className="worksheet-evaluation-option"><label>提交后自动评价</label><span>同题多个表达空合并评价，失败后可重试。</span><label className="worksheet-evaluation-number">每人评价次数<input className="input" type="number" min={1} max={20} value={limit} onChange={event=>{const n=Number(event.target.value);if(Number.isInteger(n)&&n>=1&&n<=20)onTriggerChange({aiReviewLimit:n});}}/></label></div>
+        <div className="worksheet-evaluation-option"><label>提交后自动评价</label><span>{EDITOR_AUTO_REVIEW_HELP}</span><label className="worksheet-evaluation-number">每人评价次数<input className="input" type="number" min={1} max={20} value={limit} onChange={event=>{const n=Number(event.target.value);if(Number.isInteger(n)&&n>=1&&n<=20)onTriggerChange({aiReviewLimit:n});}}/></label></div>
       </div>
       {scored && !requirements.trim() && !images.length && <p className="worksheet-evaluation-validation" role="status">请补充给分条件或上传评分量表，再保存。</p>}
     </>}

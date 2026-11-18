@@ -283,3 +283,14 @@
 .opacityControl { display:flex; align-items:center; gap:9px; padding:0 4px; font-size:.75rem; color:var(--layout-muted); }
 .opacityControl input { flex:1; min-width:30px; accent-color:var(--layout-accent); }
 .opacityControl output { min-width:3em; text-align:right; font-variant-numeric:tabular-nums; }
+
+.settingsBody .propertyField > :is(input:not([type='range']):not([type='color']), select) {
+  height: var(--worksheet-editor-control-height, 44px);
+  min-height: var(--worksheet-editor-control-height, 44px);
+  border-radius: var(--worksheet-editor-control-radius, 8px);
+  font-size: .875rem;
+}
+@media (max-width: 600px) {
+  .settingsBody .propertyField > :is(input, select, textarea) { font-size: 16px; }
+  .inspector .iconButton, .settingsTabs button, .resetStyle, .colorMenu summary { min-height: 44px; }
+}

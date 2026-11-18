@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { RelatedClassroom } from './types';
 
 /** 统一教师端页面的标题、说明和主操作区域。 */
@@ -83,7 +83,7 @@ export function TeacherLoadingState({ label = '正在加载…' }: { label?: str
 
 export interface TeacherConfirmOptions {
   title: string;
-  message: string;
+  message: ReactNode;
   confirmLabel?: string;
   tone?: 'default' | 'danger';
   alternateAction?: { label: string; onClick: () => void; tone?: 'danger' };
@@ -94,6 +94,7 @@ export interface TeacherConfirmOptions {
  * 同时让破坏性操作也遵循统一的柔和标题区，而不是跳出浏览器原生小窗。
  */
 export function useTeacherConfirm() {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const [pending, setPending] = useState<(TeacherConfirmOptions & { resolve: (result: boolean) => void }) | null>(null);
 
   const askConfirmation = useCallback((options: TeacherConfirmOptions) => new Promise<boolean>((resolve) => {
@@ -107,11 +108,32 @@ export function useTeacherConfirm() {
     });
   }, []);
 
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!pending || !dialog) return;
+    const previous = document.activeElement;
+    const controls = () => Array.from(dialog.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+    controls()[0]?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); finish(false); }
+      if (event.key !== 'Tab') return;
+      const buttons = controls();
+      const first = buttons[0], last = buttons[buttons.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', keydown, true);
+    return () => {
+      document.removeEventListener('keydown', keydown, true);
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, [pending, finish]);
+
   const confirmationDialog = pending ? (
     <>
       <div className="modal-overlay" onClick={() => finish(false)} />
       <div className={`modal-content teacher-dialog teacher-confirm-dialog${pending.tone === 'danger' ? ' is-danger' : ''}`}
-        role="alertdialog" aria-modal="true" aria-labelledby="teacher-confirm-title">
+        ref={dialogRef} onKeyDown={event => event.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="teacher-confirm-title">
         <div className="teacher-confirm-heading">
           <span aria-hidden="true">{pending.tone === 'danger' ? '!' : '?'}</span>
           <div>

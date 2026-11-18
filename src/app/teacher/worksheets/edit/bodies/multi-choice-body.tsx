@@ -69,7 +69,7 @@ export function ChoicePartialCreditBody({ node, onDataChange }: {
           />
           <span>
             <strong>全对才得分</strong>
-            <em>必须选中全部正确答案</em>
+            <em>选全正确选项，且不选错误选项</em>
           </span>
         </label>
         <label className={allowMissing ? 'is-selected' : ''}>

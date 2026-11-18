@@ -90,7 +90,7 @@ test('★ 填空题的答案住在每张空卡片里，并受题目级自动评�
   assert.ok(!card.includes('FillBlanksBody'), '「标准答案」那块又回来了 —— 答案会有两个编辑入口');
   assert.ok(!card.includes('每个空可以填多个可接受答案'), '那句说明被抄回题目卡了（应当在空卡片下方那一处）');
   // 统一说明放在作答用途标题中，不再另画一张答案隐藏提示。
-  assert.ok(card.includes('信息收集不判对错、不计分，可进行 AI 分析。'));
+  assert.ok(card.includes('可在任务用途中切换为调查收集。'));
   assert.ok(!card.includes('不设标准答案，不判对错、不计分；可在课堂中分析学生作答。'));
 
 });

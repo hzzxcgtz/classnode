@@ -403,8 +403,8 @@ function WorksheetEditorBody() {
     return (
       <TeacherEmptyState
         icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>}
-        title="这份学习单没有加载出来"
-        description={`${editor.loadError}。它本身没有丢，稍后重试即可（返回列表前请先回来重试，否则会看到一份空白的编辑器）。`}
+        title="学习单加载失败"
+        description={`${editor.loadError}。请重试；若仍无法加载，可返回学习单列表后重新打开。`}
         action={<button className="btn btn-secondary" onClick={editor.retryLoad}>重试</button>}
       />
     );
@@ -456,7 +456,7 @@ function WorksheetEditorBody() {
       <div className="worksheet-editor-topbar">
         <button type="button" className="worksheet-editor-back" onClick={editor.goBack} aria-label="返回学习单列表">←</button>
         <div className="worksheet-editor-heading">
-          <span className="worksheet-editor-breadcrumb">学习单 / 编辑</span>
+          <span className="worksheet-editor-breadcrumb">学习单 / {editor.worksheetId ? '编辑' : '新建'}</span>
           <input
             className="worksheet-editor-title"
             value={editor.title}
@@ -1038,7 +1038,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
         */}
         <div className="worksheet-settings-body">
           <section className="worksheet-settings-section">
-            <div className="worksheet-settings-section-head"><div><strong>适用年级与学科</strong><em>必填，帮助 AI 按年级和学科分析作答。</em></div></div>
+            <div className="worksheet-settings-section-head"><div><strong>适用年级与学科<WorksheetFieldTag /></strong><em>帮助 AI 按年级和学科分析作答。</em></div></div>
             <div className="worksheet-settings-curriculum">
               <label className="worksheet-editor-field"><span>适用年级</span>
                 <select className="input" required ref={gradeRef} aria-invalid={curriculumAttempted && !settings.gradeLevel} aria-describedby={curriculumMessage ? "worksheet-curriculum-error" : undefined} aria-label="学习单适用年级" value={settings.gradeLevel ?? ''}
@@ -1269,7 +1269,7 @@ function SettingsModal({ settings, onSettingsChange, onClose, onSave }: {
             {settings.backgroundTheme === 'custom' && settings.backgroundImageUrl && (
               <div className="worksheet-background-portrait-row">
                 <div>
-                  <strong>竖屏背景（可选）</strong>
+                  <strong>竖屏背景<WorksheetFieldTag optional /></strong>
                   <em>竖屏时使用此图；未上传时完整显示横图，可能留白。</em>
                 </div>
                 <label className="worksheet-background-portrait-upload">

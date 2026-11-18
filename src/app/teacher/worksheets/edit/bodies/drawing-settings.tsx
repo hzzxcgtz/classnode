@@ -1,5 +1,6 @@
 'use client';
 
+import { useTeacherConfirm } from '@/lib/components';
 import { useRef, useState } from 'react';
 
 // ⚠️ 学生端那块画板是**默认导出**（我们直接复用它，而不是再写一份）。
@@ -38,6 +39,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
   onDataChange: (patch: Record<string, unknown>) => void;
   onNotice: (message: string, type: 'success' | 'error') => void;
 }) {
+  const { askConfirmation, confirmationDialog } = useTeacherConfirm();
   const tool = readDrawingTool(node);
   const background = readDrawingBackground(node);
   const starter = readDrawingStarter(node);
@@ -56,15 +58,15 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
-  const selectTool = (value: DrawingMode) => {
-    if (value === 'free' && starter && !window.confirm('基础绘图不使用初始图，切换后会清除当前初始图，确定吗？')) return;
+  const selectTool = async (value: DrawingMode) => {
+    if (value === 'free' && starter && !await askConfirmation({ title: '切换作图工具？', message: '基础绘图不使用初始图。切换后将移除当前初始图。', confirmLabel: '切换并移除', tone: 'danger' })) return;
     onDataChange({ drawingTool: value, drawingExtensions: undefined,
       ...(value === 'free' ? { drawingStarter: undefined } : {}) });
   };
 
-  const selectMathSource = (source: MathBackgroundSource) => {
-    if (source === 'upload' && starter && !window.confirm('改为上传底图会清除教师绘制的底图，确定吗？')) return;
-    if (source === 'draw' && background.url && !window.confirm('改为教师绘制底图会移除已上传的底图，确定吗？')) return;
+  const selectMathSource = async (source: MathBackgroundSource) => {
+    if (source === 'upload' && starter && !await askConfirmation({ title: '切换底图来源？', message: '改为上传底图后，将移除教师绘制的底图。', confirmLabel: '切换并移除', tone: 'danger' })) return;
+    if (source === 'draw' && background.url && !await askConfirmation({ title: '切换底图来源？', message: '改为教师绘制后，将移除已上传的底图。', confirmLabel: '切换并移除', tone: 'danger' })) return;
     onDataChange(mathBackgroundPatch(node, source));
   };
 
@@ -229,10 +231,10 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
                *   禁掉就等于留了一份他自己删不掉的脏数据。
                */
               disabled={!starterSupported && !starter}
-              title={starterSupported ? undefined : '这一档还不支持初始图'}
-              onChange={(event) => {
+              title={starterSupported ? undefined : '当前作图工具不支持初始图'}
+              onChange={async (event) => {
                 if (!event.target.checked) {
-                  if (starter && !window.confirm('删除已绘制的底稿？如需保留，请取消。')) return;
+                  if (starter && !await askConfirmation({ title: '移除初始图？', message: '将移除已绘制的初始图，学生将从空白画布开始作答。', confirmLabel: '移除初始图', tone: 'danger' })) return;
                   onDataChange({ drawingStarter: undefined });
                   return;
                 }
@@ -316,6 +318,7 @@ export function DrawingSettings({ node, onDataChange, onNotice }: {
           ) : null
         ) : null}
       </section> : null}
+      {confirmationDialog}
     </div>
   );
 }

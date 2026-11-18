@@ -797,7 +797,6 @@ export function WorksheetQuestionList({
                       className={`${styles.submitButton}${submitted ? ` ${styles.submitButtonResubmit}` : ''}`}
                       disabled={submitDisabled}
                       title={ratingError ?? undefined}
-                      aria-describedby={ratingError ? `${node.id}-rating-error` : undefined}
                       onClick={() => onSubmit?.(node)}
                     >
                       {/* ★ M6b/13：判分要等服务端往返，而这段时间原先屏幕上只有**半透明的按钮 + 三个字**。
@@ -814,7 +813,6 @@ export function WorksheetQuestionList({
                         : canvasTask ? '提交整题'
                           : personalReview && reviewRemaining > 0 ? '完成作答并提交' : submitted ? '保存修改' : '完成作答并提交'}
                     </button>
-                    {ratingError && <span id={`${node.id}-rating-error`} className={styles.ratingSubmitHint} role="status">{ratingError}</span>}
                   </div>}
                 </>
             )}

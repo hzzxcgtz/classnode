@@ -44,7 +44,7 @@ export function TrueFalseBody({ node, onDataChange, showAnswer = true }: {
         </label>
       ))}
       {correctKeys.length !== 1 && (
-        <span className="worksheet-editor-warn-hint">还没有指定正确答案 —— 在「对」或「错」上点一下</span>
+        <span className="worksheet-editor-warn-hint">尚未设置正确答案，请选择「对」或「错」。</span>
       )}
     </div>
   );

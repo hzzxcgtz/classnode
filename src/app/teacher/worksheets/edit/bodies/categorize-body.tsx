@@ -16,7 +16,7 @@ import {
 
 /** 框的名字（没写时也要能选、能读，所以给一句看得出是哪一个的话）。 */
 function zoneLabel(text: string, index: number): string {
-  return text.trim() || `框 ${index + 1}（还没写名字）`;
+  return text.trim() || `框 ${index + 1}（未命名）`;
 }
 
 /**
@@ -84,7 +84,7 @@ export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
                   {zoneId && !zoneExists ? (
                     // 归属指向一个已经被删掉的框（手工改过的行才会出现）：显式画出来，
                     // 免得下拉显示成「请选择」而 `placement` 里其实还留着一条 —— 屏幕与数据必须一致。
-                    <option value={zoneId}>（原来的框已经不在了）</option>
+                    <option value={zoneId}>（原分类框已删除）</option>
                   ) : null}
                 </select>
                 </>)}
@@ -92,7 +92,7 @@ export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
                   type="button"
                   className="worksheet-editor-icon-button is-danger"
                   disabled={items.length <= 1}
-                  title={items.length <= 1 ? '至少要有一个条目' : '删除这个条目'}
+                  title={items.length <= 1 ? '至少保留一个条目' : '删除这个条目'}
                   aria-label={`删除条目 ${entry.text.trim() || index + 1}`}
                   onClick={() => commit(categorizeRemoveItem(categorize, index))}
                 >
@@ -122,7 +122,7 @@ export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
                 type="button"
                 className="worksheet-editor-icon-button is-danger"
                 disabled={zones.length <= 2}
-                title={zones.length <= 2 ? '归类题至少要有两个框' : '删除这个框（它名下的条目会回到「请选择」）'}
+                title={zones.length <= 2 ? '至少保留两个分类框' : '删除分类框，其条目将恢复为未分类'}
                 aria-label={`删除${zoneLabel(zone.text, index)}`}
                 onClick={() => commit(categorizeRemoveZone(categorize, index))}
               >
@@ -142,7 +142,7 @@ export function CategorizeBody({ node, onDataChange, showAnswer = true }: {
         </div>
         <div className="worksheet-editor-inline-actions">
           <button type="button" className="btn btn-secondary" onClick={() => commit(categorizeAddZone(categorize, ''))}>
-            ＋ 添加一个框
+            ＋ 添加分类框
           </button>
         </div>
       </div>

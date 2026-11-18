@@ -1,4 +1,5 @@
 'use client';
+import { EDITOR_CLOUD_HELP, EDITOR_CLOUD_PLACEHOLDER } from '../worksheet-editor-copy';
 import { WorksheetFieldTag } from '@/components/worksheet-field-tag';
 import { useEffect, useState } from 'react';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
@@ -53,9 +54,7 @@ export function RatingEditor({ node, rewardStyle, onDataChange }: {
             <RewardIcon kind={style} state="earned" size={26} />
           </span>
         </label>
-        <div className={styles.scalePreview} aria-label={`最多 ${config.maxStars} 个评价图标`}>
-          {Array.from({ length: config.maxStars }, (_, i) => <RewardIcon key={i} kind={style} state="earned" size={28} />)}
-        </div>
+
       </div>
       <div className={styles.dimensionHeading}>
         <h4>评价维度 <span>{rows.filter(d => d.isLeaf).length} 项{rows.some(d => !d.isLeaf) && ` · ${rows.filter(d => !d.isLeaf).length} 个分组`}</span></h4>
@@ -117,9 +116,9 @@ export function RatingEditor({ node, rewardStyle, onDataChange }: {
             </span>
           </label>
         </div>
-        <label className={styles.field}>观点提炼要求<WorksheetFieldTag optional />
+        <label className={styles.field}>观点提炼要求<WorksheetFieldTag optional /><span className={styles.help}>{EDITOR_CLOUD_HELP}</span>
           <textarea className={`input ${styles.cloudRequirements}`} rows={3} maxLength={1200} value={typeof node.data.wordCloudRequirements === 'string' ? node.data.wordCloudRequirements : ''}
-            placeholder="完整提炼有作答依据的观点，包括单人观点；合并相近表达，保留不同立场，按提及人数排序。"
+            placeholder={EDITOR_CLOUD_PLACEHOLDER}
             onChange={event => onDataChange({ wordCloudRequirements: event.target.value })} />
         </label>
       </div>}

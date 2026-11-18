@@ -7,10 +7,12 @@ import { platformColors } from "@/lib/constants";
 import { getApiBaseUrl, getClassroomPort } from "@/lib/api-base";
 import { QRCodeSVG } from "qrcode.react";
 import QRCode from "qrcode";
-import { Toast, TeacherPageHeader, TeacherLoadingState } from "@/lib/components";
+import { Toast, TeacherPageHeader, TeacherLoadingState, useTeacherConfirm } from "@/lib/components";
 import type { ActiveClassroom, AgentSummary, WebappSummary } from "@/lib/types";
 import { classroomMaterialsInUse } from "@/lib/classroom-material";
 import type { Socket } from "socket.io-client";
+
+import { ClassroomClearSummary } from "./classroom-clear-summary";
 
 const SOCKET_URL = getApiBaseUrl();
 
@@ -30,6 +32,7 @@ const classroomMetaBadgeStyle: CSSProperties = {
 
 export default function TeacherDashboard() {
   const router = useRouter();
+  const { askConfirmation, confirmationDialog } = useTeacherConfirm();
   const [loading, setLoading] = useState(true);
   const [activeClassrooms, setActiveClassrooms] = useState<ActiveClassroom[]>([]);
   const [onlineMap, setOnlineMap] = useState<Record<string, number>>({});
@@ -195,8 +198,14 @@ export default function TeacherDashboard() {
 
   const clearClassroomData = async (classroom: ActiveClassroom) => {
     if (clearingRef.current) return;
-    if (!confirm(`清空「${classroom.title || "未命名课堂"}」的全部活动数据？\n\n将清除：学习单作答与评分、AI 分析、对话、通知、批注及互动记录。\n保留：课堂、互动码、名单、学习单和教学材料配置。\n\n此操作不可撤销，已连接的学生需要重新选择姓名。`)) return;
     clearingRef.current = true;
+    const confirmed = await askConfirmation({
+      title: "清空课堂数据？",
+      message: <ClassroomClearSummary title={classroom.title || "未命名课堂"} />,
+      confirmLabel: "清空数据",
+      tone: "danger",
+    });
+    if (!confirmed) { clearingRef.current = false; return; }
     setClearingClassroomId(classroom.id);
     try {
       await api.clearClassroomData(classroom.id);
@@ -1384,6 +1393,7 @@ export default function TeacherDashboard() {
           </div>
         </div>
       )}
+      {confirmationDialog}
     </div>
   );
 }

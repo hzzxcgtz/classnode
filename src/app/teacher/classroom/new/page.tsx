@@ -5,7 +5,18 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { getApiBaseUrl } from '@/lib/api-base';
 import { TeacherPageHeader } from '@/lib/components';
+import { SvgAvatar } from '@/components/svg-avatar';
+import styles from './new-classroom.module.css';
 import type { AgentSummary, ClassGroup, ClassSummary, PlatformTokenSummary, WebappSummary, WorksheetSummary } from '@/lib/types';
+
+function ParticipationIcon({ kind }: { kind: 'standard' | 'group' | 'advanced' | 'class' }) {
+  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {kind === 'standard' ? <><circle cx="12" cy="7" r="3.5" /><path d="M5 21v-2a7 7 0 0 1 14 0v2" /></>
+      : kind === 'group' ? <><circle cx="9" cy="8" r="3" /><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65" /></>
+      : kind === 'advanced' ? <><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="8" cy="6" r="2" fill="var(--card-bg, white)" /><circle cx="16" cy="12" r="2" fill="var(--card-bg, white)" /><circle cx="10" cy="18" r="2" fill="var(--card-bg, white)" /></>
+      : <><path d="M3 21V8l9-5 9 5v13M9 21v-5h6v5M7 10h1m8 0h1M7 13h1m8 0h1M1 21h22" /></>}
+  </svg>;
+}
 
 type CreateMode = 'standard' | 'group' | 'advanced';
 
@@ -214,6 +225,7 @@ export default function NewClassroomPage() {
   const [title, setTitle] = useState('');
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [classes, setClasses] = useState<ClassSummary[]>([]);
+  const [classAvatars, setClassAvatars] = useState<Record<number, string>>({});
   /**
    * 可关联的探究网页。**单选**（`string`，P2.3 起）—— 一个课堂只关联一个网页。
    *
@@ -385,6 +397,9 @@ export default function NewClassroomPage() {
     // 关联（课堂级 `ClassroomAgent` 或组级 `ClassroomGroupMaterial`）—— 让分析型 bot 进来，
     // 下游三条路径就都得各自记着「别忘了筛」（而那正是 C2 漏掉第三处的原因）。
     // ⇒ **挡在上游**：过滤器由服务端做（`?purpose=tutoring`），前端不复述那条规则。
+    api.getAvatars('class').then(avatars => {
+      if (mountedRef.current) setClassAvatars(Object.fromEntries(avatars.map(avatar => [avatar.id, avatar.svgContent])));
+    }).catch(() => {});
     api.getPlatformTokens().then(tokens => setCozeTokens(tokens.filter(token => token.platform === 'coze'))).catch(() => {});
     Promise.all([api.getAgents('tutoring'), api.getClasses()]).then(([a, c]) => {
       if (!mountedRef.current) return;
@@ -609,10 +624,10 @@ export default function NewClassroomPage() {
   ) : null;
 
   return (
-    <div style={{ width: '100%', minWidth: 0, maxWidth: 760, margin: '0 auto' }}>
-      <TeacherPageHeader title="创建新课堂" description="选好模式与班级，再从 AI 智能体 / 探究网页 / 学习单里挑至少一项，即可发起课堂。" />
+    <div className={styles.page}>
+      <TeacherPageHeader title="创建新课堂" description="填写课堂信息、选择参与班级，至少添加一项课堂内容。" />
 
-      <div className="teacher-surface" style={{ background: 'white', borderRadius: 14, border: '1px solid var(--card-border)', padding: 24 }}>
+      <div className={styles.form}>
         <div className="new-classroom-steps" aria-label="课堂创建进度">
           {steps.map((step, index) => (
             <div key={step.label} className={step.complete ? 'is-complete' : ''}>
@@ -625,11 +640,8 @@ export default function NewClassroomPage() {
         </div>
 
         {/* 课堂标题 */}
-        <div style={{
-          background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-          padding: '12px 16px', marginBottom: 12,
-        }}>
-          <label htmlFor="classroom-title" style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+        <div className={styles.section}>
+          <label htmlFor="classroom-title" className={styles.sectionHeading}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
             课堂标题
             <span className="required-field-mark">必填</span>
@@ -646,100 +658,47 @@ export default function NewClassroomPage() {
         </div>
 
         {/* 选择参与模式 */}
-        <div style={{
-          background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-          padding: '12px 16px', marginBottom: 12,
-        }}>
-          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+        <div className={styles.section}>
+          <div className={styles.sectionHeading}>
+            <ParticipationIcon kind="group" />
             选择参与模式
           </div>
           <div className="new-classroom-mode-grid" role="group" aria-label="课堂参与模式">
             {[
-              {
-                id: 'standard' as CreateMode,
-                label: '标准模式',
-                desc: '选择姓名加入，独立与 AI 对话',
-                icon: (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-                  </svg>
-                ),
-              },
-              {
-                id: 'group' as CreateMode,
-                label: '分组模式',
-                desc: '按组加入，同组共享对话',
-                icon: (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" />
-                  </svg>
-                ),
-              },
-              {
-                id: 'advanced' as CreateMode,
-                label: '高级模式',
-                desc: '各组独立配置学习材料与 AI 学伴',
-                icon: (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                  </svg>
-                ),
-              },
+              { id: 'standard' as CreateMode, label: '标准模式', desc: '选择姓名加入，独立学习与对话' },
+              { id: 'group' as CreateMode, label: '分组模式', desc: '按小组参与，共享学习与对话' },
+              { id: 'advanced' as CreateMode, label: '高级模式', desc: '按小组分别配置内容与学伴' },
             ].map(m => (
-              <div key={m.id} className="flex h-32 min-w-0 flex-1 flex-col"
-                style={{
-                  borderRadius: 10,
-                  border: `2px solid ${mode === m.id ? 'var(--primary)' : '#e2e8f0'}`,
-                  background: mode === m.id ? 'var(--primary-tint)' : 'white',
-                  transition: 'all 0.12s',
-                  display: 'flex', flexDirection: 'column', textAlign: 'left', font: 'inherit',
-                }}>
-                <button type="button" onClick={() => handleModeChange(m.id)} aria-pressed={mode === m.id}
-                  className="new-classroom-mode-card flex w-full flex-1 cursor-pointer flex-col px-3 pt-3 text-left sm:px-4">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 24, marginBottom: 6 }}>
-                    <div style={{
-                      width: 16, height: 16, borderRadius: '50%',
-                      border: `2px solid ${mode === m.id ? 'var(--primary)' : '#cbd5e1'}`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      {mode === m.id && (
-                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--primary)' }} />
-                      )}
-                    </div>
-                    <span style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a' }}>{m.label}</span>
-                    {m.id === 'standard' && <span className="recommended-mode-tag">推荐</span>}
-                  </div>
-                  <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', lineHeight: 1.4, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                    <span style={{ flexShrink: 0, marginTop: 2, color: mode === m.id ? 'var(--primary)' : 'var(--text-muted)' }}>{m.icon}</span>
-                    <span>{m.desc}</span>
-                  </div>
-                </button>
-                {mode === m.id && mode !== 'standard' && (
-                  <div role="group" aria-label="学生登录方式" className="px-3 pb-2 sm:px-4">
-                    <div className="relative isolate grid w-fit grid-cols-2 rounded-full bg-slate-200/80 p-0.5">
-                      <span aria-hidden="true" className={`absolute inset-y-0.5 left-0.5 -z-10 w-[calc(50%-2px)] rounded-full bg-white shadow-sm transition-transform motion-reduce:transition-none ${groupLoginMode === 'member' ? 'translate-x-full' : ''}`} />
-                      <button type="button" aria-pressed={groupLoginMode === 'group'} onClick={() => setGroupLoginMode('group')} className="rounded-full px-2 py-1 text-xs text-slate-700 aria-pressed:font-semibold">小组登录</button>
-                      <button type="button" aria-pressed={groupLoginMode === 'member'} onClick={() => setGroupLoginMode('member')} className="rounded-full px-2 py-1 text-xs text-slate-700 aria-pressed:font-semibold">组员登录</button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <button key={m.id} type="button" onClick={() => handleModeChange(m.id)} aria-pressed={mode === m.id}
+                className={`new-classroom-mode-card ${styles.modeCard}`}>
+                <span className={styles.modeTop}>
+                  <span className={styles.modeIcon}><ParticipationIcon kind={m.id} /></span>
+                  <strong>{m.label}</strong>
+                  <span className={styles.selectionMark} aria-hidden="true">{mode === m.id && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m5 12 4 4L19 6" /></svg>}</span>
+                </span>
+                <span className={styles.modeDescription}>{m.desc}</span>
+              </button>
             ))}
           </div>
+          {mode !== 'standard' && (
+            <div className={styles.loginRow}>
+              <span>学生登录方式</span>
+              <div role="group" aria-label="学生登录方式" className={styles.loginSwitch}>
+                <button type="button" aria-pressed={groupLoginMode === 'group'} onClick={() => setGroupLoginMode('group')}>小组登录</button>
+                <button type="button" aria-pressed={groupLoginMode === 'member'} onClick={() => setGroupLoginMode('member')}>组员登录</button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 选择班级 */}
-        <div ref={classSectionRef} style={{
-          background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-          padding: '12px 16px', marginBottom: 12,
-        }}>
-          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
+        <div ref={classSectionRef} className={styles.section}>
+          <div className={styles.sectionHeading}>
+            <ParticipationIcon kind="class" />
             选择班级
             <span className="required-field-mark">必填</span>
             {mode !== 'standard' && (
-              <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)', fontWeight: 400, marginLeft: 4 }}>（仅显示已分组的班级）</span>
+              <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)', fontWeight: 400, marginLeft: 4 }}>当前模式需选择已分组班级</span>
             )}
           </div>
           {loadingOptions ? (
@@ -757,6 +716,7 @@ export default function NewClassroomPage() {
                 return (
                   <button type="button" key={c.id} onClick={() => selectClass(c.id)} disabled={isDisabled}
                     aria-pressed={isSelected}
+                    className={styles.classCard}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '12px 14px', borderRadius: 10, userSelect: 'none',
@@ -767,12 +727,14 @@ export default function NewClassroomPage() {
                       fontSize: "0.875rem",
                       transition: 'all 0.12s', textAlign: 'left', fontFamily: 'inherit',
                     }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 9, background: isSelected ? 'var(--primary)' : '#f1f5f9', color: isSelected ? 'white' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>
-                    </div>
+                    <span className={styles.classIcon}>
+                      {c.avatarId != null && classAvatars[c.avatarId]
+                        ? <SvgAvatar svg={classAvatars[c.avatarId]} size={38} fallback={c.name[0]} />
+                        : <ParticipationIcon kind="class" />}
+                    </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: "0.875rem", fontWeight: 600, color: '#0f172a' }}>{c.name}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: "0.75rem", color: 'var(--text-muted)', marginTop: 1 }}>
+                      <div className={styles.classMeta}>
                         <span>{c._count?.students || 0} 名学生</span>
                         {hasGroups && (
                           <>
@@ -805,12 +767,8 @@ export default function NewClassroomPage() {
             ⚠️ 这一块**替代了**下面那两块课堂级的「关联探究网页」「关联学习单」——
             高级模式下它们的权威来源是每组一份，见 `mode !== 'advanced'` 那个条件上的注释。 */}
         {selectedClassId && mode === 'advanced' && classGroups.length > 0 && (
-          <div ref={agentSectionRef} style={{
-            background: '#fafbfc', borderRadius: 10,
-            border: `1px solid ${fieldErrors.groupAgents ? '#a85d5d' : '#eef2f6'}`,
-            padding: '12px 16px', marginBottom: 12,
-          }}>
-            <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+          <div ref={agentSectionRef} className={styles.section} style={{ borderColor: fieldErrors.groupAgents ? '#a85d5d' : undefined }}>
+            <div className={styles.sectionHeading}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="2" y="3" width="6" height="6" rx="1" /><rect x="16" y="3" width="6" height="6" rx="1" /><rect x="9" y="15" width="6" height="6" rx="1" /></svg>
               为每个小组选择课堂内容
               {/* 「必填」在这里的意思是**每组都要做出决定**，不是「每组都要选智能体」：
@@ -821,8 +779,7 @@ export default function NewClassroomPage() {
                 是服务端 400 拦下的），所以这句得说清楚「不指定」也是选项 —— 否则教师会以为
                 留着不选和选「不指定」是同一件事，而它们一个能提交、一个不能。 */}
             <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', marginBottom: 12 }}>
-              每个小组的智能体、探究网页与学习单**各自独立**，互不影响，也**不会**回落到课堂级的配置。
-              某种材料这一组不需要，就在那个下拉里选「<strong style={{ fontWeight: 600 }}>不指定</strong>」（留空不选会拦住提交）。
+              为每个小组分别选择内容；不需要的项目请选择「<strong style={{ fontWeight: 600 }}>不指定</strong>」。
             </div>
             {classGroups.map((g, i) => {
                 const agentKey = pickerKey(g.id, 'agent');
@@ -968,24 +925,21 @@ export default function NewClassroomPage() {
             而「先选了、又想改成不关联」（`worksheetIds: []`）这个表单本身支持的状态在界面上
             不可达。上面那两张卡片早就是「再点一次取消」，这一格是同一套语义的第三个载体。 */}
         {mode !== 'advanced' && (
-        <div style={{
-          background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-          padding: '12px 16px', marginBottom: 12,
-        }}>
-          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+        <div className={styles.section}>
+          <div className={styles.sectionHeading}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>
             学习单
-            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 只能选一份 · 学习模块任选其一</span>
+            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 单选</span>
           </div>
           {/* ★ 2026-09-25：三句话收成一句 —— 教师说「整个页面高度有点大」，
               而「只关联一份」已经由**下拉是单选的**这件事本身说清楚了。 */}
           <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', marginBottom: 8 }}>
-            学生在课堂里会填写它。一个课堂只关联一份，也可以不关联。
+            选择一份学习单，供学生在课堂中作答。
           </div>
           {worksheetLoadError ? (
             <div role="alert" style={{ padding: '12px 14px', background: '#faf4eb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.813rem", color: '#92400e', lineHeight: 1.7 }}>
               学习单列表没有加载成功（{worksheetLoadError}）。
-              这次创建的课堂**不会带学习单**；学习单本身没丢，可以去「学习单」页确认后再发一次课堂。
+              请到「学习单」页确认后重试，或选择其他课堂内容。
             </div>
           ) : worksheets.length === 0 ? (
             // 空态**不给一个点开才发现是空的下拉** —— 直接把原因说出来，并指到该去哪建。
@@ -994,7 +948,7 @@ export default function NewClassroomPage() {
             </div>
           ) : (
             // 限宽：下拉铺满整块会显得像个输入框而不是一个选择项。
-            <div style={{ maxWidth: 320 }}>
+            <div>
               <GroupMaterialPicker
                 label="学习单"
                 placeholder="选择学习单"
@@ -1036,22 +990,19 @@ export default function NewClassroomPage() {
             ⚠️ `webappSectionRef` 因此只在非高级模式下存在：高级模式下提交校验里那条
             滚动兜底会落到 `agentSectionRef`（那个模式里挂的是每组材料那一块）。 */}
         {mode !== 'advanced' && (
-        <div ref={webappSectionRef} style={{
-          background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-          padding: '12px 16px', marginBottom: 12,
-        }}>
-          <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+        <div ref={webappSectionRef} className={styles.section}>
+          <div className={styles.sectionHeading}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>
             探究空间
-            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 只能选一个 · 学习模块任选其一</span>
+            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: 'var(--text-muted)' }}>选填 · 单选</span>
           </div>
           <div style={{ fontSize: "0.75rem", color: 'var(--text-secondary)', marginBottom: 12 }}>
-            学生在「探究空间」里会打开这个网页。<strong style={{ fontWeight: 600 }}>一个课堂只关联一个网页</strong>。
+            选择一个网页，供学生在「探究空间」中使用。
           </div>
           {webappLoadError ? (
             <div role="alert" style={{ padding: '12px 14px', background: '#faf4eb', border: '1px solid #fde68a', borderRadius: 8, fontSize: "0.813rem", color: '#92400e', lineHeight: 1.7 }}>
               探究网页列表没有加载成功（{webappLoadError}）。
-              这次创建的课堂**不会带任何网页**；网页本身没丢，可以去「探究网页」页确认后再发一次课堂。
+              请到「探究网页」页确认后重试，或选择其他课堂内容。
             </div>
           ) : webapps.length === 0 ? (
             <div style={{ padding: '14px 16px', background: '#f1f5f9', borderRadius: 8, fontSize: "0.813rem", color: 'var(--text-muted)', textAlign: 'center' }}>
@@ -1089,11 +1040,8 @@ export default function NewClassroomPage() {
             ⇒ 三块现在是**同一个控件**（`GroupMaterialPicker`：扁平下拉 + 自绘箭头 +
               点已选中项取消），语义也一致（都是单选、都能取消）。 */}
         {mode !== 'advanced' && (
-          <div ref={agentSectionRef} style={{
-            background: '#fafbfc', borderRadius: 10, border: '1px solid #eef2f6',
-            padding: '12px 16px', marginBottom: 12,
-          }}>
-            <div style={{ fontSize: "0.813rem", fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: '#0f172a' }}>
+          <div ref={agentSectionRef} className={styles.section}>
+            <div className={styles.sectionHeading}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 12h6" /><path d="M12 9v6" /></svg>
               智能学伴
               {/* 三件套（AI 智能体 / 探究网页 / 学习单）每一项都是选填，至少一项即可 ——
@@ -1185,7 +1133,7 @@ export default function NewClassroomPage() {
               ) : (
                 <>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
-                  {mode === 'group' ? '发起课堂（分组模式）' : mode === 'advanced' ? '发起课堂（高级模式）' : '发起课堂'}
+                  发起课堂
                 </>
               )}
             </button>

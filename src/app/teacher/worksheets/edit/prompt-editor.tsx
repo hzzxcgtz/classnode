@@ -1013,7 +1013,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
           <button
             type="button"
             title={pasteTitle}
-            aria-label="粘入"
+            aria-label="粘贴"
             onClick={onRequestPaste}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1021,7 +1021,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
               <path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2" />
               <path d="M9 12h6M9 16h4" />
             </svg>
-            粘入
+            粘贴
           </button>
           )}
           {/* ★ 2026-09-30（教师第三轮）：「还是放回到编辑框的工具栏里边吧，否则觉得怪怪的。

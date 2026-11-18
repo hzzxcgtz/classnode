@@ -6,7 +6,7 @@ import type { WorksheetQuestionNode } from '@/lib/types';
 import { blankSlots, fillSettingsFor, sharedPoolChoices, writeFillSettings, splitChoiceText, choiceBreakEditorText, choiceBreakValueText } from '@/lib/worksheet-fill-modes';
 import { readPromptRunsFor } from '@/lib/worksheet-presentation';
 import { isCombinationBlank, readFillAnswerCombinations, MAX_FILL_ANSWER_COMBINATIONS, type FillAnswerCombination } from '@/lib/worksheet-fill-combinations';
-import { readBlankAnswers } from '../worksheet-editor-core';
+import { newItemId, readBlankAnswers } from '../worksheet-editor-core';
 import styles from './fill-combinations-editor.module.css';
 
 function AnswerCell({ answers, label, onChange }: { answers: string[]; label: string; onChange: (answers: string[]) => void }) {
@@ -87,7 +87,7 @@ export function FillCombinationsEditor({ node, onDataChange }: { node: Worksheet
     {enabled && <>
       <div className={styles.toolbar}>
         <button type="button" disabled={!capacity} onClick={() => save([...extra, {
-          id: crypto.randomUUID(), answers: Object.fromEntries(rows.map(row => [row.id, []])),
+          id: newItemId(), answers: Object.fromEntries(rows.map(row => [row.id, []])),
         }])}>＋ 添加组合</button>
         {hasManualBlanks && <small>手工填写：多个答案用 | 分隔</small>}
       </div>

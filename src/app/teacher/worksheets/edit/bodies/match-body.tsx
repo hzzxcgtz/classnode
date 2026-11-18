@@ -18,7 +18,7 @@ import {
 } from '../worksheet-editor-core';
 
 function rightLabel(text: string, index: number): string {
-  return text.trim() || `右项 ${index + 1}（还没写内容）`;
+  return text.trim() || `右项 ${index + 1}（未填写）`;
 }
 
 /**
@@ -154,7 +154,7 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
                           <label
                             key={item.id || `missing-${itemIndex}`}
                             className={`worksheet-editor-pair-option${checked ? ' is-on' : ''}${leftEntry.id && item.id ? '' : ' is-disabled'}`}
-                            title={item.id ? undefined : '这一项还没有 id（先在右边把它写完）'}
+                            title={item.id ? undefined : '请先填写右侧条目'}
                           >
                             <input
                               type="checkbox"
@@ -183,8 +183,8 @@ export function MatchBody({ node, onDataChange, showAnswer = true }: {
       </div>
 
       <div className="worksheet-editor-match-actions">
-        <button type="button" className="btn btn-secondary" onClick={() => commit(matchAddLeft(match))}>＋ 左侧添加</button>
-        <button type="button" className="btn btn-secondary" onClick={() => commit(matchAddRight(match))}>＋ 右侧添加</button>
+        <button type="button" className="btn btn-secondary" onClick={() => commit(matchAddLeft(match))}>＋ 添加左项</button>
+        <button type="button" className="btn btn-secondary" onClick={() => commit(matchAddRight(match))}>＋ 添加右项</button>
       </div>
       {showAnswer && (
         <p className="worksheet-editor-status-note">

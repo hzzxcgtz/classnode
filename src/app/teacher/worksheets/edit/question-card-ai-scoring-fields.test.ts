@@ -21,5 +21,5 @@ test('表达评价提交后自动进行，无需分数也能得到建议',()=>{
 });
 test('流程图结构模板仍按正确分支标注追加到统一要求中',()=>{
  assert.match(card,/readDrawingTool\(node\) === 'flowchart'/);
- assert.match(card,/标注 是\/否/);assert.match(editor,/requirements \? `\$\{requirements\}\\n\$\{template\}`/);
+ assert.match(card,/标注「是／否」/);assert.match(editor,/requirements \? `\$\{requirements\}\\n\$\{template\}`/);
 });

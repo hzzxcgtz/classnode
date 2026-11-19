@@ -1185,7 +1185,7 @@ router.delete('/classroom/:classroomId/answers', worksheetMutation(async (req, r
         aggregate: entriesToAggregate(entriesFromAggregate(analysis.aggregate).filter(entry => entry.studentId !== participantId)) as Prisma.InputJsonValue,
         computedAt: new Date(), narrative: null, analyzedAt: null,
         perStudent: { ...metadata, scores, missing: Array.isArray(metadata.missing) ? metadata.missing.filter(id => id !== participantId) : [],
-          analysisDurationMs: null, sectionAnalysis: null, sectionProgress: null,
+          analysisDurationMs: null, analysisEvidence: null, sectionAnalysis: null, sectionProgress: null,
           ...(feedback ? { analysisFeedback: { ...feedback, students: feedback.students.filter(item => item.studentId !== participantId), groups: [], wordCloud: [], missing: feedback.missing.filter(id => id !== participantId) } } : {}),
         } as unknown as Prisma.InputJsonValue,
       } });

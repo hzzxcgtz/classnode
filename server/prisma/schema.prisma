@@ -321,6 +321,7 @@ model Webapp {
   id        String   @id @default(uuid())
   name      String
   entryPath String
+  externalUrl String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

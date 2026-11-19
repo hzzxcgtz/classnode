@@ -302,7 +302,7 @@ export async function restoreFullBackup(prisma: PrismaClient, file: string, hook
       if (format.full) warnings.push('旧压缩备份不含教学网页，保留当前网页资产；跨设备可能需重新导入网页。');
     } else fs.mkdirSync(path.join(staging, 'webapps'), { recursive: true });
     if (format.version === 2) {
-      for (const webapp of await client.webapp.findMany()) {
+      for (const webapp of await client.webapp.findMany({ where: { externalUrl: null } })) {
         const entry = path.resolve(staging, 'webapps', webapp.id, webapp.entryPath);
         const root = path.resolve(staging, 'webapps', webapp.id) + path.sep;
         if (!entry.startsWith(root) || !fs.existsSync(entry) || !fs.statSync(entry).isFile()) throw new Error(`备份缺少教学网页入口：${webapp.name}`);

@@ -7,6 +7,7 @@ import type { ClassroomWebappSummary } from '@/lib/types';
 import type { WebappDemand, WebappEvent } from '@/lib/socket-events';
 import { effectiveGroupWebapp } from '@/lib/classroom-material';
 import { WEBAPP_IFRAME_SANDBOX } from '@/lib/webapp-sandbox';
+import { externalWebappHref } from '@/lib/external-webapp';
 import { MODULE_META } from '../module-meta';
 import type { ModulePanelProps } from '../classroom-types';
 import { ClassroomToast, useOverlayPortal } from '../layer-overlays';
@@ -109,7 +110,25 @@ export interface ExplorePanelProps extends ModulePanelProps {
  */
 export function ExplorePanel(props: ExplorePanelProps) {
   const webapp = effectiveGroupWebapp(props.classroom, props.session);
+  if (webapp?.externalUrl) return <ExternalExplorePanel webapp={webapp} />;
   return <ExplorePanelContent key={webapp?.id ?? 'none'} {...props} />;
+}
+
+function ExternalExplorePanel({ webapp }: { webapp: ClassroomWebappSummary }) {
+  const href = externalWebappHref(webapp.externalUrl);
+  const externalLink = href && <a className={styles.externalLink} href={href} target="_blank" rel="noopener noreferrer">在新标签页打开 ↗</a>;
+  return (
+    <div className={styles.panel} style={{ '--module-accent': MODULE_META.explore.accent } as CSSProperties}>
+      <div className={styles.overlay}>
+        <div className={styles.card}>
+          <span className={styles.badge}>探究空间</span>
+          <h2 className={styles.title}>{webapp.name}</h2>
+          <p className={styles.note}>{href ? '应用将在新标签页打开，完成后可切回课堂。' : '应用链接无效，请联系老师。'}</p>
+          {externalLink}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ExplorePanelContent({ active, classroom, session, toast, setToast, wsRef, demand }: ExplorePanelProps) {

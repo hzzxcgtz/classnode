@@ -224,11 +224,12 @@ export function useWorksheetBoard(classroomId: string | null): WorksheetBoardDat
     const stop = on('worksheet-analysis-updated', data => {
       if (!data.sectionProgressQuestionId && worksheetIdsRef.current.includes(data.worksheetId)) scheduleRefresh();
     });
+    const stopAvailability = on('student-availability-changed', scheduleRefresh);
     const changed = (event: Event) => {
       if ((event as CustomEvent<{ classroomId: string }>).detail?.classroomId === classroomId) scheduleRefresh();
     };
     window.addEventListener(WORKSHEET_ANALYSIS_CHANGED_EVENT, changed);
-    return () => { clearTimeout(timer); stop(); window.removeEventListener(WORKSHEET_ANALYSIS_CHANGED_EVENT, changed); };
+    return () => { clearTimeout(timer); stop(); stopAvailability(); window.removeEventListener(WORKSHEET_ANALYSIS_CHANGED_EVENT, changed); };
   }, [classroomId, on, refresh]);
 
   // 题目树的独立节拍（60 秒）。

@@ -117,7 +117,7 @@ export function RatingEditor({ node, rewardStyle, onDataChange }: {
           </label>
         </div>
         <label className={styles.field}>观点提炼要求<WorksheetFieldTag optional /><span className={styles.help}>{EDITOR_CLOUD_HELP}</span>
-          <textarea className={`input ${styles.cloudRequirements}`} rows={3} maxLength={1200} value={typeof node.data.wordCloudRequirements === 'string' ? node.data.wordCloudRequirements : ''}
+          <textarea className={`input ${styles.cloudRequirements}`} rows={7} maxLength={1200} value={typeof node.data.wordCloudRequirements === 'string' ? node.data.wordCloudRequirements : ''}
             placeholder={EDITOR_CLOUD_PLACEHOLDER}
             onChange={event => onDataChange({ wordCloudRequirements: event.target.value })} />
         </label>

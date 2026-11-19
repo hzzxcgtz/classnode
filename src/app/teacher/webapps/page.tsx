@@ -67,14 +67,7 @@ export default function WebappsPage() {
 
   return (
     <div>
-      {/* 2026-09-25：标题由「探究网页」改为「探究空间」（教师裁定）。
-          🔴 **副标题必须跟着改**：原来是「上传课堂用的静态网页，学生会在探究空间里打开它。」
-          —— 标题改完之后那句就成了**自己说自己**（「探究空间 / …学生会在探究空间里打开它」），
-          读起来像是「这一页就是学生打开它的那个地方」，而这一页是**教师端的网页库**。
-          改后的句子把两件事分开：**这里**上传 → 在**新建课堂**里关联 → 学生在**探究空间**里打开。
-          ⚠️ 页内其余文案（`还没有探究网页` / `无法删除探究网页` / 表单标题…）**本轮没动**，
-          所以这一页现在是**两个词并存**的状态 —— 那是教师圈定的范围（只改两处），不是漏改。 */}
-      <TeacherPageHeader title="探究空间" description="上传课堂用的静态网页。在新建课堂里关联之后，学生会在「探究空间」里打开它。" actions={
+      <TeacherPageHeader title="探究空间" description="上传静态网页或添加已发布的应用链接。关联到课堂后，学生可以从探究空间打开。" actions={
         <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           添加网页
@@ -105,7 +98,7 @@ export default function WebappsPage() {
         <TeacherEmptyState
           icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><line x1="3" y1="12" x2="21" y2="12" /><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z" /></svg>}
           title="还没有探究网页"
-          description="上传一个静态网页（推荐整个文件夹压成 ZIP），课堂上学生就能在探究空间里打开它。"
+          description="上传静态网页或添加外部链接，学生就能在课堂的探究空间里打开。"
           action={<button className="btn btn-primary" onClick={() => setShowForm(true)}>添加第一个网页</button>}
         />
       ) : filteredWebapps.length === 0 ? (
@@ -138,7 +131,7 @@ export default function WebappsPage() {
         <Pagination current={page} total={filteredWebapps.length} pageSize={pageSize} pageSizeOptions={[8, 12, 20, 40, 60]} onChange={setPage} onPageSizeChange={setPageSize} />
       )}
 
-      {previewing && <WebappPreviewDialog webapp={previewing} origin={webappOrigin} onClose={() => setPreviewing(null)} />}
+      {previewing && !previewing.externalUrl && <WebappPreviewDialog webapp={previewing} origin={webappOrigin} onClose={() => setPreviewing(null)} />}
       {deleteBlocked && <WebappDeleteBlockedDialog webappName={deleteBlocked.webappName} classrooms={deleteBlocked.classrooms} onClose={() => setDeleteBlocked(null)} />}
       {relatedClassrooms && (
         <WebappRelatedClassroomsDialog

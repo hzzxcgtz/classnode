@@ -319,11 +319,17 @@ test('new backup transfers to a separate fresh directory and different local key
   const original = await fixture(); let target: Awaited<ReturnType<typeof fixture>> | undefined;
   try {
     const { webapp } = await seed(original.prisma); original.write(`webapps/${webapp.id}/index.html`, 'transferred'); original.write('uploads/avatars/image.txt', 'image');
+    const external = await original.prisma.webapp.create({ data: { name: '外部应用', entryPath: '', externalUrl: 'https://apps.example.invalid/' } });
+    await original.prisma.$executeRawUnsafe('ALTER TABLE "Webapp" ADD COLUMN "embedExternal" BOOLEAN NOT NULL DEFAULT false');
+    await original.prisma.$executeRawUnsafe('UPDATE "Webapp" SET "embedExternal" = true WHERE "id" = ?', external.id);
     const backup = await createFullBackup(original.prisma); await original.prisma.$disconnect();
     target = await fixture(); fs.writeFileSync(path.join(target.dir, '.encryption.key'), keyB); reloadEncryptionKey();
     await withDataMaintenance(() => restoreFullBackup(target!.prisma, backup));
     assert.equal(decrypt((await target.prisma.platformToken.findFirst())!.token), 'shared-token');
     assert.equal(fs.readFileSync(path.join(target.dir, `webapps/${webapp.id}/index.html`), 'utf8'), 'transferred');
+    assert.deepEqual(await target.prisma.webapp.findUnique({ where: { id: external.id } }), external);
+    const columns = await target.prisma.$queryRawUnsafe<{ name: string }[]>('PRAGMA table_info("Webapp")');
+    assert.ok(!columns.some(column => column.name === 'embedExternal'));
     assert.equal(fs.readFileSync(path.join(target.dir, 'uploads/avatars/image.txt'), 'utf8'), 'image');
     assert.equal((await target.prisma.message.findFirst())?.content, '历史消息');
     assert.deepEqual((await target.prisma.worksheetAnswer.findFirst())?.value, { text: '历史答案' });

@@ -796,7 +796,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
               <span>{EDITOR_CLOUD_HELP}</span>
               <textarea
                 className="input"
-                rows={3}
+                rows={7}
                 maxLength={1200}
                 value={typeof node.data.wordCloudRequirements === 'string' ? node.data.wordCloudRequirements : ''}
                 onChange={event => onDataChange({ wordCloudRequirements: event.target.value })}

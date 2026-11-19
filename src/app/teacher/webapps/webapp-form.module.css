@@ -8,3 +8,26 @@
 .dropZone small { font-size: .72rem; color: #8494a8; letter-spacing: .04em; }
 .uploadIcon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: #e9f0f9; margin-bottom: 3px; }
 .help { font-size: .75rem; color: #718096; line-height: 1.7; margin: 10px 0 0; }
+
+.sourceOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sourceOptions button[aria-pressed='true'] {
+  background: var(--primary-tint);
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+
+.externalFields {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.externalFields .help { margin: 0; }
+
+.externalOpen { justify-self: start; }

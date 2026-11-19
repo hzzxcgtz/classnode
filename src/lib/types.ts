@@ -189,7 +189,7 @@ export interface ClassroomModuleSetting {
 /**
  * 探究空间「关联网页」的对外形状（`loadClassroomWebapps`，`server/src/routes/webapps.ts`）。
  *
- * **只有这三个字段**：`id` 与 `entryPath` 够学生端拼出
+ * 本地网页使用 `id` 与 `entryPath` 拼出
  * `http://${location.hostname}:${webappPort}/webapps/${id}/${entryPath}`，`name` 是显示名。
  * `Webapp` 表里任何指向文件系统的字段（绝对路径、`webappsRoot()` 之下的相对路径）
  * **一律不进响应** —— 多一个字段就是把服务端的目录结构告诉客户端。
@@ -198,6 +198,7 @@ export interface ClassroomWebappSummary {
   id: string;
   name: string;
   entryPath: string;
+  externalUrl?: string | null;
 }
 
 /**
@@ -229,10 +230,7 @@ export interface WorksheetMaterialSummary {
  * 管理页（`/teacher/webapps/`）看到的网页形状 —— 与 `ClassroomWebappSummary` 同样是
  * `PUBLIC_WEBAPP_SELECT` 的子集，**没有任何磁盘路径字段**。
  */
-export interface WebappSummary {
-  id: string;
-  name: string;
-  entryPath: string;
+export interface WebappSummary extends ClassroomWebappSummary {
   createdAt: string;
   updatedAt: string;
   /**

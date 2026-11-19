@@ -88,7 +88,7 @@ export function WebappPreviewDialog({ webapp, origin, onClose }: { webapp: Webap
   // 入口路径按段编码：教师上传时的文件名可能带空格、`#`、中文。
   // `#` 尤其致命 —— 不编码的话浏览器会把它当成片段，请求的是另一个文件。
   const segments = webapp.entryPath.split('/').map(segment => encodeURIComponent(segment));
-  const src = origin ? `${origin}/webapps/${encodeURIComponent(webapp.id)}/${segments.join('/')}` : null;
+  const src = !webapp.externalUrl && origin ? `${origin}/webapps/${encodeURIComponent(webapp.id)}/${segments.join('/')}` : null;
 
   return (
     <>

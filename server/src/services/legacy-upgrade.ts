@@ -117,10 +117,15 @@ export async function migrateLegacyDatabase(prisma: PrismaClient, backupDatabase
           "id" TEXT NOT NULL PRIMARY KEY,
           "name" TEXT NOT NULL,
           "entryPath" TEXT NOT NULL,
+          "externalUrl" TEXT,
           "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           "updatedAt" DATETIME NOT NULL
         )`);
         console.log('[server] Webapp table created');
+      }
+      const webappColumns = await prisma.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info("Webapp")`);
+      if (!webappColumns.some(column => column.name === 'externalUrl')) {
+        await prisma.$executeRawUnsafe(`ALTER TABLE "Webapp" ADD COLUMN "externalUrl" TEXT`);
       }
       if (!webappTableNames.includes('ClassroomWebapp')) {
         console.log('[server] ClassroomWebapp table not found, creating...');

@@ -11,7 +11,8 @@ import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import classroomRoutes from '../routes/classroom.js';
-import { createTeacherSession } from '../middleware/auth.js';
+import { createTeacherSession, requireTeacher } from '../middleware/auth.js';
+import webappRoutes from '../routes/webapps.js';
 
 /**
  * 创建课堂 / 保存课堂设置的**规则**：三件套（AI 智能体 / 探究网页 / 学习单）、
@@ -76,6 +77,7 @@ async function startServer(t: { after: (fn: () => void) => void }, prisma: Prism
   app.set('prisma', prisma);
   app.set('io', { to: () => ({ emit: () => {} }) });
   app.use('/api/classroom', classroomRoutes);
+  app.use('/api/webapps', requireTeacher, webappRoutes);
   const server = createServer(app);
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
@@ -1114,4 +1116,39 @@ test('高级模式：只有课堂级 worksheetIds、所有组都不配 ⇒ 仍�
   assert.equal(res.status, 400, JSON.stringify(body));
   assert.match(body.error, /学习单/, '文案要按三件套念');
   assert.equal(await db.prisma.classroom.count(), before);
+});
+
+
+test('外部探究网页只下发链接，可编辑并用于课堂和小组', async t => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const { cls } = await seed(db.prisma, 0);
+  const server = await startServer(t, db.prisma);
+  for (const externalUrl of ['http://apps.example.invalid/', 'javascript:alert(1)', 'https://teacher:password@apps.example.invalid/']) {
+    assert.equal((await server.post('/api/webapps/external', { name: '外部网页', externalUrl })).status, 400);
+  }
+  const url = 'https://apps.example.invalid/demo?lang=zh#start';
+  const response = await server.post('/api/webapps/external', { name: '外部网页', externalUrl: url, embedExternal: true });
+  assert.equal(response.status, 201);
+  const webapp = await response.json() as { id: string; externalUrl: string };
+  assert.equal(webapp.externalUrl, url);
+  const standard = await server.post('/api/classroom/create', { title: '标准课堂', classIds: [cls.id], webappIds: [webapp.id] });
+  assert.equal(standard.status, 200);
+  const standardCode = (await standard.json()).code;
+  const standardView = await (await server.get(`/api/classroom/code/${standardCode}`)).json();
+  assert.deepEqual(standardView.webapps, [{ id: webapp.id, name: '外部网页', entryPath: '', externalUrl: url }]);
+
+  const advanced = await server.post('/api/classroom/create-advanced', {
+    title: '分组应用', classId: cls.id, groups: [{ name: '应用组', webappId: webapp.id }, { name: '未配置组' }],
+  });
+  assert.equal(advanced.status, 200);
+  const advancedCode = (await advanced.json()).code;
+  const advancedView = await (await server.get(`/api/classroom/code/${advancedCode}`)).json();
+  assert.equal(advancedView.groups.find((group: { name: string }) => group.name === '未配置组').webapp, null);
+  assert.deepEqual(advancedView.groups.find((group: { name: string }) => group.name === '应用组').webapp, standardView.webapps[0]);
+
+  const updated = await server.put(`/api/webapps/${webapp.id}`, { externalUrl: 'https://other.example.invalid/' });
+  assert.equal(updated.status, 200);
+  assert.equal((await updated.json()).externalUrl, 'https://other.example.invalid/');
+  assert.ok(!('embedExternal' in webapp));
 });

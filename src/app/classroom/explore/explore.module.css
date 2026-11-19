@@ -108,3 +108,13 @@
 }
 
 .retry:active { opacity: 0.85; }
+
+.externalLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: #245483;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

@@ -75,7 +75,7 @@ export function useWebappController({ onNotice, onDeleteBlocked }: {
       }
       if (!await askConfirmation({
         title: '删除这个探究网页？',
-        message: `「${webapp.name}」及其网页文件会被一并删除，且无法恢复。`,
+        message: webapp.externalUrl ? `将从探究空间移除「${webapp.name}」的链接。` : `「${webapp.name}」及其网页文件会被一并删除，且无法恢复。`,
         confirmLabel: '删除网页',
         tone: 'danger',
       })) return;

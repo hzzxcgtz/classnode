@@ -1254,7 +1254,7 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
             id: true,
             type: true,
             groupId: true,
-            student: { select: { name: true } },
+            student: { select: { name: true, disabled: true } },
             group: { select: { name: true } },
           },
         },
@@ -1269,6 +1269,8 @@ router.get('/classroom/:classroomId/answers', async (req, res) => {
     // 参与者 → 他此刻该答的那一份。**同一个函数**是全部三种模式唯一的解析口径。
     const participantsByWorksheet = new Map<string, Array<{ id: string; name: string; kind: string; groupName: string | null }>>();
     for (const participant of classroom.students) {
+      // Only hide current roster entries; preserve their saved responses for restoration/history.
+      if (participant.student?.disabled === true) continue;
       if (classroom.groupLoginMode === 'member' && participant.type === 'group') continue;
       const worksheetId = resolveMaterialTargetId({
         mode: classroom.mode,

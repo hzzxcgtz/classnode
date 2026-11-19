@@ -112,7 +112,7 @@ export type GroupMaterialView = {
     id: string; name: string; logo: string | null; platform: string;
     enabled: boolean; greeting: string | null;
   } | null;
-  webapp: { id: string; name: string; entryPath: string } | null;
+  webapp: { id: string; name: string; entryPath: string; externalUrl: string | null } | null;
   worksheet: { id: string; title: string } | null;
 };
 
@@ -183,7 +183,7 @@ export async function resolveGroupMaterialViews(
       // 不走闸的后果：高级模式下一组选了分析型 bot ⇒ 那组学生的聊天面板顶上就是
       // 那个「会收到全班作业」的 bot。
       agent: agent ? studentAgentViewOf(agent) : null,
-      webapp: webapp ? { id: webapp.id, name: webapp.name, entryPath: webapp.entryPath } : null,
+      webapp: webapp ? { id: webapp.id, name: webapp.name, entryPath: webapp.entryPath, externalUrl: webapp.externalUrl } : null,
       // `title` 而已 —— 题目结构不进引导载荷（见 `GroupMaterialView` 的注释）。
       worksheet: worksheet ? { id: worksheet.id, title: worksheet.title } : null,
     });

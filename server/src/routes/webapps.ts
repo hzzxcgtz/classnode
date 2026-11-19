@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { ErrorRequestHandler } from 'express';
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import path from 'path';
 import os from 'os';
@@ -399,11 +399,13 @@ class UploadRejected extends Error {}
 
 // ── 路由 ────────────────────────────────────────────────────────────
 
-/** 对外形状：只给 id / name / entryPath 与时间戳，磁盘位置一概不出现在响应里。 */
+/** 课堂与管理页均不暴露服务端磁盘位置。 */
+export const CLASSROOM_WEBAPP_SELECT = {
+  id: true, name: true, entryPath: true, externalUrl: true,
+} as const;
+
 const PUBLIC_WEBAPP_SELECT = {
-  id: true,
-  name: true,
-  entryPath: true,
+  ...CLASSROOM_WEBAPP_SELECT,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -457,6 +459,7 @@ router.get('/', async (req, res) => {
     res.json(webapps.map(webapp => ({
       ...webapp,
       fileCount: (() => {
+        if (webapp.externalUrl) return 0;
         const dir = resolveInsideWebappsRoot(webapp.id);
         return dir ? walkTree(dir).files.length : 0;
       })(),
@@ -528,6 +531,37 @@ router.get('/:id/usage', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: '查询失败' });
+  }
+});
+
+function normalizeExternalWebappUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 4096 || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  const text = value.trim();
+  if (!/^https:\/\//i.test(text) || text.includes('\\')) return null;
+  try {
+    const url = new URL(text);
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+router.post('/external', async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : '';
+  const externalUrl = normalizeExternalWebappUrl(body.externalUrl);
+  if (!name) return res.status(400).json({ error: '请输入网页名称' });
+  if (!externalUrl) return res.status(400).json({ error: '请输入有效的 HTTPS 发布链接，网址中不能包含用户名或密码' });
+  try {
+    const prisma: PrismaClient = req.app.get('prisma');
+    const webapp = await prisma.webapp.create({
+      data: { name, entryPath: '', externalUrl },
+      select: PUBLIC_WEBAPP_SELECT,
+    });
+    return res.status(201).json(webapp);
+  } catch (error) {
+    console.error('[webapps] 添加外部网页失败:', error);
+    return res.status(500).json({ error: '添加外部网页失败' });
   }
 });
 
@@ -700,11 +734,18 @@ router.put('/:id', async (req, res) => {
     const existing = await prisma.webapp.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: '网页不存在' });
 
-    const data: { name?: string; entryPath?: string } = {};
+    const data: { name?: string; entryPath?: string; externalUrl?: string } = {};
     const body = (req.body ?? {}) as Record<string, unknown>;
     if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim().slice(0, 120);
 
+    if ('externalUrl' in body) {
+      if (!existing.externalUrl) return res.status(400).json({ error: '上传的网页不能改为外部链接' });
+      const url = normalizeExternalWebappUrl(body.externalUrl);
+      if (!url) return res.status(400).json({ error: '请输入有效的 HTTPS 发布链接，网址中不能包含用户名或密码' });
+      data.externalUrl = url;
+    }
     if (typeof body.entryPath === 'string' && body.entryPath.trim()) {
+      if (existing.externalUrl) return res.status(400).json({ error: '外部网页没有本地入口文件' });
       const wanted = body.entryPath.trim();
       const dir = resolveInsideWebappsRoot(req.params.id);
       const target = dir ? resolveInDir(dir, wanted) : null;
@@ -800,8 +841,8 @@ function scanMissingRefsSafe(
 /**
  * 课堂关联的网页，下发给学生端与教师端看板。
  *
- * ⚠️ **只发 id / name / entryPath** —— 学生端拼 URL 只需要 `id` 与 `entryPath`
- * （`${origin}/webapps/${id}/${entryPath}`）。多发一个字段就等于把服务端的目录结构
+ * 本地网页由学生端按 `id` 和 `entryPath` 组装地址；外部网页使用 `externalUrl`。
+ * 发送磁盘字段会把服务端的目录结构
  * 告诉客户端。`id` 就是磁盘目录名，这是设计上刻意对齐的，但磁盘**根路径**不出现在响应里。
  *
  * ⚠️ 两处（`GET /api/classroom/code/:code` 与 `GET /api/classroom/:id`）**共用本函数**，
@@ -813,13 +854,13 @@ function scanMissingRefsSafe(
 export async function loadClassroomWebapps(
   prisma: PrismaClient,
   classroomId: string,
-): Promise<{ id: string; name: string; entryPath: string }[]> {
-  type Row = { webapp: { id: string; name: string; entryPath: string } };
+): Promise<Prisma.WebappGetPayload<{ select: typeof CLASSROOM_WEBAPP_SELECT }>[]> {
+  type Row = { webapp: Prisma.WebappGetPayload<{ select: typeof CLASSROOM_WEBAPP_SELECT }> };
   let rows: Row[] = [];
   try {
     rows = await prisma.classroomWebapp.findMany({
       where: { classroomId },
-      select: { webapp: { select: { id: true, name: true, entryPath: true } } },
+      select: { webapp: { select: CLASSROOM_WEBAPP_SELECT } },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
   } catch {
@@ -828,7 +869,7 @@ export async function loadClassroomWebapps(
     // 也就是「因为查不到网页，学生进不了课堂」，正是这里要避免的。
     return [];
   }
-  return rows.map(row => ({ id: row.webapp.id, name: row.webapp.name, entryPath: row.webapp.entryPath }));
+  return rows.map(row => row.webapp);
 }
 
 /** 把 Multer 的默认 HTML/文本错误转换为前端可直接展示的 JSON（照 upload.ts 的 handleUploadError）。 */

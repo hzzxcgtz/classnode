@@ -744,3 +744,34 @@ test('★ 清除：只碰指定的参与者 —— 别人的作答一行都不�
   const left = await db.prisma.worksheetAnswer.findMany({ select: { responseId: true } });
   assert.deepEqual(left.map(r => r.responseId), [otherResponse.id], '🔴 只删被点名的那一个参与者');
 });
+
+test('停用学生不进入学习单矩阵与提交分母，恢复后原作答仍在', async (t) => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const roster = await db.prisma.class.create({ data: { name: '停用回归测试班' } });
+  const active = await db.prisma.student.create({ data: { name: '在用学生', classId: roster.id } });
+  const paused = await db.prisma.student.create({ data: { name: '请假学生', classId: roster.id } });
+  const classroom = await db.prisma.classroom.create({ data: { title: '矩阵停用测试', mode: 'standard' } });
+  const worksheet = await seedWorksheet(db.prisma, '停用测试学习单');
+  await db.prisma.classroomWorksheet.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id } });
+  const p1 = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, studentId: active.id, type: 'student' } });
+  const p2 = await db.prisma.classroomStudent.create({ data: { classroomId: classroom.id, studentId: paused.id, type: 'student' } });
+  const response = await db.prisma.worksheetResponse.create({ data: { classroomId: classroom.id, worksheetId: worksheet.id, participantId: p2.id, status: 'submitted' } });
+  await db.prisma.worksheetAnswer.create({ data: { responseId: response.id, questionId: 'q_4', status: 'submitted', value: { text: '原始作答' } } });
+  const read = async () => {
+    const result = await server.get(`/api/worksheets/classroom/${classroom.id}/answers`, { Cookie: server.cookie });
+    assert.equal(result.status, 200);
+    return await result.json() as { worksheets: Array<{ participants: Array<{ participantId: string; answerRows: Array<{ status: string; value: unknown }> }> }> };
+  };
+  assert.equal((await read()).worksheets[0].participants.length, 2);
+  await db.prisma.student.update({ where: { id: paused.id }, data: { disabled: true } });
+  const hidden = (await read()).worksheets[0].participants;
+  assert.deepEqual(hidden.map(p => p.participantId), [p1.id]);
+  assert.equal(hidden.filter(p => p.answerRows.some(a => a.status === 'submitted')).length, 0);
+  assert.equal(await db.prisma.worksheetAnswer.count({ where: { responseId: response.id } }), 1);
+  await db.prisma.student.update({ where: { id: paused.id }, data: { disabled: false } });
+  const restored = (await read()).worksheets[0].participants;
+  assert.equal(restored.length, 2);
+  assert.deepEqual(restored.find(p => p.participantId === p2.id)?.answerRows[0].value, { text: '原始作答' });
+});

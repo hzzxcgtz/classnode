@@ -526,7 +526,9 @@ export const api = {
   // `missingRefs` 同理：`refs` 是教师自己写的那个引用原样，不是解析后的路径。
   getWebapps: () => request<WebappSummary[]>('/api/webapps'),
   createWebapp: (data: FormData) => formRequest<WebappUploadResult>('/api/webapps', 'POST', data),
-  updateWebapp: (id: string, data: { name?: string; entryPath?: string }) =>
+  createExternalWebapp: (data: { name: string; externalUrl: string }) =>
+    request<WebappSummary>('/api/webapps/external', { method: 'POST', body: JSON.stringify(data) }),
+  updateWebapp: (id: string, data: { name?: string; entryPath?: string; externalUrl?: string }) =>
     request<WebappSummary>(`/api/webapps/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteWebapp: (id: string) => request(`/api/webapps/${id}`, { method: 'DELETE' }),
   // 网页有**两条**关联路径：课堂级（`ClassroomWebapp`，标准/分组模式）与组级

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { externalWebappHref } from '@/lib/external-webapp';
 import { FieldError, Toast } from '@/lib/components';
 import type { WebappSummary, WebappUploadResult } from '@/lib/types';
 import { WebappExternalDepsNotice, WebappMissingRefsNotice } from './webapp-overlays';
@@ -32,6 +33,10 @@ type UploadMode = 'html' | 'archive';
 export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary | null; onClose: () => void; onSaved: () => void }) {
   const editing = webapp !== null;
   const [name, setName] = useState(webapp?.name ?? '');
+  const [source, setSource] = useState<'upload' | 'external'>(webapp?.externalUrl ? 'external' : 'upload');
+  const external = source === 'external';
+  const [externalUrl, setExternalUrl] = useState(webapp?.externalUrl ?? '');
+  const validUrl = externalWebappHref(externalUrl);
   const [mode, setMode] = useState<UploadMode>('html');   // ★ 教师定的：左栏默认
   const [page, setPage] = useState<File | null>(null);    // 单 HTML
   const [archive, setArchive] = useState<File | null>(null);
@@ -49,7 +54,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
 
   // 改入口要能看到「包里有哪些 HTML 可选」。拉不到就退化成只读展示（不阻断改名）。
   useEffect(() => {
-    if (!editing || !webapp) return;
+    if (!editing || !webapp || webapp.externalUrl) return;
     let cancelled = false;
     api.getWebappEntries(webapp.id)
       .then(result => { if (!cancelled) setEntries(result.entries); })
@@ -74,16 +79,24 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
     if (savingRef.current) return;
     const errors: Record<string, string> = {};
     if (!name.trim()) errors.name = '请输入网页名称';
-    if (!editing) {
-    if (mode === 'html' && !page) errors.file = '请选择网页文件（.html）';
-    if (mode === 'archive' && !archive) errors.file = '请选择网页压缩包（ZIP / RAR / 7Z）';
+    if (external) {
+      if (!validUrl) errors.externalUrl = '请输入有效的 HTTPS 发布链接，网址中不能包含用户名或密码';
+    } else if (!editing) {
+      if (mode === 'html' && !page) errors.file = '请选择网页文件（.html）';
+      if (mode === 'archive' && !archive) errors.file = '请选择网页压缩包（ZIP / RAR / 7Z）';
     }
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
 
     savingRef.current = true;
     setSaving(true);
     try {
-      if (editing && webapp) {
+      if (external && validUrl) {
+        const payload = { name: name.trim(), externalUrl: validUrl };
+        if (webapp) await api.updateWebapp(webapp.id, payload);
+        else await api.createExternalWebapp(payload);
+        onSaved();
+        onClose();
+      } else if (editing && webapp) {
         const payload: { name?: string; entryPath?: string } = {};
         if (name.trim() !== webapp.name) payload.name = name.trim();
         if (entryPath && entryPath !== webapp.entryPath) payload.entryPath = entryPath;
@@ -141,7 +154,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
           <button type="button" onClick={onClose} disabled={saving} aria-label="关闭网页表单" style={{ position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--text-muted, #64748b)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>✕</button>
           <h2 id="webapp-form-title" style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 2px' }}>{created ? '上传成功' : editing ? '编辑探究网页' : '添加探究网页'}</h2>
           <p style={{ fontSize: "0.8125rem", color: 'var(--text-secondary)', margin: '0 0 12px' }}>
-            {created ? `「${created.name}」已经可以用在课堂里了。` : editing ? '可以改显示名称，也可以改指包里的另一个 HTML 作为入口。' : '上传一个静态网页，课堂上学生就能打开它。'}
+            {created ? `「${created.name}」已经可以用在课堂里了。` : editing ? '修改网页名称及打开设置。' : '上传静态网页，或添加已发布的应用链接。'}
           </p>
         </div>
 
@@ -165,7 +178,27 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
             {fieldErrors.name && <FieldError message={fieldErrors.name} />}
           </div>
 
-          {editing && webapp ? (
+          {!editing && (
+            <div className={styles.sourceOptions} role="group" aria-label="网页来源">
+              {([['upload', '上传网页'], ['external', '外部链接']] as const).map(([value, label]) => (
+                <button key={value} type="button" className="btn btn-secondary" aria-pressed={source === value} disabled={saving}
+                  onClick={() => { setSource(value); setFieldErrors({}); }}>{label}</button>
+              ))}
+            </div>
+          )}
+
+          {external ? (
+            <div className={styles.externalFields}>
+              <label htmlFor="webapp-external-url">应用发布链接 <span style={{ color: 'var(--danger)' }}>*</span></label>
+              <input id="webapp-external-url" type="url" className="input" value={externalUrl} placeholder="https://…"
+                disabled={saving} aria-invalid={Boolean(fieldErrors.externalUrl)} maxLength={4096}
+                onChange={e => { setExternalUrl(e.target.value); clearError('externalUrl'); }} />
+              {fieldErrors.externalUrl && <FieldError message={fieldErrors.externalUrl} />}
+              <p className={styles.help}>填写学生可以访问的发布链接，勿粘贴带个人令牌的地址。建议先用未登录的浏览器检查。</p>
+              <p className={styles.help}>学生从探究空间在新标签页打开此链接。</p>
+              {validUrl && <a className={`btn btn-secondary ${styles.externalOpen}`} href={validUrl} target="_blank" rel="noopener noreferrer">在新标签页打开 ↗</a>}
+            </div>
+          ) : editing && webapp ? (
             <div>
               <label htmlFor="webapp-entry" style={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>入口页面</label>
               {entries.length > 0 ? (
@@ -229,7 +262,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving} style={{ fontSize: "0.875rem", padding: '7px 18px' }}>取消</button>
             <button type="submit" className="btn btn-primary" disabled={saving} style={{ fontSize: "0.875rem", padding: '7px 20px' }}>
-              {saving ? '保存中...' : editing ? '保存修改' : '上传网页'}
+              {saving ? '保存中...' : editing ? '保存修改' : external ? '添加网页' : '上传网页'}
             </button>
           </div>
         </form>

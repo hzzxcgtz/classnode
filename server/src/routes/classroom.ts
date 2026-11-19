@@ -1056,7 +1056,7 @@ router.get('/:id', async (req, res) => {
       .findMany({ where: { classroomId: classroom.id }, select: { moduleKey: true, state: true } })
       .catch(() => null);
     // 探究空间：与 /code/:code 共用同一个查询函数（Ruling），避免学生端和教师看板
-    // 两条路径口径不一。只含 id / name / entryPath，磁盘根路径不进响应。
+    // 两条路径口径不一。网页下发信息不含磁盘根路径。
     const webapps = await loadClassroomWebapps(prisma, classroom.id);
     // 课堂级学习单：与 `webapps` 同形同源（标准 / 分组模式的权威来源）。教师看板的
     // 「课堂设置」弹窗要把这一项只读展示出来，与网页并列。
@@ -1186,8 +1186,7 @@ router.get('/code/:code', async (req, res) => {
       .catch(() => [] as { moduleKey: string; state: string }[]);
 
     // 探究空间：该课堂关联的网页，按关联顺序下发。
-    // ⚠️ **只发 id / name / entryPath**，不发任何磁盘路径。学生端用
-    // `http://${location.hostname}:${webappPort}/webapps/${id}/${entryPath}` 自己拼。
+    // 本地网页按托管端口和入口路径组装地址，外部网页直接使用发布链接。
     // 查询失败（老库缺表）时降级为空数组 —— 读路径不可失败，不能把学生挡在课堂门外。
     const webapps = await loadClassroomWebapps(prisma, classroom.id);
 

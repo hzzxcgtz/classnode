@@ -176,6 +176,11 @@ export async function upgradeDatabase(source: PrismaClient, options: UpgradeOpti
     const identities = await preserveIdentities(candidate);
     const removedNotifications = await removeOrphanNotifications(candidate, identities);
     await migrateLegacyDatabase(candidate, () => backupPath);
+    // External links no longer embed. Retire only this setting on the backed-up candidate.
+    const webappColumns = await candidate.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info("Webapp")`);
+    if (webappColumns.some(column => column.name === 'embedExternal')) {
+      await candidate.$executeRawUnsafe(`ALTER TABLE "Webapp" DROP COLUMN "embedExternal"`);
+    }
     await makeStudentClassNullable(candidate);
     await options.afterLegacy?.(candidate);
     await candidate.$disconnect();

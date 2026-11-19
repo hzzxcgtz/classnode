@@ -2302,6 +2302,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
    * —— 而它们各自看起来都「正常」，只是合起来谁也读不出来。
    */
   const openExploreDetail = (studentId: string) => {
+    const participant = classroom.students.find(student => student.id === studentId);
+    if (effectiveGroupWebapp(classroom, participant)?.externalUrl) return;
     setSelectedStudent(null);
     setSelectedGroup(null);
     selectedStudentIdRef.current = null;
@@ -2382,6 +2384,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       case 'companion':
         return companion;
       case 'explore':
+        if (effectiveGroupWebapp(classroom, primary)?.externalUrl) {
+          return placeholder('外部应用', '此应用不提供课堂内的画面与操作记录');
+        }
         return isGroup ? (
           <ExploreMemberStrip
             members={members}

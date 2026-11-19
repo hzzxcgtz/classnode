@@ -80,6 +80,25 @@ test('停用与恢复学生：身份名单、会话、分组及历史完整性',
   assert.equal(await db.worksheetAnswer.count(), 1);assert.equal(await db.classroomStudent.count(), 2);
   assert.equal((await db.student.findUniqueOrThrow({ where: { id: alice.id } })).tag, '原标签');
   assert.equal((await db.classGroup.findFirstOrThrow()).studentIds, JSON.stringify([alice.id, bob.id]));
+  await t.test('进行中课堂立即接纳单个及批量新增学生', async () => {
+    await db.classroomClass.create({ data: { classroomId: room.id, classId: klass.id } });
+    const ended = await db.classroom.create({ data: { code: '5678', status: 'ended', classes: { create: { classId: klass.id } } } });
+    const post = (suffix: string, body: unknown) => fetch(`${base}/api/classes/${klass.id}/students${suffix}`, {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const refreshed = event(watcher, 'student-availability-changed');
+    const response = await post('', { name: '新学生' });
+    assert.equal(response.status, 200);
+    const added = await response.json();
+    await refreshed;
+    const participant = await db.classroomStudent.findUniqueOrThrow({ where: { classroomId_studentId: { classroomId: room.id, studentId: added.id } } });
+    assert.ok((await roster()).some((row: { id: string }) => row.id === participant.id));
+    assert.equal((await issue(participant.id)).status, 200);
+    assert.equal(await db.interaction.count({ where: { classroomId: room.id, studentId: participant.id } }), 1);
+    assert.equal((await post('/batch-names', { names: ['新增甲', '新增乙'] })).status, 200);
+    assert.equal(await db.classroomStudent.count({ where: { classroomId: room.id } }), 5);
+    assert.equal(await db.classroomStudent.count({ where: { classroomId: ended.id } }), 0);
+  });
   await t.test('组员登录同样隐藏停用组员并拒绝直接领取令牌', async () => {
     const group = await db.classroomGroup.create({ data: { classroomId: room.id, name: '测试小组' } });
     await db.classroomStudent.updateMany({ where: { classroomId: room.id }, data: { groupId: group.id } });

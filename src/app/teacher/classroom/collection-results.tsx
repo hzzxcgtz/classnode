@@ -94,7 +94,8 @@ export function CollectionResults({ node, stats, rows, unit, rewardStyle, analys
   if (isExpressionQuestion(node)) views.push('cloud');
   const [selectedPhrase, setSelectedPhrase] = useState<string | null>(null);
   const phraseEvidence = allPhrases.find(phrase => phrase.phrase === selectedPhrase);
-  const examples = phraseEvidence ? submitted.filter(row => phraseEvidence.studentIds.includes(row.participantId)) : [];
+  const evidenceRows = analysisState.payload?.analysisEvidence;
+  const examples = phraseEvidence ? (evidenceRows ?? submitted).filter(row => phraseEvidence.studentIds.includes(row.participantId)) : [];
   const [selected, setSelected] = useState<View | null>(null);
   const [projecting, setProjecting] = useState(false);
   const [fontScale, setFontScale] = useState(100);
@@ -197,7 +198,7 @@ export function CollectionResults({ node, stats, rows, unit, rewardStyle, analys
           </div>
           {!presentation && sharedPhrases.length > 0 && <p className={`${styles.cloudNote} ${styles.cloudPolicy}`}>按提及人数排序，不评价观点好坏</p>}
           {sharedPhrases.length ? <>
-            {analysisState.payload?.stale && <p className={styles.cloudNote}>当前显示上次分析的观点云。重新生成班级分析后可更新。</p>}
+            {analysisState.payload?.stale && <p className={styles.cloudNote}>作答或分析依据有更新，当前保留上次分析结果。点击“更新全班分析”可重新分析。</p>}
             {opinionView === 'list' ? <ol className={styles.opinionList}>
               {allPhrases.map(item => <li key={item.phrase}><button type="button" aria-pressed={selectedPhrase === item.phrase}
                 onClick={() => setSelectedPhrase(selectedPhrase === item.phrase ? null : item.phrase)}>
@@ -214,13 +215,12 @@ export function CollectionResults({ node, stats, rows, unit, rewardStyle, analys
                 <span className={styles.cloudEvidenceCount}>{phraseEvidence.studentIds.length} 份作答</span>
                 <IconChevronDown size={18} aria-hidden="true" />
               </summary>
-              {analysisState.payload?.stale
-                ? <p>重新生成全班分析后，可查看与当前作答对应的内容。</p>
-                : examples.length > 0 ? <>
+              {analysisState.payload?.stale && <p>{evidenceRows ? '以下为上次分析时的作答。' : '以下为相关学生当前的作答，可能与上次分析时不同。'}点击“更新全班分析”可更新结果。</p>}
+              {examples.length > 0 ? <>
                   {examples.length > 2 && <p className={styles.cloudScrollHint}>左右滑动查看</p>}
                   <div className={styles.cloudEvidenceTrack} tabIndex={0} role="region" aria-label="相关学生作答，可横向滚动">
                     {examples.map((row, index) => <article key={row.participantId} className={styles.cloudEvidenceCard}>
-                      <header><span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><h5>{row.participantName}</h5></header>
+                      <header><span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><h5>{rows.find(item => item?.participantId === row.participantId)?.participantName ?? '学生'}</h5></header>
                       <div className={styles.cloudAnswer}>{node.type === 'rating'
                         ? <RatingTileResult node={node} value={row.value} rewardStyle={rewardStyle} />
                         : <AnswerViewBody node={answerNode} value={row.value} neutral />}</div>

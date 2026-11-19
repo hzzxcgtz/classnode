@@ -573,6 +573,7 @@ export interface WorksheetAnalysisSection {
 }
 
 export interface WorksheetAnalysisPayload {
+  analysisEvidence?: Array<{ participantId: string; value: unknown }>;
   batchProgress?: AnalysisBatchProgress[];
   batchRunStartedAt?: number;
   rawClassAnalysis?: boolean;

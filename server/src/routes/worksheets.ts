@@ -1776,7 +1776,7 @@ async function payloadResponse(
   return { ...payload, sectioned: sections.length > 0, rawClassAnalysis: Boolean(node && (sections.length > 0 || usesRawClassAnalysis(node))),
     canvasSectionOnly, canvasStudentReviews: canvasStudentReviews && [...canvasStudentReviews.values()],
     ...readAnalysisBatches(prisma, analysisOperationKey(classroomId, worksheetId, payload.questionId)),
-    sectionAnalysis, sectionProgress, labeled, stale: stale || definitionStale, ...analysis, narrative: analysis.narrative === null ? null : extractAnalysisProtocol(analysis.narrative).narrative, analysisDurationMs, perStudent, pendingReviewIds: [...pendingReviewIds], feedback, participantNames, analysisAgent, canSend, canClearAiScores };
+    analysisEvidence: resultMeta.analysisEvidence, sectionAnalysis, sectionProgress, labeled, stale: stale || definitionStale, ...analysis, narrative: analysis.narrative === null ? null : extractAnalysisProtocol(analysis.narrative).narrative, analysisDurationMs, perStudent, pendingReviewIds: [...pendingReviewIds], feedback, participantNames, analysisAgent, canSend, canClearAiScores };
 }
 
 router.post('/:id/analysis/:questionId', async (req, res) => {
@@ -2028,6 +2028,10 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
     });
 
 
+    const evidenceAnswers = await loadAnalysisAnswers(prisma, classroomId, worksheetId);
+    const analysisEvidence = evidenceAnswers.filter(answer => answer.questionId === questionId && answer.status === 'submitted')
+      .map(answer => ({ participantId: answer.participantId, value: answer.value }));
+
     const photoReport = !scoped && payload.photoWriting === true && entries.some(entry => entry.kind === 'photo');
     const audioReport = !scoped && !!payload.audioAnswers?.length
       && entries.every(entry => entry.kind === 'audio');
@@ -2190,7 +2194,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
         await tx.worksheetQuestionAnalysis.update({ where: { id: row.id }, data: {
           narrative, analyzedAt, agentId: agent.id, model: agent.platform,
           perStudent: { ...previousResult, analysisDurationMs, analysisBasis: sectionBasis,
-            analysisFeedback: next, sectionAnalysis: report.sections, sectionProgress: null, canvasSectionReport: report.summary === null,
+            analysisEvidence, analysisFeedback: next, sectionAnalysis: report.sections, sectionProgress: null, canvasSectionReport: report.summary === null,
             analysisUsage,
           } as unknown as Prisma.InputJsonValue,
         } });
@@ -2433,7 +2437,7 @@ router.post('/:id/analysis/:questionId/run', async (req, res) => {
       let analysisUsage = readAnalysisUsage(existing?.perStudent, existing?.agentId ?? null, existing?.narrative ?? null);
       const calls = mediaReport ? successfulCalls : [{ agentId: agent.id, chars: (result.content ?? '').length }];
       for (const call of calls) analysisUsage = recordAnalysisUsage({ analysisUsage }, null, null, call.agentId, call.chars);
-      const storedResult = { ...(perStudent ?? previousResult), analysisDurationMs, ...(scoped ? {} : { sectionAnalysis: null, reviewSummary: null, analysisBasis: analysisBasisKey(payload, cloudRequirements, target.node) }), analysisFeedback: feedback, analysisUsage };
+      const storedResult = { ...(perStudent ?? previousResult), analysisDurationMs, ...(scoped ? {} : { sectionAnalysis: null, reviewSummary: null, analysisBasis: analysisBasisKey(payload, cloudRequirements, target.node), analysisEvidence }), analysisFeedback: feedback, analysisUsage };
       const analyzedAt = scoped ? row.analyzedAt : new Date();
       operation!.controller.signal.throwIfAborted();
       await tx.worksheetQuestionAnalysis.update({

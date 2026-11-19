@@ -5,6 +5,22 @@ import { PrismaClient, Prisma } from '@prisma/client';
 
 const router: Router = Router();
 
+// Provision new roster members only in ongoing individual classrooms.
+async function addStudentsToLiveClassrooms(tx: Prisma.TransactionClient, classId: string, studentIds: string[]) {
+  const rooms = await tx.classroom.findMany({ where: {
+    mode: 'standard', status: { in: ['active', 'paused'] }, classes: { some: { classId } },
+  }, select: { id: true } });
+  for (const room of rooms) for (const studentId of studentIds) {
+    const participant = await tx.classroomStudent.create({ data: { classroomId: room.id, studentId } });
+    await tx.interaction.create({ data: { classroomId: room.id, studentId: participant.id } });
+  }
+  return rooms;
+}
+function notifyRoster(req: import('express').Request, rooms: Array<{ id: string }>) {
+  const io: Server | undefined = req.app.get('io');
+  for (const { id } of rooms) io?.to(`status:${id}`).to(`classroom:${id}`).to(`teacher:${id}`).emit('student-availability-changed');
+}
+
 // === 班级管理 ===
 
 // 获取所有班级
@@ -162,7 +178,12 @@ router.post('/:classId/students', async (req, res) => {
     };
     if (gender && ['boy', 'girl'].includes(gender)) data.gender = gender;
 
-    const student = await prisma.student.create({ data });
+    const { student, rooms } = await prisma.$transaction(async tx => {
+      const student = await tx.student.create({ data });
+      const rooms = await addStudentsToLiveClassrooms(tx, req.params.classId, [student.id]);
+      return { student, rooms };
+    });
+    notifyRoster(req, rooms);
     res.json(student);
   } catch (error) {
     res.status(500).json({ error: '添加学生失败' });
@@ -192,9 +213,12 @@ router.post('/:classId/students/batch-names', async (req, res) => {
       const students = normalized.map((item, i) => ({
         classId: req.params.classId, name: item.name, studentNo: String(maxNo + i + 1), gender: item.gender,
       }));
-      const created = await tx.student.createMany({ data: students });
-      return { created, students };
+      const inserted = [];
+      for (const data of students) inserted.push(await tx.student.create({ data }));
+      const rooms = await addStudentsToLiveClassrooms(tx, req.params.classId, inserted.map(student => student.id));
+      return { created: { count: inserted.length }, students, rooms };
     });
+    notifyRoster(req, result.rooms);
     res.json({ count: result.created.count, students: result.students });
   } catch (error) {
     res.status(500).json({ error: '批量创建学生失败' });

@@ -102,6 +102,9 @@ docs/reference/*
 classnode-v*.tar.gz
 /dist/
 
+# Local source for the two portal sites
+/myportal/
+
 # Local acceptance installers and build manifests
 /release-candidates/
 

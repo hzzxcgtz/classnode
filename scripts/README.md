@@ -101,6 +101,7 @@ Node.js 打包设置统一在 `lib/project.mjs` 和 `lib/node-runtime.mjs`：`CL
 | build-desktop.mjs | macOS/Windows 构建的统一编排 |
 | package-server.mjs | 生产依赖、Prisma、空数据库、静态前端、Node 资源；排除后端测试 |
 | package-frontend.mjs | web/desktop 前端复制；desktop 注入 dashboard 版本 |
+| build-portal-sites.mjs | `pnpm build:portal` 生成工坊和支点课堂两份静态站，见[域名迁移说明](../docs/project-notes/PORTAL-SITES.md) |
 | rename-bundle.mjs | macOS/Windows 安装包统一命名；只处理当前版本，支持重复执行 |
 | sync-version.mjs / prepare-release.mjs | 幂等版本同步 / 版本递增、发布日期与变更日志 |
 | dev-server.mjs | 跨平台启动 tsx watch，设置 NODE_ENV |

@@ -633,7 +633,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             paddingTop: 12,
           }}>
             <button
-              onClick={() => window.open('https://www.aicls.xyz', '_blank')}
+              onClick={() => window.open('https://zd.aicls.xyz/', '_blank')}
               title={sidebarCollapsed ? '打开官网' : undefined}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : undefined,

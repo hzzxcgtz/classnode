@@ -29,6 +29,7 @@
     "tauri": "tauri",
     "prebuild": "node scripts/sync-version.mjs",
     "check:scripts": "node scripts/check-scripts.mjs",
+    "build:portal": "node scripts/build-portal-sites.mjs",
     "lint": "eslint",
     "test": "pnpm test:scripts && pnpm test:client && pnpm test:server",
     "test:scripts": "node scripts/run-tests.mjs scripts",

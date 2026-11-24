@@ -6,15 +6,25 @@ export type UsageReport = {
   platform: 'darwin' | 'win32' | 'linux' | 'other'; arch: 'arm64' | 'x64' | 'other';
   deployment: 'desktop' | 'server'; active: boolean; revision: number;
   counters: Record<UsageCounter, number>;
+  deviceActivity?: true | string[];
 };
 export const emptyUsageCounters = (): UsageReport['counters'] => Object.fromEntries(USAGE_COUNTERS.map(key => [key, 0])) as UsageReport['counters'];
 export function usageDay(now = Date.now()): string { return new Date(now + 8 * 3600_000).toISOString().slice(0, 10); }
 function dayValid(value: unknown): value is string { return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(value).toISOString().slice(0, 10) === value; }
+export const MAX_USAGE_BROWSERS_PER_DAY = 256;
+export const validUsageId = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id);
 export function validateUsageReport(value: unknown, now = Date.now()): value is UsageReport {
   try {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
     const v = value as UsageReport;
     const keys = ['installationId', 'firstSeen', 'day', 'version', 'platform', 'arch', 'deployment', 'active', 'revision', 'counters'];
+    if (Object.hasOwn(v, 'deviceActivity')) {
+      keys.push('deviceActivity');
+      if (!v.active || (v.deployment === 'desktop' ? v.deviceActivity !== true
+        : !Array.isArray(v.deviceActivity) || v.deviceActivity.length === 0 ||
+          v.deviceActivity.length > MAX_USAGE_BROWSERS_PER_DAY || !v.deviceActivity.every(validUsageId) ||
+          new Set(v.deviceActivity).size !== v.deviceActivity.length)) return false;
+    }
     if (Object.keys(v).length !== keys.length || Object.keys(v).some(key => !keys.includes(key))) return false;
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v.installationId)) return false;
     if (!dayValid(v.day) || !dayValid(v.firstSeen) || v.firstSeen > v.day || v.day > usageDay(now) || v.day < usageDay(now - 31 * 86400_000)) return false;

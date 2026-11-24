@@ -81,3 +81,40 @@ test('activity arriving during an upload remains pending after the earlier snaps
     assert.ok(saved.sent[usageDay(NOW)] < saved.reports[0].revision);
   } finally { usage.stop(); fs.rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('device activity ignores polling, deduplicates browser IDs and persists desktop activity', async () => {
+  const directory = temp();
+  const browser = 'a7e03d15-cb16-451a-ad05-905a46dc943d';
+  const other = '585e9318-c11f-4d20-ad04-1ae769ae8a35';
+  const usage = new UsageReporting({ directory, version: '2.2.7', now: () => NOW });
+  const app = express();
+  app.post('/login', (_req, res) => { createTeacherSession(res); res.end(); });
+  app.use(usage.middleware);
+  app.get('/api/poll', (_req, res) => { res.end(); });
+  app.put('/api/worksheets/sample', (_req, res) => { res.end(); });
+  const server = createServer(app);
+  const base = await listen(server);
+  try {
+    const login = await fetch(base + '/login', { method: 'POST' });
+    const cookie = login.headers.get('set-cookie')!.split(';')[0];
+    const headers = (id: string) => ({ Cookie: cookie, 'X-ClassNode-Usage-Browser': id });
+    await fetch(base + '/api/poll', { headers: headers(other) });
+    await fetch(base + '/api/worksheets/sample', { method: 'PUT', headers: headers(browser) });
+    await fetch(base + '/api/worksheets/sample', { method: 'PUT', headers: headers(browser) });
+    usage.stop();
+    const cache = JSON.parse(fs.readFileSync(path.join(directory, 'usage-reporting.json'), 'utf8'));
+    assert.deepEqual(cache.reports[0].deviceActivity, [browser]);
+
+    const desktop = new UsageReporting({ directory: path.join(directory, 'desktop'), version: '2.2.7', now: () => NOW, deployment: 'desktop' });
+    desktop.record([], true, browser);
+    desktop.record([], true, other);
+    desktop.stop();
+    const desktopCache = JSON.parse(fs.readFileSync(path.join(directory, 'desktop', 'usage-reporting.json'), 'utf8'));
+    assert.equal(desktopCache.reports[0].deviceActivity, true);
+    assert.equal(desktopCache.reports[0].revision, 2);
+  } finally {
+    await close(server);
+    usage.stop();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

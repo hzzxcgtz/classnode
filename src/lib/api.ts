@@ -55,15 +55,33 @@ async function request<T>(path: string, options?: RequestInit, timeoutMs?: numbe
   }
 }
 
+function usageBrowserId(path: string, method?: string): string | undefined {
+  if (typeof window === 'undefined' || !window.location.pathname.startsWith('/teacher/') || !['POST', 'PUT'].includes(method ?? '') || !/^\/api\/(classroom\/create(?:-advanced)?$|worksheets(?:\/|$))/.test(path)) return;
+  try {
+    const key = 'classnode-usage-browser';
+    const existing = window.localStorage.getItem(key);
+    if (existing) return existing;
+    // getRandomValues is also available when a school uses HTTP on its LAN.
+    const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+    const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    window.localStorage.setItem(key, id);
+    return id;
+  } catch {
+    return;
+  }
+}
+
 async function requestOnce<T>(path: string, url: string, options: RequestInit | undefined, signal: AbortSignal | undefined): Promise<T> {
+  const headers = new Headers(options?.headers ?? { 'Content-Type': 'application/json', ...getStudentSessionAuthorization() });
+  const browserId = usageBrowserId(path, options?.method);
+  if (browserId) headers.set('X-ClassNode-Usage-Browser', browserId);
   const res = await fetch(url, {
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(studentSessionToken ? { Authorization: `Bearer ${studentSessionToken}` } : {}),
-      ...options?.headers,
-    },
     ...options,
+    headers,
     ...(signal ? { signal } : {}),
   });
   if (res.status === 401 && typeof window !== 'undefined' && !path.includes('verify-password')) {

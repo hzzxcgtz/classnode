@@ -1,6 +1,6 @@
 import { worksheetReviewAgentIds } from '../services/individual-review.js';
 import { Router } from 'express';
-import { ANALYSIS_TEMPLATE_IDS, readAnalysisTemplate } from '../services/analysis-template-source.js';
+import { readAnalysisTemplate } from '../services/analysis-template-source.js';
 import { Agent, Prisma, PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import path from 'path';
@@ -19,14 +19,13 @@ import { normalizeAgentPurpose } from '../services/agent-purpose.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router: Router = Router();
 
-// Bundled universal template plus fixed legacy remote IDs; never accept arbitrary URLs.
-router.get('/analysis-templates/:templateId', async (req, res) => {
-  if (!ANALYSIS_TEMPLATE_IDS.has(req.params.templateId)) {
+router.get('/analysis-templates/:templateId', (req, res) => {
+  const template = readAnalysisTemplate(req.params.templateId);
+  if (!template) {
     res.status(404).json({ error: '未知的分析提示词模板' }); return;
   }
   res.setHeader('Cache-Control', 'no-store');
-  try { res.json(await readAnalysisTemplate(req.params.templateId)); }
-  catch (error) { res.status(502).json({ error: error instanceof Error ? error.message : '读取官网模板失败，请重试' }); }
+  res.json(template);
 });
 
 function isPrivateIpv4(hostname: string): boolean {

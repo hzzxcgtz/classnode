@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { analysisTemplateParts } from './analysis-template-content.ts';
-const text = fs.readFileSync(new URL('../../myportal/prompt-templates/analysis/universal.md', import.meta.url), 'utf8');
+const text = fs.readFileSync(new URL('../../docs/project-notes/analysis-templates/universal.md', import.meta.url), 'utf8');
 test('精简模板完整复制，不依赖旧的固定区和工作流栏目', () => {
  const parts=analysisTemplateParts(text);assert.equal(parts.prompt,text);assert.match(parts.prompt,/# 角色：通用教育评价/);assert.match(parts.prompt,/具体任务由 ClassNode/);assert.doesNotMatch(parts.prompt,/## 工作流|固定区/);
 });

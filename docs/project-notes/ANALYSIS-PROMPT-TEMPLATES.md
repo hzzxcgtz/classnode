@@ -4,6 +4,6 @@
 
 教师可直接使用自己设计、已试用的专业学科辅助教学智能体，其知识与方法可能更贴合课堂。本模板为可选参考；保留学科特色时需避免固定评分与返回格式和动态任务冲突，先用少量真实作答验收效果。
 
-应用通过后端读取随版本内置的模板，无需联网。官网 universal.md 提供同版下载，旧 12 个学段学科文件保留地址兼容、正文统一。更新生成源 scripts/lib/analysis-prompt-content.mjs 后运行 node scripts/generate-analysis-prompts.mjs；--check 检查生成内容一致性。
+应用通过后端读取随版本内置的模板，模板页可预览、复制和下载 Markdown。旧 12 个学段学科编号也返回内置的通用模板。维护时只修改 `scripts/lib/analysis-prompt-content.mjs`，再运行 `node scripts/generate-analysis-prompts.mjs`，同步内置常量和仓库中的 [通用模板](analysis-templates/universal.md)。`--check` 可在干净检出中检查所有生成内容。
 
 模板版本独立于应用版本。具体规则与兼容说明见 docs/Coze学习单小题分析智能体提示词.md。

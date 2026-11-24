@@ -29,7 +29,7 @@ export default function AnalysisTemplatesPage() {
       .then(result => { if (!controller.signal.aborted) setLoaded({ id: selected.id, ...result }); })
       .catch(error => { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : '模板加载失败'); });
     return () => controller.abort();
-  }, [selected.id, selected.file, retry]);
+  }, [selected.id, retry]);
 
   const copy = async () => {
     setCopying(true); setToast(null);
@@ -62,7 +62,7 @@ export default function AnalysisTemplatesPage() {
     </section>
     <section className={styles.panel} aria-busy={!text && !error}>
       <div className={styles.heading}><h2>{selected.title}</h2><div className={styles.tabs} aria-label="模板显示方式">
-        <button type="button" aria-pressed={!raw} onClick={() => setRaw(false)}>在线查看</button>
+        <button type="button" aria-pressed={!raw} onClick={() => setRaw(false)}>格式化预览</button>
         <button type="button" aria-pressed={raw} onClick={() => setRaw(true)}>原文</button>
       </div></div>
       {error ? <div role="alert"><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => setRetry(value => value + 1)}>重试加载</button></div>

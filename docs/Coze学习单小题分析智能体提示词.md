@@ -32,7 +32,7 @@ ClassNode 动态请求负责题目与评价标准、学生与附件对应、评�
 
 ## 通用模板文件
 
-[下载通用模板](../myportal/prompt-templates/analysis/universal.md)。应用模板页使用内置同版内容，无需连接官网；旧学段学科文件地址保留兼容，正文均为通用模板。
+[下载通用模板](./project-notes/analysis-templates/universal.md)。ClassNode 的模板页使用随应用发布的同版内容。旧学段学科模板编号也由 ClassNode 返回通用模板。
 
 ## 验收
 

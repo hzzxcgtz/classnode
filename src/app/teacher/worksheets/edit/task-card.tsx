@@ -115,13 +115,6 @@ export function TaskCard({
           placeholder="主题标题（可以留空）"
           aria-label={`主题 ${index + 1} 的标题`}
         />
-        <label className="worksheet-editor-task-title-visibility">
-          <input type="checkbox" aria-label="学生端显示标题" checked={node.data.showTitle !== false}
-            onChange={event => onTitleVisibilityChange(event.target.checked)} />
-          <span>学生端标题</span>
-          <span className="worksheet-editor-title-switch" aria-hidden="true"><i /></span>
-          <em>{node.data.showTitle !== false ? '显示' : '隐藏'}</em>
-        </label>
         {/*
           ★ 2026-09-26（spec 第 4 步）：任务容器要有**自己的身份** —— 折起来时教师只看得见
           一行标题，而「这一组几道题、多少分」是他扫全卷时最需要的两个数。
@@ -171,21 +164,29 @@ export function TaskCard({
         「任务 = 分组 + **一段说明**」，这个框就是那句话里的「说明」。
         ⚠️ 用 `textarea` 而不是 `input`：描述常常是完整的一两句，单行会把后半句藏起来。
       */}
-      <details className="worksheet-editor-task-desc-details">
-        <summary>
-          <span>主题说明</span>
-          {typeof node.data.description === 'string' && node.data.description.trim() ? <em>已填写</em> : <WorksheetFieldTag optional />}
-        </summary>
-        <label className="worksheet-editor-task-desc-field">
-          <textarea
-            className="worksheet-editor-task-desc"
-            rows={2}
-            value={typeof node.data.description === 'string' ? node.data.description : ''}
-            onChange={event => onDescriptionChange(event.target.value)}
-            placeholder="例如：阅读材料后，完成下面的问题。学生会看到这段话。"
-          />
+      <div className="worksheet-editor-theme-options">
+        <details className="worksheet-editor-task-desc-details">
+          <summary>
+            <span>主题说明</span>
+            {typeof node.data.description === 'string' && node.data.description.trim() ? <em>已填写</em> : <WorksheetFieldTag optional />}
+          </summary>
+          <label className="worksheet-editor-task-desc-field">
+            <textarea
+              className="worksheet-editor-task-desc"
+              rows={2}
+              value={typeof node.data.description === 'string' ? node.data.description : ''}
+              onChange={event => onDescriptionChange(event.target.value)}
+              placeholder="例如：阅读材料后，完成下面的问题。学生会看到这段话。"
+            />
+          </label>
+        </details>
+        <label className="worksheet-editor-task-title-visibility">
+          <input type="checkbox" role="switch" checked={node.data.showTitle !== false}
+            onChange={event => onTitleVisibilityChange(event.target.checked)} />
+          <span className="worksheet-editor-title-switch" aria-hidden="true"><i /></span>
+          <span>在学生端显示主题标题</span>
         </label>
-      </details>
+      </div>
       </div>
 
       <div className="worksheet-editor-task-body">

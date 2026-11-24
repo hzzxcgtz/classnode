@@ -95,12 +95,8 @@ test('聚焦编辑器在同一页连续显示题目内容与评分设置', () =>
   assert.doesNotMatch(source, /worksheet-editor-panel-tabs/, '整页编辑不应再出现页签导航');
   assert.doesNotMatch(source, /activeEditorPanel/, '整页编辑不应保留页签状态');
   assert.match(source, /任务与作答/, '题目编辑区域必须点名任务与作答');
-  assert.match(
-    source,
-    /<section className="worksheet-editor-question-section is-prompt">/,
-    '任务与作答区域必须直接显示',
-  );
-  const promptSection = source.indexOf('<section className="worksheet-editor-question-section is-prompt">');
+  const promptSection = source.search(/<section\b[^>]*\bclassName="worksheet-editor-question-section is-prompt"[^>]*>/);
+  assert.ok(promptSection >= 0, '任务与作答区域必须直接显示');
   const gradingSection = source.indexOf('worksheet-editor-question-section is-grading', promptSection);
   assert.ok(gradingSection > promptSection, '评分设置必须排在任务与作答区域之后并直接显示');
   assert.match(source, /<h4><EditorIcon[^>]*\/>分值设置<\/h4>/, '评分区应使用唯一的“分值设置”标题');

@@ -2,7 +2,7 @@
 import { EDITOR_CLOUD_HELP, EDITOR_CLOUD_PLACEHOLDER } from './worksheet-editor-copy';
 import { WorksheetFieldTag } from '@/components/worksheet-field-tag';
 
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import type { QuestionPointsDraft, WorksheetQuestionNode } from '@/lib/types';
 import { readPromptImage, readPromptRunsFor, worksheetAssetUrl } from '@/lib/worksheet-presentation';
@@ -60,7 +60,7 @@ import { ChoiceOptionsBody, ChoicePartialCreditBody } from './bodies/multi-choic
 import { FillCombinationsEditor } from './bodies/fill-combinations-editor';
 import { ChoiceBlankSetup } from './bodies/fill-blanks-body';
 // 表达题参考作答支持完整段落，仍沿用 nested answers 数据结构。
-import { blankSlots, fillWholeScore, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading } from '@/lib/worksheet-fill-modes';
+import { fillWholeScore, fillGradingTotals, fillSettingsFor, hasExplicitFillGrading } from '@/lib/worksheet-fill-modes';
 import { TableBody } from './bodies/table-body';
 import { tableMarkIndex } from '@/lib/worksheet-table';
 // ⚠️ 只引 `OrderBody` —— `OrderAnswerBody`（正确顺序）现在住在它里面（两栏并排），
@@ -339,6 +339,19 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
   const composite = usesCanvasAnswers(node);
   const deskReview = deskReviewSettings(node);
   const isBlankType = node.type === 'fill-blank' || node.type === 'choice-blank';
+  const promptSectionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const section = promptSectionRef.current;
+    if (!expanded || !isBlankType || !section) return;
+    const observer = new ResizeObserver(([entry]) => {
+      section.classList.toggle('is-wide-fill', entry.contentRect.width >= 720);
+    });
+    observer.observe(section);
+    return () => {
+      observer.disconnect();
+      section.classList.remove('is-wide-fill');
+    };
+  }, [expanded, isBlankType]);
   /** 题干里有表格域标记 ⇒ 出现「表格域作答设置」（判据只有它）。 */
   const hasTableMark = tableMarkIndex(node.prompt) >= 0;
   /**
@@ -526,7 +539,7 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
            共不了的才各取各的（`选项` / `每个空的作答方式`）。**重名是硬伤** ——
            中间那张卡原来就叫「评分方式」，与容器 B 里第一块撞名。
       */}
-      <section className="worksheet-editor-question-section is-prompt">
+      <section ref={promptSectionRef} className="worksheet-editor-question-section is-prompt">
         <div className="worksheet-editor-section-head">
           <div>
             <h3><EditorIcon kind="content" />任务与作答</h3>
@@ -535,8 +548,8 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
         </div>
 
         {canvasType ? <ImageCanvasEditor key={node.id} node={node} onChange={onDataChange} onModeChange={onInputModeChange} /> : (
-        <div className={`worksheet-editor-block${(node.type === 'drawing' || node.type === 'short-answer' || node.type === 'open-ended') ? ' drawing-prompt-block' : ''}`}>
-          {<PromptEditor
+        <div className={`worksheet-editor-block${isBlankType ? ' worksheet-editor-fill-workspace' : ''}${(node.type === 'drawing' || node.type === 'short-answer' || node.type === 'open-ended') ? ' drawing-prompt-block' : ''}`}>
+          <PromptEditor
             heading={<h4><EditorIcon kind="prompt" />任务描述<WorksheetFieldTag /></h4>}
             node={node}
             onPromptChange={onPromptChange}
@@ -547,14 +560,16 @@ export function QuestionCard({ heading, label, expanded, focusedMode = false, on
             onNotice={onNotice}
             onBlankSelect={setSelectedBlankId}
             selectedBlankId={selectedBlankId}
-            tableEditor={node.type === 'fill-blank' && hasTableMark ? <div ref={tableBlockRef}><TableBody node={node} onDataChange={onDataChange} onBlankSelect={setSelectedBlankId} selectedBlankId={selectedBlankId} standalone /></div> : undefined}
-            blankInspector={isBlankType ? <ChoiceBlankSetup section="mode" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId} /> : undefined}
-          />}
+            tableEditor={node.type === 'fill-blank' && hasTableMark ? <div ref={tableBlockRef}><TableBody node={node} onDataChange={onDataChange} onPromptChange={onPromptChange} onBlankSelect={setSelectedBlankId} selectedBlankId={selectedBlankId} standalone /></div> : undefined}
+          />
+          {isBlankType && <aside className="worksheet-editor-blank-detail-panel" aria-label="填空设置" data-blank-settings-for={node.id}>
+            <ChoiceBlankSetup section="layout" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId} />
+          </aside>}
         </div>
         )}
         {node.type === 'rating' && <div className="worksheet-editor-block worksheet-editor-rating-settings"><RatingEditor node={node} rewardStyle={rewardStyle} onDataChange={onDataChange} /></div>}
-        {isBlankType && blankSlots(node, promptRuns).some(slot => slot.id === selectedBlankId) && <div className="worksheet-editor-blank-detail-panel" data-blank-settings-for={node.id}>
-          <ChoiceBlankSetup onAppendEvaluationImages={onAppendEvaluationImages} section="details" node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} onSelectBlank={setSelectedBlankId}/>
+        {isBlankType && <div className="worksheet-editor-blank-answers">
+          <ChoiceBlankSetup section="answers" onAppendEvaluationImages={onAppendEvaluationImages} node={node} onDataChange={onDataChange} fullPoints={shownPoints.full} pointsUnit={pointsUnit} rewardStyle={rewardStyle} selectedBlankId={selectedBlankId} />
         </div>}
         {isBlankType && <FillCombinationsEditor node={node} onDataChange={onDataChange} />}
         {/*

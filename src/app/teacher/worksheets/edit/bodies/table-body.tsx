@@ -1,7 +1,7 @@
 'use client';
 import { TableCellTextEditor } from '../table-cell-text-editor';
 import { cellTextRuns, setCellContent, tableCellBlankIds, cellAtSlot, tableBlankIds } from '@/lib/worksheet-table';
-import { BLANK_MARK_TEXT, insertBlank, recognizeBlanks } from '@/lib/worksheet-prompt-marks';
+import { BLANK_MARK_TEXT, TABLE_MARK_TEXT, insertBlank, recognizeBlanks, removePromptRange } from '@/lib/worksheet-prompt-marks';
 import { TableCellFrame } from '@/lib/worksheet-table-frame';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -18,9 +18,10 @@ import type { WorksheetQuestionNode } from '@/lib/types';
 import { newBlankId, readBlankAnswers } from '../worksheet-editor-core';
 
 /** 网格就是题面；仅选中单元格时显示转换和结构操作，设置通过稳定 blank ID 定位。 */
-export function TableBody({ node, onDataChange, onBlankSelect, selectedBlankId, standalone = false }: {
+export function TableBody({ node, onDataChange, onPromptChange, onBlankSelect, selectedBlankId, standalone = false }: {
   node: WorksheetQuestionNode;
   onDataChange: (patch: Record<string, unknown>) => void;
+  onPromptChange?: (prompt: string, patch: Record<string, unknown>) => void;
   onBlankSelect?: (id: string) => void;
   selectedBlankId?: string | null;
   standalone?: boolean;
@@ -56,6 +57,19 @@ export function TableBody({ node, onDataChange, onBlankSelect, selectedBlankId, 
   const runs = readPromptRunsFor(node);
   const slots = blankSlots(node, runs);
   const settings = fillSettingsFor(node, runs);
+  const deleteTable = async () => {
+    const start = node.prompt.indexOf(TABLE_MARK_TEXT);
+    if (!onPromptChange || start < 0) return;
+    if (!await askConfirmation({
+      title: '删除整张表格？',
+      message: '表格内容、表内填空和对应答案将一并删除。可以用学习单顶部的「撤销」恢复。',
+      confirmLabel: '删除表格',
+      tone: 'danger',
+    })) return;
+    const { text, runs: nextRuns } = removePromptRange(runs, node.prompt, start, start + TABLE_MARK_TEXT.length);
+    onPromptChange(text, fillPromptPatch(node, runs, text, nextRuns, answers));
+    if (selectedBlankId && tableBlankIds(table).includes(selectedBlankId)) onBlankSelect?.('');
+  };
   const base = blankLayout(node, runs).tableBase;
   const covered = coveredTableCells(table);
   const cell = selected && table?.rows[selected.row]?.[selected.col];
@@ -87,8 +101,11 @@ export function TableBody({ node, onDataChange, onBlankSelect, selectedBlankId, 
       const root=rootRef.current,rect=root?.getBoundingClientRect();
       if(!root || !rect || rect.bottom<0 || rect.top>window.innerHeight){setRailPosition(null);return;}
       const edge=root.closest('.worksheet-editor-rich-box')?.getBoundingClientRect().right ?? rect.right;
-      const width=railRef.current?.offsetWidth ?? 84,height=railRef.current?.offsetHeight ?? 240;
-      setRailPosition({left:Math.max(8,Math.min(edge+12,window.innerWidth-width-8)),top:Math.max(8,Math.min(rect.top,window.innerHeight-height-8))});
+      const width=railRef.current?.getBoundingClientRect().width || 78;
+      const height=railRef.current?.offsetHeight ?? 240;
+      const inset = getComputedStyle(root).getPropertyValue('--worksheet-table-rail-inset').trim() === '1';
+      const left = inset ? rect.right - width : edge + 12;
+      setRailPosition({left:Math.max(8,Math.min(left,window.innerWidth-width-8)),top:Math.max(8,Math.min(rect.top,window.innerHeight-height-8))});
     };
     update();
     const observer=new ResizeObserver(update);if(rootRef.current)observer.observe(rootRef.current);
@@ -184,7 +201,10 @@ export function TableBody({ node, onDataChange, onBlankSelect, selectedBlankId, 
           </TableCellFrame>
         </td>;
       })}</tr>)}</tbody></table></div>
-      {standalone && <span className="worksheet-editor-table-blank-count">{tableBlankCount(table)} / {MAX_TABLE_BLANKS} 个填空</span>}
+      {standalone && <div className="worksheet-editor-inline-table-footer">
+        {onPromptChange && <button type="button" className="btn btn-ghost" onClick={() => void deleteTable()}>删除整张表格</button>}
+        <span className="worksheet-editor-table-blank-count">{tableBlankCount(table)} / {MAX_TABLE_BLANKS} 个填空</span>
+      </div>}
       {standalone && note && <p className="worksheet-editor-table-note" role="status">{note}</p>}
       {active && position && (!standalone || (selected && selectedHere)) && createPortal(<div ref={toolsRef} className="worksheet-editor-floating-table-tools" role="toolbar" aria-label="表格编辑工具" style={{ position: 'fixed', ...position }} onKeyDown={event => { if (event.key === 'Escape') { setActive(false); event.stopPropagation(); } }}>
       <div className="worksheet-editor-cell-tools" aria-label="所选单元格操作">

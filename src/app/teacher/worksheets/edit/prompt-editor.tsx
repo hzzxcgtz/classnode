@@ -112,7 +112,6 @@ export interface PromptEditorProps {
   onTableMarkClick?: () => void;
   onBlankSelect?: (id: string) => void;
   selectedBlankId?: string | null;
-  blankInspector?: ReactNode;
   tableEditor?: ReactNode;
   descriptionOnly?: boolean;
   /**
@@ -212,7 +211,7 @@ function selectedCellRange(root: HTMLElement | null) {
   return {el,row:Number(td.dataset.tableRow),col:Number(td.dataset.tableCol),from:range?.from??caret!,to:range?.to??caret!};
 }
 
-export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRequestPaste, onTableMarkClick, onNotice, onBlankSelect, selectedBlankId, blankInspector, tableEditor, descriptionOnly = false, basicFormatting = false, toolbarTarget, onEditingFocus, fieldLabel = '任务描述' }: PromptEditorProps) {
+export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRequestPaste, onTableMarkClick, onNotice, onBlankSelect, selectedBlankId, tableEditor, descriptionOnly = false, basicFormatting = false, toolbarTarget, onEditingFocus, fieldLabel = '任务描述' }: PromptEditorProps) {
   const supportsBlankSlots = !descriptionOnly && hasPromptBlankSlots(node.type);
   /**
    * ★ 2026-09-29（教师）：「增加选择、判断、填空、排序题型的剪贴板粘贴导入功能」。
@@ -260,7 +259,8 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
     icon: WorksheetLinkIcon;
     error?: string;
   } | null>(null);
-  const [tablePicker, setTablePicker] = useState(false);
+  const tablePickerRef = useRef<HTMLDialogElement>(null);
+  const tableRangeRef = useRef<{ from: number; to: number } | null>(null);
   const [tableHost, setTableHost] = useState<HTMLElement | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
   const draggedBlank = useRef<{ nodeId: string; id: string } | null>(null);
@@ -763,17 +763,27 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
   //     而是教师自己在弹窗里复制、在题干（或任何别的输入框）里 ⌘V（粘贴那条路见
   //     `handlePaste`，公式段会在 `convertBlankMarks` 里被跳过）。
 
+  const openTablePicker = () => {
+    const el = editableRef.current;
+    const dialog = tablePickerRef.current;
+    if (!el || !dialog || dialog.open) return;
+    const caret = caretOffset(el);
+    tableRangeRef.current = selectedRange(el)
+      ?? (caret === null ? pendingRangeRef.current : { from: caret, to: caret });
+    dialog.showModal();
+  };
+
   const insertTableMarkAtCaret = () => {
     const el = editableRef.current;
-    if (!el) return;
+    if (!el || tableMarkIndex(node.prompt) >= 0) return;
     const text = node.prompt;
-    const range = selectedRange(el) || pendingRangeRef.current;
-    const from = range ? range.from : (caretOffset(el) ?? text.length);
+    const range = tableRangeRef.current;
+    const from = range ? range.from : text.length;
     const to = range ? range.to : from;
     const inserted = insertPromptText(runsRef.current, text, from, to, TABLE_MARK_TEXT);
     if (inserted.text === text) return;
     onPromptChange(inserted.text, { ...promptDataPatch(runsRef.current, inserted.runs, inserted.text), table: readTableFor(node) ?? createTable(tableRows, tableCols) });
-    setTablePicker(false);
+    tablePickerRef.current?.close();
     renderRunsInto(el, inserted.text, inserted.runs);
     const after = from + TABLE_MARK_TEXT.length;
     el.focus();
@@ -1056,10 +1066,9 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
                 ? '已有表格，可直接在任务描述中编辑或调整行列'
                 : '插入表格，选择行列数'}
               aria-label="表格"
-              onMouseDown={(event) => {
-                event.preventDefault();
-                setTablePicker(value => !value);
-              }}
+              aria-haspopup="dialog"
+              onMouseDown={event => event.preventDefault()}
+              onClick={openTablePicker}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M12 3v18M3 12h18"/></svg> 表格
             </button>
@@ -1069,10 +1078,8 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
               type="button"
               title="在光标处插入填空，或将选中文字转为填空"
               aria-label="填空"
-              onMouseDown={(event) => {
-                event.preventDefault();
-                insertBlankAtCaret();
-              }}
+              onMouseDown={event => event.preventDefault()}
+              onClick={insertBlankAtCaret}
             >
               <span aria-hidden="true">━</span> 填空
             </button>
@@ -1092,7 +1099,7 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
         </div>
   );
   return (
-    <div ref={editorRootRef} className={supportsBlankSlots ? `worksheet-editor-visual-fill${blankInspector ? ' worksheet-editor-text-fill' : ''}` : undefined}>
+    <div ref={editorRootRef} className={supportsBlankSlots ? 'worksheet-editor-visual-fill worksheet-editor-standalone-prompt' : undefined}>
     <div className="worksheet-editor-visual-content">
     <div className={`worksheet-editor-rich-field${basicFormatting ? ' worksheet-editor-basic-format' : ''}${toolbarTarget !== undefined ? ' worksheet-editor-detached-toolbar' : ''}`}>
       {/* ★ 2026-09-26（教师）：「这个工具栏能不能集成到下面的编辑框里，现在感觉有点割裂感。」
@@ -1180,12 +1187,22 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
           }}
         />
       </div>
-      {tablePicker && <div className="worksheet-editor-table-picker" role="dialog" aria-label="插入表格">
-        <label>行数<input className="input" type="number" min={1} max={MAX_TABLE_ROWS} value={tableRows} onChange={event => setTableRows(Math.min(MAX_TABLE_ROWS, Math.max(1, Number(event.target.value) || 1)))} /></label>
-        <label>列数<input className="input" type="number" min={1} max={MAX_TABLE_COLS} value={tableCols} onChange={event => setTableCols(Math.min(MAX_TABLE_COLS, Math.max(1, Number(event.target.value) || 1)))} /></label>
-        <button type="button" className="btn btn-primary" onClick={insertTableMarkAtCaret}>插入表格</button>
-        <button type="button" className="btn btn-ghost" onClick={() => setTablePicker(false)}>取消</button>
-      </div>}
+      {node.type === 'fill-blank' && !descriptionOnly && (
+        <dialog ref={tablePickerRef} className="worksheet-editor-table-picker teacher-editor-dialog" aria-label="插入表格"
+          onClick={event => { if (event.target === event.currentTarget) event.currentTarget.close(); }}>
+          <form onSubmit={event => { event.preventDefault(); insertTableMarkAtCaret(); }}>
+            <h3>插入表格</h3>
+            <div className="worksheet-editor-table-picker-fields">
+              <label>行数<input className="input" type="number" min={1} max={MAX_TABLE_ROWS} value={tableRows} onChange={event => setTableRows(Math.min(MAX_TABLE_ROWS, Math.max(1, Number(event.target.value) || 1)))} /></label>
+              <label>列数<input className="input" type="number" min={1} max={MAX_TABLE_COLS} value={tableCols} onChange={event => setTableCols(Math.min(MAX_TABLE_COLS, Math.max(1, Number(event.target.value) || 1)))} /></label>
+            </div>
+            <div className="worksheet-editor-table-picker-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => tablePickerRef.current?.close()}>取消</button>
+              <button type="submit" className="btn btn-primary">插入表格</button>
+            </div>
+          </form>
+        </dialog>
+      )}
       {/* ⊘ 2026-09-30（教师第三轮）：「这个预览我觉得完全没有必要，因为用户可以在右上角点
           『预览』看到渲染后的结果。」⇒ 题干下面那条**常显预览**删掉了。
           ⚠️ 删的是**这一条**，不是渲染本身：右上角那个「预览」弹窗（`WorksheetPreviewModal`）
@@ -1261,7 +1278,6 @@ export function PromptEditor({ heading, node, onPromptChange, onDataChange, onRe
     </div>
     {tableHost && tableEditor && createPortal(<div className="worksheet-editor-table-island" contentEditable={false}>{tableEditor}</div>, tableHost)}
     </div>
-    {blankInspector && <aside className="worksheet-editor-blank-inspector" aria-label="填空设置">{blankInspector}</aside>}
     </div>
   );
 }

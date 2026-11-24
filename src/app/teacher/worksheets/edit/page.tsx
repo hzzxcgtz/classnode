@@ -781,7 +781,7 @@ function AddQuestionPicker({ onPick, onClose }: {
   return (
     <>
       <div className="modal-overlay" onClick={onClose} />
-      <div className="worksheet-editor-dialog teacher-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-add-question-title" style={{ width: 560 }}>
+      <div className="worksheet-editor-dialog teacher-editor-dialog worksheet-editor-type-dialog" role="dialog" aria-modal="true" aria-labelledby="worksheet-add-question-title">
         <h3 id="worksheet-add-question-title">添加任务</h3>
         {/* ★ 2026-09-25：这句话原来写的是「题目会加到这份学习单的最后」—— 现在**加到
             你点的那个任务里**（`pickerFor.parentId`），▲▼ 也只在**同层内**换位。
@@ -792,10 +792,16 @@ function AddQuestionPicker({ onPick, onClose }: {
         <div className="worksheet-editor-type-list">
           {choices.map(option => (
             <button key={`${option.value}-${option.fillLayout ?? 'default'}`} type="button" className="worksheet-editor-type-option" onClick={() => onPick(option.value, option.fillLayout)}>
-              <span className="worksheet-editor-type-option-icon">{questionTypeIcon(option.value)}</span>
+              <span className="worksheet-editor-type-option-icon" data-question-type={option.value}>{questionTypeIcon(option.value)}</span>
               <span className="worksheet-editor-type-option-copy">
                 <span className="worksheet-editor-type-option-label">{option.value === 'single-choice' ? '选择题' : option.label}</span>
-                <span className="worksheet-editor-type-option-hint">{option.value === 'single-choice' ? '可在任务内设置为单选或多选' : option.value === 'fill-blank' && option.fillLayout !== 'table' ? '在段落或表格中插入填空，统一设置答案与计分' : option.hint}</span>
+                <span className="worksheet-editor-type-option-hint">
+                  {option.value === 'single-choice'
+                    ? '自定义选项并设置单选或多选，可评分或收集选择。'
+                    : option.value === 'fill-blank'
+                      ? '可在段落或表格中设空，支持手动填写或选词作答。'
+                      : option.hint}
+                </span>
               </span>
             </button>
           ))}

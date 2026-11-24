@@ -24,12 +24,20 @@ export function TableCellTextEditor({cell,label,placeholder,onSelect,onChange,on
   const restoreCaret=(at:number)=>requestAnimationFrame(()=>{if(ref.current)placeSelection(ref.current,at,at);});
   const insert=(text:string)=>{const el=ref.current;if(!el)return;const range=selectedRange(el);const caret=caretOffset(el)??cell.text.length;const from=range?.from??caret,to=range?.to??caret;onChange(cell.text.slice(0,from)+text+cell.text.slice(to));restoreCaret(from+text.length);};
   return <div ref={ref} className="worksheet-editor-cell-text" contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label={label} data-placeholder={placeholder} style={{textAlign:cell.align??'left'}}
-    onClick={event=>{const blank=(event.target as HTMLElement).closest<HTMLElement>('[data-blank-id]');if(blank){event.stopPropagation();onBlankSelect?.(blank.dataset.blankId!);}}}
+    onClick={event=>{
+      const blank = (event.target as HTMLElement).closest<HTMLElement>('[data-blank-id]');
+      if (!blank) return;
+      event.preventDefault();
+      event.stopPropagation();
+      blank.focus({ preventScroll: true });
+      window.getSelection()?.removeAllRanges();
+      onBlankSelect?.(blank.dataset.blankId!);
+    }}
     onDragStart={event=>{event.stopPropagation();const id=(event.target as HTMLElement).closest<HTMLElement>('[data-blank-id]')?.dataset.blankId;if(!id){event.preventDefault();return;}dragged.current=id;event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('application/x-worksheet-cell-blank',id);}}
     onDragEnd={event=>{event.stopPropagation();dragged.current=null;}}
     onDragOver={event=>{event.stopPropagation();if(dragged.current){event.preventDefault();event.dataTransfer.dropEffect='move';}}}
     onDrop={event=>{event.stopPropagation();event.preventDefault();const id=dragged.current;dragged.current=null;if(!id||!ref.current)return;const at=promptOffsetAtPoint(ref.current,event.clientX,event.clientY);if(at===null)return;const moved=movePromptBlank(cell.text,cellTextRuns(cell),id,at);onRichChange(moved.text,moved.runs);onBlankSelect?.(id);}}
-    onFocus={remember} onMouseUp={remember} onKeyUp={remember}
+    onFocus={event=>{if(event.target===event.currentTarget)remember();}} onMouseUp={event=>{if(!(event.target as HTMLElement).closest('[data-blank-id]'))remember();}} onKeyUp={remember}
     onInput={()=>{if(ref.current&&!composing.current)onChange(promptModelText(ref.current));}}
     onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={()=>{composing.current=false;if(ref.current)onChange(promptModelText(ref.current));}}
     onKeyDown={event=>{

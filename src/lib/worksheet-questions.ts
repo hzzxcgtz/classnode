@@ -112,15 +112,15 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   // ★ 2026-09-26：紧挨着填空题排（它就是填空题的一个变体，教师找它时会先看那里）。
   { value: 'choice-blank', label: '选择填空', nickname: '巧思填空', hint: '任务要求里有几个空，下方给出待选词，学生拖词入空', graded: true },
   { value: 'single-choice', label: '单选题', nickname: '慧眼选择', hint: '学生选择一项，可设答案评分或只收集选择', graded: true },
-  { value: 'true-false', label: '判断题', nickname: '思辨判断', hint: '对 / 错两个选项', graded: true },
+  { value: 'true-false', label: '判断题', nickname: '思辨判断', hint: '学生判断说法是否正确，可按设定的答案自动评分。', graded: true },
   { value: 'multi-choice', label: '多选题', nickname: '慧眼选择', hint: '学生可选多项，可设答案评分或只收集选择', graded: true },
   { value: 'fill-blank', label: '填空题', nickname: '巧思填空', hint: '学生填写文字，可设可接受答案评分或只收集内容', graded: true },
-  { value: 'order', label: '排序题', nickname: '顺序高手', hint: '把打乱的条目排成正确顺序', graded: true },
-  { value: 'match', label: '连线题', nickname: '巧手连线', hint: '学生连接左右条目，可设置一对多连线', graded: true },
-  { value: 'categorize', label: '归类题', nickname: '分类达人', hint: '把若干条目拖到对应的框里', graded: true },
-  { value: 'short-answer', label: '表达题', nickname: '自由表达', hint: '适合简答、说明、习作或观点收集，支持文字、手写、照片、语音，可选 AI 评分', graded: false },
-  { value: 'rating', label: '评价题', nickname: '评价反馈', hint: '按维度评星，记录评价与感想', graded: false },
-  { value: 'image-canvas', label: '图文题', nickname: '图文题', hint: '上传底图，在图上放置多个不同类型的作答区', graded: false },
+  { value: 'order', label: '排序题', nickname: '顺序高手', hint: '学生拖动条目调整顺序，可按设定的顺序自动评分。', graded: true },
+  { value: 'match', label: '连线题', nickname: '巧手连线', hint: '学生将左右两列条目连线配对，支持一对多连线。', graded: true },
+  { value: 'categorize', label: '归类题', nickname: '分类达人', hint: '学生将条目拖入不同类别，可按设定的归类自动评分。', graded: true },
+  { value: 'short-answer', label: '表达题', nickname: '自由表达', hint: '支持文字、手写、照片和语音作答，可开启 AI 评分。', graded: false },
+  { value: 'rating', label: '评价题', nickname: '评价反馈', hint: '学生按设定的维度逐项评星，可要求填写文字感想。', graded: false },
+  { value: 'image-canvas', label: '图文题', nickname: '图文题', hint: '在底图上设置多个作答区，各区可用不同方式作答。', graded: false },
   { value: 'open-ended', label: '表达题', nickname: '自由表达', hint: '不设标准答案、不评分，支持文字、手写、照片或语音作答，仅进行 AI 作答分析', graded: false },
   // ★ M4b：`drawing` 这个题型名是**本计划的裁定**（规格没有给）—— 见 `QuestionType` 的注释。
   // `graded: false` **是有意的决定，不是补测试**：手写 / 绘图不参与自动判分（规格 §12 裁定 3）。
@@ -130,7 +130,7 @@ export const QUESTION_TYPE_OPTIONS: Array<{
   // 而是规格 §12 裁定 3 本身 + `worksheet-answer-value.ts` 里那段「`format` 在服务端只被读两处、
   // 两处都不拿它当判据」（现在在 `:48-71`）—— B1 之前它写的是「`format` 服务端一个字节都不读」。
   // 这一格是 false ⇒ 看板抽屉里只统计作答进度、不画 ✓/½/✗（`GRADED_QUESTION_TYPES` 从这一格派生）。
-  { value: 'drawing', label: '绘图题', nickname: '创意画板', hint: '学生用画板绘制或上传照片，可选 AI 评分', graded: false },
+  { value: 'drawing', label: '绘图题', nickname: '创意画板', hint: '学生可在画板绘图或上传照片，也可开启 AI 评分。', graded: false },
 ];
 
 /**

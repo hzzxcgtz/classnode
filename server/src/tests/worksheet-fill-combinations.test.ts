@@ -15,6 +15,27 @@ function fixture(type: 'fill-blank' | 'choice-blank' = 'fill-blank'): QuestionNo
 const value = (texts: string[]) => ({ format: 'fill-multi/v1', texts });
 const points = { full: 6, half: 3 };
 
+test('选词填空保存时检查每套答案能否用现有词条填完', () => {
+  const node = fixture();
+  const combinations = node.data.fillAnswerCombinations as { answers: Record<string, string[]> }[];
+  combinations[0].answers.b0 = ['词库外的答案'];
+  assert.ok(validateQuestion(node).includes('组合 2 的第 1 空的共用选词缺少可接受的答案'));
+
+  delete node.data.fillAnswerCombinations;
+  const answers = node.data.answers as string[][];
+  answers[1] = [first[0]];
+  assert.ok(validateQuestion(node).some(error => error.includes('每个词条只能用一次')));
+  answers[0] = [first[0], first[1]];
+  assert.deepEqual(validateQuestion(node), [], '应当重新分配第一空，而不是只按填空顺序贪心匹配');
+  answers[0] = [first[0]];
+  node.data.fillChoicePool = [first[0], ...first];
+  assert.deepEqual(validateQuestion(node), [], '两个同名词条可以分别使用');
+
+  const settings = node.data.fillBlankSettings as Record<string, unknown>;
+  settings.b1 = { mode: 'inline', choices: ['甲', '乙'], gradingMode: 'auto', maxScore: 1 };
+  assert.ok(validateQuestion(node).includes('第 2 空的右侧选词缺少可接受的答案'));
+});
+
 test('两列互换：两套完整答案均全对，混填只按一整套评分，首空错误不连带扣分', () => {
   for (const type of ['fill-blank', 'choice-blank'] as const) {
     const node = fixture(type);

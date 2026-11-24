@@ -50,8 +50,20 @@
 .panel button { min-height: var(--worksheet-editor-action-height, 40px); border-radius: 8px; font-size: .8125rem; font-weight: 500; }
 .panel .table textarea.answer { font-size: .875rem; line-height: 1.65; }
 .choiceRow select.answer { height: var(--worksheet-editor-control-height, 44px); min-height: var(--worksheet-editor-control-height, 44px); font-size: .875rem; }
+.choiceControl { min-width: 0; flex: 1; position: relative; font-size: .875rem; }
+.panel .table select.markedAnswer { appearance: none; color: transparent; }
+.panel .table select.markedAnswer option { color: #273c52; }
+.choiceDisplay { position: absolute; inset: 0 8px 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #273c52; pointer-events: none; }
+.choiceDisplayText { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.choiceDisplay svg { flex-shrink: 0; }
+.markedAnswer:disabled + .choiceDisplay { color: #72869c; }
 @media (max-width: 600px) {
   .header { flex-direction: column; align-items: flex-start; }
   .panel .table textarea.answer, .choiceRow select.answer { font-size: 16px; }
   .panel button.remove { min-width: 44px; }
+  .choiceControl { font-size: 16px; }
+}
+@media (forced-colors: active) {
+  .panel .table select.markedAnswer { appearance: auto; color: CanvasText; }
+  .choiceDisplay { display: none; }
 }

@@ -23,6 +23,73 @@ export interface FlowNodeBox {
   height: number;
 }
 
+export function flowNodeMinSize(kind: string): Pick<FlowNodeBox, 'width' | 'height'> {
+  if (kind === 'decision') return { width: 220, height: 110 };
+  if (kind === 'junction') return { width: 12, height: 12 };
+  return { width: 150, height: 54 };
+}
+
+/** Place a new node in the current view, preferring open space near its center. */
+export function flowNodeInsertionPoint(
+  size: Pick<FlowNodeBox, 'width' | 'height'>,
+  canvas: Pick<FlowNodeBox, 'width' | 'height'>,
+  viewport: { x: number; y: number; zoom: number },
+  occupied: readonly FlowNodeBox[],
+): { x: number; y: number } {
+  const { zoom } = viewport;
+  const gap = 24 / zoom;
+  const visible = {
+    x: -viewport.x / zoom,
+    y: -viewport.y / zoom,
+    width: canvas.width / zoom,
+    height: canvas.height / zoom,
+  };
+  const center = {
+    x: visible.x + (visible.width - size.width) / 2,
+    y: visible.y + (visible.height - size.height) / 2,
+  };
+  function slots(middle: number, available: number, extent: number): number[] {
+    const step = extent + gap;
+    const count = Math.max(1, Math.floor((available - gap) / step));
+    return Array.from({ length: count }, (_, index) => middle + (index - (count - 1) / 2) * step);
+  }
+
+  const xs = slots(center.x, visible.width, size.width);
+  const ys = slots(center.y, visible.height, size.height);
+  const clearance = gap - 1e-6;
+  const fits = (x: number, y: number) => occupied.every(box =>
+    x + size.width + clearance <= box.x || box.x + box.width + clearance <= x ||
+    y + size.height + clearance <= box.y || box.y + box.height + clearance <= y,
+  );
+  let best = center;
+  let bestDistance = Infinity;
+  for (const x of xs) {
+    for (const y of ys) {
+      const distance = (x - center.x) ** 2 + (y - center.y) ** 2;
+      if (distance >= bestDistance || !fits(x, y)) continue;
+      best = { x, y };
+      bestDistance = distance;
+    }
+  }
+  if (Number.isFinite(bestDistance) || occupied.length === 0) return best;
+
+  // A full view can still accept a node. Keep it visible and minimize overlap.
+  const insetX = Math.max(0, (visible.width - size.width) / 2 - gap);
+  const insetY = Math.max(0, (visible.height - size.height) / 2 - gap);
+  let smallestOverlap = Infinity;
+  for (const x of [center.x, center.x - insetX, center.x + insetX]) {
+    for (const y of [center.y, center.y - insetY, center.y + insetY]) {
+      const overlap = occupied.reduce((area, box) =>
+        area + Math.max(0, Math.min(x + size.width, box.x + box.width) - Math.max(x, box.x))
+          * Math.max(0, Math.min(y + size.height, box.y + box.height) - Math.max(y, box.y)), 0);
+      if (overlap >= smallestOverlap) continue;
+      best = { x, y };
+      smallestOverlap = overlap;
+    }
+  }
+  return best;
+}
+
 /**
  * 平行四边形那个斜角的**度数**（样式表里的 `skew(-10deg)`）。
  * ⚠️ 与 CSS **对拍**：`flowchart-node-corner.test.ts` 把两边现读现比 —— 改了一边另一边当场红。

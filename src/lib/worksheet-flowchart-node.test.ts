@@ -17,7 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { FLOW_IO_SKEW_DEG, flowNodeCornerPoint } from './worksheet-flowchart-node.ts';
+import { FLOW_IO_SKEW_DEG, flowNodeCornerPoint, flowNodeInsertionPoint, flowNodeMinSize } from './worksheet-flowchart-node.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CSS = fs.readFileSync(path.resolve(HERE, '../app/classroom/worksheet/worksheet.module.css'), 'utf8');
@@ -25,6 +25,43 @@ const CSS = fs.readFileSync(path.resolve(HERE, '../app/classroom/worksheet/works
 /** 一个常见的节点尺寸（`.flowNode` 的 `min-width/min-height`）。 */
 const BOX = { x: 100, y: 200, width: 150, height: 54 };
 const near = (a: number, b: number, why: string) => assert.ok(Math.abs(a - b) < 0.01, `${why}（${a} ≠ ${b}）`);
+
+test('新增图形留在平移、放大后的画布内，并依次填入空位', () => {
+  const canvas = { width: 700, height: 480 };
+  const viewport = { x: -1800, y: -1250, zoom: 1.8 };
+  const size = flowNodeMinSize('terminator');
+  const occupied: Array<typeof BOX> = [];
+  for (let i = 0; i < 6; i++) {
+    const point = flowNodeInsertionPoint(size, canvas, viewport, occupied);
+    const x = point.x * viewport.zoom + viewport.x;
+    const y = point.y * viewport.zoom + viewport.y;
+    assert.ok(x >= 0 && x + size.width * viewport.zoom <= canvas.width);
+    assert.ok(y >= 0 && y + size.height * viewport.zoom <= canvas.height);
+    assert.ok(occupied.every(box =>
+      point.x >= box.x + box.width || point.x + size.width <= box.x ||
+      point.y >= box.y + box.height || point.y + size.height <= box.y,
+    ));
+    occupied.push({ ...point, ...size });
+  }
+});
+
+test('画布小于判断框时，图形中心仍落在当前可视区域', () => {
+  const size = flowNodeMinSize('decision');
+  const point = flowNodeInsertionPoint(size, { width: 300, height: 200 }, { x: 80, y: -200, zoom: 2.2 }, []);
+  near((point.x + size.width / 2) * 2.2 + 80, 150, '水平居中');
+  near((point.y + size.height / 2) * 2.2 - 200, 100, '垂直居中');
+});
+
+test('没有完整空位时，新增图形仍留在画布内并避开完全重叠', () => {
+  const size = flowNodeMinSize('process');
+  const canvas = { width: 230, height: 100 };
+  const viewport = { x: 0, y: 0, zoom: 1 };
+  const first = flowNodeInsertionPoint(size, canvas, viewport, []);
+  const second = flowNodeInsertionPoint(size, canvas, viewport, [{ ...first, ...size }]);
+  assert.notDeepEqual(second, first);
+  assert.ok(second.x >= 0 && second.x + size.width <= canvas.width);
+  assert.ok(second.y >= 0 && second.y + size.height <= canvas.height);
+});
 
 test('矩形：左上角本来就在轮廓上，照旧', () => {
   const point = flowNodeCornerPoint(BOX, 'process');

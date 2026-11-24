@@ -1722,6 +1722,68 @@ function validateFillBlank(node: QuestionNode, errors: string[]): void {
     }
 }
 
+function validateFillChoiceReachability(node: QuestionNode, errors: string[]): void {
+  const data = node.data;
+  const entries = fillSettingsEntries(data);
+  if (!entries.some(([, setting]) => ['pool', 'inline'].includes(String(readField(setting, 'mode'))))) return;
+  const explicit = explicitFillGrading(data);
+  const combinations = readFillAnswerCombinations(data.fillAnswerCombinations);
+  const pool = readStrings(data.fillChoicePool ?? data.choices).map(normalizePoolAnswer).filter(Boolean);
+  const poolPositions = new Map<string, number[]>();
+  pool.forEach((word, index) => {
+    const positions = poolPositions.get(word) ?? [];
+    positions.push(index);
+    poolPositions.set(word, positions);
+  });
+  const allPositions = pool.map((_, index) => index);
+  const base = entries.map((_, index) => acceptableAnswersFor(data, index));
+  const groups = [base, ...combinations.map(group => entries.map(([id]) => group.answers[id] ?? []))];
+  for (const [groupIndex, answers] of groups.entries()) {
+    const label = groups.length > 1 ? `组合 ${groupIndex + 1} 的` : '';
+    const shared: { blank: number; positions: number[] }[] = [];
+    entries.forEach(([, setting], index) => {
+      const mode = readField(setting, 'mode');
+      if (mode !== 'pool' && mode !== 'inline') return;
+      const scored = explicit.length
+        ? explicit[index]?.gradingMode === 'auto' && (node.autoGrade !== false || readField(setting, 'evaluationVersion') === 1)
+        : node.autoGrade !== false;
+      const keys = new Set(answers[index].map(normalizePoolAnswer).filter(Boolean));
+      if (mode === 'inline') {
+        if (scored && keys.size && !readStrings(readField(setting, 'choices')).some(word => keys.has(normalizePoolAnswer(word)))) {
+          errors.push(`${label}第 ${index + 1} 空的右侧选词缺少可接受的答案`);
+        }
+        return;
+      }
+      const positions = scored && keys.size && readField(setting, 'conditionalAnswer') === undefined
+        ? [...keys].flatMap(key => poolPositions.get(key) ?? []) : allPositions;
+      if (!positions.length) {
+        if (pool.length) errors.push(`${label}第 ${index + 1} 空的共用选词缺少可接受的答案`);
+        return;
+      }
+      shared.push({ blank: index + 1, positions });
+    });
+    const assigned = new Map<number, number>();
+    // A word can move to another valid blank to make space for a more constrained answer.
+    const assign = (blank: number, visited: Set<number>): boolean => {
+      for (const position of shared[blank].positions) {
+        if (visited.has(position)) continue;
+        visited.add(position);
+        const previous = assigned.get(position);
+        if (previous !== undefined && !assign(previous, visited)) continue;
+        assigned.set(position, blank);
+        return true;
+      }
+      return false;
+    };
+    for (let index = 0; index < shared.length; index += 1) {
+      if (!assign(index, new Set())) {
+        errors.push(`${label}第 ${shared[index].blank} 空无法分到有效的共用选词，请补足词条数量（每个词条只能用一次）`);
+        break;
+      }
+    }
+  }
+}
+
 function validateFillModes(node: QuestionNode, errors: string[]): void {
   if (node.data.fillWholeScore !== undefined) {
     if (fillWholeScore(node.data) === undefined) errors.push('整题奖励数量须为 1 到 99 的整数');
@@ -1772,6 +1834,7 @@ function validateFillModes(node: QuestionNode, errors: string[]): void {
   //    「下方共用词池」改名成「共用选词」）——报错里指着一块屏幕上已经不存在的东西，
   //    教师只能自己去猜是哪一栏。改一处就要改这一处。
   if (needsPool && readStrings(node.data.fillChoicePool ?? node.data.choices).length === 0) errors.push('填空题的共用选词不能为空');
+  validateFillChoiceReachability(node, errors);
 }
 
 

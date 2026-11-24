@@ -351,7 +351,8 @@ fn spawn_server_inner(app: &AppHandle) -> Result<(), String> {
             .current_dir(&server_dir)
             .env("CLASSNODE_DATA_DIR", &data_dir_str)
             .env("DATABASE_URL", &db_url)
-            .env("CLASSNODE_WEBAPP_PORT", WEBAPP_PORT.to_string());
+            .env("CLASSNODE_WEBAPP_PORT", WEBAPP_PORT.to_string())
+            .env("CLASSNODE_DEPLOYMENT", "desktop");
         #[cfg(unix)]
         cmd.process_group(0);
         #[cfg(target_os = "windows")]

@@ -57,7 +57,7 @@ import {
   type SmoothStepFn,
 } from '@/lib/worksheet-flowchart-edge.ts';
 import { tidyFlowchart } from '@/lib/worksheet-flowchart-layout.ts';
-import { flowNodeCornerPoint } from '@/lib/worksheet-flowchart-node.ts';
+import { flowNodeCornerPoint, flowNodeInsertionPoint, flowNodeMinSize } from '@/lib/worksheet-flowchart-node.ts';
 import { flowchartSvg } from '@/lib/worksheet-flowchart-svg.ts';
 import { svgToPngBlob, useDrawingRaster } from '@/lib/worksheet-drawing-raster.ts';
 import { normalizePastedText } from '@/lib/worksheet-text-normalize.ts';
@@ -937,7 +937,8 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
    *    用库自己的换算而不是自己乘 `viewport`：那是**页面**坐标（含容器 rect 与页面滚动），
    *    而 `viewport.x + flowX * zoom` 只对「浮层住在 `.flowStage` 里」成立。
    */
-  const { flowToScreenPosition } = useReactFlow<FlowNode, Edge>();
+  const { flowToScreenPosition, getViewport } = useReactFlow<FlowNode, Edge>();
+  const stageRef = useRef<HTMLDivElement>(null);
   const nodeTypes = useMemo(() => ({ flow: FlowNodeEditor }), []);
   /*
    * ★ 2026-10-07（教师）：重新注册一份自定义边 —— 它**只**做「绕行点」与
@@ -1317,13 +1318,28 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
   };
 
   const addNode = (kind: FlowKind, label: string) => {
-    const offset = nodes.length * 26;
-    setNodes((current) => [...current, {
-      id: `node-${Date.now()}-${current.length}`,
-      type: 'flow',
-      position: { x: 80 + offset, y: 70 + offset },
-      data: { label, kind },
-    }]);
+    const stage = stageRef.current;
+    if (!stage) return;
+    const canvas = { width: stage.clientWidth, height: stage.clientHeight };
+    const currentViewport = getViewport();
+    const size = flowNodeMinSize(kind);
+    const timestamp = Date.now();
+    setNodes((current) => {
+      const occupied = current.map(node => {
+        const minimum = flowNodeMinSize(node.data.kind);
+        return {
+          ...node.position,
+          width: node.measured?.width || minimum.width,
+          height: node.measured?.height || minimum.height,
+        };
+      });
+      return [...current, {
+        id: `node-${timestamp}-${current.length}`,
+        type: 'flow',
+        position: flowNodeInsertionPoint(size, canvas, currentViewport, occupied),
+        data: { label, kind },
+      }];
+    });
   };
 
   /**
@@ -1837,6 +1853,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
         </span>
       </div>
       <div
+        ref={stageRef}
         className={`${styles.thirdPartyCanvas} ${styles.flowStage}`}
         style={backgroundUrl && !usesInfiniteDotGrid ? { backgroundImage: `url(${backgroundUrl})` } : undefined}
       >
@@ -1890,7 +1907,7 @@ function FlowchartEditor({ data, backgroundUrl, disabled, onChange, onImage, sta
           */
           connectionRadius={NODE_HANDLE_PRIORITY_RADIUS / viewport.zoom}
           elementsSelectable={!disabled}
-          fitView
+          fitView={initial.current.nodes.length > 0}
           minZoom={0.35}
           maxZoom={2.2}
           deleteKeyCode={disabled ? null : ['Backspace', 'Delete']}

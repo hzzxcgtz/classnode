@@ -20,6 +20,12 @@ import {
   writeFillAnswers,
 } from '../worksheet-editor-core';
 
+export function ChoiceBreakText({ text }: { text: string }) {
+  return text.split('↵').map((part, index) => (
+    <span key={index}>{index > 0 && <mark className="worksheet-choice-break-mark">↵</mark>}{part}</span>
+  ));
+}
+
 /** 共用列表编辑器：只用 | 分隔，保留输入草稿，避免输入末尾分隔符时被回填吞掉。 */
 export function SymbolListInput({ values, split, placeholder, onChange, shuffle = false }: {
   shuffle?: boolean;
@@ -132,7 +138,7 @@ export function SymbolListInput({ values, split, placeholder, onChange, shuffle 
   return (
     <span className="worksheet-symbol-list">
     <span className={shuffle ? 'worksheet-choice-break-editor' : 'worksheet-symbol-control'}>
-    {shuffle && <span ref={breakMirrorRef} className="worksheet-choice-break-mirror input" aria-hidden="true">{draft.split('↵').map((part, index) => <span key={index}>{index > 0 && <mark>↵</mark>}{part}</span>)}</span>}
+    {shuffle && <span ref={breakMirrorRef} className="worksheet-choice-break-mirror input" aria-hidden="true"><ChoiceBreakText text={draft} /></span>}
     <ListControl
       ref={(element: HTMLInputElement | HTMLTextAreaElement | null) => {controlRef.current = element;}}
       rows={shuffle ? 2 : undefined}
@@ -196,8 +202,8 @@ export function SymbolListInput({ values, split, placeholder, onChange, shuffle 
  *   · 关闭总开关只隐藏设置，不删除 `fillBlankSettings` 与答案；重新开启后原值恢复。
  *   · 原来那两句说明（「每个空可以填多个可接受答案…」与「逐空给分」的算术）跟着搬到列表下方。
  */
-export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUnit = '分', rewardStyle, selectedBlankId, onSelectBlank, onAppendEvaluationImages, section = 'all' }: {
-  section?: 'all' | 'mode' | 'details';
+export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUnit = '分', rewardStyle, selectedBlankId, onSelectBlank, onAppendEvaluationImages, section }: {
+  section: 'layout' | 'answers';
   onAppendEvaluationImages?: (urls:string[], blankId?:string) => void;
   selectedBlankId?: string | null;
   onSelectBlank?: (id: string) => void;
@@ -223,92 +229,40 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
   const combinationMode = Array.isArray(node.data.fillAnswerCombinations);
   const gradingEnabled = node.autoGrade !== false || settings.some(setting=>setting.evaluationVersion === 1);
   const poolChoices = sharedPoolChoices(node);
-  const updateSettings = (next: typeof settings, answers?: string[][]) => {
+  const updateSettings = (next: typeof settings) => {
     // ★ 2026-10-09：**不再碰 `aiScoringEnabled`** —— 填空题不涉及 AI 评分（教师裁定），
     //   原先这里按「有没有 AI 空」写那个开关，而它今天恒为 false。老题库里那个键原样留着
     //   （`aiScoredFor` 会按题型把它挡掉，看板不会再挂「AI 评分」）。
     onDataChange({
       ...reconcileFillCombinations(node.data.fillAnswerCombinations, slots.map(slot => slot.id)),
       fillBlankSettings: writeFillSettings(node, runs, next),
-      ...(answers ? { answers, blanks: undefined } : {}),
       ...(next.some(setting => setting.mode === 'audio' && setting.evaluationVersion !== 1) ? { studentAiReviewEnabled: node.data.studentAiReviewEnabled ?? true, aiReviewLimit: node.data.aiReviewLimit ?? 1 } : {}),
     });
   };
-  const isScoredPool = (setting: FillBlankSetting) => setting.mode === 'pool'
-    && (setting.evaluationVersion === 1
-      ? setting.evaluationMode === 'answer' && setting.evaluationScored === true
-      : !isLegacyFillGrading(setting.gradingMode));
-
   const renderAnswer = (index: number) => {
-    if (combinationMode) return (
+    const usesLegacyRule = settings[index].mode === 'pool' && Boolean(settings[index].conditionalAnswer);
+    if (combinationMode || usesLegacyRule) return (
       <div className={combinationStyles.answerNotice}>
-        <span>按最匹配的一组答案判分。</span>
+        <span>{combinationMode ? '此空的标准答案在组合表中设置。' : '此空沿用旧版答案。如需调整，请使用答案组合。'}</span>
         <button type="button" className={combinationStyles.answerLink} onClick={() => {
           const table = document.getElementById(`fill-combinations-${node.id}`);
           table?.scrollIntoView({ block: 'center', behavior: 'smooth' });
         }}>设置答案组合 ↓</button>
       </div>
     );
-    const rule = settings[index].conditionalAnswer;
-    const candidates = slots.filter((slot, sourceIndex) => sourceIndex !== index
-      && isScoredPool(settings[sourceIndex]) && !settings[sourceIndex].conditionalAnswer
-      && answerSets[sourceIndex]?.some(answer => answer.trim()));
-    const sourceIndex = slots.findIndex(slot => slot.id === rule?.sourceId);
-    const canDepend = isScoredPool(settings[index])
-      && !settings.some(setting => isScoredPool(setting) && setting.conditionalAnswer?.sourceId === slots[index].id);
-    const setRule = (conditionalAnswer: FillBlankSetting['conditionalAnswer']) => {
-      updateSettings(settings.map((setting, settingIndex) => settingIndex === index
-        ? { ...setting, conditionalAnswer } : setting),
-      Array.from({ length: answerSlots }, (_, answerIndex) => answerSets[answerIndex] ?? []));
-    };
-    const sourceAvailable = candidates.some(slot => slot.id === rule?.sourceId);
     return (
-      <div className="grid gap-2">
-        {isScoredPool(settings[index]) && (rule || (canDepend && candidates.length > 0)) && (
-          <details open={rule ? true : undefined} className="rounded-lg border border-slate-200 p-3">
-            <summary className="cursor-pointer text-sm">高级：根据另一空判分</summary>
-            <label className="mt-2 grid gap-1">
-            <span>第 {index + 1} 空的判分依据</span>
-            <select className="input" value={rule?.sourceId ?? ''} onChange={event => {
-              const sourceId = event.target.value;
-              setRule(sourceId ? { sourceId, cases: [] } : undefined);
-            }}>
-              <option value="">固定答案</option>
-              {rule && !sourceAvailable && <option value={rule.sourceId} disabled>原依据空已不可用</option>}
-              {canDepend && candidates.map(slot => (
-                <option key={slot.id} value={slot.id}>根据第 {slots.indexOf(slot) + 1} 空判分</option>
-              ))}
-            </select>
-            </label>
-          </details>
-        )}
-        {isScoredPool(settings[index]) && rule ? sourceAvailable && [...new Set(answerSets[sourceIndex].filter(answer => answer.trim()))].map(when => (
-          <label key={when} className="grid gap-1">
-            <span>第 {sourceIndex + 1} 空填「{choiceBreakEditorText(when)}」时，本空应填</span>
-            <select className="input" value={rule.cases.find(item => item.when === when)?.answer ?? ''} onChange={event => {
-              const answer = event.target.value;
-              const cases = rule.cases.filter(item => item.when !== when && answerSets[sourceIndex].includes(item.when));
-              setRule({ ...rule, cases: answer ? [...cases, { when, answer }] : cases });
-            }}>
-              <option value="">请选择共用选词</option>
-              {poolChoices.map(choice => <option key={choice} value={choice}>{choiceBreakEditorText(choice)}</option>)}
-            </select>
-          </label>
-        )) : (
-          <SymbolListInput
-            values={answerSets[index] ?? []}
-            split={splitChoiceText}
-            placeholder="本空的答案"
-            onChange={items => onDataChange({
-              blanks: undefined,
-              answers: Array.from(
-                { length: answerSlots },
-                (_, answerIndex) => answerIndex === index ? writeFillAnswers(items.join('\n')) : (answerSets[answerIndex] ?? []),
-              ),
-            })}
-          />
-        )}
-      </div>
+      <SymbolListInput
+        values={answerSets[index] ?? []}
+        split={splitChoiceText}
+        placeholder="本空的答案"
+        onChange={items => onDataChange({
+          blanks: undefined,
+          answers: Array.from(
+            { length: answerSlots },
+            (_, answerIndex) => answerIndex === index ? writeFillAnswers(items.join('\n')) : (answerSets[answerIndex] ?? []),
+          ),
+        })}
+      />
     );
   };
   /**
@@ -373,17 +327,21 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
       return;
     }
 
-    // ★ 2026-10-09：原先这里还带一手「选词那两种方式 ⇒ 顺手把这一空的 AI 评分关掉」，
-    //    它服务的是那条**会拒绝保存**的服务端校验（「只有手工填写时才能使用 AI 评分」）。
-    //    两档一起删之后没有这个组合了，历史值也原样留着 —— 那一条接线整个删掉。
     if (needsConversion) {
       if (mode === 'audio') return;
       updateSettings(settings.map((setting,i)=>i === index ? {...setting,mode} : setting));
       return;
     }
-    updateSettings(settings.map((setting, settingIndex) => (
-      { ...setting, gradingMode: setting.gradingMode ?? (node.autoGrade === false ? 'none' : FILL_GRADING_MODE), maxScore: setting.maxScore ?? inheritScore, ...(settingIndex === index ? { mode, ...(setting.evaluationVersion === 1 ? mode === 'audio' && setting.evaluationMode === 'answer' ? {evaluationMode:'collect' as const,evaluationScored:false,gradingMode:'none' as const} : {} : {gradingMode: mode === 'audio' ? 'ai' : FILL_GRADING_MODE}) } : {}) }
-    )));
+    updateSettings(explicitSettings().map((setting, settingIndex) => {
+      if (settingIndex !== index) return setting;
+      if (setting.evaluationVersion !== 1) {
+        return { ...setting, mode, gradingMode: mode === 'audio' ? 'ai' : FILL_GRADING_MODE };
+      }
+      if (mode === 'audio' && setting.evaluationMode === 'answer') {
+        return { ...setting, mode, evaluationMode: 'collect', evaluationScored: false, gradingMode: 'none' };
+      }
+      return { ...setting, mode };
+    }));
   };
   const setMaxScore = (index: number, raw: string) => {
     const maxScore = Number(raw);
@@ -402,18 +360,28 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
     updateSettings(next);
   };
 
-  if (section === 'details' && !slots.some(slot => slot.id === selectedBlankId)) return <div className="worksheet-editor-blank-detail-empty">选中题面中的填空，在这里设置答案、选词或语音评价要求。</div>;
-
+  const selectedIndex = slots.findIndex(slot => slot.id === selectedBlankId);
+  const layoutOnly = section === 'layout';
+  const hasPool = settings.some(setting => setting.mode === 'pool');
+  if (!layoutOnly && selectedIndex < 0 && !hasPool && !needsConversion) return null;
   return (
-    <div className={`worksheet-editor-choice-blank-setup${selectedBlankId !== undefined ? ' is-inspector' : ''}`}>
-      {section !== 'details' && selectedBlankId !== undefined && <div className="worksheet-editor-inspector-head"><strong>填空设置</strong><label>选择填空<select className="input" aria-label="选择要设置的填空" value={slots.some(slot => slot.id === selectedBlankId) ? selectedBlankId ?? '' : ''} onChange={event => onSelectBlank?.(event.target.value)}><option value="">点击题面横线，或在这里选择</option>{slots.map((slot, index) => <option key={slot.id} value={slot.id}>第 {index + 1} 空{slot.kind === 'table' ? ` · ${slot.label}` : ''}</option>)}</select></label></div>}
-      {section !== 'details' && selectedBlankId !== undefined && slots.length > 0 && !slots.some(slot => slot.id === selectedBlankId) && <p className="worksheet-editor-inspector-hint">点击左侧横线，即可设置这个空的答案和作答方式。</p>}
-      {section === 'details' && <h4 className="worksheet-editor-blank-detail-heading"><strong>答案与评价</strong>{slots.findIndex(slot => slot.id === selectedBlankId) >= 0 && <span>第 {slots.findIndex(slot => slot.id === selectedBlankId) + 1} 空</span>}</h4>}
-      {section !== 'mode' && needsConversion && <div className="worksheet-editor-compact-note worksheet-editor-fill-legacy-note">
+    <div className="worksheet-editor-choice-blank-setup">
+      {layoutOnly && <div className="worksheet-editor-inspector-head">
+        <h4>填空设置</h4>
+        {slots.length > 0 && <label>选择填空
+          <select className="input" value={selectedIndex >= 0 ? selectedBlankId ?? '' : ''} onChange={event => onSelectBlank?.(event.target.value)}>
+            <option value="">请选择</option>
+            {slots.map((slot, index) => <option key={slot.id} value={slot.id}>第 {index + 1} 空{slot.kind === 'table' ? ` · ${slot.label}` : ''}</option>)}
+          </select>
+        </label>}
+      </div>}
+      {layoutOnly && slots.length > 0 && selectedIndex < 0 && <p className="worksheet-editor-inspector-hint">点击题面中的横线，或从上方选择一个空。</p>}
+      {!layoutOnly && selectedIndex >= 0 && <h4 className="worksheet-editor-blank-detail-heading">第 {selectedIndex + 1} 空 · 答案与评价</h4>}
+      {!layoutOnly && needsConversion && <div className="worksheet-editor-compact-note worksheet-editor-fill-legacy-note">
         <span>{node.autoGrade === false ? '当前仅收集作答，不计分。转换后默认仍不计分，可再逐空设置评价。' : <>当前按整题给分，全对得 {inheritScore} {pointsUnit}。如需逐空或 AI 评价，请先转换：每空 {inheritScore} {pointsUnit}，转换后整题满分 {inheritScore * slots.length} {pointsUnit}。转换前总分保持不变。</>}</span>
         <button type="button" className="btn btn-secondary" onClick={()=>updateSettings(convertWholeFillSettings(node,settings,inheritScore))}>改成逐空给分</button>
       </div>}
-      {slots.length === 0 ? (
+      {slots.length === 0 ? layoutOnly && (
         <div className="worksheet-editor-blank-empty">
           <strong>还没有填空的位置</strong>
           <span>在段落或表格单元格中放置光标或选中文字，点击“插入填空”。</span>
@@ -423,7 +391,8 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
           {slots.map((slot, index) => selectedBlankId !== undefined && slot.id !== selectedBlankId ? null : (
             // key 用空的身份（不是下标）：题干里插一个空时，后面那些卡不会整排重挂载
             <section className="worksheet-editor-fill-mode-card" key={slot.id}>
-              {section !== 'details' && <div className="worksheet-editor-fill-mode-head">
+              {layoutOnly ? <>
+              <div className="worksheet-editor-fill-mode-head">
                 {/* ★ 位置**说实话**：题干里的空说「第 2 空」，表格里的空说「第 2 行第 2 格」 */}
                 {selectedBlankId === undefined && <strong>{slot.label}</strong>}
                 {slot.kind === 'table' && (
@@ -446,8 +415,8 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                     </label>
                   ))}
                 </div>
-              </div>}
-              {section !== 'details' && <div className="worksheet-editor-blank-width">
+              </div>
+              <div className="worksheet-editor-blank-width">
                 <span className="worksheet-editor-blank-width-title">填空宽度</span>
                 <div className="worksheet-editor-mode-tabs" role="radiogroup" aria-label={`${slot.label}的宽度方式`}>
                   {(['auto', 'fixed'] as const).map(widthMode => <label key={widthMode} className={(fixedBlankWidth(settings[index]) === undefined ? 'auto' : 'fixed') === widthMode ? 'is-selected' : ''}>
@@ -463,8 +432,8 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                     updateSettings(settings.map((setting, i) => i === index ? {...setting, widthMode:'fixed', widthChars} : setting));
                   }} /><span>字符</span></span>
                 </label>}
-              </div>}
-              {section !== 'mode' && <>
+              </div>
+              </> : <>
               {settings[index].evaluationMode === 'ai' && <div className="worksheet-evaluation-help">
                 <p>此处的评价要求只用于本空。</p>
                 {index > 0 && settings[index - 1].evaluationMode === 'ai' && <button type="button" className="btn btn-secondary"
@@ -519,14 +488,14 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
                 {legacyGradingOf(settings[index]) && (
                   <p className="worksheet-editor-legacy-grading-note">
                     {slot.label}用的是旧版的「AI 评分 / 不评分」，<strong>现在不计分</strong>；
-                    给它填上答案之后，它就按答案计分。
+                    如需计分，请选择「练习判分」，再填写标准答案。
                   </p>
                 )}
               </div>}
               </>}
             </section>
           ))}
-          {section !== 'mode' && gradingEnabled && (section !== 'details' || settings[slots.findIndex(slot => slot.id === selectedBlankId)]?.mode !== 'audio') && (<>
+          {!layoutOnly && gradingEnabled && selectedIndex >= 0 && settings[selectedIndex].mode !== 'audio' && (<>
             {node.type === 'fill-blank' && explicitGrading && legacyBlankCount > 0 && (
               // ★ 2026-10-09（教师裁定）：AI / 不算分两档删掉之后，逐空账只剩**一笔**
               //（本地评分），所以上面那行「本地 X 分 + AI Y 分」的合计删了 —— 总数由题目卡
@@ -534,11 +503,11 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
               //**还有几个空压根不算分**（老数据），以及教师该怎么办。
               <p className="worksheet-editor-legacy-grading-note">
                 有 {legacyBlankCount} 个空还是旧版的「AI 评分 / 不评分」，它们<strong>不计分</strong>、
-                也算不进「当前任务满分」—— 请给这些空填上答案（需要主观评价时，请将该空切换为<strong>表达评价</strong>）。
+                也算不进「当前任务满分」—— 请为需要计分的空选择「练习判分」，再填写标准答案。
               </p>
             )}
             {!combinationMode && <p className="worksheet-editor-compact-note">
-              练习空必须设置答案；调查空只收集作答；表达空由 AI 评价。同题所有表达空提交后合并评价，客观空得分与 AI 得分合计。
+              「练习判分」按标准答案计分。「调查收集」只保存作答。同题的「表达评价」空由 AI 一起评价，开启计分后与练习得分合计。
             </p>}
             {/* ⚠️ 只在**旧口径**下说这句（`!explicitGrading`）：接管逐空之后每个空的分值
                 可能各不相同，而这句话还按题目级分值报「每个空 X × N 空 ⇒ 全对最多 Y」——
@@ -584,9 +553,10 @@ export function ChoiceBlankSetup({ node, onDataChange, fullPoints = 0, pointsUni
              它说的是学生从哪儿取词，而学生端那个词库仍然印在题干下方
              （`classroom/.../choice-blank-answer.tsx` 的 `choicePoolArea` 排在题干之后，
               提示语原话就是「待选词会显示在题干下方」）。位置对得上就不该改那句。 */}
-      {section !== 'mode' && settings.some(setting => setting.mode === 'pool') && (section !== 'details' || settings[slots.findIndex(slot => slot.id === selectedBlankId)]?.mode === 'pool') && (
+      {!layoutOnly && hasPool && (
         <label className="worksheet-editor-field worksheet-editor-choice-words">
           <span>共用选词</span>
+          <small>所有「下方选词」的空共用这组词。每个词条只可用一次，同一个词需要用几次就添加几次。</small>
           <SymbolListInput
             values={poolChoices}
             split={splitChoiceText}

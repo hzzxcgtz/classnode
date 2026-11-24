@@ -16,6 +16,9 @@ import { lanHttpsAdminRoutes, lanHttpsSetupRoutes } from './routes/lan-https.js'
 // 文件日志必须在最前面导入，确保任何后续模块加载失败都能被记录
 import './services/file-logger.js';
 
+import { DEFAULT_USAGE_ENDPOINT } from './services/usage-config.js';
+import { UsageReporting } from './services/usage-reporting.js';
+
 import { resetSocketData, setupSocketHandlers } from './socket/index.js';
 import agentRoutes from './routes/agents.js';
 import platformTokenRoutes from './routes/platform-tokens.js';
@@ -189,6 +192,16 @@ async function main() {
   app.use('/network-setup', lanHttpsSetupRoutes());
   app.use('/api/lan-https', requireTeacher, lanHttpsAdminRoutes());
 
+  const usage = new UsageReporting({
+    directory: path.join(process.env.CLASSNODE_DATA_DIR || path.resolve(__dirname, '..'), 'usage-data'),
+    version: JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8')).version,
+    endpoint: process.env.CLASSNODE_USAGE_ENDPOINT ?? DEFAULT_USAGE_ENDPOINT,
+    enabled: process.env.CLASSNODE_USAGE_ENABLED !== 'false',
+    deployment: process.env.CLASSNODE_DEPLOYMENT === 'desktop' ? 'desktop' : 'server',
+  });
+  usage.start();
+  app.use(usage.middleware);
+
   // Routes
   app.use('/api/agents', requireTeacher, agentRoutes);
   // ★ 2026-09-25：共享 API Token（Coze 低代码）。与智能体同一道教师门。
@@ -322,6 +335,7 @@ async function main() {
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     console.log(`[server] Received ${signal}, shutting down gracefully...`);
+    usage.stop();
     lanHttps.stop();
     httpServer.close();
     // 与 httpServer.close() 对称：两个监听同进程（Ruling 1），退出路径上把第二个监听

@@ -113,3 +113,8 @@ classnode-v*.tar.gz
 
 # Teacher-generated voice preview cache
 /server/voice-previews/
+
+# Anonymous usage cache and self-hosted receiver data
+**/usage-data/
+# Private self-hosted receiver deployment folder
+/usage-collector/

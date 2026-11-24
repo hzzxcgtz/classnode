@@ -1,0 +1,65 @@
+# 自建匿名使用统计
+
+## 当前范围
+
+ClassNode 默认向 `https://usage.aicls.xyz/v1/report` 发送匿名汇总。上报使用现有后端与本地文件。接收端独立运行，使用 Node.js 24 内置 HTTP、SQLite 和原生 HTML/JS 看板。无需第三方统计 SDK、CDN 或新增 npm 依赖。
+
+客户端不提供使用反馈页面、设置开关或配置接口，后台按发布配置自动汇总、定时发送，不弹窗、不提示发送结果。运维可使用 `CLASSNODE_USAGE_ENABLED=false` 强制关闭；用户界面不能更改此配置。
+
+## 统计口径
+
+所有日期使用北京时间。
+
+| 字段 | 含义 |
+| --- | --- |
+| installationId / firstSeen | 本机随机 UUID / 此统计功能初始化日期，不读取硬件标识、姓名、学校或 MAC 地址 |
+| day / active | 日期 / 当日有已登录教师端的成功 API 请求；持续打开的看板轮询也会算活跃，因此不代表实际授课或教师人数 |
+| version / platform / arch / deployment | 版本、操作系统枚举、CPU 架构枚举、桌面版或服务部署；没有系统版本详情、主机名、文件路径 |
+| classroomsCreated | 成功创建课堂的次数，包含标准、分组、高级模式 |
+| standardClassrooms / groupClassrooms / advancedClassrooms | 成功创建的各模式课堂次数 |
+| withWorksheet / withExplore / withCompanion | 创建课堂时关联相应模块的次数，一间课堂可计入多种模块；不是学生实际使用次数 |
+| worksheetsCreated | 成功创建或复制学习单次数，不包含编辑保存 |
+| revision | 同一安装、同一日期的累计快照修订序号，仅用于重复上报去重 |
+
+第一版不收集学生人数、精确课堂时长、题型点击、错误堆栈、IP 定位等数据。更不发送课堂标题、互动码、学生 ID、作答、聊天、附件、API 密钥或原始请求体。接收端严格验证白名单字段，拒绝附加字段。不能根据这些汇总判断具体教师身份。
+
+安装数是近似指标：一套服务可供多位老师使用，同一老师也可安装多套。删除本机统计文件会重建编号，复制整个数据目录会复用编号。该文件不包含在现有课堂备份清单中。公开上报接口无法证明是真实安装，接收端已限制请求频率、体积、日期范围和计数上限；数据适合产品趋势观察，不适合审计、收费或考核。
+
+## 客户端工作方式
+
+- 文件：`CLASSNODE_DATA_DIR/usage-data/usage-reporting.json`；未设置数据目录时位于 `server/usage-data/`。写入权限按 0600 创建，目录应由应用账户独享。
+- 内存累计，每分钟写盘；优雅退出也写盘。进程崩溃时可能丢失最近一分钟的数据。
+- 最多保留含当天在内的 31 天汇总。无事件不发送，无地址不发送。
+- 每分钟检查是否到达发送时间，正常成功后至少间隔 24 小时；失败后按 1、2、4、8、16、24 小时退避。定时器不阻止进程退出。
+- 每批最多 31 个按日累计快照，5 秒超时，禁止重定向，不发送 Cookie、教师凭据或其他鉴权信息。
+- 同日首次上报之后的新活动，会在下一批补发；接收端按安装编号 + 日期覆盖更高修订的快照，重试和乱序不累加次数。
+- 使用后端汇总，不向学生设备嵌入统计脚本，不改动课堂数据库结构。
+
+配置地址有两种方式：
+
+1. **统一发布桌面版和源码版**：`server/src/services/usage-config.ts` 中的 `DEFAULT_USAGE_ENDPOINT` 随发布版本分发。更换默认地址时修改该常量并重新构建发布。管理员密码和令牌由独立接收端配置。
+2. **单独服务器部署**：设置 `CLASSNODE_USAGE_ENDPOINT=https://usage.example.com/v1/report` 并重启后端。环境变量优先；设为空字符串可移除默认地址。`CLASSNODE_USAGE_ENABLED=false` 强制关闭。
+
+正式地址必须使用 HTTPS，不能带用户名、密码、查询参数或片段。本机联调可通过环境变量指定 `http://127.0.0.1:4301/v1/report`。地址不合法时不会发送。公网接收服务独立部署。
+
+## 独立接收端交付
+
+本地另有被 Git 忽略的旧文件 `server/ping-server.py` 与 `server/dashboard.html`，提供旧 `/ping` 心跳接收与统计看板；本次没有发现当前应用源码调用它们。本次保留旧文件和可能存在的旧数据，新接收端使用独立目录、协议和数据库，未做迁移或覆盖。
+
+用户要求接收端不加入 Git。接收端现位于项目根目录 `usage-collector/`，已加入 `.gitignore`；不会随 ClassNode 源码提交或后端打包分发。包含独立 Node.js 程序、原生管理看板、SQLite、Dockerfile、Compose、环境示例、测试和中文部署说明。
+
+独立接收端在 Linux 服务器上直接使用 Node.js 24 运行，由 `classnode-usage` 系统服务管理。宝塔通过 HTTPS 反向代理接收服务。部署更新和管理员密码配置见 `usage-collector/README.md`。
+
+Git 不会保存或恢复接收端文件夹，维护者需要自行备份。运行数据和管理令牌不能进入公开仓库。
+
+## 验证
+
+```bash
+pnpm build:server
+node --test server/dist/tests/usage-reporting.test.js
+node --test usage-collector/test/*.test.mjs
+```
+
+测试覆盖字段白名单、异常数值和日期、持久化、运维关闭、退避和取消、教师路由汇总、接收端鉴权、重复去重、SQLite 重启保留和限流。测试只使用临时目录与回环 HTTP，不写真实课堂数据，不访问公网接收地址。
+
+接收端看板已在 320、390、768、1440px 验证；客户端设置入口及接口已移除，截图位于 `.dev/usage-ui/`。当前环境缺少可用 Docker Compose / Docker 守护进程，尚未完成容器启动验收。

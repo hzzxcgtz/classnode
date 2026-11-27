@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { WEBAPP_IFRAME_SANDBOX } from '@/lib/webapp-sandbox';
 import { externalWebappHref } from '@/lib/external-webapp';
 import { FieldError, Toast } from '@/lib/components';
 import type { WebappSummary, WebappUploadResult } from '@/lib/types';
@@ -32,11 +33,16 @@ type UploadMode = 'html' | 'archive';
  */
 export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary | null; onClose: () => void; onSaved: () => void }) {
   const editing = webapp !== null;
+  const [replacing, setReplacing] = useState(false);
   const [name, setName] = useState(webapp?.name ?? '');
   const [source, setSource] = useState<'upload' | 'external'>(webapp?.externalUrl ? 'external' : 'upload');
   const external = source === 'external';
   const [externalUrl, setExternalUrl] = useState(webapp?.externalUrl ?? '');
   const validUrl = externalWebappHref(externalUrl);
+  const [externalMode, setExternalMode] = useState(webapp?.externalMode === 'camera' ? 'embed' : webapp?.externalMode ?? 'link');
+  const [cameraEnabled, setCameraEnabled] = useState(webapp?.cameraEnabled ?? webapp?.externalMode === 'camera');
+  const [microphoneEnabled, setMicrophoneEnabled] = useState(webapp?.microphoneEnabled ?? false);
+  const [previewUrl, setPreviewUrl] = useState('');
   const [mode, setMode] = useState<UploadMode>('html');   // ★ 教师定的：左栏默认
   const [page, setPage] = useState<File | null>(null);    // 单 HTML
   const [archive, setArchive] = useState<File | null>(null);
@@ -81,7 +87,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
     if (!name.trim()) errors.name = '请输入网页名称';
     if (external) {
       if (!validUrl) errors.externalUrl = '请输入有效的 HTTPS 发布链接，网址中不能包含用户名或密码';
-    } else if (!editing) {
+    } else if (!editing || replacing) {
       if (mode === 'html' && !page) errors.file = '请选择网页文件（.html）';
       if (mode === 'archive' && !archive) errors.file = '请选择网页压缩包（ZIP / RAR / 7Z）';
     }
@@ -91,25 +97,34 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
     setSaving(true);
     try {
       if (external && validUrl) {
-        const payload = { name: name.trim(), externalUrl: validUrl };
+        const payload = { name: name.trim(), externalUrl: validUrl, externalMode,
+          cameraEnabled: externalMode === 'embed' && cameraEnabled,
+          microphoneEnabled: externalMode === 'embed' && microphoneEnabled };
         if (webapp) await api.updateWebapp(webapp.id, payload);
         else await api.createExternalWebapp(payload);
         onSaved();
         onClose();
-      } else if (editing && webapp) {
-        const payload: { name?: string; entryPath?: string } = {};
+      } else if (webapp && !replacing) {
+        const payload: { name?: string; entryPath?: string; cameraEnabled?: boolean; microphoneEnabled?: boolean } = {};
         if (name.trim() !== webapp.name) payload.name = name.trim();
         if (entryPath && entryPath !== webapp.entryPath) payload.entryPath = entryPath;
+        if (cameraEnabled !== (webapp.cameraEnabled ?? false)) payload.cameraEnabled = cameraEnabled;
+        if (microphoneEnabled !== (webapp.microphoneEnabled ?? false)) payload.microphoneEnabled = microphoneEnabled;
         if (Object.keys(payload).length === 0) { onSaved(); return; }
         await api.updateWebapp(webapp.id, payload);
         onSaved();
+        onClose();
       } else {
         const form = new FormData();
         form.append('name', name.trim());
         if (mode === 'html' && page) form.append('page', page);
         if (mode === 'archive' && archive) form.append('archive', archive);
         if (entryHint.trim()) form.append('entryHint', entryHint.trim());
-        const created = await api.createWebapp(form);
+        if (!webapp) {
+          form.append('cameraEnabled', String(cameraEnabled));
+          form.append('microphoneEnabled', String(microphoneEnabled));
+        }
+        const created = webapp ? await api.replaceWebapp(webapp.id, form) : await api.createWebapp(form);
         // 先刷新列表（`onSaved` 只做刷新，不关窗），再决定要不要留在本弹窗里。
         onSaved();
         // ⚠️ **有外部依赖时留在弹窗里**：`WebappExternalDepsNotice` 是教师唯一一次能看到
@@ -161,7 +176,7 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
         {created ? (
           <div style={{ padding: '18px 24px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10, padding: '12px 14px', fontSize: '0.813rem', color: '#065f46' }}>
-              入口是 <strong>{created.entryPath}</strong>。创建课堂时可以在「关联探究网页」里勾选它。
+              {replacing ? '网页已更新，课堂关联和权限已保留。' : <>入口是 <strong>{created.entryPath}</strong>。创建课堂时可以在「关联探究网页」里勾选它。</>}
             </div>
             {deps && <WebappExternalDepsNotice deps={deps} />}
             {created.missingRefs && <WebappMissingRefsNotice refs={created.missingRefs} />}
@@ -171,10 +186,10 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
           </div>
         ) : (
         <form onSubmit={handleSubmit} style={{ padding: '18px 24px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label htmlFor="webapp-name" style={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>网页名称 <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <div className={styles.field}>
+            <label htmlFor="webapp-name">网页名称 <span className={styles.required}>*</span></label>
             <input id="webapp-name" className="input" value={name} onChange={e => { setName(e.target.value); clearError('name'); }} placeholder="如：太阳系模拟实验"
-              style={{ fontSize: "0.875rem", padding: '8px 12px', borderColor: fieldErrors.name ? '#a85d5d' : undefined }} />
+              aria-invalid={Boolean(fieldErrors.name)} />
             {fieldErrors.name && <FieldError message={fieldErrors.name} />}
           </div>
 
@@ -188,42 +203,56 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
           )}
 
           {external ? (
-            <div className={styles.externalFields}>
-              <label htmlFor="webapp-external-url">应用发布链接 <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <div className={styles.field}>
+              <label htmlFor="webapp-external-url">应用发布链接 <span className={styles.required}>*</span></label>
               <input id="webapp-external-url" type="url" className="input" value={externalUrl} placeholder="https://…"
                 disabled={saving} aria-invalid={Boolean(fieldErrors.externalUrl)} maxLength={4096}
-                onChange={e => { setExternalUrl(e.target.value); clearError('externalUrl'); }} />
+                onChange={e => { setExternalUrl(e.target.value); setPreviewUrl(''); setCameraEnabled(false); setMicrophoneEnabled(false); clearError('externalUrl'); }} />
               {fieldErrors.externalUrl && <FieldError message={fieldErrors.externalUrl} />}
               <p className={styles.help}>填写学生可以访问的发布链接，勿粘贴带个人令牌的地址。建议先用未登录的浏览器检查。</p>
-              <p className={styles.help}>学生从探究空间在新标签页打开此链接。</p>
+              <label htmlFor="webapp-external-mode">学生打开方式</label>
+              <select id="webapp-external-mode" className="input" value={externalMode} disabled={saving}
+                onChange={e => setExternalMode(e.target.value)}>
+                <option value="link">在新标签页打开</option>
+                <option value="embed">在课堂内嵌入</option>
+              </select>
+              <p className={styles.help}>嵌入需要发布网站允许。申请摄像头或麦克风的外部网页需要加入服务端的媒体权限信任名单。</p>
+              {validUrl && externalMode !== 'link' && <button type="button" className="btn btn-secondary"
+                onClick={() => setPreviewUrl(previewUrl ? '' : new URL(validUrl).origin === window.location.origin ? '' : validUrl)}>
+                {previewUrl ? '关闭预览' : '试预览嵌入'}
+              </button>}
+              {previewUrl && externalMode !== 'link' && <iframe className={styles.externalPreview} title="外部网页嵌入预览"
+                src={previewUrl} sandbox={WEBAPP_IFRAME_SANDBOX} allow="camera 'none'; microphone 'none'; geolocation 'none'" referrerPolicy="no-referrer" />}
               {validUrl && <a className={`btn btn-secondary ${styles.externalOpen}`} href={validUrl} target="_blank" rel="noopener noreferrer">在新标签页打开 ↗</a>}
             </div>
-          ) : editing && webapp ? (
-            <div>
-              <label htmlFor="webapp-entry" style={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>入口页面</label>
+          ) : editing && webapp && !replacing ? (
+            <div className={styles.field}>
+              <label htmlFor="webapp-entry">入口页面</label>
               {entries.length > 0 ? (
-                <select id="webapp-entry" className="input" value={entryPath} onChange={e => setEntryPath(e.target.value)} style={{ fontSize: "0.875rem", padding: '8px 12px' }}>
+                <select id="webapp-entry" className="input" value={entryPath} onChange={e => setEntryPath(e.target.value)} disabled={saving}>
                   {entries.map(entry => <option key={entry} value={entry}>{entry}</option>)}
                 </select>
               ) : (
-                <input id="webapp-entry" className="input" value={entryPath} onChange={e => setEntryPath(e.target.value)} style={{ fontSize: "0.875rem", padding: '8px 12px' }} />
+                <input id="webapp-entry" className="input" value={entryPath} onChange={e => setEntryPath(e.target.value)} disabled={saving} />
               )}
-              <div style={{ fontSize: "0.75rem", color: 'var(--text-muted, #64748b)', marginTop: 4 }}>
+              <p className={styles.help}>
                 {entriesError
                   ? `${entriesError}（可以先按原入口保存）`
                   : entries.length > 0
                     ? `这个网页包里有 ${entries.length} 个 HTML，选哪个作为学生打开时的首页。`
                     : '这个网页包里没有可选的 HTML。'}
-              </div>
+              </p>
+              <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setReplacing(true)}>替换网页文件</button>
             </div>
           ) : (
             <>
-              <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 500, marginBottom: 6 }}>网页文件 <span style={{ color: 'var(--danger)' }}>*</span></div>
-                <div role="radiogroup" aria-label="上传方式" style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              {replacing && <p className={styles.help}>已打开的学生页面继续使用原版。新打开或刷新页面时使用新版，课堂关联和设备权限会保留。</p>}
+              <div className={styles.field}>
+                <div className={styles.fieldLabel}>网页文件 <span className={styles.required}>*</span></div>
+                <div role="radiogroup" aria-label="上传方式" className={styles.sourceOptions}>
 {([['html', '单个 HTML 文件（推荐）'], ['archive', '上传压缩包']] as Array<[UploadMode, string]>).map(([value, label]) => (
-                    <button key={value} type="button" role="radio" aria-checked={mode === value} onClick={() => { setMode(value); clearError('file'); }}
-                      style={{ flex: 1, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', fontSize: "0.875rem", fontWeight: mode === value ? 600 : 400, border: `1.5px solid ${mode === value ? 'var(--primary)' : '#e2e8f0'}`, background: mode === value ? 'var(--primary-tint)' : 'white', color: mode === value ? 'var(--primary-dark)' : '#475569' }}>
+                    <button key={value} type="button" className="btn btn-secondary" role="radio" aria-checked={mode === value}
+                      disabled={saving} onClick={() => { setMode(value); clearError('file'); }}>
                       {label}
                     </button>
                   ))}
@@ -248,21 +277,34 @@ export function WebappForm({ webapp, onClose, onSaved }: { webapp: WebappSummary
               {/* ⚠️ **只在压缩包模式渲染。** 单 HTML 包里只有一个文件，服务端直接取它当入口 ——
                   留着这个框只是给教师一个填错的机会。 */}
               {mode === 'archive' && (
-                <div>
-                  <label htmlFor="webapp-entry-hint" style={{ fontSize: "0.875rem", fontWeight: 500, marginBottom: 4, display: 'block' }}>入口文件（选填）</label>
-                  <input id="webapp-entry-hint" className="input" value={entryHint} onChange={e => setEntryHint(e.target.value)} placeholder="如 index.html；留空则自动找 index.html"
-                    style={{ fontSize: "0.875rem", padding: '8px 12px' }} />
+                <div className={styles.field}>
+                  <label htmlFor="webapp-entry-hint">入口文件（选填）</label>
+                  <input id="webapp-entry-hint" className="input" value={entryHint} onChange={e => setEntryHint(e.target.value)} placeholder="例如 index.html" disabled={saving} />
                 </div>
               )}
             </>
           )}
 
+          {!replacing && (!external || externalMode === 'embed') && (
+            <fieldset className={styles.mediaPermissions} disabled={saving}>
+              <legend>课堂内设备权限</legend>
+              <button type="button" className={styles.permissionSwitch} role="switch" aria-checked={cameraEnabled}
+                onClick={() => setCameraEnabled(enabled => !enabled)}>
+                允许摄像头 <span aria-hidden="true" />
+              </button>
+              <button type="button" className={styles.permissionSwitch} role="switch" aria-checked={microphoneEnabled}
+                onClick={() => setMicrophoneEnabled(enabled => !enabled)}>
+                允许麦克风 <span aria-hidden="true" />
+              </button>
+              <p className={styles.help}>学生需通过可信 HTTPS 进入课堂，并在浏览器中授权。修改后请刷新已打开的学生课堂页面。</p>
+            </fieldset>
+          )}
           {fieldErrors.submit && <div role="alert" style={{ fontSize: '0.75rem', color: '#a85d5d' }}>{fieldErrors.submit}</div>}
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving} style={{ fontSize: "0.875rem", padding: '7px 18px' }}>取消</button>
             <button type="submit" className="btn btn-primary" disabled={saving} style={{ fontSize: "0.875rem", padding: '7px 20px' }}>
-              {saving ? '保存中...' : editing ? '保存修改' : external ? '添加网页' : '上传网页'}
+              {saving ? '保存中...' : replacing ? '上传并替换' : editing ? '保存修改' : external ? '添加网页' : '上传网页'}
             </button>
           </div>
         </form>

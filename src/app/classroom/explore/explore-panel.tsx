@@ -110,13 +110,85 @@ export interface ExplorePanelProps extends ModulePanelProps {
  */
 export function ExplorePanel(props: ExplorePanelProps) {
   const webapp = effectiveGroupWebapp(props.classroom, props.session);
-  if (webapp?.externalUrl) return <ExternalExplorePanel webapp={webapp} />;
-  return <ExplorePanelContent key={webapp?.id ?? 'none'} {...props} />;
+  if (webapp?.externalUrl) return <ExternalExplorePanel key={webapp.id} webapp={webapp} active={props.active} />;
+  const sessionKey = `${props.classroom?.id ?? ''}:${props.session?.id ?? ''}:${webapp?.id ?? ''}`;
+  return <LocalExplorePanel key={sessionKey} {...props} webapp={webapp} />;
 }
 
-function ExternalExplorePanel({ webapp }: { webapp: ClassroomWebappSummary }) {
+function LocalExplorePanel({ webapp, ...props }: ExplorePanelProps & { webapp: ClassroomWebappSummary | null }) {
+  const [openedEntry] = useState(() => webapp?.entryPath);
+  const openedWebapp = webapp ? { ...webapp, entryPath: openedEntry ?? webapp.entryPath } : null;
+  const legacy = props.classroom?.cameraWebapp;
+  const media = props.classroom?.mediaWebapps?.find(app => app.id === webapp?.id)
+    ?? (legacy && legacy.id === webapp?.id ? { ...legacy, cameraEnabled: true, microphoneEnabled: false } : undefined);
+  if (openedWebapp && media?.port && typeof window !== 'undefined'
+      && window.location.protocol === 'https:' && window.isSecureContext) {
+    const href = buildWebappSrc(openedWebapp, media.port);
+    if (new URL(href).origin !== window.location.origin) {
+      if (props.state !== 'open') return null;
+      return <EmbeddedWebapp key={`${href}:${media.cameraEnabled}:${media.microphoneEnabled}`} active={props.active}
+        name={openedWebapp.name} href={href} needsCamera={media.cameraEnabled} needsMicrophone={media.microphoneEnabled} keepMounted />;
+    }
+  }
+  return <ExplorePanelContent {...props} webapp={openedWebapp} />;
+}
+
+function EmbeddedWebapp({ href, name, active, needsCamera, needsMicrophone, keepMounted = false }: {
+  href: string; name: string; active: boolean; needsCamera: boolean; needsMicrophone: boolean;
+  keepMounted?: boolean;
+}) {
+  const camera = needsCamera && window.isSecureContext ? new URL(href).origin : undefined;
+  const microphone = needsMicrophone && window.isSecureContext ? new URL(href).origin : undefined;
+  const [attempt, setAttempt] = useState(0);
+  const [help, setHelp] = useState<'hidden' | 'available' | 'open'>('hidden');
+  const mounted = (!needsCamera && !needsMicrophone) || active || keepMounted;
+  useEffect(() => {
+    if (!mounted) return;
+    // Cross-origin load events also fire on blocked embeds. Keep the recovery action available.
+    const timer = window.setTimeout(() => setHelp(current => current === 'hidden' ? 'available' : current), 8000);
+    return () => window.clearTimeout(timer);
+  }, [mounted, href, attempt]);
+  return (
+    <div className={styles.panel}>
+      {mounted && <iframe
+        key={`${href}:${attempt}`}
+        src={href}
+        title={name}
+        className={styles.frame}
+        sandbox={SANDBOX}
+        allow={`camera ${camera ?? "'none'"}; microphone ${microphone ?? "'none'"}; geolocation 'none'`}
+        referrerPolicy="no-referrer"
+        onError={() => setHelp('open')}
+      />}
+      {mounted && help !== 'hidden' && (
+        <aside className={styles.embedRecovery} aria-label="网页加载帮助">
+          {help === 'available' ? (
+            <button type="button" onClick={() => setHelp('open')}>网页打不开？</button>
+          ) : (
+            <>
+              <p>如果网页空白或提示禁止嵌入，可以重试或在浏览器标签页中打开。</p>
+              <div>
+                <button type="button" onClick={() => { setHelp('hidden'); setAttempt(value => value + 1); }}>重试</button>
+                <a href={href} target="_blank" rel="noopener noreferrer">在新标签页打开 ↗</a>
+                <button type="button" onClick={() => setHelp('available')}>收起</button>
+              </div>
+            </>
+          )}
+        </aside>
+      )}
+    </div>
+  );
+}
+
+function ExternalExplorePanel({ webapp, active }: { webapp: ClassroomWebappSummary; active: boolean }) {
   const href = externalWebappHref(webapp.externalUrl);
-  const externalLink = href && <a className={styles.externalLink} href={href} target="_blank" rel="noopener noreferrer">在新标签页打开 ↗</a>;
+  const origin = href ? new URL(href).origin : undefined;
+  const canEmbed = origin && typeof window !== 'undefined' && origin !== window.location.origin
+    && (webapp.externalMode === 'embed' || webapp.externalMode === 'camera');
+  if (canEmbed && href) {
+    return <EmbeddedWebapp key={`${href}:${webapp.cameraEnabled}:${webapp.microphoneEnabled}`} href={href} name={webapp.name} active={active}
+      needsCamera={webapp.cameraEnabled ?? webapp.externalMode === 'camera'} needsMicrophone={webapp.microphoneEnabled ?? false} />;
+  }
   return (
     <div className={styles.panel} style={{ '--module-accent': MODULE_META.explore.accent } as CSSProperties}>
       <div className={styles.overlay}>
@@ -124,14 +196,14 @@ function ExternalExplorePanel({ webapp }: { webapp: ClassroomWebappSummary }) {
           <span className={styles.badge}>探究空间</span>
           <h2 className={styles.title}>{webapp.name}</h2>
           <p className={styles.note}>{href ? '应用将在新标签页打开，完成后可切回课堂。' : '应用链接无效，请联系老师。'}</p>
-          {externalLink}
+          {href && <a className={styles.externalLink} href={href} target="_blank" rel="noopener noreferrer">在新标签页打开 ↗</a>}
         </div>
       </div>
     </div>
   );
 }
 
-function ExplorePanelContent({ active, classroom, session, toast, setToast, wsRef, demand }: ExplorePanelProps) {
+function ExplorePanelContent({ active, classroom, toast, setToast, wsRef, demand, webapp }: ExplorePanelProps & { webapp: ClassroomWebappSummary | null }) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   /** 第几次加载。重试按钮 +1 ⇒ iframe 换 key 重挂（监听不受影响，它挂在 window 上）。 */
   const [reloadKey, setReloadKey] = useState(0);
@@ -146,7 +218,6 @@ function ExplorePanelContent({ active, classroom, session, toast, setToast, wsRe
   // 残留的那一行）会让**没配网页的组**照样打开一个网页：学生静默地在用别的组的材料，
   // 而画面看起来完全正常（spec §1.2 ① / §4.6）。解析口径统一在 `@/lib/classroom-material`，
   // 高级模式下它**不回落**。
-  const webapp: ClassroomWebappSummary | null = effectiveGroupWebapp(classroom, session);
   const resolvedPort = typeof window !== 'undefined' && window.location.protocol === 'https:' ? classroom?.webappHttpsPort : classroom?.webappPort;
   const port = typeof resolvedPort === 'number' ? resolvedPort : null;
   const classroomId = classroom?.id ?? null;
@@ -300,7 +371,7 @@ function ExplorePanelContent({ active, classroom, session, toast, setToast, wsRe
     ? '探究网页服务暂时不可用'
     : groupScoped ? '本组未配置探究网页' : '老师还没有添加探究网页';
   const emptyNote = webapp
-    ? '网页服务没有就绪，稍后再试一次；还不行就告诉老师。'
+    ? '课堂还没有取得探究网页的托管地址。请刷新课堂页面，仍无法打开时联系老师检查探究网页服务。'
     : groupScoped
       ? '你们这一组没有安排探究网页，先和小组同伴一起讨论，或者问问老师。'
       : '等老师把网页放进来，这里就能直接打开。';
@@ -324,6 +395,7 @@ function ExplorePanelContent({ active, classroom, session, toast, setToast, wsRe
           title={webapp?.name || '探究空间'}
           className={styles.frame}
           sandbox={SANDBOX}
+          allow="camera 'none'; microphone 'none'; geolocation 'none'"
           referrerPolicy="no-referrer"
           // ⚠️ **故意既不挂 onLoad 也不挂 onError。** 说窄一点，下面每条后面都是实测，
           //    而不是「按理说」：
@@ -353,10 +425,13 @@ function ExplorePanelContent({ active, classroom, session, toast, setToast, wsRe
             ) : (
               <>
                 <p className={styles.title}>网页没能打开</p>
-                <p className={styles.note}>可能是网络或网页服务的问题。点一下重试，不用退出重来。</p>
-                <button type="button" className={styles.retry} onClick={() => setReloadKey((prev) => prev + 1)}>
-                  重试
-                </button>
+                <p className={styles.note}>课堂没收到网页就绪信号。可以重试，或直接打开网页查看浏览器提示。</p>
+                <div className={styles.retryActions}>
+                  <button type="button" className={styles.retry} onClick={() => setReloadKey((prev) => prev + 1)}>
+                    重试
+                  </button>
+                  {src && <a className={styles.externalLink} href={src} target="_blank" rel="noopener noreferrer">在新标签页打开 ↗</a>}
+                </div>
               </>
             )}
           </div>

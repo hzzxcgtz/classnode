@@ -118,6 +118,7 @@ export async function migrateLegacyDatabase(prisma: PrismaClient, backupDatabase
           "name" TEXT NOT NULL,
           "entryPath" TEXT NOT NULL,
           "externalUrl" TEXT,
+          "externalMode" TEXT NOT NULL DEFAULT 'link',
           "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           "updatedAt" DATETIME NOT NULL
         )`);
@@ -126,6 +127,19 @@ export async function migrateLegacyDatabase(prisma: PrismaClient, backupDatabase
       const webappColumns = await prisma.$queryRawUnsafe<{ name: string }[]>(`PRAGMA table_info("Webapp")`);
       if (!webappColumns.some(column => column.name === 'externalUrl')) {
         await prisma.$executeRawUnsafe(`ALTER TABLE "Webapp" ADD COLUMN "externalUrl" TEXT`);
+      }
+      if (!webappColumns.some(column => column.name === 'externalMode')) {
+        await prisma.$executeRawUnsafe(`ALTER TABLE "Webapp" ADD COLUMN "externalMode" TEXT NOT NULL DEFAULT 'link'`);
+      }
+      for (const [name, sql] of [
+        ['cameraEnabled', 'BOOLEAN NOT NULL DEFAULT false'],
+        ['microphoneEnabled', 'BOOLEAN NOT NULL DEFAULT false'],
+        ['mediaPort', 'INTEGER'],
+      ]) {
+        if (!webappColumns.some(column => column.name === name)) {
+          await prisma.$executeRawUnsafe(`ALTER TABLE "Webapp" ADD COLUMN "${name}" ${sql}`);
+          if (name === 'cameraEnabled') await prisma.$executeRawUnsafe(`UPDATE "Webapp" SET "cameraEnabled" = true WHERE "externalMode" = 'camera'`);
+        }
       }
       if (!webappTableNames.includes('ClassroomWebapp')) {
         console.log('[server] ClassroomWebapp table not found, creating...');

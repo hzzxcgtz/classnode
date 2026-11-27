@@ -14,6 +14,8 @@ import { LanHttps } from '../services/lan-https.js';
 import { installRequestSecurity, type OriginPolicy } from '../middleware/request-security.js';
 import { createTeacherSession, requireTeacher } from '../middleware/auth.js';
 import { lanHttpsAdminRoutes, lanHttpsSetupRoutes } from '../routes/lan-https.js';
+import { createCameraWebappHost } from '../services/webapp-host.js';
+import { classroomCameraPolicy, classroomMicrophonePolicy, localCameraOrigin } from '../services/external-webapp-policy.js';
 
 const listen = (server: http.Server, port = 0) => new Promise<number>(resolve => server.listen(port, '0.0.0.0', () => resolve((server.address() as { port: number }).port)));
 const freePort = async () => { const server = http.createServer(); const port = await listen(server); await new Promise<void>(resolve => server.close(() => resolve())); return port; };
@@ -54,6 +56,67 @@ test('root identity persists, IP changes renew only leaf, corrupt/missing root i
     await assert.rejects(ensureRoot(dir));
     assert.equal(fs.readFileSync(path.join(dir, 'root.json'), 'utf8'), 'broken');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the camera HTTPS origin serves only the approved upload and the classroom delegates only that origin', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'classnode-camera-test-'));
+  const uploads = path.join(dir, 'webapps');
+  for (const id of ['approved', 'ordinary']) {
+    fs.mkdirSync(path.join(uploads, id), { recursive: true });
+    fs.writeFileSync(path.join(uploads, id, '实验.html'), '<!doctype html><title>实验</title>');
+  }
+  const main = http.createServer((req, res) => {
+    const origin = localCameraOrigin(req.headers.host, cameraPort);
+    const microphone = localCameraOrigin(req.headers.host, microphonePort);
+    res.setHeader('Permissions-Policy', `camera=${classroomCameraPolicy(req.url ?? '', origin)}, microphone=${classroomMicrophonePolicy(req.url ?? '', microphone)}`);
+    res.end();
+  });
+  const web = http.createServer((_req, res) => res.end());
+  const [httpPort, webappHttpPort] = [await listen(main), await listen(web)];
+  const ports = new Set<number>();
+  while (ports.size < 4) ports.add(await freePort());
+  const [httpsPort, webappHttpsPort, cameraPort, microphonePort] = [...ports];
+  const camera = createCameraWebappHost({ webappsRoot: uploads, lanAccessEnabled: true }, 'approved', httpsPort);
+  const microphoneConfig = { cameraEnabled: false, microphoneEnabled: true };
+  const microphone = createCameraWebappHost({ webappsRoot: uploads, lanAccessEnabled: true }, 'ordinary', httpsPort, microphoneConfig);
+  const manager = new LanHttps({ directory: dir, main, webapp: web, httpPort, webappHttpPort,
+    httpsPort, webappHttpsPort, addresses: () => [] });
+  t.after(async () => {
+    manager.stop();
+    await Promise.all([main, web].map(server => new Promise<void>(resolve => server.close(() => resolve()))));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  await manager.setEnabled(true);
+  assert.equal(await manager.startMediaHost(cameraPort, camera), true);
+  const occupied = http.createServer();
+  await listen(occupied, microphonePort);
+  try {
+    assert.equal(await manager.startMediaHost(microphonePort, microphone), false);
+  } finally {
+    await new Promise<void>(resolve => occupied.close(() => resolve()));
+  }
+  assert.equal(await manager.startMediaHost(microphonePort, microphone), true);
+  const ca = manager.certificate();
+  const parent = `https://127.0.0.1:${httpsPort}`;
+  const experiment = `https://127.0.0.1:${cameraPort}`;
+  const speech = `https://127.0.0.1:${microphonePort}/webapps/ordinary/${encodeURIComponent('实验.html')}`;
+  assert.equal((await request(speech, ca)).headers['permissions-policy'], 'camera=(), microphone=(self), geolocation=()');
+  microphoneConfig.microphoneEnabled = false;
+  assert.equal((await request(speech, ca)).status, 404);
+  await manager.stopMediaHost(microphonePort);
+  await assert.rejects(request(speech, ca), { code: 'ECONNREFUSED' });
+  const page = await request(`${experiment}/webapps/approved/${encodeURIComponent('实验.html')}`, ca);
+  assert.equal(page.status, 200);
+  assert.equal(page.body, '<!doctype html><title>实验</title>');
+  assert.equal(page.headers['permissions-policy'], 'camera=(self), microphone=(), geolocation=()');
+  assert.equal(page.headers['content-security-policy'], `frame-ancestors ${parent}; worker-src 'none'`);
+  for (const pathname of ['/webapps/ordinary/实验.html', '/__classnode/sdk.js', '/api/health']) {
+    assert.equal((await request(experiment + encodeURI(pathname), ca)).status, 404);
+  }
+  const classroom = await request(`${parent}/classroom/`, ca);
+  assert.ok(classroom.headers['permissions-policy']?.includes(`"${experiment}"`));
+  assert.ok(!classroom.headers['permissions-policy']?.includes(`:${webappHttpsPort}"`));
+  assert.equal((await request(`${parent}/teacher/`, ca)).headers['permissions-policy'], 'camera=(), microphone=(self)');
 });
 
 test('HTTPS shares HTTP app and Socket.IO, verifies trusted CA, serves isolated webapps and protected admin', async t => {

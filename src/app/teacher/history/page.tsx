@@ -216,7 +216,8 @@ export default function HistoryPage() {
 
   return (
     <div>
-      <TeacherPageHeader title="数据管理" description="查看课堂历史，下载包含学习单与智能学伴记录的资料包。" />
+      <TeacherPageHeader title="数据管理" description="查看课堂历史，下载包含学习单与智能学伴记录的资料包。"
+        actions={<a className="btn btn-secondary" href="/teacher/settings/?tab=shield&section=records">敏感词拦截记录</a>} />
 
       {loading ? (
         <TeacherLoadingState label="正在加载课堂历史…" />
@@ -304,6 +305,7 @@ export default function HistoryPage() {
                           <div><dt>学习单</dt><dd>{cr.worksheetTotal > 0 ? `已交 ${cr.worksheetSubmitted} / 已保存 ${cr.worksheetTotal} 题次` : '无作答'}</dd></div>
                         </dl>
                         <div className="history-record-actions">
+                          <a className="btn btn-secondary" href={`/teacher/settings/?tab=shield&section=records&classroomId=${encodeURIComponent(cr.id)}`}>拦截记录</a>
                           <button className="btn btn-primary"
                             disabled={exporting || previewingClassroomId !== null}
                             title="下载离线课堂记录网页、完整文字记录及原始附件；解压后即可查看"

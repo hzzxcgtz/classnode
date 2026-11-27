@@ -109,6 +109,16 @@
 
 .retry:active { opacity: 0.85; }
 
+.retryActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 16px;
+  margin-top: 16px;
+}
+.retryActions .retry { margin-top: 0; }
+
 .externalLink {
   display: inline-flex;
   align-items: center;
@@ -117,4 +127,30 @@
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+.embedRecovery {
+  position: absolute;
+  z-index: 1;
+  inset-inline-end: 12px;
+  bottom: 12px;
+  max-width: min(320px, calc(100% - 24px));
+  padding: 8px 12px;
+  border: 1px solid #dbe4ee;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  font-size: 0.8125rem;
+  box-shadow: 0 4px 16px #0f172a14;
+}
+
+.embedRecovery p { margin: 0 0 6px; }
+.embedRecovery div { display: flex; flex-wrap: wrap; gap: 12px; }
+.embedRecovery button, .embedRecovery a {
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: #245483;
+  text-decoration: underline;
+  cursor: pointer;
 }

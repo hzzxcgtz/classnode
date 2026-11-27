@@ -127,40 +127,6 @@ export default function AboutPage() {
         </div>
       </header>
 
-      <section className={styles.letter} aria-labelledby="developer-letter-title">
-        <div className={styles.letterContent}>
-          <header className={styles.letterHeading}>
-            <p className={styles.letterEyebrow}>写给每一位愿意尝试 AI 的老师</p>
-            <h2 id="developer-letter-title"><span>让 AI 更容易</span><span>走进课堂，</span><span>陪伴学生学习</span></h2>
-          </header>
-          <div className={styles.letterMain}>
-            <div className={styles.letterBody}>
-              <p>
-                支点课堂（ClassNode）源于我们在教学中的共同需要：老师精心设计了智能体，怎样才能方便地用到课堂上，让它真正成为学生的学习伙伴？
-              </p>
-              <p>
-                在课堂上，学生的疑问需要及时回应，学习中的困难也需要尽早被看见。我们希望，学生能在与智能体的交流中获得及时反馈，继续思考和探索；老师也能了解学生的提问与学习进展，在需要的时候给予引导，让反馈和帮助就在学习发生的当下到来。
-              </p>
-              <p>
-                为此，我们把不同平台的智能体接入同一个课堂入口，减少来回切换和重复操作，让各个平台的能力围绕教学需要协同起来。老师用心设计的智能体，也因此能够更自然地融入教学，陪伴学生提问、尝试和解决问题。
-              </p>
-              <p>
-                我们也希望，这样的课堂尝试不需要复杂的准备。支点课堂以轻量化的方式运行在教师电脑上，学生通过互动码进入课堂，让老师更容易上手，把更多精力留给教学设计和学生。
-              </p>
-              <p className={styles.letterWish}>
-                这就是我们做支点课堂的初衷：把平台连接好，把使用门槛降下来，让老师的用心设计，成为学生在学习中随时用得上的支持。
-              </p>
-            </div>
-            <div className={styles.signature}>
-              <span>
-                <strong>张星昌</strong>
-                <small>杭州市拱墅区教育研究院</small>
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <SectionCard title="更新日志" color="#64748b">
         <button className={styles.logToggle} type="button" onClick={toggleChangelogs}>
           <ChevronIcon open={changelogsOpen} />
@@ -204,6 +170,40 @@ export default function AboutPage() {
           </div>
         )}
       </SectionCard>
+
+      <section className={styles.letter} aria-labelledby="developer-letter-title">
+        <div className={styles.letterContent}>
+          <header className={styles.letterHeading}>
+            <p className={styles.letterEyebrow}>写给每一位愿意尝试 AI 的老师</p>
+            <h2 id="developer-letter-title"><span>让 AI 更容易</span><span>走进课堂，</span><span>陪伴学生学习</span></h2>
+          </header>
+          <div className={styles.letterMain}>
+            <div className={styles.letterBody}>
+              <p>
+                支点课堂（ClassNode）源于我们在教学中的共同需要：老师精心设计了智能体，怎样才能方便地用到课堂上，让它真正成为学生的学习伙伴？
+              </p>
+              <p>
+                在课堂上，学生的疑问需要及时回应，学习中的困难也需要尽早被看见。我们希望，学生能在与智能体的交流中获得及时反馈，继续思考和探索；老师也能了解学生的提问与学习进展，在需要的时候给予引导，让反馈和帮助就在学习发生的当下到来。
+              </p>
+              <p>
+                为此，我们把不同平台的智能体接入同一个课堂入口，减少来回切换和重复操作，让各个平台的能力围绕教学需要协同起来。老师用心设计的智能体，也因此能够更自然地融入教学，陪伴学生提问、尝试和解决问题。
+              </p>
+              <p>
+                我们也希望，这样的课堂尝试不需要复杂的准备。支点课堂以轻量化的方式运行在教师电脑上，学生通过互动码进入课堂，让老师更容易上手，把更多精力留给教学设计和学生。
+              </p>
+              <p className={styles.letterWish}>
+                这就是我们做支点课堂的初衷：把平台连接好，把使用门槛降下来，让老师的用心设计，成为学生在学习中随时用得上的支持。
+              </p>
+            </div>
+            <div className={styles.signature}>
+              <span>
+                <strong>张星昌</strong>
+                <small>杭州市拱墅区教育研究院</small>
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <footer className={styles.footer}>
         <strong>教学互促 · 源码共研</strong>

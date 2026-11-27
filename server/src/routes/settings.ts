@@ -175,8 +175,8 @@ router.get('/desktop-info', async (req, res) => {
   if (!isLocalMachineRequest(req)) return res.status(403).json({ error: '仅供本机控制面板使用' });
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const settings = await prisma.setting.findMany({ where: { key: { in: ['bind-ip', 'lan-access'] } } });
-    res.json({ selectedIp: settings.find(s => s.key === 'bind-ip')?.value || '', lanEnabled: settings.find(s => s.key === 'lan-access')?.value !== 'false' });
+    const bindIp = await prisma.setting.findUnique({ where: { key: 'bind-ip' } });
+    res.json({ selectedIp: bindIp?.value || '', lanEnabled: true });
   } catch { res.status(500).json({ error: '获取本机网络配置失败' }); }
 });
 router.put('/desktop-network', async (req, res) => {
@@ -198,7 +198,7 @@ router.use(requireTeacher);
 router.get('/', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const settings = await prisma.setting.findMany({ where: { key: { not: 'admin_password' } } });
+    const settings = await prisma.setting.findMany({ where: { key: { notIn: ['admin_password', 'lan-access'] } } });
     const result: Record<string, string> = {};
     settings.forEach((s: Prisma.SettingGetPayload<object>) => { result[s.key] = s.value; });
     res.json(result);
@@ -212,22 +212,10 @@ router.put('/:key', async (req, res) => {
     const prisma: PrismaClient = req.app.get('prisma');
     const { key } = req.params;
     if (key === 'admin_password') return res.status(400).json({ error: '请使用修改密码接口' });
+    if (key === 'lan-access') return res.status(400).json({ error: '局域网访问已改为始终开放' });
     const value = typeof req.body?.value === 'string' ? req.body.value : '';
     const setting = await prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
     if (key === 'bind-ip') req.app.get('io')?.emit('nic-changed', { ip: value });
-    if (key === 'lan-access') {
-      const enabled = value !== 'false';
-      req.app.set('lanAccessEnabled', enabled);
-      const io = req.app.get('io') as import('socket.io').Server | undefined;
-      io?.emit('lan-access-changed', { enabled });
-      if (!enabled && io) {
-        for (const socket of io.sockets.sockets.values()) {
-          const address = socket.handshake.address;
-          const local = address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
-          if (!local) socket.disconnect(true);
-        }
-      }
-    }
     res.json(setting);
   } catch {
     res.status(500).json({ error: '保存设置失败' });

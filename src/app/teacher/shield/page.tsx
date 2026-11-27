@@ -48,13 +48,18 @@ export default function ShieldPage() {
   const [wordPageSize, setWordPageSize] = useState(50);
   const [shieldAction, setShieldAction] = useState<string | null>(null);
   const shieldActionRef = useRef(false);
+  const warningRequestRef = useRef(0);
 
   useEffect(() => {
     loadData();
+    if (new URLSearchParams(window.location.search).get('section') === 'records') setTab('records');
   }, []);
 
   useEffect(() => {
-    if (tab === 'records') loadSummary();
+    if (tab === 'records') {
+      const requested = new URLSearchParams(window.location.search).get('classroomId');
+      void loadSummary(requested);
+    }
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps -- 进入记录页时按需加载汇总
 
   async function loadData() {
@@ -66,29 +71,36 @@ export default function ShieldPage() {
     } catch {}
   }
 
-  async function loadSummary() {
+  async function loadSummary(requested: string | null = null) {
     setLoadingSummary(true);
     try {
       const data = await api.getWarningsSummary();
       setSummary(data);
-      if (data.length > 0) {
-        const firstId = selectedClassroom || data[0].id;
-        setSelectedClassroom(firstId);
-        loadWarnings(firstId);
+      const firstId = requested || selectedClassroom || data[0]?.id;
+      if (firstId) await loadWarnings(firstId);
+      else {
+        setSelectedClassroom(null);
+        setWarnings([]);
       }
     } catch {}
     setLoadingSummary(false);
   }
 
   async function loadWarnings(classroomId: string) {
+    const requestId = ++warningRequestRef.current;
     setSelectedClassroom(classroomId);
+    setWarnings([]);
     setLoadingWarnings(true);
     try {
       const data = await api.getClassroomWarnings(classroomId);
+      if (warningRequestRef.current !== requestId) return;
       setWarnings(data);
       setWarningPage(1);
-    } catch {}
-    setLoadingWarnings(false);
+    } catch {
+      if (warningRequestRef.current === requestId) setRecordMsg({ type: 'error', text: '无法加载拦截记录，请重试' });
+    } finally {
+      if (warningRequestRef.current === requestId) setLoadingWarnings(false);
+    }
   }
 
   const builtinWords = words.filter(w => w.builtin);
@@ -197,13 +209,13 @@ export default function ShieldPage() {
 
   const clearWarnings = async () => {
     if (!selectedClassroom || shieldActionRef.current) return;
-    if (!confirm('确认清空该课堂的所有安全提醒记录？')) return;
+    if (!confirm('确认清空本课堂的拦截记录？学生的累计触发次数和使用限制会保留。')) return;
     shieldActionRef.current = true;
     setShieldAction('warnings');
     try {
       await api.clearClassroomWarnings(selectedClassroom);
-      await Promise.all([loadWarnings(selectedClassroom), loadSummary()]);
-      setRecordMsg({ type: 'success', text: '已清空该课堂的安全提醒记录' });
+      await loadSummary();
+      setRecordMsg({ type: 'success', text: '已清空该课堂的敏感词拦截记录' });
     } catch (error) {
       setRecordMsg({ type: 'error', text: `清空记录失败：${error instanceof Error ? error.message : '请求异常'}` });
     } finally {
@@ -235,7 +247,7 @@ export default function ShieldPage() {
     setShieldAction('warnings');
     try {
       await api.deleteWarning(warningId);
-      await Promise.all([loadWarnings(selectedClassroom), loadSummary()]);
+      await loadSummary();
     } catch (error) {
       setRecordMsg({ type: 'error', text: `删除记录失败：${error instanceof Error ? error.message : '请求异常'}` });
     } finally {
@@ -246,33 +258,33 @@ export default function ShieldPage() {
 
   return (
     <div className={styles.page}>
-      <TeacherPageHeader title="智能学伴安全" description="管理学生与智能学伴对话时的敏感词、发送限制和安全提醒。" />
+      <TeacherPageHeader title="智能学伴安全" description="管理学生与智能学伴对话时的敏感词、消息上限和拦截记录。" />
 
       <div className={styles.workspace}>
       <TeacherPageTabs value={tab} onChange={setTab} items={[
-        { value: 'words', label: '对话敏感词', badge: words.length },
-        { value: 'records', label: '安全提醒记录', badge: summary.reduce((total, item) => total + item.warningCount, 0) },
-        { value: 'settings', label: '对话管控' },
+        { value: 'words', label: '敏感词规则', badge: words.length },
+        { value: 'settings', label: '对话限制' },
+        { value: 'records', label: '敏感词拦截记录' },
       ]} />
 
       {tab === 'settings' && <section className={styles.settingsCard}>
         <div className={styles.settingsHeading}>
-          <h2>对话管控</h2>
-          <p>为学生与智能学伴的交流设置适当的边界。</p>
+          <h2>对话限制</h2>
+          <p>设置学生的消息频率和累计拦截后的处理方式。</p>
         </div>
         <div className={styles.settingsGrid}>
           <div className={styles.settingItem}>
-            <div className={styles.settingTitle}><label htmlFor="shield-black-count">自动黑屏</label><span>{autoBlackCount > 0 ? '已开启' : '未开启'}</span></div>
-            <p>学生在课堂中触发对话敏感词达到指定次数后，学生端自动黑屏。</p>
+            <div className={styles.settingTitle}><label htmlFor="shield-black-count">自动暂停学生使用课堂</label><span>{autoBlackCount > 0 ? '已开启' : '未开启'}</span></div>
+            <p>按学生在本课堂内累计拦截次数。达到设定次数后，暂停该学生使用课堂。</p>
             <div className={styles.numberField}>
               <input id="shield-black-count" type="number" className="input" value={autoBlackCount}
                 onChange={e => setAutoBlackCount(parseInt(e.target.value) || 0)} min={0} max={99} aria-describedby="black-count-help" />
-              <span>次后黑屏</span>
+              <span>次后暂停</span>
             </div>
-            <small id="black-count-help">设为 0 时不自动黑屏。</small>
+            <small id="black-count-help">设为 0 时关闭自动暂停。</small>
           </div>
           <div className={styles.settingItem}>
-            <div className={styles.settingTitle}><label htmlFor="shield-rate-limit">对话发送限制</label><span>{rateLimit > 0 ? '已开启' : '不限次数'}</span></div>
+            <div className={styles.settingTitle}><label htmlFor="shield-rate-limit">每分钟消息上限</label><span>{rateLimit > 0 ? '已开启' : '不限次数'}</span></div>
             <p>限制每位学生每分钟向智能学伴发送消息的次数。</p>
             <div className={styles.numberField}>
               <input id="shield-rate-limit" type="number" className="input" value={rateLimit}
@@ -552,16 +564,16 @@ export default function ShieldPage() {
             <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>课堂列表</h2>
             {summary.length > 0 && (
               <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)', fontWeight: 400 }}>
-                — {summary.length} 个课堂有安全提醒记录
+                — {summary.length} 个课堂有敏感词拦截记录
               </span>
             )}
           </div>
           {loadingSummary ? (
-            <TeacherLoadingState label="正在加载安全提醒记录…" />
+            <TeacherLoadingState label="正在加载敏感词拦截记录…" />
           ) : summary.length === 0 ? (
             <TeacherEmptyState
               icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>}
-              title="暂无安全提醒记录"
+              title="暂无敏感词拦截记录"
               description="学生消息触发敏感词后，会按课堂汇总在这里。"
             />
           ) : (
@@ -624,7 +636,7 @@ export default function ShieldPage() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#934e4e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
-              <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>提醒详情</h2>
+              <h2 style={{ fontSize: "0.875rem", fontWeight: 600, margin: 0, color: '#0f172a' }}>拦截详情</h2>
               {warnings.length > 0 && (
                 <span style={{ fontSize: "0.75rem", color: 'var(--text-muted)', fontWeight: 400 }}>
                   {warnings.length} 条记录
@@ -639,7 +651,7 @@ export default function ShieldPage() {
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f8eeee'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'white'; }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-              清空全部
+              清空本课堂的拦截记录
             </button>}
           </div>
           {loadingWarnings ? (
@@ -647,7 +659,7 @@ export default function ShieldPage() {
           ) : warnings.length === 0 ? (
             <TeacherEmptyState
               icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M16 16s-1.5-2-4-2-4 2-4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>}
-              title="该课堂暂无安全提醒记录"
+              title="该课堂暂无敏感词拦截记录"
               description="当前课堂没有触发敏感词的学生消息。"
             />
           ) : (
@@ -657,7 +669,8 @@ export default function ShieldPage() {
                   <tr style={{ background: '#f8fafc', borderBottom: '2px solid #eef2f6', position: 'sticky', top: 0 }}>
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>学生</th>
                     <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>时间</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>学生发送的消息</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)', fontSize: "0.8125rem", letterSpacing: '0.02em' }}>被拦截的消息片段</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left' }}>命中词</th>
                     <th style={{ width: 50 }}></th>
                   </tr>
                 </thead>
@@ -672,7 +685,7 @@ export default function ShieldPage() {
                         (m: string) => `\x00HL${m}\x00HL`
                       );
                     }
-                    const parts = highlighted.split('\x00HL').filter(Boolean);
+                    const parts = highlighted.split('\x00HL');
                     return (
                     <tr key={w.id} style={{
                       borderBottom: '1px solid #f1f5f9',
@@ -703,6 +716,7 @@ export default function ShieldPage() {
                             : <span key={j}>{p}</span>
                         )}
                       </td>
+                      <td style={{ padding: '12px 16px', overflowWrap: 'anywhere' }}>{w.word || '—'}</td>
                       <td style={{ padding: '8px 16px', textAlign: 'right' }}>
                         <button onClick={() => void deleteWarning(w.id)} disabled={shieldAction !== null} style={{
                           width: 30, height: 30, borderRadius: 6, border: 'none',
@@ -712,7 +726,7 @@ export default function ShieldPage() {
                         }}
                           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f8eeee'; (e.currentTarget as HTMLElement).style.color = '#934e4e'; }}
                           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#cbd5e1'; }}
-                          title="删除">
+                          aria-label="删除这条拦截记录" title="删除这条拦截记录">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                         </button>
                       </td>

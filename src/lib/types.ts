@@ -199,6 +199,9 @@ export interface ClassroomWebappSummary {
   name: string;
   entryPath: string;
   externalUrl?: string | null;
+  externalMode?: string;
+  cameraEnabled?: boolean;
+  microphoneEnabled?: boolean;
 }
 
 /**
@@ -231,6 +234,7 @@ export interface WorksheetMaterialSummary {
  * `PUBLIC_WEBAPP_SELECT` 的子集，**没有任何磁盘路径字段**。
  */
 export interface WebappSummary extends ClassroomWebappSummary {
+  mediaStatus?: 'ready' | 'https-required' | 'port-unavailable';
   createdAt: string;
   updatedAt: string;
   /**
@@ -1124,6 +1128,8 @@ export interface StudentClassroom extends Omit<ClassroomSummary, 'groups' | 'stu
    */
   webappPort?: number;
   webappHttpsPort?: number;
+  cameraWebapp?: { id: string; port?: number };
+  mediaWebapps?: Array<{ id: string; port: number; cameraEnabled: boolean; microphoneEnabled: boolean }>;
   /**
    * 本课堂关联的网页，按关联顺序；查询失败（老库缺表）时服务端降级为空数组。
    *

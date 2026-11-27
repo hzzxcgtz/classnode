@@ -3,9 +3,10 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
-import type { Server } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import { SDK_PATH, SDK_SOURCE, SHOT_PATH, injectSdk } from './webapp-sdk.js';
 import { lanAccessGate } from '../middleware/request-security.js';
+import { localCameraOrigin } from './external-webapp-policy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -196,6 +197,35 @@ export interface StartWebappHostOptions {
   serverPort: number;
   lanAccessEnabled: boolean | (() => boolean);
   webappsRoot: string;
+}
+
+/** The dedicated HTTPS origin serves only this approved package and does not inject the capture SDK. */
+export function createCameraWebappHost(
+  opts: Pick<StartWebappHostOptions, 'webappsRoot' | 'lanAccessEnabled'>,
+  id: string,
+  classroomPort: number,
+  media = { cameraEnabled: true, microphoneEnabled: false },
+): Server {
+  const app = express();
+  const root = path.join(opts.webappsRoot, id);
+  app.use(maintenanceGate);
+  app.use(lanAccessGate(() => typeof opts.lanAccessEnabled === 'function'
+    ? opts.lanAccessEnabled() : opts.lanAccessEnabled));
+  app.use(`/webapps/${id}`, (req, res, next) => {
+    if (!media.cameraEnabled && !media.microphoneEnabled) { res.sendStatus(404); return; }
+    const target = resolveWebappFile(root, req.path);
+    const parent = localCameraOrigin(req.headers.host, classroomPort);
+    if (!target || !parent || realpathEscapes(opts.webappsRoot, root)) {
+      res.sendStatus(404);
+      return;
+    }
+    res.setHeader('Permissions-Policy', `camera=(${media.cameraEnabled ? 'self' : ''}), microphone=(${media.microphoneEnabled ? 'self' : ''}), geolocation=()`);
+    res.setHeader('Content-Security-Policy', `frame-ancestors ${parent}; worker-src 'none'`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  }, express.static(root, { dotfiles: 'deny', redirect: false, index: false, cacheControl: false }));
+  return createServer(app);
 }
 
 /**

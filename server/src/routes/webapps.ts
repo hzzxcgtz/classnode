@@ -1,5 +1,6 @@
+import { canUseExternalCamera } from '../services/external-webapp-policy.js';
 import { Router } from 'express';
-import type { ErrorRequestHandler } from 'express';
+import type { ErrorRequestHandler, RequestHandler } from 'express';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import path from 'path';
@@ -97,11 +98,12 @@ export function validateWebappUpload(
     return { ok: false, reason: `总大小超过上限 ${WEBAPP_LIMITS.maxTotalBytes / 1024 / 1024}MB` };
   }
 
-  // 3. 扩展名。
+  // 3. 有扩展名的文件仍按静态资源白名单校验。LICENSE 等无扩展名资源允许随包上传。
   for (const file of files) {
     const name = file.path.replace(/\\/g, '/').split('/').pop() ?? '';
     const dot = name.lastIndexOf('.');
-    if (dot <= 0) return { ok: false, reason: `文件必须有扩展名：${file.path}` };
+    if (dot === -1) continue;
+    if (dot === 0) return { ok: false, reason: `不支持的隐藏文件：${file.path}` };
     const ext = name.slice(dot + 1).toLowerCase();
     if (REJECTED_EXTENSIONS.has(ext)) {
       return { ok: false, reason: `本模块只托管静态网页，不接受服务端脚本：${file.path}` };
@@ -113,7 +115,7 @@ export function validateWebappUpload(
 
   // 4. 入口。放在最后 —— 前面都过了才谈得上「入口是哪个」。
   //    大小写不敏感：教师导出时写成 INDEX.HTML 很常见。
-  const htmlFiles = files.filter(f => f.path.toLowerCase().endsWith('.html') || f.path.toLowerCase().endsWith('.htm'));
+  const htmlFiles = files.filter(f => isHtmlPath(f.path));
   if (htmlFiles.length === 0) {
     return { ok: false, reason: '压缩包或网页文件中必须包含入口 HTML（如 index.html）' };
   }
@@ -121,6 +123,7 @@ export function validateWebappUpload(
   if (entryHint) {
     const hit = files.find(f => f.path === entryHint);
     if (!hit) return { ok: false, reason: `指定的入口文件不存在：${entryHint}` };
+    if (!isHtmlPath(hit.path)) return { ok: false, reason: `指定的入口必须是 HTML：${entryHint}` };
     return { ok: true, entry: hit.path };
   }
   // **优先挑 index.html**，找不到才退回「第一个 .html」。
@@ -401,14 +404,56 @@ class UploadRejected extends Error {}
 
 /** 课堂与管理页均不暴露服务端磁盘位置。 */
 export const CLASSROOM_WEBAPP_SELECT = {
-  id: true, name: true, entryPath: true, externalUrl: true,
+  id: true, name: true, entryPath: true, externalUrl: true, externalMode: true,
+  cameraEnabled: true, microphoneEnabled: true,
 } as const;
+
+function mediaSettings(body: Record<string, unknown>) {
+  const settings: { cameraEnabled?: boolean; microphoneEnabled?: boolean } = {};
+  for (const key of ['cameraEnabled', 'microphoneEnabled'] as const) {
+    if (!(key in body)) continue;
+    const value = body[key];
+    if (typeof value === 'boolean' || value === 'true' || value === 'false') settings[key] = value === true || value === 'true';
+    else throw new UploadRejected('无效的媒体权限设置');
+  }
+  return settings;
+}
+
+export async function reserveMediaPort(prisma: PrismaClient, lastUsedPort = 41999) {
+  const key = 'explore-media-port';
+  const rows = await prisma.$queryRaw<{ port: number }[]>`
+    INSERT INTO "Setting" ("id", "key", "value") VALUES (${crypto.randomUUID()}, ${key},
+      CAST((SELECT MAX(${lastUsedPort}, COALESCE(MAX("mediaPort"), 0)) + 1 FROM "Webapp") AS TEXT))
+    ON CONFLICT("key") DO UPDATE SET "value" = CAST(MAX(CAST("Setting"."value" AS INTEGER),
+      ${lastUsedPort}, (SELECT COALESCE(MAX("mediaPort"), 0) FROM "Webapp")) + 1 AS TEXT)
+    WHERE CAST("Setting"."value" AS INTEGER) < 65535
+    RETURNING CAST("value" AS INTEGER) AS "port"`;
+  const port = Number(rows[0]?.port);
+  if (!Number.isInteger(port) || port < 42000 || port > 65535) throw new UploadRejected('探究网页媒体端口已用完');
+  return port;
+}
 
 const PUBLIC_WEBAPP_SELECT = {
   ...CLASSROOM_WEBAPP_SELECT,
   createdAt: true,
   updatedAt: true,
 } as const;
+
+function mediaStatus(app: import('express').Application, webapp: {
+  id: string; externalUrl?: string | null; cameraEnabled?: boolean; microphoneEnabled?: boolean;
+}) {
+  if (webapp.externalUrl || (!webapp.cameraEnabled && !webapp.microphoneEnabled)) return undefined;
+  const https = app.get('lanHttps');
+  if (!https?.status().running) return 'https-required';
+  const active = app.get('mediaWebapps') as Array<typeof webapp> | undefined;
+  return active?.some(item => item.id === webapp.id && item.cameraEnabled === webapp.cameraEnabled
+    && item.microphoneEnabled === webapp.microphoneEnabled) ? 'ready' : 'port-unavailable';
+}
+
+async function refreshMedia(app: import('express').Application) {
+  try { await app.get('syncWebappMedia')?.(); }
+  catch (error) { console.warn('[webapps] 同步设备权限失败', error); }
+}
 
 // 列出所有网页
 router.get('/', async (req, res) => {
@@ -458,10 +503,13 @@ router.get('/', async (req, res) => {
 
     res.json(webapps.map(webapp => ({
       ...webapp,
+      mediaStatus: mediaStatus(req.app, webapp),
       fileCount: (() => {
         if (webapp.externalUrl) return 0;
         const dir = resolveInsideWebappsRoot(webapp.id);
-        return dir ? walkTree(dir).files.length : 0;
+        const prefix = revisionPrefix(webapp.entryPath);
+        return dir ? walkTree(path.join(dir, prefix)).files
+          .filter(file => revisionPrefix(prefix + file.path) === prefix).length : 0;
       })(),
       classroomCount: classroomCounts.get(webapp.id)?.size ?? 0,
     })));
@@ -480,7 +528,7 @@ router.get('/:id', async (req, res) => {
       select: PUBLIC_WEBAPP_SELECT,
     });
     if (!webapp) return res.status(404).json({ error: '网页不存在' });
-    res.json(webapp);
+    res.json({ ...webapp, mediaStatus: mediaStatus(req.app, webapp) });
   } catch (error) {
     res.status(500).json({ error: '获取网页失败' });
   }
@@ -546,20 +594,36 @@ function normalizeExternalWebappUrl(value: unknown): string | null {
   }
 }
 
+function externalModeError(mode: unknown, url: string): string | null {
+  if (mode !== 'link' && mode !== 'embed' && mode !== 'camera') return '无效的外部网页打开方式';
+  if (mode === 'camera' && !canUseExternalCamera(url)) return '该网址的来源未加入摄像头信任名单';
+  return null;
+}
+
 router.post('/external', async (req, res) => {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : '';
   const externalUrl = normalizeExternalWebappUrl(body.externalUrl);
   if (!name) return res.status(400).json({ error: '请输入网页名称' });
   if (!externalUrl) return res.status(400).json({ error: '请输入有效的 HTTPS 发布链接，网址中不能包含用户名或密码' });
+  const externalMode = body.externalMode === undefined ? 'link' : body.externalMode;
+  const modeError = externalModeError(externalMode, externalUrl);
+  if (modeError) return res.status(400).json({ error: modeError });
   try {
     const prisma: PrismaClient = req.app.get('prisma');
+    const flags = mediaSettings(body);
+    const cameraEnabled = flags.cameraEnabled ?? externalMode === 'camera';
+    const microphoneEnabled = flags.microphoneEnabled ?? false;
+    if ((cameraEnabled || microphoneEnabled) && (externalMode === 'link' || !canUseExternalCamera(externalUrl))) {
+      return res.status(400).json({ error: '外部网页须选择课堂内嵌入，且来源须加入媒体权限信任名单' });
+    }
     const webapp = await prisma.webapp.create({
-      data: { name, entryPath: '', externalUrl },
+      data: { name, entryPath: '', externalUrl, externalMode: externalMode as string, cameraEnabled, microphoneEnabled },
       select: PUBLIC_WEBAPP_SELECT,
     });
     return res.status(201).json(webapp);
   } catch (error) {
+    if (error instanceof UploadRejected) return res.status(400).json({ error: error.message });
     console.error('[webapps] 添加外部网页失败:', error);
     return res.status(500).json({ error: '添加外部网页失败' });
   }
@@ -578,7 +642,7 @@ router.post('/external', async (req, res) => {
  * 而 uuid 是刚生成的、库里还没有行，没有任何客户端知道这个地址。
  * 校验失败时把整个目录 `rmSync` 掉，不留半成品。
  */
-router.post('/', webappUpload, async (req, res) => {
+const saveUploadedWebapp: RequestHandler = async (req, res) => {
   const uploaded = collectedFiles(req);
   const id = crypto.randomUUID();
   let dest: string;
@@ -593,7 +657,13 @@ router.post('/', webappUpload, async (req, res) => {
 
   try {
     const prisma: PrismaClient = req.app.get('prisma');
+    const replaceId = typeof req.params.id === 'string' ? req.params.id : undefined;
+    const existing = replaceId ? await prisma.webapp.findUnique({ where: { id: replaceId } }) : null;
+    if (replaceId && (!existing || existing.externalUrl)) {
+      throw new UploadRejected('请选择一个已有的本地探究网页进行替换');
+    }
     const body = (req.body ?? {}) as Record<string, unknown>;
+    const flags = mediaSettings(body);
     const rawName = typeof body.name === 'string' ? body.name.trim() : '';
     const name = (rawName || '未命名网页').slice(0, 120);
     let entryHint = typeof body.entryHint === 'string' && body.entryHint.trim() ? body.entryHint.trim() : undefined;
@@ -665,22 +735,61 @@ if (uploaded.page) {
     const externalDeps = scanExternalDepsSafe(sources);
     const missingRefs = scanMissingRefsSafe(sources, listing);
 
-    const webapp = await prisma.webapp.create({
-      data: { id, name, entryPath: verdict.entry },
-      select: PUBLIC_WEBAPP_SELECT,
-    });
-    res.json({ ...webapp, externalDeps, missingRefs });
+    let webapp;
+    if (existing) {
+      const root = resolveInsideWebappsRoot(existing.id);
+      if (!root || !fs.existsSync(root)) throw new UploadRejected('原网页目录不存在');
+      // 每次变更使用独立的资源 URL，保留正在使用旧版的课堂页面及既有授权。
+      const revision = `revision-${id}`;
+      const revisionDir = path.join(root, revision);
+      fs.renameSync(dest, revisionDir);
+      dest = revisionDir;
+      webapp = await prisma.webapp.update({
+        where: { id: existing.id, updatedAt: existing.updatedAt, entryPath: existing.entryPath },
+        data: { name, entryPath: `${revision}/${verdict.entry}` },
+        select: PUBLIC_WEBAPP_SELECT,
+      });
+    } else {
+      webapp = await prisma.webapp.create({
+        data: { id, name, entryPath: verdict.entry, ...flags,
+          ...((flags.cameraEnabled || flags.microphoneEnabled) ? { mediaPort: await reserveMediaPort(prisma) } : {}) },
+        select: PUBLIC_WEBAPP_SELECT,
+      });
+    }
+    dest = '';
+    if (!existing && (flags.cameraEnabled || flags.microphoneEnabled)) await refreshMedia(req.app);
+    res.json({ ...webapp, mediaStatus: mediaStatus(req.app, webapp), externalDeps, missingRefs });
   } catch (error) {
-    fs.rmSync(dest, { recursive: true, force: true });
+    if (dest) fs.rmSync(dest, { recursive: true, force: true });
     if (error instanceof UploadRejected) {
       return res.status(400).json({ error: error.message });
+    }
+    if (typeof error === 'object' && error && 'code' in error && error.code === 'P2025') {
+      return res.status(409).json({ error: '网页已被修改，请刷新列表后重试' });
     }
     console.error('[webapps] 上传网页失败:', error);
     res.status(500).json({ error: '上传网页失败' });
   } finally {
     discardUploads(uploaded);
   }
+};
+router.post('/', webappUpload, saveUploadedWebapp);
+router.post('/:id/replace', webappUpload, saveUploadedWebapp);
+
+router.post('/:id/retry-media', async (req, res) => {
+  const prisma: PrismaClient = req.app.get('prisma');
+  const webapp = await prisma.webapp.findUnique({ where: { id: req.params.id }, select: PUBLIC_WEBAPP_SELECT });
+  if (!webapp || webapp.externalUrl) return res.status(404).json({ error: '本地网页不存在' });
+  await refreshMedia(req.app);
+  return res.json({ ...webapp, mediaStatus: mediaStatus(req.app, webapp) });
 });
+
+function revisionPrefix(entryPath: string): string {
+  const slash = entryPath.indexOf('/');
+  const directory = slash < 0 ? '' : entryPath.slice(0, slash);
+  return directory.startsWith('revision-') && UUID_PATTERN.test(directory.slice('revision-'.length))
+    ? `${directory}/` : '';
+}
 
 /**
  * 列出某个网页包里的 HTML 入口候选。
@@ -698,13 +807,14 @@ if (uploaded.page) {
 router.get('/:id/entries', async (req, res) => {
   try {
     const prisma: PrismaClient = req.app.get('prisma');
-    const webapp = await prisma.webapp.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    const webapp = await prisma.webapp.findUnique({ where: { id: req.params.id }, select: { id: true, entryPath: true } });
     if (!webapp) return res.status(404).json({ error: '网页不存在' });
     const dir = resolveInsideWebappsRoot(req.params.id);
     if (!dir) return res.status(404).json({ error: '网页不存在' });
-    const entries = walkTree(dir).files
-      .map(file => file.path)
-      .filter(isHtmlPath)
+    const prefix = revisionPrefix(webapp.entryPath);
+    const entries = walkTree(path.join(dir, prefix)).files
+      .map(file => prefix + file.path)
+      .filter(file => isHtmlPath(file) && revisionPrefix(file) === prefix)
       .sort((a, b) => a.localeCompare(b))
       .slice(0, WEBAPP_LIMITS.maxFiles);
     res.json({ entries });
@@ -718,10 +828,7 @@ router.get('/:id/entries', async (req, res) => {
  * 更新网页：**只做两件事** —— 改名，或改指另一个入口 HTML。
  *
  * ⚠️ **它不做什么（说清边界比说清功能重要）：**
- *   · **不接受替换网页内容。** 没有 `archive` / `files` 字段，传了也一律忽略。
- *     内容变了应当是**新建一个 Webapp**，而不是就地替换 —— 否则已经引用它的课堂
- *     （`ClassroomWebapp` 行指向的是这个 id）会在教师毫无察觉的情况下**静默换内容**，
- *     学生看到的网页中途变了，而课堂记录里没有任何痕迹指向那次替换。
+ *   · 替换网页内容走独立的 `POST /:id/replace`。
  *   · 不能改 `id`（它就是磁盘目录名，改了等于换一个网页）。
  *   · 不能改关联的课堂（那是课堂创建/编辑路径的事，不是本资源的属性）。
  *
@@ -734,7 +841,8 @@ router.put('/:id', async (req, res) => {
     const existing = await prisma.webapp.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: '网页不存在' });
 
-    const data: { name?: string; entryPath?: string; externalUrl?: string } = {};
+    const data: { name?: string; entryPath?: string; externalUrl?: string; externalMode?: string;
+      cameraEnabled?: boolean; microphoneEnabled?: boolean } = {};
     const body = (req.body ?? {}) as Record<string, unknown>;
     if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim().slice(0, 120);
 
@@ -744,6 +852,30 @@ router.put('/:id', async (req, res) => {
       if (!url) return res.status(400).json({ error: '请输入有效的 HTTPS 发布链接，网址中不能包含用户名或密码' });
       data.externalUrl = url;
     }
+    if ('externalMode' in body) {
+      const url = data.externalUrl ?? existing.externalUrl;
+      if (!url) return res.status(400).json({ error: '仅外部网页可设置打开方式' });
+      const modeError = externalModeError(body.externalMode, url);
+      if (modeError) return res.status(400).json({ error: modeError });
+      data.externalMode = body.externalMode as string;
+    } else if (data.externalUrl && data.externalUrl !== existing.externalUrl && existing.externalMode === 'camera') {
+      data.externalMode = 'embed';
+    }
+    const flags = mediaSettings(body);
+    if (existing.externalUrl) {
+      const url = typeof data.externalUrl === 'string' ? data.externalUrl : existing.externalUrl;
+      const mode = data.externalMode ?? existing.externalMode;
+      if (data.externalMode === 'camera') flags.cameraEnabled ??= true;
+      if (url !== existing.externalUrl || mode === 'link') {
+        flags.cameraEnabled ??= false;
+        flags.microphoneEnabled ??= false;
+      }
+      if ((flags.cameraEnabled || flags.microphoneEnabled) && (mode === 'link' || !canUseExternalCamera(url))) {
+        return res.status(400).json({ error: '外部网页须选择课堂内嵌入，且来源须加入媒体权限信任名单' });
+      }
+      if (flags.cameraEnabled === false && mode === 'camera') data.externalMode = 'embed';
+    }
+    Object.assign(data, flags);
     if (typeof body.entryPath === 'string' && body.entryPath.trim()) {
       if (existing.externalUrl) return res.status(400).json({ error: '外部网页没有本地入口文件' });
       const wanted = body.entryPath.trim();
@@ -751,20 +883,26 @@ router.put('/:id', async (req, res) => {
       const target = dir ? resolveInDir(dir, wanted) : null;
       // 入口必须真实存在且是 HTML —— 否则教师会得到一个「保存成功但打不开」的网页，
       // 而那正是本模块最想避免的故障类型。
-      if (!target || !fs.existsSync(target) || !isHtmlPath(wanted)) {
+      if (!target || !fs.existsSync(target) || !isHtmlPath(wanted) || revisionPrefix(wanted) !== revisionPrefix(existing.entryPath)) {
         return res.status(400).json({ error: '指定的入口文件不存在' });
       }
       data.entryPath = wanted;
     }
     if (Object.keys(data).length === 0) return res.status(400).json({ error: '没有需要更新的内容' });
+    if (!existing.externalUrl && !existing.mediaPort && (flags.cameraEnabled || flags.microphoneEnabled)) {
+      await prisma.webapp.updateMany({ where: { id: existing.id, mediaPort: null },
+        data: { mediaPort: await reserveMediaPort(prisma) } });
+    }
 
     const webapp = await prisma.webapp.update({
       where: { id: req.params.id },
       data,
       select: PUBLIC_WEBAPP_SELECT,
     });
-    res.json(webapp);
+    if (!existing.externalUrl && Object.keys(flags).length > 0) await refreshMedia(req.app);
+    res.json({ ...webapp, mediaStatus: mediaStatus(req.app, webapp) });
   } catch (error) {
+    if (error instanceof UploadRejected) return res.status(400).json({ error: error.message });
     console.error('[webapps] 更新网页失败:', error);
     res.status(500).json({ error: '更新网页失败' });
   }
@@ -794,6 +932,7 @@ router.delete('/:id', async (req, res) => {
 
     await prisma.webapp.delete({ where: { id: req.params.id } });
     removeWebappDir(req.params.id);
+    await refreshMedia(req.app);
     res.json({ success: true });
   } catch (error) {
     console.error('[webapps] 删除网页失败:', error);

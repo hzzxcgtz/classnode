@@ -6,6 +6,7 @@ import { isLoopbackAddress } from './auth.js';
 export interface OriginPolicy {
   webappPort: number;
   webappHttpsPort?: number;
+  mediaWebappPorts?: ReadonlySet<number>;
   /** Only set when a separate development frontend is running. */
   frontendPort?: number;
   https?: boolean;
@@ -30,7 +31,8 @@ function trustedOrigin(origin: string, req: OriginRequest, policy: OriginPolicy)
     const source = new URL(origin);
     if (source.origin !== origin || !['http:', 'https:'].includes(source.protocol)) return false;
     const sourcePort = Number(source.port || (source.protocol === 'https:' ? 443 : 80));
-    if (sourcePort === policy.webappPort || sourcePort === policy.webappHttpsPort) return false;
+    if (sourcePort === policy.webappPort || sourcePort === policy.webappHttpsPort
+        || policy.mediaWebappPorts?.has(sourcePort)) return false;
     if (source.origin === target.origin) return true;
     return policy.frontendPort !== undefined
       && source.hostname === target.hostname

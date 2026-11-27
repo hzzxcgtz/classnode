@@ -40,15 +40,54 @@ export class LanHttps {
   private busy = false;
   private error = '';
   private appliedCertificate = '';
+  private pair: CertificatePair | null = null;
+  private mediaServers = new Map<number, HttpsServer>();
+  private mediaQueue = Promise.resolve();
   private timer: ReturnType<typeof setInterval> | null = null;
   constructor(options: LanHttpsOptions) { this.options = options; }
   status() {
-    return { enabled: this.enabled, running: this.servers.length === 2, busy: this.busy, error: this.error,
+    return { enabled: this.enabled, running: this.servers.length >= 2, busy: this.busy, error: this.error,
       port: this.options.httpsPort, webappPort: this.options.webappHttpsPort,
       root: this.root ? rootInfo(this.root) : null };
   }
   profile() { if (!this.root) throw new Error('请先由教师启用局域网 HTTPS'); return rootProfile(this.root); }
   certificate() { if (!this.root) throw new Error('请先由教师启用局域网 HTTPS'); return this.root.cert; }
+  async startMediaHost(port: number, target: HttpServer): Promise<boolean> {
+    let started = false;
+    const task = this.mediaQueue.then(async () => {
+      if (this.mediaServers.has(port)) { started = true; return; }
+      const pair = this.pair;
+      if (!pair) return;
+      const listener = httpsBridge(target, pair);
+      try {
+        await listen(listener, port);
+        if (!this.pair) { listener.close(); listener.closeAllConnections(); return; }
+        listener.setSecureContext(this.pair);
+        this.mediaServers.set(port, listener);
+        started = true;
+      } catch (error) {
+        listener.close();
+        listener.closeAllConnections();
+        console.warn('[https] 探究网页媒体端口无法启动', port, error);
+      }
+    });
+    this.mediaQueue = task;
+    await task;
+    return started;
+  }
+  async stopMediaHost(port: number): Promise<void> {
+    const task = this.mediaQueue.then(async () => {
+      const server = this.mediaServers.get(port);
+      if (!server) return;
+      this.mediaServers.delete(port);
+      await new Promise<void>(resolve => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      });
+    });
+    this.mediaQueue = task;
+    await task;
+  }
   async initialize() {
     const file = path.join(this.options.directory, 'settings.json');
     if (!fs.existsSync(file)) return;
@@ -72,7 +111,7 @@ export class LanHttps {
         this.persist(false); this.enabled = false; this.stop(); this.error = '';
         this.options.onChange?.(); return this.status();
       }
-      if (this.servers.length === 2) return this.status();
+      if (this.servers.length >= 2) return this.status();
       const ports = [this.options.httpPort, this.options.webappHttpPort, this.options.httpsPort, this.options.webappHttpsPort];
       if (new Set(ports).size !== 4 || ports.some(port => !Number.isInteger(port) || port < 1 || port > 65535)) throw new Error('HTTP、HTTPS 与探究空间端口必须有效且各不相同');
       if (!this.options.webapp) throw new Error('探究空间服务未启动，请先检查端口占用');
@@ -86,6 +125,7 @@ export class LanHttps {
         this.persist(true);
       } catch (error) { pending.forEach(server => server.close()); this.sockets.forEach(socket => socket.destroy()); throw error; }
       this.servers = pending;
+      this.pair = pair;
       this.appliedCertificate = pair.cert;
       this.enabled = true; this.error = '';
       this.timer = setInterval(() => { void this.refresh().catch(error => {
@@ -100,7 +140,7 @@ export class LanHttps {
     } finally { this.busy = false; }
   }
   async refresh() {
-    if (!this.root || this.servers.length !== 2 || this.busy) return;
+    if (!this.root || this.servers.length < 2 || this.busy) return;
     this.busy = true;
     try {
       // Re-read and validate the persistent root, never create a replacement during renewal.
@@ -109,6 +149,8 @@ export class LanHttps {
       const pair = await ensureServerCertificate(this.options.directory, root, this.options.addresses());
       if (pair.cert !== this.appliedCertificate) {
         this.servers.forEach(server => server.setSecureContext(pair));
+        this.mediaServers.forEach(server => server.setSecureContext(pair));
+        this.pair = pair;
         this.appliedCertificate = pair.cert;
         this.options.onChange?.();
       }
@@ -116,6 +158,9 @@ export class LanHttps {
     } finally { this.busy = false; }
   }
   stop() {
+    this.pair = null;
+    this.mediaServers.forEach(server => { server.close(); server.closeAllConnections(); });
+    this.mediaServers.clear();
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.servers.forEach(server => server.close());

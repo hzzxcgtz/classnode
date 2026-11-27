@@ -55,8 +55,6 @@ export default function TeacherDashboard() {
   const [clearingClassroomId, setClearingClassroomId] = useState<string | null>(null);
   const clearingRef = useRef(false);
   const [endingClassroomId, setEndingClassroomId] = useState<string | null>(null);
-  const [lanAccess, setLanAccess] = useState(true);
-  const [networkSaving, setNetworkSaving] = useState(false);
   const [classroomSearch, setClassroomSearch] = useState("");
   const [classroomStatusFilter, setClassroomStatusFilter] = useState<"all" | "running" | "paused">("all");
   const endingRef = useRef(false);
@@ -155,28 +153,12 @@ export default function TeacherDashboard() {
     setLoading(true);
     setLoadError(false);
     try {
-      const [data, settings] = await Promise.all([api.getActiveClassrooms(), api.getSettings().catch((): Record<string, string> => ({}))]);
+      const data = await api.getActiveClassrooms();
       setActiveClassrooms(data);
-      setLanAccess(settings['lan-access'] !== 'false');
     } catch {
       setLoadError(true);
     }
     setLoading(false);
-  }
-
-  async function toggleLanAccess() {
-    if (networkSaving) return;
-    setNetworkSaving(true);
-    const next = !lanAccess;
-    try {
-      await api.updateSetting('lan-access', String(next));
-      setLanAccess(next);
-      setToast({ msg: next ? '局域网访问已开启，学生可以连接' : '局域网访问已关闭，仅本机可访问', type: 'success' });
-    } catch (error: unknown) {
-      setToast({ msg: error instanceof Error ? error.message : '网络模式切换失败', type: 'error' });
-    } finally {
-      setNetworkSaving(false);
-    }
   }
 
   const endClassroom = async (classroom: ActiveClassroom) => {
@@ -409,11 +391,6 @@ export default function TeacherDashboard() {
     <div>
       <TeacherPageHeader title="课堂管理" description="创建课堂并实时掌握学生互动进度。" actions={
         <>
-        <button type="button" className="btn btn-ghost classroom-network-status" onClick={() => void toggleLanAccess()} disabled={networkSaving}
-          title={lanAccess ? '学生设备可通过局域网访问' : '当前仅教师电脑本机可访问'} aria-pressed={lanAccess}>
-          <span className={`network-status-dot ${lanAccess ? 'is-open' : ''}`} />
-          {networkSaving ? '切换中…' : lanAccess ? '局域网访问已开放' : '局域网访问已关闭'}
-        </button>
         <button className="btn btn-primary" onClick={() => router.push('/teacher/classroom/new')}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           创建新课堂

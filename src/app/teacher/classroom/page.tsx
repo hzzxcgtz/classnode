@@ -2303,7 +2303,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
    */
   const openExploreDetail = (studentId: string) => {
     const participant = classroom.students.find(student => student.id === studentId);
-    if (effectiveGroupWebapp(classroom, participant)?.externalUrl) return;
+    const webapp = effectiveGroupWebapp(classroom, participant);
+    if (webapp?.externalUrl || webapp?.cameraEnabled || webapp?.microphoneEnabled) return;
     setSelectedStudent(null);
     setSelectedGroup(null);
     selectedStudentIdRef.current = null;
@@ -2338,7 +2339,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       : `${primary?.student.name ?? ''}:`;
 
     /** 「最近一轮 Q&A」—— 合并前那个格子的内容，逐字保留（它就是 companion 的内容）。 */
-    const audioUrls=companionAudioUrls(userMsg?.fileUrls);
+    const audioUrls = companionAudioUrls(userMsg?.fileUrls);
+    const audioOnly = Boolean(userMsg && audioUrls.length > 0 && ['(语音)', '（语音）', ''].includes(userMsg.content.trim()));
+    const showSpeaker = isGroup || !audioOnly;
     const companion = userMsg ? (
       <>
         <div style={{
@@ -2347,9 +2350,9 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           fontSize: compact ? "0.75rem" : '0.75rem', lineHeight: compact ? 1.4 : 1.6, color: '#334155',
           wordBreak: 'break-word',
         }}>
-          <span style={{ fontWeight: 600, color: 'var(--primary)', marginRight: compact ? 3 : 4 }}>{speaker}</span>
-          {!(audioUrls.length&&['(语音)','（语音）',''].includes(userMsg.content.trim()))&&<span>{stripMarkdownToPlainText(userMsg.content)}</span>}
-          {!!audioUrls.length&&<CompanionAudioPreview urls={audioUrls}/>}
+          {showSpeaker && <span style={{ fontWeight: 600, color: 'var(--primary)', marginRight: compact ? 3 : 4 }}>{speaker}</span>}
+          {!audioOnly && <span>{stripMarkdownToPlainText(userMsg.content)}</span>}
+          {audioUrls.length > 0 && <CompanionAudioPreview urls={audioUrls} showTopSpacing={showSpeaker} />}
         </div>
         {assistantMsg && (
           <div style={{
@@ -2384,8 +2387,12 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
       case 'companion':
         return companion;
       case 'explore':
-        if (effectiveGroupWebapp(classroom, primary)?.externalUrl) {
+        const webapp = effectiveGroupWebapp(classroom, primary);
+        if (webapp?.externalUrl) {
           return placeholder('外部应用', '此应用不提供课堂内的画面与操作记录');
+        }
+        if (webapp?.cameraEnabled || webapp?.microphoneEnabled) {
+          return placeholder('设备权限网页', '学生可在课堂中操作，网页不回传画面');
         }
         return isGroup ? (
           <ExploreMemberStrip
@@ -2578,7 +2585,8 @@ const tileModuleBadge = (module: GroupTileModule, members: ClassroomCardStudent[
           </div>
         </div>
           </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a className="btn btn-secondary" href={`/teacher/settings/?tab=shield&section=records&classroomId=${encodeURIComponent(classroom.id)}`}>拦截记录</a>
           {classroom.status !== 'ended' && (
             <>
               <button className="btn btn-primary btn-lg" onClick={() => {

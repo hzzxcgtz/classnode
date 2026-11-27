@@ -1119,7 +1119,7 @@ test('高级模式：只有课堂级 worksheetIds、所有组都不配 ⇒ 仍�
 });
 
 
-test('外部探究网页只下发链接，可编辑并用于课堂和小组', async t => {
+test('外部探究网页支持独立打开方式，并下发到课堂和小组', async t => {
   const db = await openTempDb();
   t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
   const { cls } = await seed(db.prisma, 0);
@@ -1128,7 +1128,11 @@ test('外部探究网页只下发链接，可编辑并用于课堂和小组', as
     assert.equal((await server.post('/api/webapps/external', { name: '外部网页', externalUrl })).status, 400);
   }
   const url = 'https://apps.example.invalid/demo?lang=zh#start';
-  const response = await server.post('/api/webapps/external', { name: '外部网页', externalUrl: url, embedExternal: true });
+  const denied = await server.post('/api/webapps/external', { name: '未批准', externalUrl: url, externalMode: 'camera' });
+  assert.equal(denied.status, 400);
+  const legacy = await server.post('/api/webapps/external', { name: '旧版外链', externalUrl: url, embedExternal: true });
+  assert.equal((await legacy.json()).externalMode, 'link');
+  const response = await server.post('/api/webapps/external', { name: '外部网页', externalUrl: url, externalMode: 'embed' });
   assert.equal(response.status, 201);
   const webapp = await response.json() as { id: string; externalUrl: string };
   assert.equal(webapp.externalUrl, url);
@@ -1136,7 +1140,8 @@ test('外部探究网页只下发链接，可编辑并用于课堂和小组', as
   assert.equal(standard.status, 200);
   const standardCode = (await standard.json()).code;
   const standardView = await (await server.get(`/api/classroom/code/${standardCode}`)).json();
-  assert.deepEqual(standardView.webapps, [{ id: webapp.id, name: '外部网页', entryPath: '', externalUrl: url }]);
+  assert.deepEqual(standardView.webapps, [{ id: webapp.id, name: '外部网页', entryPath: '', externalUrl: url,
+    externalMode: 'embed', cameraEnabled: false, microphoneEnabled: false }]);
 
   const advanced = await server.post('/api/classroom/create-advanced', {
     title: '分组应用', classId: cls.id, groups: [{ name: '应用组', webappId: webapp.id }, { name: '未配置组' }],
@@ -1150,5 +1155,34 @@ test('外部探究网页只下发链接，可编辑并用于课堂和小组', as
   const updated = await server.put(`/api/webapps/${webapp.id}`, { externalUrl: 'https://other.example.invalid/' });
   assert.equal(updated.status, 200);
   assert.equal((await updated.json()).externalUrl, 'https://other.example.invalid/');
-  assert.ok(!('embedExternal' in webapp));
+  const cameraPage = await server.put(`/api/webapps/${webapp.id}`, {
+    externalUrl: 'https://stu28-2.space.aiec.wflaiedu.com/', externalMode: 'camera',
+  });
+  assert.equal(cameraPage.status, 200);
+  const cameraSettings = await cameraPage.json();
+  assert.equal(cameraSettings.externalMode, 'camera');
+  assert.equal(cameraSettings.cameraEnabled, true);
+  const microphone = await server.put(`/api/webapps/${webapp.id}`, { externalMode: 'embed', cameraEnabled: false, microphoneEnabled: true });
+  assert.equal(microphone.status, 200);
+  assert.equal((await microphone.json()).microphoneEnabled, true);
+  const changedUrl = await server.put(`/api/webapps/${webapp.id}`, { externalUrl: url });
+  assert.equal(changedUrl.status, 200);
+  assert.equal((await changedUrl.json()).externalMode, 'embed');
+});
+
+test('编辑本地网页可分别开启设备权限，端口按网页保留', async t => {
+  const db = await openTempDb();
+  t.after(async () => { await db.prisma.$disconnect(); fs.rmSync(path.dirname(db.file), { recursive: true, force: true }); });
+  const server = await startServer(t, db.prisma);
+  const camera = await db.prisma.webapp.create({ data: { name: '摄像实验', entryPath: 'index.html' } });
+  const speech = await db.prisma.webapp.create({ data: { name: '口语练习', entryPath: 'index.html' } });
+  assert.equal((await server.put(`/api/webapps/${camera.id}`, { cameraEnabled: true })).status, 200);
+  assert.equal((await server.put(`/api/webapps/${speech.id}`, { microphoneEnabled: true })).status, 200);
+  const first = await db.prisma.webapp.findUniqueOrThrow({ where: { id: camera.id } });
+  const second = await db.prisma.webapp.findUniqueOrThrow({ where: { id: speech.id } });
+  assert.deepEqual([first.cameraEnabled, first.microphoneEnabled], [true, false]);
+  assert.deepEqual([second.cameraEnabled, second.microphoneEnabled], [false, true]);
+  assert.ok(first.mediaPort && second.mediaPort && first.mediaPort !== second.mediaPort);
+  assert.equal((await server.put(`/api/webapps/${camera.id}`, { cameraEnabled: false })).status, 200);
+  assert.equal((await db.prisma.webapp.findUniqueOrThrow({ where: { id: camera.id } })).mediaPort, first.mediaPort);
 });

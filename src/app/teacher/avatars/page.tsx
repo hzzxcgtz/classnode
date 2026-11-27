@@ -222,7 +222,7 @@ export default function AvatarsPage() {
 
   return (
     <div>
-      <TeacherPageHeader title="头像管理" description="管理学生头像和班级图标库。" actions={
+      <TeacherPageHeader title="头像与图标" description="管理学生头像和班级图标。" actions={
           <>
             {batchMode ? null : (
               <>

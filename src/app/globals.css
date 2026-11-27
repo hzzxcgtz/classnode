@@ -2584,19 +2584,6 @@ tr:hover td {
   flex-wrap: wrap;
 }
 
-.network-status-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 7px;
-  border-radius: 50%;
-  background: #94a3b8;
-}
-
-.network-status-dot.is-open {
-  background: #3f7859;
-  box-shadow: 0 0 0 3px rgba(63, 120, 89, 0.12);
-}
-
 .active-classroom-overview {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -10510,13 +10497,6 @@ tr:hover td {
 .teacher-main .active-classroom-overview > div:last-child {
   border-right: 0;
 }
-.teacher-main .classroom-network-status {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-secondary);
-}
-
 .teacher-layout .api-token-overlay { z-index: 220; }
 .teacher-layout .api-token-dialog {
   width: 620px;
@@ -11990,3 +11970,14 @@ tr:hover td {
   .worksheet-editor .worksheet-editor-basic-format .worksheet-editor-formatbar button,
   .worksheet-settings-head > button { min-width: 44px; min-height: 44px; }
 }
+.webapp-management-media-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0;
+  color: #854d0e;
+  font-size: 0.8125rem;
+}
+
+.webapp-management-media-status a { text-decoration: underline; }

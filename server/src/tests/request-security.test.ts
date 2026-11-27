@@ -114,9 +114,12 @@ test('LAN switch applies immediately to API, static uploads, hosted files and so
   try {
     await new Promise<void>((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); });
     assert.match((await fetch(`${base}/uploads/old.svg`)).headers.get('content-security-policy')!, /sandbox; default-src 'none'/);
+    assert.equal((await fetch(`${base}/api/settings/lan-access`, { method: 'PUT',
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ value: 'false' }) })).status, 400);
     for (const enabled of [true, false, true]) {
       const disconnected = !enabled ? new Promise<string>(resolve => socket.once('disconnect', resolve)) : null;
-      assert.equal((await fetch(`${base}/api/settings/lan-access`, { method: 'PUT', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ value: String(enabled) }) })).status, 200);
+      app.set('lanAccessEnabled', enabled);
+      if (!enabled) for (const peer of io.sockets.sockets.values()) peer.disconnect(true);
       if (disconnected) assert.equal(await disconnected, 'io server disconnect');
       for (const url of [`${lan}/api/health`, `${lan}/uploads/file.txt`, `http://${address}:${hostPort}/webapps/index.html`]) assert.equal((await fetch(url)).status, enabled ? 200 : 403, url);
       assert.equal((await fetch(`${base}/uploads/file.txt`)).status, 200);

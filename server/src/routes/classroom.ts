@@ -1243,6 +1243,7 @@ router.get('/code/:code', async (req, res) => {
       // sandbox 的 allow-same-origin 才是安全的。端口在 index.ts 里只算一次，这里只读。
       webappPort: req.app.get('webappPort') as number | undefined,
       webappHttpsPort: req.app.get('webappHttpsPort') as number | undefined,
+      mediaWebapps: req.app.get('mediaWebapps') as Array<{ id: string; port: number; cameraEnabled: boolean; microphoneEnabled: boolean }> | undefined,
       webapps,
       // 课堂级学习单（数组，与 `webapps` 同形）。学生端按 `mode` 二选一取用：
       // 高级 ⇒ `groups[].worksheet`（自己组那份）；标准/分组 ⇒ 本数组的第 0 个。

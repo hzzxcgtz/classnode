@@ -30,6 +30,7 @@ export default function WebappsPage() {
    */
   const [webappOrigin, setWebappOrigin] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [retryingMediaId, setRetryingMediaId] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
   const notify = (message: string, type: 'success' | 'error') => {
@@ -64,6 +65,21 @@ export default function WebappsPage() {
     !normalizedSearch || webapp.name.toLocaleLowerCase('zh-CN').includes(normalizedSearch)
   );
   const pagedWebapps = filteredWebapps.slice((page - 1) * pageSize, page * pageSize);
+
+  async function retryMedia(id: string) {
+    setRetryingMediaId(id);
+    try {
+      const result = await api.retryWebappMedia(id);
+      await loadWebapps();
+      if (result.mediaStatus === 'ready') notify('设备权限已生效，请刷新学生课堂', 'success');
+      else if (result.mediaStatus === 'https-required') notify('请先启用学生课堂 HTTPS', 'error');
+      else notify('专用 HTTPS 端口仍不可用', 'error');
+    } catch {
+      notify('暂时无法重试，请稍后再试', 'error');
+    } finally {
+      setRetryingMediaId(null);
+    }
+  }
 
   return (
     <div>
@@ -122,6 +138,8 @@ export default function WebappsPage() {
               onPreview={() => setPreviewing(webapp)}
               onEdit={() => { setEditing(webapp); setShowForm(true); }}
               onDelete={() => void deleteWebapp(webapp)}
+              retryingMedia={retryingMediaId === webapp.id}
+              onRetryMedia={() => void retryMedia(webapp.id)}
               onShowRelatedClassrooms={() => void openRelatedClassrooms(webapp)}
             />
           ))}

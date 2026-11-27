@@ -47,6 +47,14 @@ test('entryHint 指向不存在的文件时拒绝', () => {
   assert.equal(r.ok, false);
 });
 
+test('无扩展名文件可随 HTML 上传，入口仍须为 HTML', () => {
+  const license = 'assets/mediapipe/LICENSE';
+  const files = [f(license), f('index.html')];
+  assert.deepEqual(validateWebappUpload(files), { ok: true, entry: 'index.html' });
+  assert.match((validateWebappUpload(files, license) as { reason: string }).reason, /入口必须是 HTML/);
+  assert.equal(validateWebappUpload([f(license)]).ok, false);
+});
+
 test('拒绝服务端脚本（本模块只做静态托管）', () => {
   for (const bad of ['x.php', 'x.jsp', 'x.asp', 'x.aspx', 'x.cgi', 'x.pl', 'x.py', 'x.rb']) {
     const r = validateWebappUpload([f('index.html'), f(bad)]);
@@ -54,10 +62,10 @@ test('拒绝服务端脚本（本模块只做静态托管）', () => {
   }
 });
 
-test('拒绝扩展名白名单之外的（含无扩展名）', () => {
+test('拒绝扩展名白名单之外的文件和无后缀隐藏文件', () => {
   const r = validateWebappUpload([f('index.html'), f('evil.exe')]);
   assert.equal(r.ok, false);
-  assert.equal(validateWebappUpload([f('index.html'), f('Makefile')]).ok, false);
+  assert.equal(validateWebappUpload([f('index.html'), f('.env')]).ok, false);
 });
 
 test('白名单内的扩展名一律放行', () => {
@@ -273,10 +281,18 @@ async function uploadZip(
   dataDir: string,
   zipBuffer: Buffer,
   name: string,
+  replacement?: { id: string; entryPath: string; updatedAt: Date },
 ) {
   const harness = createHarness(SAMPLE, 0);
   const app = express();
-  app.set('prisma', harness.prisma);
+  app.set('prisma', replacement ? { webapp: {
+    findUnique: async () => replacement,
+    update: async ({ where, data }: { where: { id: string; updatedAt: Date }; data: object }) => {
+      assert.equal(where.id, replacement.id);
+      assert.equal(where.updatedAt, replacement.updatedAt);
+      return { ...replacement, ...data };
+    },
+  } } : harness.prisma);
   app.use('/api/webapps', webappRoutes);
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -286,7 +302,8 @@ async function uploadZip(
   const form = new FormData();
   form.append('archive', new Blob([new Uint8Array(zipBuffer)]), 'site.zip');
   form.append('name', name);
-  const res = await fetch(`http://127.0.0.1:${address.port}/api/webapps`, { method: 'POST', body: form });
+  const route = replacement ? `/${replacement.id}/replace` : '';
+  const res = await fetch(`http://127.0.0.1:${address.port}/api/webapps${route}`, { method: 'POST', body: form });
   return { status: res.status, body: await res.json() as Record<string, unknown>, dataDir };
 }
 
@@ -337,6 +354,7 @@ test('不含 __MACOSX 的 ZIP：树必须一个文件不少（阴性对照）', 
     zip.addFile('myproject/s.css', Buffer.from('body{}'));
     zip.addFile('myproject/assets/app.js', Buffer.from('console.log(1)'));
     zip.addFile('myproject/assets/img/logo.svg', Buffer.from('<svg/>'));
+    zip.addFile('myproject/assets/mediapipe/LICENSE', Buffer.from('Example license text'));
 
     const res = await uploadZip(t, dataDir, zip.toBuffer(), '干净的包');
     assert.equal(res.status, 200, JSON.stringify(res.body));
@@ -345,9 +363,32 @@ test('不含 __MACOSX 的 ZIP：树必须一个文件不少（阴性对照）', 
     const dir = path.join(dataDir, 'webapps', String(res.body.id));
     assert.deepEqual(
       listTree(dir),
-      ['assets/', 'assets/app.js', 'assets/img/', 'assets/img/logo.svg', 'index.html', 's.css'],
+      ['assets/', 'assets/app.js', 'assets/img/', 'assets/img/logo.svg',
+        'assets/mediapipe/', 'assets/mediapipe/LICENSE', 'index.html', 's.css'],
       '一个文件都不能少：清理逻辑误伤会让「入口正确」变成碰巧',
     );
+    assert.equal(fs.readFileSync(path.join(dir, 'assets', 'mediapipe', 'LICENSE'), 'utf8'), 'Example license text');
+  });
+});
+
+test('替换 ZIP 保留网页 ID，并为新版入口和资源提供新的路径', async (t) => {
+  await withTempDataDir(async (dataDir) => {
+    const id = '11111111-2222-4333-8444-555555555555';
+    const root = path.join(dataDir, 'webapps', id);
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(path.join(root, 'index.html'), 'old');
+    const AdmZip = createRequire(import.meta.url)('adm-zip');
+    const zip = new AdmZip();
+    zip.addFile('index.html', Buffer.from('<html>NEW</html>'));
+    zip.addFile('assets/LICENSE', Buffer.from('license'));
+    const res = await uploadZip(t, dataDir, zip.toBuffer(), '手势实验室', { id, entryPath: 'index.html', updatedAt: new Date() });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.id, id);
+    assert.match(String(res.body.entryPath), /^revision-[\da-f-]+\/index\.html$/);
+    const entry = path.join(root, String(res.body.entryPath));
+    assert.equal(fs.readFileSync(entry, 'utf8'), '<html>NEW</html>');
+    assert.equal(fs.readFileSync(path.join(path.dirname(entry), 'assets/LICENSE'), 'utf8'), 'license');
+    assert.equal(fs.readFileSync(path.join(root, 'index.html'), 'utf8'), 'old');
   });
 });
 

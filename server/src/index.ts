@@ -17,6 +17,7 @@ import { lanHttpsAdminRoutes, lanHttpsSetupRoutes } from './routes/lan-https.js'
 import './services/file-logger.js';
 
 import { DEFAULT_USAGE_ENDPOINT } from './services/usage-config.js';
+import { classroomCameraPolicy, classroomMicrophonePolicy, localCameraOrigin } from './services/external-webapp-policy.js';
 import { UsageReporting } from './services/usage-reporting.js';
 
 import { resetSocketData, setupSocketHandlers } from './socket/index.js';
@@ -33,7 +34,7 @@ import uploadRoutes, { cleanupOrphanedUploads } from './routes/upload.js';
 import avatarRoutes from './routes/avatars.js';
 import systemRoutes from './routes/system.js';
 import upgradeRoutes, { checkForUpdateOnStartup } from './routes/upgrade.js';
-import webappRoutes from './routes/webapps.js';
+import webappRoutes, { reserveMediaPort } from './routes/webapps.js';
 import { seedShieldWords } from './services/seed-shield-words.js';
 import { revokeAllTeacherSessions, requireTeacher } from './middleware/auth.js';
 import { installRequestSecurity, isLanRequestAllowed, isTrustedRequestOrigin, requestCorsOptions, type OriginPolicy } from './middleware/request-security.js';
@@ -43,7 +44,7 @@ import { recoverInterruptedMaintenance } from './services/full-backup.js';
 import { upgradeDatabase } from './services/database-upgrade.js';
 import { protectSvgAsset } from './services/svg-sanitizer.js';
 import { worksheetAccessGate, worksheetRoutes } from './routes/worksheets.js';
-import { resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
+import { createCameraWebappHost, resolveWebappPort, startWebappHost, webappsRoot } from './services/webapp-host.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -56,8 +57,29 @@ async function main() {
   // Recover interrupted jobs before accepting requests, even when students remain offline.
   await recoverInterruptedReviews(prisma);
   const port = parseInt(process.env.PORT || '3001', 10);
+  const httpsPort = Number(process.env.CLASSNODE_HTTPS_PORT || port + 2);
+  const dataRoot = process.env.CLASSNODE_DATA_DIR || path.resolve(__dirname, '..');
+  const certDirectory = certificateDirectory(dataRoot);
+  let cameraApproval = process.env.CLASSNODE_EXPLORE_CAMERA_WEBAPP_ID;
+  if (cameraApproval === undefined) {
+    try {
+      cameraApproval = fs.readFileSync(path.join(certDirectory, 'explore-camera-webapp'), 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.warn('[https] 无法读取摄像头实验授权', error);
+    }
+  }
+  const approvedId = (cameraApproval ?? '').trim().toLowerCase();
+  if (/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(approvedId)) {
+    const legacyPort = Number(process.env.CLASSNODE_CAMERA_WEBAPP_HTTPS_PORT || port + 4);
+    if (Number.isInteger(legacyPort) && legacyPort > 0 && legacyPort <= 65535) {
+      await prisma.webapp.updateMany({ where: { id: approvedId, externalUrl: null, mediaPort: null },
+        data: { cameraEnabled: true, mediaPort: legacyPort } });
+    }
+  }
 
   const app = express();
+  type MediaHost = { id: string; port: number; cameraEnabled: boolean; microphoneEnabled: boolean };
+  let publishedMedia: MediaHost[] = [];
   const webappPort = resolveWebappPort(port);
   const originPolicy: OriginPolicy = {
     webappPort,
@@ -80,8 +102,12 @@ async function main() {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Frame-Options', 'DENY');
-    const camera = /^\/classroom\/?$/.test(req.path) ? '(self)' : '()';
-    res.setHeader('Permissions-Policy', `camera=${camera}, microphone=(self), geolocation=()`);
+    const media = req.secure ? publishedMedia : [];
+    const origins = (key: 'cameraEnabled' | 'microphoneEnabled') => media.filter(host => host[key])
+      .map(host => localCameraOrigin(req.headers.host, host.port));
+    const camera = classroomCameraPolicy(req.path, ...origins('cameraEnabled'));
+    const microphone = classroomMicrophonePolicy(req.path, ...origins('microphoneEnabled'));
+    res.setHeader('Permissions-Policy', `camera=${camera}, microphone=${microphone}, geolocation=()`);
     next();
   });
   app.use(express.json({ limit: '10mb' }));
@@ -105,19 +131,13 @@ async function main() {
   app.set('prisma', prisma);
   app.set('io', io);
   app.set('dataMaintenanceHooks', {
-    refresh: async () => {
-      const lan = await prisma.setting.findUnique({ where: { key: 'lan-access' } });
-      app.set('lanAccessEnabled', lan?.value !== 'false');
-    },
+    refresh: () => syncMedia(),
     committed: () => {
       resetSocketData(io, app);
       revokeAllTeacherSessions();
       revokeAllStudentSessions();
     },
   });
-  const lanAccessSetting = await prisma.setting.findUnique({ where: { key: 'lan-access' } }).catch(() => null);
-  app.set('lanAccessEnabled', lanAccessSetting?.value !== 'false');
-
   // 探究空间托管服务的端口。**只在这里算一次**，路由层经 app.get('webappPort') 取值
   // （与 prisma / io / lanAccessEnabled 同一套注入方式）。
   // 下发的是端口而不是拼好的 URL：客户端本来就知道自己是从哪个 IP 进来的
@@ -308,29 +328,70 @@ async function main() {
 
   // 探究空间托管服务：独立源的第二个 Express 实例（规格 §5.1）。
   // 它起不来**不能**拖垮主服务 —— EADDRINUSE 时 startWebappHost 只 warn 并返回 null。
-  const webappServer = await startWebappHost({
-    port: webappPort,
-    serverPort: port,
+  const hostOptions = {
     lanAccessEnabled: () => app.get('lanAccessEnabled') !== false,
     webappsRoot: webappsRoot(),
-  });
+  };
+  const webappServer = await startWebappHost({ port: webappPort, serverPort: port, ...hostOptions });
 
-  const dataRoot = process.env.CLASSNODE_DATA_DIR || path.resolve(__dirname, '..');
   const lanHttps = new LanHttps({
-    directory: certificateDirectory(dataRoot), main: httpServer, webapp: webappServer,
+    directory: certDirectory, main: httpServer, webapp: webappServer,
     httpPort: port, webappHttpPort: webappPort,
-    httpsPort: Number(process.env.CLASSNODE_HTTPS_PORT || port + 2),
+    httpsPort,
     webappHttpsPort: Number(process.env.CLASSNODE_WEBAPP_HTTPS_PORT || port + 3),
     addresses: () => getLocalIPAddresses().map(item => item.ip),
     onChange: () => {
       const status = lanHttps.status();
       app.set('webappHttpsPort', status.running ? status.webappPort : undefined);
       originPolicy.webappHttpsPort = status.running ? status.webappPort : undefined;
+      void syncMedia().catch(error => console.warn('[https] 无法同步探究网页媒体权限', error));
       io.emit('nic-changed');
     },
   });
+  const hosts = new Map<number, { config: MediaHost; server: ReturnType<typeof createCameraWebappHost> }>();
+  let mediaSync = Promise.resolve();
+  function syncMedia() {
+    const task = mediaSync.then(async () => {
+      const records = await prisma.webapp.findMany({ where: { externalUrl: null, mediaPort: { not: null } },
+        select: { id: true, mediaPort: true, cameraEnabled: true, microphoneEnabled: true } });
+      const next: MediaHost[] = [];
+      const enabledPorts = new Set<number>();
+      for (const record of records) {
+        let mediaPort = record.mediaPort!;
+        // 备份可能把旧端口分给不同网页。仍打开的浏览器页面必须保留其原有的源隔离。
+        if (hosts.has(mediaPort) && hosts.get(mediaPort)?.config.id !== record.id) {
+          mediaPort = await reserveMediaPort(prisma, Math.max(41999, ...hosts.keys()));
+          const updated = await prisma.webapp.updateMany({ where: { id: record.id, mediaPort: record.mediaPort },
+            data: { mediaPort } });
+          if (updated.count === 0) continue;
+        }
+        const config = { ...record, port: mediaPort };
+        let host = hosts.get(mediaPort);
+        if (!host) {
+          host = { config, server: createCameraWebappHost(hostOptions, record.id, httpsPort, config) };
+          hosts.set(mediaPort, host);
+        } else Object.assign(host.config, config);
+        if (config.cameraEnabled || config.microphoneEnabled) {
+          enabledPorts.add(mediaPort);
+          if (await lanHttps.startMediaHost(mediaPort, host.server)) next.push(config);
+        }
+      }
+      for (const [mediaPort, host] of hosts) {
+        if (enabledPorts.has(mediaPort)) continue;
+        Object.assign(host.config, { cameraEnabled: false, microphoneEnabled: false });
+        await lanHttps.stopMediaHost(mediaPort);
+      }
+      originPolicy.mediaWebappPorts = new Set(hosts.keys());
+      publishedMedia = next;
+      app.set('mediaWebapps', next);
+    });
+    mediaSync = task.catch(() => {});
+    return task;
+  }
+  app.set('syncWebappMedia', syncMedia);
   app.set('lanHttps', lanHttps);
   await lanHttps.initialize();
+  await syncMedia();
 
   // Graceful shutdown
   const shutdown = async (signal: string) => {

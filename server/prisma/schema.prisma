@@ -322,6 +322,10 @@ model Webapp {
   name      String
   entryPath String
   externalUrl String?
+  externalMode String @default("link")
+  cameraEnabled Boolean @default(false)
+  microphoneEnabled Boolean @default(false)
+  mediaPort Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

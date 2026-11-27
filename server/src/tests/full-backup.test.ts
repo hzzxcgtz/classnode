@@ -319,7 +319,7 @@ test('new backup transfers to a separate fresh directory and different local key
   const original = await fixture(); let target: Awaited<ReturnType<typeof fixture>> | undefined;
   try {
     const { webapp } = await seed(original.prisma); original.write(`webapps/${webapp.id}/index.html`, 'transferred'); original.write('uploads/avatars/image.txt', 'image');
-    const external = await original.prisma.webapp.create({ data: { name: '外部应用', entryPath: '', externalUrl: 'https://apps.example.invalid/' } });
+    const external = await original.prisma.webapp.create({ data: { name: '外部应用', entryPath: '', externalUrl: 'https://apps.example.invalid/', externalMode: 'embed' } });
     await original.prisma.$executeRawUnsafe('ALTER TABLE "Webapp" ADD COLUMN "embedExternal" BOOLEAN NOT NULL DEFAULT false');
     await original.prisma.$executeRawUnsafe('UPDATE "Webapp" SET "embedExternal" = true WHERE "id" = ?', external.id);
     const backup = await createFullBackup(original.prisma); await original.prisma.$disconnect();

@@ -219,7 +219,6 @@ async function main() {
     enabled: process.env.CLASSNODE_USAGE_ENABLED !== 'false',
     deployment: process.env.CLASSNODE_DEPLOYMENT === 'desktop' ? 'desktop' : 'server',
   });
-  usage.start();
   app.use(usage.middleware);
 
   // Routes
@@ -313,6 +312,7 @@ async function main() {
   setupSocketHandlers(io, prisma, app);
 
   httpServer.listen(port, '0.0.0.0', () => {
+    usage.start();
     console.log(`🚀 ClassNode Server running on port ${port}`);
     const interfaces = getLocalIPAddresses();
     interfaces.forEach((iface: { name: string; label: string; ip: string }) => {

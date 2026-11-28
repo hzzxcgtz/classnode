@@ -47,7 +47,9 @@ test('unconfigured / environment-disabled installs do not transmit; failures bac
     const disabled = new UsageReporting({ directory, version: '2.2.6', enabled: false, endpoint: 'https://example.org/report' }); disabled.record(); assert.equal(disabled.status().enabled, false); assert.equal(disabled.status().pendingDays, 0);
     fs.rmSync(directory, { recursive: true, force: true });
     const usage = new UsageReporting({ directory, version: '2.2.6', endpoint: 'https://example.org/report', now: () => now, fetcher: (async () => { attempts++; return new Response(null, { status: 503 }); }) as typeof fetch });
-    usage.record(['classroomsCreated']); await usage.send(); await usage.send(); assert.equal(attempts, 1); now += 3600_000; await usage.send(); assert.equal(attempts, 2); assert.equal(usage.status().pendingDays, 1);
+    usage.record(['classroomsCreated']); await usage.send(); await usage.send(); assert.equal(attempts, 1); now += 10 * 60_000; await usage.send(); assert.equal(attempts, 2); assert.equal(usage.status().pendingDays, 1);
+    now += 19 * 60_000; await usage.send(); assert.equal(attempts, 2);
+    now += 60_000; await usage.send(); assert.equal(attempts, 3);
     let signal: AbortSignal | null = null;
     const flight = new UsageReporting({ directory: path.join(directory, 'flight'), version: '2.2.6', endpoint: 'https://example.org/report', now: () => now, fetcher: ((_url, init) => new Promise((_resolve, reject) => { signal = init?.signal as AbortSignal; signal.addEventListener('abort', () => reject(Error('aborted'))); })) as typeof fetch });
     flight.record(); const send = flight.send(); flight.stop(); await send; assert.equal((signal as unknown as AbortSignal).aborted, true); assert.equal(flight.status().pendingDays, 1);
@@ -111,10 +113,90 @@ test('device activity ignores polling, deduplicates browser IDs and persists des
     desktop.stop();
     const desktopCache = JSON.parse(fs.readFileSync(path.join(directory, 'desktop', 'usage-reporting.json'), 'utf8'));
     assert.equal(desktopCache.reports[0].deviceActivity, true);
-    assert.equal(desktopCache.reports[0].revision, 2);
+    assert.deepEqual(desktopCache.reports[0].activity, { starts: [], operations: [960] });
   } finally {
     await close(server);
     usage.stop();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('service startup sends immediately, keeps the installation ID and batches meaningful minutes', async () => {
+  const directory = temp();
+  let now = NOW;
+  const payloads: { schema: number; reports: UsageReport[] }[] = [];
+  const fetcher = (async (_url, init) => {
+    payloads.push(JSON.parse(String(init?.body)));
+    assert.equal(new Headers(init?.headers).get('X-ClassNode-Usage-Schema'), '3');
+    return new Response(null, { status: 200 });
+  }) as typeof fetch;
+  const options = { directory, version: '2.2.7', now: () => now, fetcher, endpoint: 'https://example.org/v1/report' };
+  const first = new UsageReporting(options);
+  let restarted: UsageReporting | undefined;
+  try {
+    first.start();
+    first.start();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(payloads.length, 1);
+    const initial = payloads[0].reports[0];
+    assert.equal(payloads[0].schema, 3);
+    assert.equal(initial.active, false);
+    assert.deepEqual(initial.activity, { starts: [960], operations: [] });
+    first.record();
+    first.record(['worksheetsCreated'], true);
+    first.record([], true);
+    first.stop();
+
+    now += 60_000;
+    restarted = new UsageReporting(options);
+    restarted.start();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const second = payloads[1].reports[0];
+    assert.equal(second.installationId, initial.installationId);
+    assert.equal(second.active, true);
+    assert.deepEqual(second.activity, { starts: [960, 961], operations: [960] });
+    restarted.record([], true);
+    await restarted.send();
+    assert.equal(payloads.length, 2);
+    now += 5 * 60_000;
+    await restarted.send();
+    assert.deepEqual(payloads[2].reports[0].activity?.operations, [960, 961]);
+  } finally {
+    first.stop();
+    restarted?.stop();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('restarting offline keeps the existing retry deadline and preserves startup history', async () => {
+  const directory = temp();
+  let now = NOW;
+  const attempts: UsageReport[][] = [];
+  const fetcher = (async (_url, init) => {
+    attempts.push(JSON.parse(String(init?.body)).reports);
+    return new Response(null, { status: attempts.length === 1 ? 503 : 200 });
+  }) as typeof fetch;
+  const options = { directory, version: '2.2.7', now: () => now, fetcher, endpoint: 'https://example.org/v1/report' };
+  const first = new UsageReporting(options);
+  let restarted: UsageReporting | undefined;
+  try {
+    first.start();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    first.stop();
+    now += 60_000;
+    restarted = new UsageReporting(options);
+    restarted.start();
+    assert.equal(attempts.length, 1);
+    now += 8 * 60_000;
+    await restarted.send();
+    assert.equal(attempts.length, 1);
+    now += 60_000;
+    await restarted.send();
+    assert.equal(attempts.length, 2);
+    assert.deepEqual(attempts[1][0].activity?.starts, [960, 961]);
+  } finally {
+    first.stop();
+    restarted?.stop();
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
